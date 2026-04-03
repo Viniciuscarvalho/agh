@@ -3,22 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
-	"errors"
 	"strings"
 	"testing"
 
 	"github.com/pedronauck/agh/internal/version"
 )
-
-type stubDaemonRunner struct {
-	runErr error
-	ran    bool
-}
-
-func (s *stubDaemonRunner) Run(context.Context) error {
-	s.ran = true
-	return s.runErr
-}
 
 func TestRunPrintsVersion(t *testing.T) {
 	original := version.Version
@@ -37,51 +26,24 @@ func TestRunPrintsVersion(t *testing.T) {
 	}
 }
 
-func TestRunStartDelegatesToDaemon(t *testing.T) {
-	original := newDaemon
-	runner := &stubDaemonRunner{}
-	newDaemon = func() (daemonRunner, error) {
-		return runner, nil
-	}
-	t.Cleanup(func() {
-		newDaemon = original
-	})
-
-	exitCode := run(context.Background(), []string{"start"}, &bytes.Buffer{}, &bytes.Buffer{})
+func TestRunHelpShowsRootUsage(t *testing.T) {
+	var stdout bytes.Buffer
+	exitCode := run(context.Background(), nil, &stdout, &bytes.Buffer{})
 	if exitCode != 0 {
-		t.Fatalf("run(start) exit code = %d, want 0", exitCode)
+		t.Fatalf("run(help) exit code = %d, want 0", exitCode)
 	}
-	if !runner.ran {
-		t.Fatal("run(start) did not invoke daemon.Run")
-	}
-}
-
-func TestRunStartReturnsErrorStatus(t *testing.T) {
-	original := newDaemon
-	newDaemon = func() (daemonRunner, error) {
-		return nil, errors.New("boom")
-	}
-	t.Cleanup(func() {
-		newDaemon = original
-	})
-
-	var stderr bytes.Buffer
-	exitCode := run(context.Background(), []string{"start"}, &bytes.Buffer{}, &stderr)
-	if exitCode != 1 {
-		t.Fatalf("run(start) exit code = %d, want 1", exitCode)
-	}
-	if !strings.Contains(stderr.String(), "boom") {
-		t.Fatalf("run(start) stderr = %q, want error message", stderr.String())
+	if got := stdout.String(); !strings.Contains(got, "Usage:") || !strings.Contains(got, "agh") {
+		t.Fatalf("run(help) output = %q, want root usage", got)
 	}
 }
 
-func TestRunUnknownCommandPrintsUsage(t *testing.T) {
+func TestRunUnknownCommandReturnsError(t *testing.T) {
 	var stderr bytes.Buffer
 	exitCode := run(context.Background(), []string{"mystery"}, &bytes.Buffer{}, &stderr)
-	if exitCode != 2 {
-		t.Fatalf("run(unknown) exit code = %d, want 2", exitCode)
+	if exitCode != 1 {
+		t.Fatalf("run(unknown) exit code = %d, want 1", exitCode)
 	}
-	if !strings.Contains(stderr.String(), "usage: agh [start|version]") {
-		t.Fatalf("run(unknown) stderr = %q, want usage", stderr.String())
+	if got := stderr.String(); !strings.Contains(got, "unknown command") {
+		t.Fatalf("run(unknown) stderr = %q, want unknown command error", got)
 	}
 }

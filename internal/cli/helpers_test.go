@@ -1,0 +1,198 @@
+package cli
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"testing"
+	"time"
+
+	aghconfig "github.com/pedronauck/agh/internal/config"
+)
+
+var fixedTestNow = time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+
+type stubClient struct {
+	daemonStatusFn        func(context.Context) (DaemonStatus, error)
+	listSessionsFn        func(context.Context) ([]SessionRecord, error)
+	createSessionFn       func(context.Context, CreateSessionRequest) (SessionRecord, error)
+	getSessionFn          func(context.Context, string) (SessionRecord, error)
+	stopSessionFn         func(context.Context, string) error
+	resumeSessionFn       func(context.Context, string) (SessionRecord, error)
+	promptSessionFn       func(context.Context, string, string) ([]AgentEventRecord, error)
+	sessionEventsFn       func(context.Context, string, SessionEventQuery) ([]SessionEventRecord, error)
+	streamSessionFn       func(context.Context, string, SessionEventQuery, string, SSEHandler) error
+	sessionHistoryFn      func(context.Context, string, SessionEventQuery) ([]TurnHistoryRecord, error)
+	listAgentsFn          func(context.Context) ([]AgentRecord, error)
+	getAgentFn            func(context.Context, string) (AgentRecord, error)
+	observeEventsFn       func(context.Context, ObserveEventQuery) ([]ObserveEventRecord, error)
+	streamObserveEventsFn func(context.Context, ObserveEventQuery, string, SSEHandler) error
+	observeHealthFn       func(context.Context) (HealthStatus, error)
+}
+
+func (s stubClient) DaemonStatus(ctx context.Context) (DaemonStatus, error) {
+	if s.daemonStatusFn != nil {
+		return s.daemonStatusFn(ctx)
+	}
+	return DaemonStatus{}, errors.New("unexpected DaemonStatus call")
+}
+
+func (s stubClient) ListSessions(ctx context.Context) ([]SessionRecord, error) {
+	if s.listSessionsFn != nil {
+		return s.listSessionsFn(ctx)
+	}
+	return nil, errors.New("unexpected ListSessions call")
+}
+
+func (s stubClient) CreateSession(ctx context.Context, request CreateSessionRequest) (SessionRecord, error) {
+	if s.createSessionFn != nil {
+		return s.createSessionFn(ctx, request)
+	}
+	return SessionRecord{}, errors.New("unexpected CreateSession call")
+}
+
+func (s stubClient) GetSession(ctx context.Context, id string) (SessionRecord, error) {
+	if s.getSessionFn != nil {
+		return s.getSessionFn(ctx, id)
+	}
+	return SessionRecord{}, errors.New("unexpected GetSession call")
+}
+
+func (s stubClient) StopSession(ctx context.Context, id string) error {
+	if s.stopSessionFn != nil {
+		return s.stopSessionFn(ctx, id)
+	}
+	return errors.New("unexpected StopSession call")
+}
+
+func (s stubClient) ResumeSession(ctx context.Context, id string) (SessionRecord, error) {
+	if s.resumeSessionFn != nil {
+		return s.resumeSessionFn(ctx, id)
+	}
+	return SessionRecord{}, errors.New("unexpected ResumeSession call")
+}
+
+func (s stubClient) PromptSession(ctx context.Context, id string, message string) ([]AgentEventRecord, error) {
+	if s.promptSessionFn != nil {
+		return s.promptSessionFn(ctx, id, message)
+	}
+	return nil, errors.New("unexpected PromptSession call")
+}
+
+func (s stubClient) SessionEvents(ctx context.Context, id string, query SessionEventQuery) ([]SessionEventRecord, error) {
+	if s.sessionEventsFn != nil {
+		return s.sessionEventsFn(ctx, id, query)
+	}
+	return nil, errors.New("unexpected SessionEvents call")
+}
+
+func (s stubClient) StreamSessionEvents(ctx context.Context, id string, query SessionEventQuery, lastEventID string, handler SSEHandler) error {
+	if s.streamSessionFn != nil {
+		return s.streamSessionFn(ctx, id, query, lastEventID, handler)
+	}
+	return errors.New("unexpected StreamSessionEvents call")
+}
+
+func (s stubClient) SessionHistory(ctx context.Context, id string, query SessionEventQuery) ([]TurnHistoryRecord, error) {
+	if s.sessionHistoryFn != nil {
+		return s.sessionHistoryFn(ctx, id, query)
+	}
+	return nil, errors.New("unexpected SessionHistory call")
+}
+
+func (s stubClient) ListAgents(ctx context.Context) ([]AgentRecord, error) {
+	if s.listAgentsFn != nil {
+		return s.listAgentsFn(ctx)
+	}
+	return nil, errors.New("unexpected ListAgents call")
+}
+
+func (s stubClient) GetAgent(ctx context.Context, name string) (AgentRecord, error) {
+	if s.getAgentFn != nil {
+		return s.getAgentFn(ctx, name)
+	}
+	return AgentRecord{}, errors.New("unexpected GetAgent call")
+}
+
+func (s stubClient) ObserveEvents(ctx context.Context, query ObserveEventQuery) ([]ObserveEventRecord, error) {
+	if s.observeEventsFn != nil {
+		return s.observeEventsFn(ctx, query)
+	}
+	return nil, errors.New("unexpected ObserveEvents call")
+}
+
+func (s stubClient) StreamObserveEvents(ctx context.Context, query ObserveEventQuery, lastEventID string, handler SSEHandler) error {
+	if s.streamObserveEventsFn != nil {
+		return s.streamObserveEventsFn(ctx, query, lastEventID, handler)
+	}
+	return errors.New("unexpected StreamObserveEvents call")
+}
+
+func (s stubClient) ObserveHealth(ctx context.Context) (HealthStatus, error) {
+	if s.observeHealthFn != nil {
+		return s.observeHealthFn(ctx)
+	}
+	return HealthStatus{}, errors.New("unexpected ObserveHealth call")
+}
+
+func newTestDeps(t *testing.T, client DaemonClient) commandDeps {
+	t.Helper()
+
+	homePaths, err := aghconfig.ResolveHomePathsFrom(t.TempDir())
+	if err != nil {
+		t.Fatalf("ResolveHomePathsFrom() error = %v", err)
+	}
+
+	return commandDeps{
+		loadConfig: func() (aghconfig.Config, error) {
+			return aghconfig.DefaultWithHome(homePaths), nil
+		},
+		resolveHome: func() (aghconfig.HomePaths, error) {
+			return homePaths, nil
+		},
+		ensureHome: func(aghconfig.HomePaths) error { return nil },
+		newClient: func(string) (DaemonClient, error) {
+			return client, nil
+		},
+		getwd: func() (string, error) {
+			return "/workspace/project", nil
+		},
+		getenv: func(string) string { return "" },
+		now: func() time.Time {
+			return fixedTestNow
+		},
+	}
+}
+
+func executeRootCommand(t *testing.T, deps commandDeps, args ...string) (string, string, error) {
+	t.Helper()
+
+	cmd := newRootCommand(deps)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs(args)
+
+	err := cmd.ExecuteContext(testContext(t))
+	return stdout.String(), stderr.String(), err
+}
+
+func testContext(t *testing.T) context.Context {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+	return ctx
+}
+
+func mustJSON(t *testing.T, value any) json.RawMessage {
+	t.Helper()
+
+	payload, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	return payload
+}
