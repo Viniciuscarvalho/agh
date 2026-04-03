@@ -14,8 +14,13 @@ import (
 
 func TestBootSequenceReady(t *testing.T) {
 	homePaths := integrationHomePaths(t)
+	cfg := testConfig(homePaths)
 
-	d, err := New(WithLogger(discardLogger()))
+	d, err := New(
+		WithHomePaths(homePaths),
+		WithConfig(cfg),
+		WithLogger(discardLogger()),
+	)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -44,8 +49,13 @@ func TestBootSequenceReady(t *testing.T) {
 
 func TestRunGracefulShutdownViaContextCancellation(t *testing.T) {
 	homePaths := integrationHomePaths(t)
+	cfg := testConfig(homePaths)
 
-	d, err := New(WithLogger(discardLogger()))
+	d, err := New(
+		WithHomePaths(homePaths),
+		WithConfig(cfg),
+		WithLogger(discardLogger()),
+	)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -77,9 +87,12 @@ func TestRunGracefulShutdownViaContextCancellation(t *testing.T) {
 
 func TestRunGracefulShutdownViaSignal(t *testing.T) {
 	homePaths := integrationHomePaths(t)
+	cfg := testConfig(homePaths)
 	signalCh := make(chan os.Signal, 1)
 
 	d, err := New(
+		WithHomePaths(homePaths),
+		WithConfig(cfg),
 		WithLogger(discardLogger()),
 		WithSignalChannel(signalCh),
 	)
@@ -113,5 +126,6 @@ func integrationHomePaths(t *testing.T) aghconfig.HomePaths {
 	if err != nil {
 		t.Fatalf("ResolveHomePathsFrom() error = %v", err)
 	}
+	homePaths.DaemonSocket = shortSocketPath(t)
 	return homePaths
 }

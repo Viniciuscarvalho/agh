@@ -42,6 +42,58 @@ type AgentProcess struct {
 	native   any
 }
 
+// AgentProcessOptions defines the exported fields and lifecycle hooks needed to construct an AgentProcess.
+type AgentProcessOptions struct {
+	PID       int
+	AgentName string
+	Command   string
+	Args      []string
+	Cwd       string
+	SessionID string
+	Caps      ACPCaps
+	StartedAt time.Time
+	Done      <-chan struct{}
+	Wait      func() error
+	Stderr    func() string
+}
+
+// NewAgentProcess constructs an AgentProcess for custom AgentDriver implementations.
+func NewAgentProcess(opts AgentProcessOptions) *AgentProcess {
+	done := opts.Done
+	if done == nil {
+		ch := make(chan struct{})
+		close(ch)
+		done = ch
+	}
+
+	waitFn := opts.Wait
+	if waitFn == nil {
+		waitFn = func() error {
+			<-done
+			return nil
+		}
+	}
+
+	stderrFn := opts.Stderr
+	if stderrFn == nil {
+		stderrFn = func() string { return "" }
+	}
+
+	return &AgentProcess{
+		PID:       opts.PID,
+		AgentName: opts.AgentName,
+		Command:   opts.Command,
+		Args:      append([]string(nil), opts.Args...),
+		Cwd:       opts.Cwd,
+		SessionID: opts.SessionID,
+		Caps:      opts.Caps,
+		StartedAt: opts.StartedAt,
+		done:      done,
+		waitFn:    waitFn,
+		stderrFn:  stderrFn,
+	}
+}
+
 // Done reports when the underlying runtime process exits.
 func (p *AgentProcess) Done() <-chan struct{} {
 	if p == nil || p.done == nil {

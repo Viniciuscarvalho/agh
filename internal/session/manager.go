@@ -820,6 +820,23 @@ func (m *Manager) finalizeStopped(ctx context.Context, session *Session, waitErr
 		m.notifier.OnAgentEvent(ctx, session.ID, normalized)
 	}
 
+	stopEvent := AgentEvent{
+		Type:      EventTypeSessionStopped,
+		TurnID:    newID("turn"),
+		Timestamp: m.now(),
+	}
+	if waitErr != nil {
+		stopEvent.Error = waitErr.Error()
+		if proc := session.processHandle(); proc != nil {
+			stopEvent.Text = proc.Stderr()
+		}
+	}
+	normalizedStop := m.normalizeEvent(session, stopEvent.TurnID, stopEvent)
+	if err := m.recordEvent(ctx, session, normalizedStop); err != nil {
+		errs = append(errs, err)
+	}
+	m.notifier.OnAgentEvent(ctx, session.ID, normalizedStop)
+
 	if recorder := session.recorderHandle(); recorder != nil {
 		closeCtx, cancel := context.WithTimeout(context.Background(), defaultLifecycleTimeout)
 		if err := recorder.Close(closeCtx); err != nil {

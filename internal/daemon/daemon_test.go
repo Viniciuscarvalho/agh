@@ -167,8 +167,12 @@ func TestBootRemovesStaleSocketAndCleansOrphans(t *testing.T) {
 		}
 	})
 
-	if _, err := os.Stat(staleSocket); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("stale socket still exists after boot: stat error = %v, want os.ErrNotExist", err)
+	socketInfo, err := os.Lstat(staleSocket)
+	if err != nil {
+		t.Fatalf("os.Lstat(socket) error = %v", err)
+	}
+	if socketInfo.Mode()&os.ModeSocket == 0 {
+		t.Fatalf("socket mode = %v, want unix socket", socketInfo.Mode())
 	}
 	if !observer.reconciled {
 		t.Fatal("boot() did not call observer.Reconcile")
@@ -846,6 +850,7 @@ func testHomePaths(t *testing.T) aghconfig.HomePaths {
 	if err != nil {
 		t.Fatalf("ResolveHomePathsFrom() error = %v", err)
 	}
+	homePaths.DaemonSocket = shortSocketPath(t)
 	if err := aghconfig.EnsureHomeLayout(homePaths); err != nil {
 		t.Fatalf("EnsureHomeLayout() error = %v", err)
 	}
@@ -855,7 +860,7 @@ func testHomePaths(t *testing.T) aghconfig.HomePaths {
 func testConfig(homePaths aghconfig.HomePaths) aghconfig.Config {
 	cfg := aghconfig.DefaultWithHome(homePaths)
 	cfg.HTTP.Port = 3131
-	cfg.Daemon.Socket = filepath.Join(homePaths.HomeDir, "daemon.sock")
+	cfg.Daemon.Socket = homePaths.DaemonSocket
 	return cfg
 }
 
@@ -893,14 +898,49 @@ func strconvString(v int) string {
 	return fmt.Sprintf("%d", v)
 }
 
+func shortSocketPath(t *testing.T) string {
+	t.Helper()
+
+	path := filepath.Join(os.TempDir(), fmt.Sprintf("agh-%d.sock", time.Now().UTC().UnixNano()))
+	t.Cleanup(func() {
+		_ = os.Remove(path)
+	})
+	return path
+}
+
 type fakeSessionManager struct {
 	infos   []*session.SessionInfo
 	onStop  func(string)
 	stopErr func(string) error
 }
 
+func (f *fakeSessionManager) Create(context.Context, session.CreateOpts) (*session.Session, error) {
+	return nil, nil
+}
+
 func (f *fakeSessionManager) List() []*session.SessionInfo {
 	return append([]*session.SessionInfo(nil), f.infos...)
+}
+
+func (f *fakeSessionManager) ListAll(context.Context) ([]*session.SessionInfo, error) {
+	return f.List(), nil
+}
+
+func (f *fakeSessionManager) Status(_ context.Context, id string) (*session.SessionInfo, error) {
+	for _, info := range f.infos {
+		if info != nil && info.ID == id {
+			return info, nil
+		}
+	}
+	return nil, session.ErrSessionNotFound
+}
+
+func (f *fakeSessionManager) Events(context.Context, string, store.EventQuery) ([]store.SessionEvent, error) {
+	return nil, nil
+}
+
+func (f *fakeSessionManager) History(context.Context, string, store.EventQuery) ([]store.TurnHistory, error) {
+	return nil, nil
 }
 
 func (f *fakeSessionManager) Stop(_ context.Context, id string) error {
@@ -914,10 +954,28 @@ func (f *fakeSessionManager) Stop(_ context.Context, id string) error {
 	return nil
 }
 
+func (f *fakeSessionManager) Resume(context.Context, string) (*session.Session, error) {
+	return nil, nil
+}
+
+func (f *fakeSessionManager) Prompt(context.Context, string, string) (<-chan session.AgentEvent, error) {
+	ch := make(chan session.AgentEvent)
+	close(ch)
+	return ch, nil
+}
+
 type fakeObserver struct {
 	reconciled bool
 	result     observe.ReconcileResult
 	err        error
+}
+
+func (f *fakeObserver) QueryEvents(context.Context, observe.EventQuery) ([]observe.Event, error) {
+	return nil, nil
+}
+
+func (f *fakeObserver) Health(context.Context) (observe.Health, error) {
+	return observe.Health{Status: "ok"}, nil
 }
 
 func (f *fakeObserver) Reconcile(context.Context) (observe.ReconcileResult, error) {

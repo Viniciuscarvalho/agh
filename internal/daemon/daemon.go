@@ -23,6 +23,7 @@ import (
 	"github.com/pedronauck/agh/internal/observe"
 	"github.com/pedronauck/agh/internal/session"
 	"github.com/pedronauck/agh/internal/store"
+	"github.com/pedronauck/agh/internal/udsapi"
 )
 
 const (
@@ -38,13 +39,22 @@ type ConfigLoader func() (aghconfig.Config, error)
 
 // SessionManager is the session lifecycle surface consumed by daemon/.
 type SessionManager interface {
+	Create(ctx context.Context, opts session.CreateOpts) (*session.Session, error)
 	List() []*session.SessionInfo
+	ListAll(ctx context.Context) ([]*session.SessionInfo, error)
+	Status(ctx context.Context, id string) (*session.SessionInfo, error)
+	Events(ctx context.Context, id string, query store.EventQuery) ([]store.SessionEvent, error)
+	History(ctx context.Context, id string, query store.EventQuery) ([]store.TurnHistory, error)
 	Stop(ctx context.Context, id string) error
+	Resume(ctx context.Context, id string) (*session.Session, error)
+	Prompt(ctx context.Context, id string, msg string) (<-chan session.AgentEvent, error)
 }
 
 // Observer is the observability surface consumed by daemon/.
 type Observer interface {
 	session.Notifier
+	QueryEvents(ctx context.Context, query observe.EventQuery) ([]observe.Event, error)
+	Health(ctx context.Context) (observe.Health, error)
 	Reconcile(ctx context.Context) (observe.ReconcileResult, error)
 }
 
@@ -256,8 +266,15 @@ func New(opts ...Option) (*Daemon, error) {
 		}
 	}
 	if d.udsFactory == nil {
-		d.udsFactory = func(context.Context, RuntimeDeps) (Server, error) {
-			return nopServer{}, nil
+		d.udsFactory = func(_ context.Context, deps RuntimeDeps) (Server, error) {
+			return udsapi.New(
+				udsapi.WithHomePaths(deps.HomePaths),
+				udsapi.WithConfig(deps.Config),
+				udsapi.WithLogger(deps.Logger),
+				udsapi.WithStartedAt(deps.StartedAt),
+				udsapi.WithSessionManager(deps.Sessions),
+				udsapi.WithObserver(deps.Observer),
+			)
 		}
 	}
 	if d.listProcesses == nil {

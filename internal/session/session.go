@@ -25,6 +25,11 @@ const (
 	StateStopped  SessionState = "stopped"
 )
 
+const (
+	// EventTypeSessionStopped is emitted when a session transitions to the stopped state.
+	EventTypeSessionStopped = "session_stopped"
+)
+
 // SessionInfo is the external read model returned by session list/get operations.
 type SessionInfo struct {
 	ID           string
