@@ -1,0 +1,264 @@
+package session
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/pedronauck/agh/internal/store"
+)
+
+var (
+	// ErrInvalidStateTransition reports that a session state transition is not allowed.
+	ErrInvalidStateTransition = errors.New("session: invalid state transition")
+)
+
+// SessionState is the lifecycle state of a managed runtime session.
+type SessionState string
+
+const (
+	StateStarting SessionState = "starting"
+	StateActive   SessionState = "active"
+	StateStopping SessionState = "stopping"
+	StateStopped  SessionState = "stopped"
+)
+
+// SessionInfo is the external read model returned by session list/get operations.
+type SessionInfo struct {
+	ID           string
+	Name         string
+	AgentName    string
+	Workspace    string
+	State        SessionState
+	ACPSessionID string
+	ACPCaps      ACPCaps
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+// Session is the in-memory runtime representation of one active or stopping session.
+type Session struct {
+	mu sync.RWMutex
+
+	ID           string
+	Name         string
+	AgentName    string
+	Workspace    string
+	State        SessionState
+	ACPSessionID string
+	ACPCaps      ACPCaps
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+
+	sessionDir string
+	metaPath   string
+	dbPath     string
+	recorder   EventRecorder
+	process    *AgentProcess
+}
+
+// Info returns a consistent snapshot of the current session state.
+func (s *Session) Info() *SessionInfo {
+	if s == nil {
+		return nil
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return &SessionInfo{
+		ID:           s.ID,
+		Name:         s.Name,
+		AgentName:    s.AgentName,
+		Workspace:    s.Workspace,
+		State:        s.State,
+		ACPSessionID: s.ACPSessionID,
+		ACPCaps:      cloneCaps(s.ACPCaps),
+		CreatedAt:    s.CreatedAt,
+		UpdatedAt:    s.UpdatedAt,
+	}
+}
+
+// SessionDir reports the on-disk session directory path.
+func (s *Session) SessionDir() string {
+	if s == nil {
+		return ""
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.sessionDir
+}
+
+// MetaPath reports the on-disk metadata file path.
+func (s *Session) MetaPath() string {
+	if s == nil {
+		return ""
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.metaPath
+}
+
+// DBPath reports the on-disk per-session event database path.
+func (s *Session) DBPath() string {
+	if s == nil {
+		return ""
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.dbPath
+}
+
+func (s *Session) processHandle() *AgentProcess {
+	if s == nil {
+		return nil
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.process
+}
+
+func (s *Session) recorderHandle() EventRecorder {
+	if s == nil {
+		return nil
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.recorder
+}
+
+func (s *Session) updateFromProcess(proc *AgentProcess, now time.Time) {
+	if s == nil {
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.process = proc
+	if proc != nil {
+		s.ACPSessionID = strings.TrimSpace(proc.SessionID)
+		s.ACPCaps = cloneCaps(proc.Caps)
+	}
+	if !now.IsZero() {
+		s.UpdatedAt = now
+	}
+}
+
+func (s *Session) clearProcess(now time.Time) {
+	if s == nil {
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.process = nil
+	if !now.IsZero() {
+		s.UpdatedAt = now
+	}
+}
+
+func (s *Session) setRecorder(recorder EventRecorder) {
+	if s == nil {
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.recorder = recorder
+}
+
+func (s *Session) activate(now time.Time) error {
+	return s.transition(StateActive, now)
+}
+
+func (s *Session) beginStopping(now time.Time) error {
+	return s.transition(StateStopping, now)
+}
+
+func (s *Session) markStopped(now time.Time) error {
+	return s.transition(StateStopped, now)
+}
+
+func (s *Session) transition(next SessionState, now time.Time) error {
+	if s == nil {
+		return errors.New("session: session is required")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.State == next {
+		if !now.IsZero() {
+			s.UpdatedAt = now
+		}
+		return nil
+	}
+
+	if !canTransition(s.State, next) {
+		return fmt.Errorf("%w: %s -> %s", ErrInvalidStateTransition, s.State, next)
+	}
+
+	s.State = next
+	if !now.IsZero() {
+		s.UpdatedAt = now
+	}
+	return nil
+}
+
+func (s *Session) meta() store.SessionMeta {
+	if s == nil {
+		return store.SessionMeta{}
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return store.SessionMeta{
+		ID:           s.ID,
+		Name:         s.Name,
+		AgentName:    s.AgentName,
+		Workspace:    s.Workspace,
+		State:        string(s.State),
+		ACPSessionID: stringPointer(s.ACPSessionID),
+		CreatedAt:    s.CreatedAt,
+		UpdatedAt:    s.UpdatedAt,
+	}
+}
+
+func canTransition(current SessionState, next SessionState) bool {
+	switch current {
+	case StateStarting:
+		return next == StateActive
+	case StateActive:
+		return next == StateStopping
+	case StateStopping:
+		return next == StateStopped
+	default:
+		return false
+	}
+}
+
+func cloneCaps(caps ACPCaps) ACPCaps {
+	return ACPCaps{
+		SupportsLoadSession: caps.SupportsLoadSession,
+		SupportedModes:      append([]string(nil), caps.SupportedModes...),
+		SupportedModels:     append([]string(nil), caps.SupportedModels...),
+	}
+}
+
+func stringPointer(value string) *string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	copyValue := value
+	return &copyValue
+}
