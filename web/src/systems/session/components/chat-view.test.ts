@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { UIMessage } from "../types";
-import { buildRows } from "./chat-view";
+import { buildRows, mergeToolPairs } from "./chat-view";
 
 function msg(overrides: Partial<UIMessage> & { id: string; role: UIMessage["role"] }): UIMessage {
   return {
@@ -98,5 +98,61 @@ describe("buildRows", () => {
     expect(rows[2].kind).toBe("message");
     expect(rows[3].kind).toBe("tool_group");
     expect(rows[4].kind).toBe("message");
+  });
+});
+
+describe("mergeToolPairs", () => {
+  it("merges tool_call with matching tool_result by id", () => {
+    const tools: UIMessage[] = [
+      msg({ id: "tc-1", role: "tool_call", toolName: "Read", toolInput: { file_path: "/a.ts" } }),
+      msg({ id: "tc-1", role: "tool_result", toolResult: { content: "file data" } }),
+    ];
+    const merged = mergeToolPairs(tools);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].role).toBe("tool_call");
+    expect(merged[0].toolName).toBe("Read");
+    expect(merged[0].toolResult).toEqual({ content: "file data" });
+  });
+
+  it("preserves tool_call without matching result (executing)", () => {
+    const tools: UIMessage[] = [
+      msg({ id: "tc-2", role: "tool_call", toolName: "Bash", toolInput: { command: "ls" } }),
+    ];
+    const merged = mergeToolPairs(tools);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].toolResult).toBeUndefined();
+  });
+
+  it("merges multiple tool_call/result pairs", () => {
+    const tools: UIMessage[] = [
+      msg({ id: "tc-1", role: "tool_call", toolName: "Read" }),
+      msg({ id: "tc-1", role: "tool_result", toolResult: { content: "a" } }),
+      msg({ id: "tc-2", role: "tool_call", toolName: "Write" }),
+      msg({ id: "tc-2", role: "tool_result", toolResult: { content: "b" } }),
+    ];
+    const merged = mergeToolPairs(tools);
+    expect(merged).toHaveLength(2);
+    expect(merged[0].toolName).toBe("Read");
+    expect(merged[0].toolResult).toEqual({ content: "a" });
+    expect(merged[1].toolName).toBe("Write");
+    expect(merged[1].toolResult).toEqual({ content: "b" });
+  });
+
+  it("merges toolError from result", () => {
+    const tools: UIMessage[] = [
+      msg({ id: "tc-1", role: "tool_call", toolName: "Bash" }),
+      msg({ id: "tc-1", role: "tool_result", toolResult: { error: "fail" }, toolError: true }),
+    ];
+    const merged = mergeToolPairs(tools);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].toolError).toBe(true);
+  });
+
+  it("skips orphan tool_result messages", () => {
+    const tools: UIMessage[] = [
+      msg({ id: "tc-1", role: "tool_result", toolResult: { content: "orphan" } }),
+    ];
+    const merged = mergeToolPairs(tools);
+    expect(merged).toHaveLength(0);
   });
 });

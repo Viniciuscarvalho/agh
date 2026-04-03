@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import type { UIMessage } from "../types";
 import { MessageBubble } from "./message-bubble";
 import { ProcessingIndicator } from "./processing-indicator";
+import { ToolCallCard } from "./tool-call-card";
 
 // ── Row model ──
 
@@ -69,11 +70,42 @@ function getRowKey(row: RowDescriptor, index: number): string {
 
 function estimateRowHeight(row: RowDescriptor): number {
   if (row.kind === "processing") return 44;
-  if (row.kind === "tool_group") return 44 * row.tools.length;
+  if (row.kind === "tool_group") return 36 * mergeToolPairs(row.tools).length;
   const msg = row.msg;
   if (msg.role === "user") return Math.max(56, Math.min(200, 56 + msg.content.length / 3));
   if (msg.role === "assistant") return Math.max(56, Math.min(600, 56 + msg.content.length / 2));
   return 48;
+}
+
+/**
+ * Merge consecutive tool_call + tool_result pairs into single UIMessages.
+ * Each tool_call gets its matching tool_result (by id) merged onto it.
+ * Only tool_call messages are returned; tool_result-only messages are consumed.
+ */
+export function mergeToolPairs(tools: UIMessage[]): UIMessage[] {
+  const resultMap = new Map<string, UIMessage>();
+  for (const t of tools) {
+    if (t.role === "tool_result") {
+      resultMap.set(t.id, t);
+    }
+  }
+
+  const merged: UIMessage[] = [];
+  for (const t of tools) {
+    if (t.role !== "tool_call") continue;
+    const result = resultMap.get(t.id);
+    if (result) {
+      merged.push({
+        ...t,
+        toolResult: result.toolResult,
+        toolError: result.toolError,
+      });
+    } else {
+      merged.push(t);
+    }
+  }
+
+  return merged;
 }
 
 // ── ChatMessageRow ──
@@ -89,12 +121,12 @@ const ChatMessageRow = memo(
     }
 
     if (row.kind === "tool_group") {
-      // Placeholder for task_06 tool card rendering
+      const cards = mergeToolPairs(row.tools);
       return (
-        <div className="px-4 py-1" data-testid="tool-group-placeholder">
-          <div className="rounded-lg border border-[color:var(--ds-line-subtle)] bg-[color:var(--ds-panel-base)] px-3 py-2 text-xs text-[color:var(--ds-text-muted)]">
-            {row.tools.length} tool {row.tools.length === 1 ? "call" : "calls"}
-          </div>
+        <div className="px-4 py-0.5" data-testid="tool-group">
+          {cards.map(tool => (
+            <ToolCallCard key={tool.id} message={tool} />
+          ))}
         </div>
       );
     }

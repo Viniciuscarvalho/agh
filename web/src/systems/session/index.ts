@@ -86,9 +86,11 @@ export { SessionSidebarItem } from "./components/session-sidebar-item";
 export {
   ChatView,
   buildRows,
+  mergeToolPairs,
   type RowDescriptor,
   type ChatViewProps,
 } from "./components/chat-view";
+export { ToolCallCard, type ToolCallCardProps } from "./components/tool-call-card";
 export { ChatHeader, type ChatHeaderProps } from "./components/chat-header";
 export { MessageBubble, type MessageBubbleProps } from "./components/message-bubble";
 export { MessageComposer, type MessageComposerProps } from "./components/message-composer";

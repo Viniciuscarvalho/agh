@@ -125,18 +125,79 @@ describe("ChatView integration", () => {
     expect(screen.queryByTestId("processing-indicator")).not.toBeInTheDocument();
   });
 
-  it("renders tool group placeholder for consecutive tool messages", () => {
+  it("renders tool group with tool cards for consecutive tool messages", () => {
     const messages: UIMessage[] = [
       makeMessage({ id: "m1", role: "user", content: "Read a file" }),
-      makeMessage({ id: "m2", role: "tool_call", toolName: "Read" }),
-      makeMessage({ id: "m3", role: "tool_result", content: "file content" }),
+      makeMessage({
+        id: "m2",
+        role: "tool_call",
+        toolName: "Read",
+        toolInput: { file_path: "/src/main.ts" },
+      }),
+      makeMessage({
+        id: "m2",
+        role: "tool_result",
+        toolResult: { stdout: "const x = 1;\n" },
+      }),
       makeMessage({ id: "m4", role: "assistant", content: "Here is the file." }),
     ];
 
     render(<ChatView messages={messages} isStreaming={false} />);
 
-    expect(screen.getByTestId("tool-group-placeholder")).toBeInTheDocument();
-    expect(screen.getByText("2 tool calls")).toBeInTheDocument();
+    expect(screen.getByTestId("tool-group")).toBeInTheDocument();
+    expect(screen.getByTestId("tool-call-card")).toBeInTheDocument();
+    // Should show past-tense label since result is present
+    expect(screen.getByText("Read file")).toBeInTheDocument();
+  });
+
+  it("renders tool group with multiple tool cards", () => {
+    const messages: UIMessage[] = [
+      makeMessage({
+        id: "tc-1",
+        role: "tool_call",
+        toolName: "Read",
+        toolInput: { file_path: "/a.ts" },
+      }),
+      makeMessage({
+        id: "tc-1",
+        role: "tool_result",
+        toolResult: { stdout: "content" },
+      }),
+      makeMessage({
+        id: "tc-2",
+        role: "tool_call",
+        toolName: "Bash",
+        toolInput: { command: "ls" },
+      }),
+      makeMessage({
+        id: "tc-2",
+        role: "tool_result",
+        toolResult: { stdout: "output" },
+      }),
+    ];
+
+    render(<ChatView messages={messages} isStreaming={false} />);
+
+    const cards = screen.getAllByTestId("tool-call-card");
+    expect(cards).toHaveLength(2);
+    expect(screen.getByText("Read file")).toBeInTheDocument();
+    expect(screen.getByText("Ran command")).toBeInTheDocument();
+  });
+
+  it("renders executing tool card when result not yet available", () => {
+    const messages: UIMessage[] = [
+      makeMessage({
+        id: "tc-running",
+        role: "tool_call",
+        toolName: "Bash",
+        toolInput: { command: "make build" },
+      }),
+    ];
+
+    render(<ChatView messages={messages} isStreaming={true} />);
+
+    expect(screen.getByTestId("tool-card-executing")).toBeInTheDocument();
+    expect(screen.getByText("Running...")).toBeInTheDocument();
   });
 
   it("renders thinking block when message has thinking content", () => {
