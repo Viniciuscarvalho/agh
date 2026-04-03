@@ -6,6 +6,8 @@ Keep only durable, cross-task context here. Do not duplicate facts that are obvi
 
 - Task 01 (Foundation) complete: types, schemas, barrels, ThemeProvider, route tests all in place.
 - Task 02 (Daemon & Agent Systems) complete: API adapters, query hooks, connection status, agent sidebar groups all wired.
+- Task 03 (Session System: API, CRUD & Sidebar) complete: session-api adapter, query hooks, mutations, sidebar items wired.
+- Task 04 (Streaming Core & Session Store) complete: streaming buffer, event mapper, Zustand store, useSessionChat hook, tool labels all in place with tests.
 
 ## Shared Decisions
 
@@ -17,6 +19,8 @@ Keep only durable, cross-task context here. Do not duplicate facts that are obvi
 
 - Backend API payload structs are in `internal/httpapi/{sessions,agents,prompt,observe,daemon}.go` and `internal/observe/health.go`.
 - All backend token/cost fields are nullable pointers — map as optional in TS.
+- AI SDK `useChat` with `DefaultChatTransport` handles standard SSE events natively (text/reasoning deltas); custom daemon events (`data-agh-permission`, `data-agh-event`) arrive via the `onData` callback.
+- Streaming buffer uses snapshot approach (reset + re-fill from AI SDK accumulated parts) since AI SDK already accumulates deltas internally — avoids double-counting.
 
 ## Open Risks
 

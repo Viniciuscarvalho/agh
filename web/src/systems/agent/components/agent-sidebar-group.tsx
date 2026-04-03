@@ -1,4 +1,5 @@
 import { ChevronRight, Plus } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
@@ -17,9 +18,12 @@ import { AgentIcon } from "./agent-icon";
 interface AgentSidebarGroupProps {
   agent: AgentPayload;
   onNewSession?: (agentName: string) => void;
+  children?: ReactNode;
 }
 
-function AgentSidebarGroup({ agent, onNewSession }: AgentSidebarGroupProps) {
+function AgentSidebarGroup({ agent, onNewSession, children }: AgentSidebarGroupProps) {
+  const hasChildren = children != null;
+
   return (
     <Collapsible defaultOpen className="group/collapsible">
       <SidebarGroup className="p-0 pb-1">
@@ -39,16 +43,19 @@ function AgentSidebarGroup({ agent, onNewSession }: AgentSidebarGroupProps) {
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuSub>
-                {/* Session items will be rendered here by task_03 */}
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    size="sm"
-                    className="text-[color:var(--ds-text-muted)]"
-                    tooltip="No sessions"
-                  >
-                    <span className="text-xs">No sessions</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                {hasChildren ? (
+                  children
+                ) : (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      size="sm"
+                      className="text-[color:var(--ds-text-muted)]"
+                      tooltip="No sessions"
+                    >
+                      <span className="text-xs">No sessions</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
               </SidebarMenuSub>
             </SidebarMenu>
           </SidebarGroupContent>

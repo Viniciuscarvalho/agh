@@ -1,0 +1,65 @@
+import { Square, Play } from "lucide-react";
+
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import type { SessionPayload } from "../types";
+
+export interface ChatHeaderProps {
+  session: SessionPayload;
+  onStop: () => void;
+  onResume: () => void;
+}
+
+const STATE_BADGE_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+  active: "default",
+  starting: "secondary",
+  stopping: "secondary",
+  stopped: "outline",
+};
+
+export function ChatHeader({ session, onStop, onResume }: ChatHeaderProps) {
+  const isActive = session.state === "active" || session.state === "starting";
+  const isStopped = session.state === "stopped";
+
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-between border-b px-4 py-2",
+        "border-[color:var(--ds-line-subtle)] bg-[color:var(--ds-panel-base)]"
+      )}
+      data-testid="chat-header"
+    >
+      <div className="flex items-center gap-3 overflow-hidden">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h2 className="truncate text-sm font-medium text-[color:var(--ds-text-primary)]">
+              {session.name ?? session.id}
+            </h2>
+            <Badge
+              variant={STATE_BADGE_VARIANT[session.state] ?? "secondary"}
+              className={cn("text-[0.625rem]", session.state === "starting" && "animate-pulse")}
+              data-testid="session-state-badge"
+            >
+              {session.state}
+            </Badge>
+          </div>
+          <span className="text-xs text-[color:var(--ds-text-muted)]">{session.agent_name}</span>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1">
+        {isActive && (
+          <Button variant="ghost" size="icon-sm" onClick={onStop} data-testid="stop-button">
+            <Square className="size-3.5" />
+          </Button>
+        )}
+        {isStopped && (
+          <Button variant="ghost" size="icon-sm" onClick={onResume} data-testid="resume-button">
+            <Play className="size-3.5" />
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 domain: Frontend
 type: Feature Implementation
 scope: Full
@@ -35,12 +35,12 @@ Build the streaming infrastructure: a `SimpleStreamingBuffer` class (adapted fro
 </requirements>
 
 ## Subtasks
-- [ ] 4.1 Create `SimpleStreamingBuffer` class with `mergeStreamingChunk` overlap detection
-- [ ] 4.2 Create `event-mapper.ts` with SSE event type → UIMessage transform functions
-- [ ] 4.3 Create Zustand `session-store.ts` with session state and actions
-- [ ] 4.4 Create `use-session-chat.ts` hook wiring useChat → buffer → rAF → store
-- [ ] 4.5 Create `tool-labels.ts` with icon/label/summary mapping for known tools
-- [ ] 4.6 Update session system barrel exports
+- [x] 4.1 Create `SimpleStreamingBuffer` class with `mergeStreamingChunk` overlap detection
+- [x] 4.2 Create `event-mapper.ts` with SSE event type → UIMessage transform functions
+- [x] 4.3 Create Zustand `session-store.ts` with session state and actions
+- [x] 4.4 Create `use-session-chat.ts` hook wiring useChat → buffer → rAF → store
+- [x] 4.5 Create `tool-labels.ts` with icon/label/summary mapping for known tools
+- [x] 4.6 Update session system barrel exports
 
 ## Implementation Details
 

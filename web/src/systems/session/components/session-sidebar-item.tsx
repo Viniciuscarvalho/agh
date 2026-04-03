@@ -1,0 +1,68 @@
+import { Link, useMatchRoute } from "@tanstack/react-router";
+import { Loader2 } from "lucide-react";
+
+import { Badge } from "@/components/ui/badge";
+import { SidebarMenuSubButton, SidebarMenuSubItem } from "@/components/ui/sidebar";
+import { cn } from "@/lib/utils";
+import type { SessionPayload, SessionState } from "../types";
+
+interface SessionSidebarItemProps {
+  session: SessionPayload;
+}
+
+function StateBadge({ state }: { state: SessionState }) {
+  switch (state) {
+    case "active":
+      return (
+        <Badge variant="default" className="h-4 px-1 text-[0.55rem] leading-none">
+          active
+        </Badge>
+      );
+    case "starting":
+      return (
+        <Badge
+          variant="outline"
+          className="h-4 animate-pulse px-1 text-[0.55rem] leading-none text-amber-500 border-amber-500/30"
+        >
+          starting
+        </Badge>
+      );
+    case "stopping":
+      return (
+        <Badge variant="outline" className="h-4 px-1 text-[0.55rem] leading-none">
+          <Loader2 className="mr-0.5 size-2.5 animate-spin" />
+          stopping
+        </Badge>
+      );
+    case "stopped":
+      return (
+        <Badge variant="secondary" className="h-4 px-1 text-[0.55rem] leading-none">
+          stopped
+        </Badge>
+      );
+  }
+}
+
+function SessionSidebarItem({ session }: SessionSidebarItemProps) {
+  const matchRoute = useMatchRoute();
+  const isActive = !!matchRoute({ to: "/session/$id", params: { id: session.id } });
+  const displayTitle = session.name || session.id.slice(0, 8);
+
+  return (
+    <SidebarMenuSubItem>
+      <SidebarMenuSubButton
+        size="sm"
+        isActive={isActive}
+        render={<Link to="/session/$id" params={{ id: session.id }} />}
+        className={cn("gap-1.5", isActive && "font-medium")}
+      >
+        <span className="truncate text-xs">{displayTitle}</span>
+        <span className="ml-auto shrink-0">
+          <StateBadge state={session.state} />
+        </span>
+      </SidebarMenuSubButton>
+    </SidebarMenuSubItem>
+  );
+}
+
+export { SessionSidebarItem };

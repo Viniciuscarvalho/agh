@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Bot, Loader2, Search, Settings, Terminal } from "lucide-react";
 
 import {
@@ -19,9 +20,39 @@ import { AgentSidebarGroup } from "@/systems/agent/components/agent-sidebar-grou
 import { useAgents } from "@/systems/agent/hooks/use-agents";
 import { ConnectionStatus } from "@/systems/daemon/components/connection-status";
 import { useDaemonHealth } from "@/systems/daemon/hooks/use-daemon-health";
+import { SessionSidebarItem } from "@/systems/session/components/session-sidebar-item";
+import { useCreateSession } from "@/systems/session/hooks/use-session-actions";
+import { useSessions } from "@/systems/session/hooks/use-sessions";
+import type { SessionPayload } from "@/systems/session/types";
+
+function useSessionsByAgent(sessions: SessionPayload[] | undefined) {
+  return useMemo(() => {
+    if (!sessions) return {};
+    const grouped: Record<string, SessionPayload[]> = {};
+    for (const session of sessions) {
+      const key = session.agent_name;
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(session);
+    }
+    // Sort each group by updated_at descending
+    for (const key of Object.keys(grouped)) {
+      grouped[key].sort(
+        (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+      );
+    }
+    return grouped;
+  }, [sessions]);
+}
 
 function AgentsList() {
   const { data: agents, isLoading, isError } = useAgents();
+  const { data: sessions } = useSessions();
+  const sessionsByAgent = useSessionsByAgent(sessions);
+  const createSession = useCreateSession();
+
+  const handleNewSession = (agentName: string) => {
+    createSession.mutate({ agent_name: agentName });
+  };
 
   if (isLoading) {
     return (
@@ -62,9 +93,16 @@ function AgentsList() {
 
   return (
     <>
-      {agents.map(agent => (
-        <AgentSidebarGroup key={agent.name} agent={agent} />
-      ))}
+      {agents.map(agent => {
+        const agentSessions = sessionsByAgent[agent.name];
+        return (
+          <AgentSidebarGroup key={agent.name} agent={agent} onNewSession={handleNewSession}>
+            {agentSessions?.map(session => (
+              <SessionSidebarItem key={session.id} session={session} />
+            ))}
+          </AgentSidebarGroup>
+        );
+      })}
     </>
   );
 }
@@ -105,21 +143,6 @@ function AppSidebar() {
         <AgentsList />
 
         <SidebarSeparator />
-
-        <SidebarGroup>
-          <SidebarGroupLabel className="font-mono text-[0.64rem] uppercase tracking-[0.22em] text-[color:var(--ds-text-mono)]">
-            Recent Sessions
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton tooltip="No sessions">
-                  <span className="text-[color:var(--ds-text-muted)]">No sessions yet</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
       </SidebarContent>
 
       <SidebarFooter>
