@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 domain: Config
 type: Feature Implementation
 scope: Full
