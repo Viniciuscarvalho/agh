@@ -1,0 +1,173 @@
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi, beforeEach } from "vitest";
+
+import type { UIMessage } from "../types";
+
+// Mock react-virtual to avoid needing real scroll measurements
+vi.mock("@tanstack/react-virtual", () => ({
+  useVirtualizer: ({
+    count,
+    getItemKey,
+  }: {
+    count: number;
+    getItemKey: (i: number) => string;
+  }) => ({
+    getVirtualItems: () =>
+      Array.from({ length: count }, (_, i) => ({
+        index: i,
+        key: getItemKey(i),
+        start: i * 60,
+        size: 60,
+      })),
+    getTotalSize: () => count * 60,
+    measureElement: () => {},
+  }),
+}));
+
+vi.mock("@/lib/utils", () => ({
+  cn: (...args: unknown[]) => args.filter(Boolean).join(" "),
+}));
+
+vi.mock("@/components/ui/button", () => ({
+  Button: ({
+    children,
+    onClick,
+    ...props
+  }: {
+    children: React.ReactNode;
+    onClick?: () => void;
+    [key: string]: unknown;
+  }) => (
+    <button onClick={onClick} {...props}>
+      {children}
+    </button>
+  ),
+}));
+
+vi.mock("@/components/ui/collapsible", () => ({
+  Collapsible: ({ children }: Record<string, unknown>) => <div>{children as React.ReactNode}</div>,
+  CollapsibleTrigger: ({ children }: Record<string, unknown>) => (
+    <button>{children as React.ReactNode}</button>
+  ),
+  CollapsibleContent: ({ children }: Record<string, unknown>) => (
+    <div>{children as React.ReactNode}</div>
+  ),
+}));
+
+vi.mock("react-syntax-highlighter", () => ({
+  Prism: ({ children }: { children: string }) => <pre>{children}</pre>,
+}));
+
+vi.mock("react-syntax-highlighter/dist/esm/styles/prism", () => ({
+  oneDark: {},
+}));
+
+import { ChatView } from "./chat-view";
+
+function makeMessage(
+  overrides: Partial<UIMessage> & { id: string; role: UIMessage["role"] }
+): UIMessage {
+  return {
+    content: "",
+    timestamp: Date.now(),
+    ...overrides,
+  };
+}
+
+describe("ChatView integration", () => {
+  beforeEach(() => {
+    // Reset scroll-related mocks
+    vi.restoreAllMocks();
+  });
+
+  it("renders user and assistant messages", () => {
+    const messages: UIMessage[] = [
+      makeMessage({ id: "m1", role: "user", content: "What is 2+2?" }),
+      makeMessage({ id: "m2", role: "assistant", content: "The answer is 4." }),
+    ];
+
+    render(<ChatView messages={messages} isStreaming={false} />);
+
+    expect(screen.getByText("What is 2+2?")).toBeInTheDocument();
+    expect(screen.getByText("The answer is 4.")).toBeInTheDocument();
+  });
+
+  it("renders empty state when no messages", () => {
+    render(<ChatView messages={[]} isStreaming={false} />);
+
+    expect(screen.getByTestId("chat-empty-state")).toBeInTheDocument();
+    expect(screen.getByText("Send a message to start the conversation")).toBeInTheDocument();
+  });
+
+  it("renders processing indicator when streaming with no active content", () => {
+    const messages: UIMessage[] = [
+      makeMessage({ id: "m1", role: "user", content: "Do something" }),
+    ];
+
+    render(<ChatView messages={messages} isStreaming={true} />);
+
+    expect(screen.getByTestId("processing-indicator")).toBeInTheDocument();
+  });
+
+  it("does not show processing indicator when assistant is streaming content", () => {
+    const messages: UIMessage[] = [
+      makeMessage({ id: "m1", role: "user", content: "Hello" }),
+      makeMessage({
+        id: "m2",
+        role: "assistant",
+        content: "I am responding...",
+        isStreaming: true,
+      }),
+    ];
+
+    render(<ChatView messages={messages} isStreaming={true} />);
+
+    expect(screen.queryByTestId("processing-indicator")).not.toBeInTheDocument();
+  });
+
+  it("renders tool group placeholder for consecutive tool messages", () => {
+    const messages: UIMessage[] = [
+      makeMessage({ id: "m1", role: "user", content: "Read a file" }),
+      makeMessage({ id: "m2", role: "tool_call", toolName: "Read" }),
+      makeMessage({ id: "m3", role: "tool_result", content: "file content" }),
+      makeMessage({ id: "m4", role: "assistant", content: "Here is the file." }),
+    ];
+
+    render(<ChatView messages={messages} isStreaming={false} />);
+
+    expect(screen.getByTestId("tool-group-placeholder")).toBeInTheDocument();
+    expect(screen.getByText("2 tool calls")).toBeInTheDocument();
+  });
+
+  it("renders thinking block when message has thinking content", () => {
+    const messages: UIMessage[] = [
+      makeMessage({
+        id: "m1",
+        role: "assistant",
+        content: "The answer",
+        thinking: "Let me reason about this...",
+        thinkingComplete: true,
+      }),
+    ];
+
+    render(<ChatView messages={messages} isStreaming={false} />);
+
+    expect(screen.getByText("Thought process")).toBeInTheDocument();
+  });
+
+  it("renders multiple messages in correct order", () => {
+    const messages: UIMessage[] = [
+      makeMessage({ id: "m1", role: "user", content: "First question" }),
+      makeMessage({ id: "m2", role: "assistant", content: "First answer" }),
+      makeMessage({ id: "m3", role: "user", content: "Second question" }),
+      makeMessage({ id: "m4", role: "assistant", content: "Second answer" }),
+    ];
+
+    render(<ChatView messages={messages} isStreaming={false} />);
+
+    const userBubbles = screen.getAllByTestId("message-bubble-user");
+    const assistantBubbles = screen.getAllByTestId("message-bubble-assistant");
+    expect(userBubbles).toHaveLength(2);
+    expect(assistantBubbles).toHaveLength(2);
+  });
+});

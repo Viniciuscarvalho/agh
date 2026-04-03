@@ -1,0 +1,113 @@
+import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/utils", () => ({
+  cn: (...args: unknown[]) => args.filter(Boolean).join(" "),
+}));
+
+vi.mock("@/components/ui/button", () => ({
+  Button: ({
+    children,
+    disabled,
+    onClick,
+    ...props
+  }: {
+    children: React.ReactNode;
+    disabled?: boolean;
+    onClick?: () => void;
+    [key: string]: unknown;
+  }) => (
+    <button disabled={disabled} onClick={onClick} {...props}>
+      {children}
+    </button>
+  ),
+}));
+
+import { MessageComposer } from "./message-composer";
+
+describe("MessageComposer", () => {
+  it("calls onSend on Enter key press", () => {
+    const onSend = vi.fn();
+    render(<MessageComposer onSend={onSend} />);
+
+    const textarea = screen.getByTestId("composer-textarea");
+    fireEvent.input(textarea, { target: { value: "Hello world" } });
+    // Manually set value since fireEvent.input doesn't set it on uncontrolled textarea
+    (textarea as HTMLTextAreaElement).value = "Hello world";
+
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    expect(onSend).toHaveBeenCalledWith("Hello world");
+  });
+
+  it("inserts newline on Shift+Enter (does not send)", () => {
+    const onSend = vi.fn();
+    render(<MessageComposer onSend={onSend} />);
+
+    const textarea = screen.getByTestId("composer-textarea");
+    (textarea as HTMLTextAreaElement).value = "Line one";
+
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: true });
+
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("is disabled when disabled prop is true", () => {
+    const onSend = vi.fn();
+    render(<MessageComposer onSend={onSend} disabled />);
+
+    const textarea = screen.getByTestId("composer-textarea") as HTMLTextAreaElement;
+    expect(textarea).toBeDisabled();
+
+    const sendButton = screen.getByTestId("composer-send-button");
+    expect(sendButton).toBeDisabled();
+  });
+
+  it("does not send on Enter when disabled", () => {
+    const onSend = vi.fn();
+    render(<MessageComposer onSend={onSend} disabled />);
+
+    const textarea = screen.getByTestId("composer-textarea");
+    (textarea as HTMLTextAreaElement).value = "Hello";
+
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("does not send empty messages", () => {
+    const onSend = vi.fn();
+    render(<MessageComposer onSend={onSend} />);
+
+    const textarea = screen.getByTestId("composer-textarea");
+    (textarea as HTMLTextAreaElement).value = "   ";
+
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("clears textarea after sending", () => {
+    const onSend = vi.fn();
+    render(<MessageComposer onSend={onSend} />);
+
+    const textarea = screen.getByTestId("composer-textarea") as HTMLTextAreaElement;
+    textarea.value = "Hello";
+
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    expect(textarea.value).toBe("");
+  });
+
+  it("sends via send button click", () => {
+    const onSend = vi.fn();
+    render(<MessageComposer onSend={onSend} />);
+
+    const textarea = screen.getByTestId("composer-textarea") as HTMLTextAreaElement;
+    textarea.value = "Click send";
+
+    fireEvent.click(screen.getByTestId("composer-send-button"));
+
+    expect(onSend).toHaveBeenCalledWith("Click send");
+  });
+});

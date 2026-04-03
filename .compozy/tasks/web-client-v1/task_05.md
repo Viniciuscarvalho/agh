@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 domain: Frontend
 type: Feature Implementation
 scope: Full
@@ -37,13 +37,13 @@ Build the main chat interface: a virtualized message list using `@tanstack/react
 </requirements>
 
 ## Subtasks
-- [ ] 5.1 Create `chat-view.tsx` with virtualized row rendering and bottom-lock scroll
-- [ ] 5.2 Create `message-bubble.tsx` with markdown rendering and syntax highlighting
-- [ ] 5.3 Create `thinking-block.tsx` as collapsible reasoning display
-- [ ] 5.4 Create `message-composer.tsx` with send behavior and disabled states
-- [ ] 5.5 Create `chat-header.tsx` with session info and Stop/Resume actions
-- [ ] 5.6 Create `processing-indicator.tsx` with streaming animation
-- [ ] 5.7 Wire all components into `session.$id.tsx` route with store + chat hook
+- [x] 5.1 Create `chat-view.tsx` with virtualized row rendering and bottom-lock scroll
+- [x] 5.2 Create `message-bubble.tsx` with markdown rendering and syntax highlighting
+- [x] 5.3 Create `thinking-block.tsx` as collapsible reasoning display
+- [x] 5.4 Create `message-composer.tsx` with send behavior and disabled states
+- [x] 5.5 Create `chat-header.tsx` with session info and Stop/Resume actions
+- [x] 5.6 Create `processing-indicator.tsx` with streaming animation
+- [x] 5.7 Wire all components into `session.$id.tsx` route with store + chat hook
 
 ## Implementation Details
 
@@ -83,20 +83,20 @@ For markdown, use `react-markdown` with `remark-gfm` plugin. Wrap in `React.memo
 
 ## Tests
 - Unit tests:
-  - [ ] `buildRows` groups consecutive tool_call + tool_result messages into tool_group
-  - [ ] `buildRows` adds processing row when isStreaming is true
-  - [ ] `buildRows` handles empty messages array
-  - [ ] `buildRows` preserves non-tool messages as individual message rows
-  - [ ] `message-bubble` renders markdown headings, code blocks, and links
-  - [ ] `message-bubble` memoizes and doesn't re-render when content is unchanged
-  - [ ] `message-composer` calls send on Enter key press
-  - [ ] `message-composer` inserts newline on Shift+Enter
-  - [ ] `message-composer` is disabled when isStreaming is true
+  - [x] `buildRows` groups consecutive tool_call + tool_result messages into tool_group
+  - [x] `buildRows` adds processing row when isStreaming is true
+  - [x] `buildRows` handles empty messages array
+  - [x] `buildRows` preserves non-tool messages as individual message rows
+  - [x] `message-bubble` renders markdown headings, code blocks, and links
+  - [x] `message-bubble` memoizes and doesn't re-render when content is unchanged
+  - [x] `message-composer` calls send on Enter key press
+  - [x] `message-composer` inserts newline on Shift+Enter
+  - [x] `message-composer` is disabled when isStreaming is true
 - Integration tests:
-  - [ ] Chat view renders user and assistant messages from Zustand store
-  - [ ] Chat view auto-scrolls to bottom during streaming
-  - [ ] Chat header shows session name and correct state badge
-  - [ ] Stop button calls stopSession mutation
+  - [x] Chat view renders user and assistant messages from Zustand store
+  - [x] Chat view auto-scrolls to bottom during streaming
+  - [x] Chat header shows session name and correct state badge
+  - [x] Stop button calls stopSession mutation
 - Test coverage target: >=80%
 - All tests must pass
 
