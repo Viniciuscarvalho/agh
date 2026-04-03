@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/magefile/mage/mg"
 	"github.com/magefile/mage/sh"
@@ -19,6 +20,7 @@ const (
 	golangciLintVersion = "v2.11.4"
 	binDir              = "bin"
 	cliBinary           = "agh"
+	versionPackage      = "github.com/pedronauck/agh/internal/version"
 )
 
 var Default = Verify
@@ -60,14 +62,15 @@ func TestIntegration() error {
 }
 
 func Build() error {
+	ldflags := buildLDFlags()
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		return err
 	}
-	if err := sh.RunV("go", "build", "./..."); err != nil {
+	if err := sh.RunV("go", "build", "-ldflags", ldflags, "./..."); err != nil {
 		return err
 	}
 	out := filepath.Join(binDir, cliBinary)
-	return sh.RunV("go", "build", "-o", out, "./cmd/"+cliBinary)
+	return sh.RunV("go", "build", "-ldflags", ldflags, "-o", out, "./cmd/"+cliBinary)
 }
 
 // Boundaries verifies that package import rules are not violated.
@@ -156,4 +159,34 @@ func goFiles(root string) ([]string, error) {
 
 	sort.Strings(files)
 	return files, nil
+}
+
+func buildLDFlags() string {
+	version := gitOutput("describe", "--tags", "--always", "--dirty")
+	if version == "" {
+		version = "dev"
+	}
+
+	commit := gitOutput("rev-parse", "--short", "HEAD")
+	if commit == "" {
+		commit = "unknown"
+	}
+
+	buildDate := time.Now().UTC().Format(time.RFC3339)
+
+	return strings.Join([]string{
+		"-X " + versionPackage + ".Version=" + version,
+		"-X " + versionPackage + ".Commit=" + commit,
+		"-X " + versionPackage + ".BuildDate=" + buildDate,
+	}, " ")
+}
+
+func gitOutput(args ...string) string {
+	cmd := exec.Command("git", args...)
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	return strings.TrimSpace(string(out))
 }

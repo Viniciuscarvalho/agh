@@ -1,8 +1,12 @@
 // Package main is the entry point for the AGH daemon CLI.
 package main
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/pedronauck/agh/internal/version"
+)
 
 func main() {
-	fmt.Println("agh v0.0.0-dev")
+	fmt.Printf("agh %s\n", version.Version)
 }

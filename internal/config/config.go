@@ -1,0 +1,385 @@
+// Package config loads and validates AGH configuration.
+package config
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/joho/godotenv"
+)
+
+const (
+	// DirName is the AGH directory name used for both the global home and workspace overlays.
+	DirName = ".agh"
+	// ConfigName is the standard TOML configuration filename.
+	ConfigName = "config.toml"
+)
+
+// DaemonConfig controls the daemon-local socket settings.
+type DaemonConfig struct {
+	Socket string `toml:"socket"`
+}
+
+// HTTPConfig controls the HTTP server bind address.
+type HTTPConfig struct {
+	Host string `toml:"host"`
+	Port int    `toml:"port"`
+}
+
+// DefaultsConfig holds global runtime defaults.
+type DefaultsConfig struct {
+	Agent string `toml:"agent"`
+}
+
+// LimitsConfig defines runtime safety bounds.
+type LimitsConfig struct {
+	MaxSessions         int `toml:"max_sessions"`
+	MaxConcurrentAgents int `toml:"max_concurrent_agents"`
+}
+
+// PermissionMode is the static permission policy applied by the daemon.
+type PermissionMode string
+
+const (
+	PermissionModeDenyAll      PermissionMode = "deny-all"
+	PermissionModeApproveReads PermissionMode = "approve-reads"
+	PermissionModeApproveAll   PermissionMode = "approve-all"
+)
+
+// PermissionsConfig defines the global default permission policy.
+type PermissionsConfig struct {
+	Mode PermissionMode `toml:"mode"`
+}
+
+// ObservabilityConfig controls global event retention settings.
+type ObservabilityConfig struct {
+	Enabled        bool                          `toml:"enabled"`
+	RetentionDays  int                           `toml:"retention_days"`
+	MaxGlobalBytes int64                         `toml:"max_global_bytes"`
+	Transcripts    ObservabilityTranscriptConfig `toml:"transcripts"`
+}
+
+// ObservabilityTranscriptConfig configures transcript capture and retention.
+type ObservabilityTranscriptConfig struct {
+	Enabled            bool  `toml:"enabled"`
+	SegmentBytes       int   `toml:"segment_bytes"`
+	MaxBytesPerSession int64 `toml:"max_bytes_per_session"`
+}
+
+// LogConfig controls structured logging.
+type LogConfig struct {
+	Level string `toml:"level"`
+}
+
+// Config is the fully merged AGH configuration.
+type Config struct {
+	Daemon        DaemonConfig              `toml:"daemon"`
+	HTTP          HTTPConfig                `toml:"http"`
+	Defaults      DefaultsConfig            `toml:"defaults"`
+	Limits        LimitsConfig              `toml:"limits"`
+	Permissions   PermissionsConfig         `toml:"permissions"`
+	Providers     map[string]ProviderConfig `toml:"providers"`
+	Observability ObservabilityConfig       `toml:"observability"`
+	Log           LogConfig                 `toml:"log"`
+}
+
+type loadOptions struct {
+	workspaceRoot string
+	skipDotEnv    bool
+	skipValidate  bool
+}
+
+// LoadOption customizes configuration loading.
+type LoadOption func(*loadOptions)
+
+// WithWorkspaceRoot loads the optional workspace overlay from `<root>/.agh/config.toml`.
+func WithWorkspaceRoot(root string) LoadOption {
+	return func(opts *loadOptions) {
+		opts.workspaceRoot = root
+	}
+}
+
+// WithoutDotEnv disables automatic `.env` loading during config load.
+func WithoutDotEnv() LoadOption {
+	return func(opts *loadOptions) {
+		opts.skipDotEnv = true
+	}
+}
+
+// WithoutValidation returns the merged config without validating it.
+func WithoutValidation() LoadOption {
+	return func(opts *loadOptions) {
+		opts.skipValidate = true
+	}
+}
+
+// Load reads the default config, the optional global config, and the optional workspace overlay.
+func Load(opts ...LoadOption) (Config, error) {
+	options := loadOptions{}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&options)
+		}
+	}
+
+	workspaceRoot, err := resolveWorkspaceRoot(options.workspaceRoot)
+	if err != nil {
+		return Config{}, err
+	}
+
+	if !options.skipDotEnv {
+		if err := loadDotEnv(workspaceRoot); err != nil {
+			return Config{}, err
+		}
+	}
+
+	homePaths, err := ResolveHomePaths()
+	if err != nil {
+		return Config{}, err
+	}
+
+	cfg := DefaultWithHome(homePaths)
+	if err := ApplyConfigOverlayFile(homePaths.ConfigFile, &cfg); err != nil {
+		return Config{}, fmt.Errorf("load global config: %w", err)
+	}
+	if err := ApplyConfigOverlayFile(workspaceConfigFile(workspaceRoot), &cfg); err != nil {
+		return Config{}, fmt.Errorf("load workspace config: %w", err)
+	}
+	if err := normalizeConfigPaths(&cfg); err != nil {
+		return Config{}, err
+	}
+
+	if !options.skipValidate {
+		if err := cfg.Validate(); err != nil {
+			return Config{}, fmt.Errorf("validate config: %w", err)
+		}
+	}
+
+	return cfg, nil
+}
+
+// Default returns the built-in default configuration for the resolved AGH home.
+func Default() (Config, error) {
+	homePaths, err := ResolveHomePaths()
+	if err != nil {
+		return Config{}, err
+	}
+
+	return DefaultWithHome(homePaths), nil
+}
+
+// DefaultWithHome returns the built-in default configuration for the supplied AGH home.
+func DefaultWithHome(homePaths HomePaths) Config {
+	return Config{
+		Daemon: DaemonConfig{
+			Socket: homePaths.DaemonSocket,
+		},
+		HTTP: HTTPConfig{
+			Host: "localhost",
+			Port: 2123,
+		},
+		Defaults: DefaultsConfig{
+			Agent: "coder",
+		},
+		Limits: LimitsConfig{
+			MaxSessions:         10,
+			MaxConcurrentAgents: 20,
+		},
+		Permissions: PermissionsConfig{
+			Mode: PermissionModeApproveReads,
+		},
+		Providers: map[string]ProviderConfig{},
+		Observability: ObservabilityConfig{
+			Enabled:        true,
+			RetentionDays:  7,
+			MaxGlobalBytes: 1 << 30,
+			Transcripts: ObservabilityTranscriptConfig{
+				Enabled:            true,
+				SegmentBytes:       1 << 20,
+				MaxBytesPerSession: 256 << 20,
+			},
+		},
+		Log: LogConfig{
+			Level: "info",
+		},
+	}
+}
+
+// Validate ensures the loaded configuration is internally consistent.
+func (c Config) Validate() error {
+	if err := c.Daemon.Validate(); err != nil {
+		return err
+	}
+	if err := c.HTTP.Validate(); err != nil {
+		return err
+	}
+	if err := c.Defaults.Validate(); err != nil {
+		return err
+	}
+	if err := c.Limits.Validate(); err != nil {
+		return err
+	}
+	if err := c.Permissions.Validate(); err != nil {
+		return err
+	}
+	if err := c.Observability.Validate(); err != nil {
+		return err
+	}
+	if err := c.Log.Validate(); err != nil {
+		return err
+	}
+
+	for name := range c.Providers {
+		if _, err := c.ResolveProvider(name); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// Validate ensures the daemon config contains a socket path.
+func (c DaemonConfig) Validate() error {
+	if strings.TrimSpace(c.Socket) == "" {
+		return errors.New("daemon.socket is required")
+	}
+
+	return nil
+}
+
+// Validate ensures the HTTP bind settings are valid.
+func (c HTTPConfig) Validate() error {
+	if strings.TrimSpace(c.Host) == "" {
+		return errors.New("http.host is required")
+	}
+	if c.Port <= 0 || c.Port > 65535 {
+		return fmt.Errorf("http.port must be between 1 and 65535: %d", c.Port)
+	}
+
+	return nil
+}
+
+// Validate ensures the default agent setting is present.
+func (c DefaultsConfig) Validate() error {
+	if strings.TrimSpace(c.Agent) == "" {
+		return errors.New("defaults.agent is required")
+	}
+
+	return nil
+}
+
+// Validate ensures the configured limits are positive.
+func (c LimitsConfig) Validate() error {
+	switch {
+	case c.MaxSessions <= 0:
+		return fmt.Errorf("limits.max_sessions must be positive: %d", c.MaxSessions)
+	case c.MaxConcurrentAgents <= 0:
+		return fmt.Errorf("limits.max_concurrent_agents must be positive: %d", c.MaxConcurrentAgents)
+	default:
+		return nil
+	}
+}
+
+// Validate ensures the permission mode is supported.
+func (c PermissionsConfig) Validate() error {
+	return c.Mode.Validate("permissions.mode")
+}
+
+// Validate ensures the permission mode is supported.
+func (m PermissionMode) Validate(path string) error {
+	switch m {
+	case PermissionModeDenyAll, PermissionModeApproveReads, PermissionModeApproveAll:
+		return nil
+	default:
+		return fmt.Errorf("%s must be one of %q, %q, %q: %q", path, PermissionModeDenyAll, PermissionModeApproveReads, PermissionModeApproveAll, m)
+	}
+}
+
+// Validate ensures observability settings are sensible.
+func (c ObservabilityConfig) Validate() error {
+	if c.RetentionDays <= 0 {
+		return fmt.Errorf("observability.retention_days must be positive: %d", c.RetentionDays)
+	}
+	if c.MaxGlobalBytes <= 0 {
+		return fmt.Errorf("observability.max_global_bytes must be positive: %d", c.MaxGlobalBytes)
+	}
+
+	return c.Transcripts.Validate()
+}
+
+// Validate ensures transcript retention settings are sensible.
+func (c ObservabilityTranscriptConfig) Validate() error {
+	if c.SegmentBytes <= 0 {
+		return fmt.Errorf("observability.transcripts.segment_bytes must be positive: %d", c.SegmentBytes)
+	}
+	if c.MaxBytesPerSession <= 0 {
+		return fmt.Errorf("observability.transcripts.max_bytes_per_session must be positive: %d", c.MaxBytesPerSession)
+	}
+
+	return nil
+}
+
+// Validate ensures the log level is supported.
+func (c LogConfig) Validate() error {
+	switch strings.ToLower(strings.TrimSpace(c.Level)) {
+	case "debug", "info", "warn", "error":
+		return nil
+	default:
+		return fmt.Errorf("log.level must be one of %q, %q, %q, %q: %q", "debug", "info", "warn", "error", c.Level)
+	}
+}
+
+func normalizeConfigPaths(cfg *Config) error {
+	if cfg == nil {
+		return errors.New("config is required")
+	}
+
+	socket, err := expandUserPath(cfg.Daemon.Socket)
+	if err != nil {
+		return fmt.Errorf("expand daemon.socket: %w", err)
+	}
+	cfg.Daemon.Socket = socket
+
+	return nil
+}
+
+func resolveWorkspaceRoot(root string) (string, error) {
+	if strings.TrimSpace(root) == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("resolve current working directory: %w", err)
+		}
+
+		return filepath.Abs(cwd)
+	}
+
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve workspace root %q: %w", root, err)
+	}
+
+	return absRoot, nil
+}
+
+func workspaceConfigFile(root string) string {
+	return filepath.Join(root, DirName, ConfigName)
+}
+
+func loadDotEnv(workspaceRoot string) error {
+	path := filepath.Join(workspaceRoot, ".env")
+	if _, err := os.Stat(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("stat .env file %q: %w", path, err)
+	}
+
+	if err := godotenv.Load(path); err != nil {
+		return fmt.Errorf("load .env file %q: %w", path, err)
+	}
+
+	return nil
+}

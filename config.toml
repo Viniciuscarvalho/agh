@@ -1,0 +1,41 @@
+[daemon]
+socket = "~/.agh/daemon.sock"
+
+[http]
+host = "localhost"
+port = 2123
+
+[defaults]
+agent = "coder"
+
+[limits]
+max_sessions = 10
+max_concurrent_agents = 20
+
+[permissions]
+mode = "approve-reads"
+
+[providers.claude]
+default_model = "claude-sonnet-4-20250514"
+api_key_env = "ANTHROPIC_API_KEY"
+
+[providers.codex]
+default_model = "gpt-4o"
+api_key_env = "OPENAI_API_KEY"
+
+[providers.gemini]
+default_model = "gemini-2.5-pro"
+api_key_env = "GEMINI_API_KEY"
+
+[observability]
+enabled = true
+retention_days = 7
+max_global_bytes = 1073741824
+
+[observability.transcripts]
+enabled = true
+segment_bytes = 1048576
+max_bytes_per_session = 268435456
+
+[log]
+level = "info"

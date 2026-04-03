@@ -1,0 +1,284 @@
+package config
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"sort"
+	"strings"
+
+	"github.com/BurntSushi/toml"
+)
+
+type configOverlay struct {
+	Daemon        daemonOverlay              `toml:"daemon"`
+	HTTP          httpOverlay                `toml:"http"`
+	Defaults      defaultsOverlay            `toml:"defaults"`
+	Limits        limitsOverlay              `toml:"limits"`
+	Permissions   permissionsOverlay         `toml:"permissions"`
+	Providers     map[string]providerOverlay `toml:"providers"`
+	Observability observabilityOverlay       `toml:"observability"`
+	Log           logOverlay                 `toml:"log"`
+}
+
+type daemonOverlay struct {
+	Socket *string `toml:"socket"`
+}
+
+type httpOverlay struct {
+	Host *string `toml:"host"`
+	Port *int    `toml:"port"`
+}
+
+type defaultsOverlay struct {
+	Agent *string `toml:"agent"`
+}
+
+type limitsOverlay struct {
+	MaxSessions         *int `toml:"max_sessions"`
+	MaxConcurrentAgents *int `toml:"max_concurrent_agents"`
+}
+
+type permissionsOverlay struct {
+	Mode *PermissionMode `toml:"mode"`
+}
+
+type providerOverlay struct {
+	Command      *string            `toml:"command"`
+	DefaultModel *string            `toml:"default_model"`
+	APIKeyEnv    *string            `toml:"api_key_env"`
+	MCPServers   []mcpServerOverlay `toml:"mcp_servers"`
+}
+
+type observabilityOverlay struct {
+	Enabled        *bool                           `toml:"enabled"`
+	RetentionDays  *int                            `toml:"retention_days"`
+	MaxGlobalBytes *int64                          `toml:"max_global_bytes"`
+	Transcripts    observabilityTranscriptsOverlay `toml:"transcripts"`
+}
+
+type observabilityTranscriptsOverlay struct {
+	Enabled            *bool  `toml:"enabled"`
+	SegmentBytes       *int   `toml:"segment_bytes"`
+	MaxBytesPerSession *int64 `toml:"max_bytes_per_session"`
+}
+
+type logOverlay struct {
+	Level *string `toml:"level"`
+}
+
+type mcpServerOverlay struct {
+	Name    *string            `toml:"name"`
+	Command *string            `toml:"command"`
+	Args    *[]string          `toml:"args"`
+	Env     *map[string]string `toml:"env"`
+}
+
+// ApplyConfigOverlayFile deep-merges an optional TOML config file into dst.
+func ApplyConfigOverlayFile(path string, dst *Config) error {
+	if dst == nil {
+		return errors.New("config: destination config is required")
+	}
+
+	overlay, err := loadConfigOverlayFile(path)
+	if err != nil {
+		return err
+	}
+
+	overlay.Apply(dst)
+	return nil
+}
+
+func loadConfigOverlayFile(path string) (configOverlay, error) {
+	var overlay configOverlay
+
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return overlay, nil
+		}
+		return overlay, fmt.Errorf("read config file %q: %w", path, err)
+	}
+
+	meta, err := toml.Decode(string(contents), &overlay)
+	if err != nil {
+		return overlay, fmt.Errorf("decode config file %q: %w", path, err)
+	}
+
+	if undecoded := meta.Undecoded(); len(undecoded) > 0 {
+		return overlay, fmt.Errorf("unknown config keys in %q: %s", path, joinTOMLKeys(undecoded))
+	}
+
+	return overlay, nil
+}
+
+func (o configOverlay) Apply(dst *Config) {
+	o.Daemon.Apply(&dst.Daemon)
+	o.HTTP.Apply(&dst.HTTP)
+	o.Defaults.Apply(&dst.Defaults)
+	o.Limits.Apply(&dst.Limits)
+	o.Permissions.Apply(&dst.Permissions)
+	applyProviderOverlays(dst, o.Providers)
+	o.Observability.Apply(&dst.Observability)
+	o.Log.Apply(&dst.Log)
+}
+
+func (o daemonOverlay) Apply(dst *DaemonConfig) {
+	if o.Socket != nil {
+		dst.Socket = *o.Socket
+	}
+}
+
+func (o httpOverlay) Apply(dst *HTTPConfig) {
+	if o.Host != nil {
+		dst.Host = *o.Host
+	}
+	if o.Port != nil {
+		dst.Port = *o.Port
+	}
+}
+
+func (o defaultsOverlay) Apply(dst *DefaultsConfig) {
+	if o.Agent != nil {
+		dst.Agent = *o.Agent
+	}
+}
+
+func (o limitsOverlay) Apply(dst *LimitsConfig) {
+	if o.MaxSessions != nil {
+		dst.MaxSessions = *o.MaxSessions
+	}
+	if o.MaxConcurrentAgents != nil {
+		dst.MaxConcurrentAgents = *o.MaxConcurrentAgents
+	}
+}
+
+func (o permissionsOverlay) Apply(dst *PermissionsConfig) {
+	if o.Mode != nil {
+		dst.Mode = *o.Mode
+	}
+}
+
+func (o providerOverlay) Apply(dst *ProviderConfig) {
+	if o.Command != nil {
+		dst.Command = *o.Command
+	}
+	if o.DefaultModel != nil {
+		dst.DefaultModel = *o.DefaultModel
+	}
+	if o.APIKeyEnv != nil {
+		dst.APIKeyEnv = *o.APIKeyEnv
+	}
+	if len(o.MCPServers) > 0 {
+		dst.MCPServers = applyMCPServerOverlays(dst.MCPServers, o.MCPServers)
+	}
+}
+
+func (o observabilityOverlay) Apply(dst *ObservabilityConfig) {
+	if o.Enabled != nil {
+		dst.Enabled = *o.Enabled
+	}
+	if o.RetentionDays != nil {
+		dst.RetentionDays = *o.RetentionDays
+	}
+	if o.MaxGlobalBytes != nil {
+		dst.MaxGlobalBytes = *o.MaxGlobalBytes
+	}
+	o.Transcripts.Apply(&dst.Transcripts)
+}
+
+func (o observabilityTranscriptsOverlay) Apply(dst *ObservabilityTranscriptConfig) {
+	if o.Enabled != nil {
+		dst.Enabled = *o.Enabled
+	}
+	if o.SegmentBytes != nil {
+		dst.SegmentBytes = *o.SegmentBytes
+	}
+	if o.MaxBytesPerSession != nil {
+		dst.MaxBytesPerSession = *o.MaxBytesPerSession
+	}
+}
+
+func (o logOverlay) Apply(dst *LogConfig) {
+	if o.Level != nil {
+		dst.Level = *o.Level
+	}
+}
+
+func (o mcpServerOverlay) Apply(dst *MCPServer) {
+	if o.Name != nil {
+		dst.Name = *o.Name
+	}
+	if o.Command != nil {
+		dst.Command = *o.Command
+	}
+	if o.Args != nil {
+		dst.Args = append([]string(nil), (*o.Args)...)
+	}
+	if o.Env != nil {
+		dst.Env = mergeStringMaps(dst.Env, *o.Env)
+	}
+}
+
+func applyProviderOverlays(dst *Config, overlays map[string]providerOverlay) {
+	if len(overlays) == 0 {
+		return
+	}
+	if dst.Providers == nil {
+		dst.Providers = make(map[string]ProviderConfig, len(overlays))
+	}
+
+	for name, overlay := range overlays {
+		provider := dst.Providers[name]
+		overlay.Apply(&provider)
+		dst.Providers[name] = provider
+	}
+}
+
+func applyMCPServerOverlays(base []MCPServer, overlays []mcpServerOverlay) []MCPServer {
+	merged := cloneMCPServers(base)
+	index := make(map[string]int, len(merged))
+	for i, server := range merged {
+		if server.Name == "" {
+			continue
+		}
+		index[server.Name] = i
+	}
+
+	for _, overlay := range overlays {
+		name := ""
+		if overlay.Name != nil {
+			name = strings.TrimSpace(*overlay.Name)
+		}
+
+		if idx, ok := index[name]; ok && name != "" {
+			server := merged[idx]
+			overlay.Apply(&server)
+			merged[idx] = server
+			continue
+		}
+
+		var server MCPServer
+		overlay.Apply(&server)
+		merged = append(merged, server)
+		if server.Name != "" {
+			index[server.Name] = len(merged) - 1
+		}
+	}
+
+	return merged
+}
+
+func joinTOMLKeys(keys []toml.Key) string {
+	if len(keys) == 0 {
+		return ""
+	}
+
+	values := make([]string, 0, len(keys))
+	for _, key := range keys {
+		values = append(values, key.String())
+	}
+	sort.Strings(values)
+
+	return strings.Join(values, ", ")
+}

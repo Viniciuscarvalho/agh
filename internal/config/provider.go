@@ -1,0 +1,310 @@
+package config
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+)
+
+// ProviderConfig describes how to launch a provider in ACP mode.
+type ProviderConfig struct {
+	Command      string      `toml:"command"`
+	DefaultModel string      `toml:"default_model"`
+	APIKeyEnv    string      `toml:"api_key_env"`
+	MCPServers   []MCPServer `toml:"mcp_servers,omitempty"`
+}
+
+// MCPServer describes an MCP server passed through to the agent runtime.
+type MCPServer struct {
+	Name    string            `yaml:"name" toml:"name"`
+	Command string            `yaml:"command" toml:"command"`
+	Args    []string          `yaml:"args,omitempty" toml:"args,omitempty"`
+	Env     map[string]string `yaml:"env,omitempty" toml:"env,omitempty"`
+}
+
+// ResolvedAgent is the effective runtime configuration for a parsed agent definition.
+type ResolvedAgent struct {
+	Name        string
+	Provider    string
+	Command     string
+	Model       string
+	Tools       []string
+	Permissions string
+	APIKeyEnv   string
+	MCPServers  []MCPServer
+	Prompt      string
+}
+
+var builtinProviders = map[string]ProviderConfig{
+	"claude": {
+		Command:      "npx -y @agentclientprotocol/claude-agent-acp@^0.24.2",
+		DefaultModel: "claude-sonnet-4-20250514",
+		APIKeyEnv:    "ANTHROPIC_API_KEY",
+	},
+	"codex": {
+		Command:      "npx @zed-industries/codex-acp@^0.10.0",
+		DefaultModel: "gpt-4o",
+		APIKeyEnv:    "OPENAI_API_KEY",
+	},
+	"gemini": {
+		Command:      "gemini --acp",
+		DefaultModel: "gemini-2.5-pro",
+		APIKeyEnv:    "GEMINI_API_KEY",
+	},
+	"opencode": {
+		Command: "npx -y opencode-ai acp",
+	},
+	"copilot": {
+		Command: "copilot --acp --stdio",
+	},
+	"cursor": {
+		Command: "cursor-agent acp",
+	},
+	"kiro": {
+		Command: "kiro-cli-chat acp",
+	},
+	"pi": {
+		Command: "npx pi-acp@^0.0.22",
+	},
+}
+
+// BuiltinProviders returns a deep copy of the built-in provider registry.
+func BuiltinProviders() map[string]ProviderConfig {
+	return cloneProviders(builtinProviders)
+}
+
+// ResolveProvider resolves a provider using the built-in registry and config overrides.
+func (c Config) ResolveProvider(name string) (ProviderConfig, error) {
+	providerName := strings.TrimSpace(name)
+	if providerName == "" {
+		return ProviderConfig{}, errors.New("provider name is required")
+	}
+
+	resolved, hasBuiltin := builtinProviders[providerName]
+	if override, ok := c.Providers[providerName]; ok {
+		resolved = MergeProvider(resolved, override)
+	}
+
+	if !hasBuiltin {
+		if _, ok := c.Providers[providerName]; !ok {
+			return ProviderConfig{}, fmt.Errorf("unknown provider %q", providerName)
+		}
+	}
+
+	if err := validateResolvedProvider(providerName, resolved); err != nil {
+		return ProviderConfig{}, err
+	}
+
+	return resolved, nil
+}
+
+// ResolveAgent resolves a parsed agent definition against provider config and global defaults.
+func (c Config) ResolveAgent(agent AgentDef) (ResolvedAgent, error) {
+	if err := agent.Validate(); err != nil {
+		return ResolvedAgent{}, err
+	}
+
+	provider, err := c.ResolveProvider(agent.Provider)
+	if err != nil {
+		return ResolvedAgent{}, err
+	}
+
+	tools := cloneStrings(agent.Tools)
+	if len(tools) == 0 {
+		tools = []string{"*"}
+	}
+
+	permissions := strings.TrimSpace(agent.Permissions)
+	if permissions == "" {
+		permissions = string(c.Permissions.Mode)
+	}
+
+	resolved := ResolvedAgent{
+		Name:        agent.Name,
+		Provider:    agent.Provider,
+		Command:     firstNonBlank(agent.Command, provider.Command),
+		Model:       firstNonBlank(agent.Model, provider.DefaultModel),
+		Tools:       tools,
+		Permissions: permissions,
+		APIKeyEnv:   provider.APIKeyEnv,
+		MCPServers:  MergeMCPServers(provider.MCPServers, agent.MCPServers),
+		Prompt:      agent.Prompt,
+	}
+
+	if strings.TrimSpace(resolved.Command) == "" {
+		return ResolvedAgent{}, fmt.Errorf("provider %q command is required", agent.Provider)
+	}
+	if strings.TrimSpace(resolved.Permissions) != "" {
+		if err := PermissionMode(resolved.Permissions).Validate("agent.permissions"); err != nil {
+			return ResolvedAgent{}, err
+		}
+	}
+
+	return resolved, nil
+}
+
+// MergeProvider merges an override provider config into a base provider config.
+func MergeProvider(base ProviderConfig, override ProviderConfig) ProviderConfig {
+	merged := cloneProvider(base)
+	if strings.TrimSpace(override.Command) != "" {
+		merged.Command = override.Command
+	}
+	if strings.TrimSpace(override.DefaultModel) != "" {
+		merged.DefaultModel = override.DefaultModel
+	}
+	if strings.TrimSpace(override.APIKeyEnv) != "" {
+		merged.APIKeyEnv = override.APIKeyEnv
+	}
+	merged.MCPServers = MergeMCPServers(merged.MCPServers, override.MCPServers)
+
+	return merged
+}
+
+// MergeMCPServers merges provider-level and agent-level MCP servers by name.
+func MergeMCPServers(base []MCPServer, overlay []MCPServer) []MCPServer {
+	merged := cloneMCPServers(base)
+	index := make(map[string]int, len(merged))
+	for i, server := range merged {
+		if strings.TrimSpace(server.Name) == "" {
+			continue
+		}
+		index[server.Name] = i
+	}
+
+	for _, server := range overlay {
+		name := strings.TrimSpace(server.Name)
+		if idx, ok := index[name]; ok && name != "" {
+			merged[idx] = mergeMCPServer(merged[idx], server)
+			continue
+		}
+
+		merged = append(merged, cloneMCPServer(server))
+		if name != "" {
+			index[name] = len(merged) - 1
+		}
+	}
+
+	return merged
+}
+
+// Validate ensures the MCP server entry is usable.
+func (s MCPServer) Validate(path string) error {
+	switch {
+	case strings.TrimSpace(s.Name) == "":
+		return fmt.Errorf("%s.name is required", path)
+	case strings.TrimSpace(s.Command) == "":
+		return fmt.Errorf("%s.command is required", path)
+	default:
+		return nil
+	}
+}
+
+func validateResolvedProvider(name string, provider ProviderConfig) error {
+	if strings.TrimSpace(provider.Command) == "" {
+		return fmt.Errorf("provider %q command is required", name)
+	}
+
+	for i, server := range provider.MCPServers {
+		if err := server.Validate(fmt.Sprintf("providers.%s.mcp_servers[%d]", name, i)); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func mergeMCPServer(base MCPServer, override MCPServer) MCPServer {
+	merged := cloneMCPServer(base)
+	if strings.TrimSpace(override.Name) != "" {
+		merged.Name = override.Name
+	}
+	if strings.TrimSpace(override.Command) != "" {
+		merged.Command = override.Command
+	}
+	if len(override.Args) > 0 {
+		merged.Args = append([]string(nil), override.Args...)
+	}
+	if len(override.Env) > 0 {
+		merged.Env = mergeStringMaps(merged.Env, override.Env)
+	}
+
+	return merged
+}
+
+func cloneProviders(src map[string]ProviderConfig) map[string]ProviderConfig {
+	if len(src) == 0 {
+		return map[string]ProviderConfig{}
+	}
+
+	cloned := make(map[string]ProviderConfig, len(src))
+	for name, provider := range src {
+		cloned[name] = cloneProvider(provider)
+	}
+
+	return cloned
+}
+
+func cloneProvider(src ProviderConfig) ProviderConfig {
+	return ProviderConfig{
+		Command:      src.Command,
+		DefaultModel: src.DefaultModel,
+		APIKeyEnv:    src.APIKeyEnv,
+		MCPServers:   cloneMCPServers(src.MCPServers),
+	}
+}
+
+func cloneMCPServers(src []MCPServer) []MCPServer {
+	if len(src) == 0 {
+		return nil
+	}
+
+	cloned := make([]MCPServer, 0, len(src))
+	for _, server := range src {
+		cloned = append(cloned, cloneMCPServer(server))
+	}
+
+	return cloned
+}
+
+func cloneMCPServer(src MCPServer) MCPServer {
+	return MCPServer{
+		Name:    src.Name,
+		Command: src.Command,
+		Args:    append([]string(nil), src.Args...),
+		Env:     mergeStringMaps(nil, src.Env),
+	}
+}
+
+func mergeStringMaps(base map[string]string, overlay map[string]string) map[string]string {
+	if len(base) == 0 && len(overlay) == 0 {
+		return nil
+	}
+
+	merged := make(map[string]string, len(base)+len(overlay))
+	for key, value := range base {
+		merged[key] = value
+	}
+	for key, value := range overlay {
+		merged[key] = value
+	}
+
+	return merged
+}
+
+func cloneStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	return append([]string(nil), values...)
+}
+
+func firstNonBlank(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+
+	return ""
+}
