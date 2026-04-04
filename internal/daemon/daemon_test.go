@@ -959,13 +959,20 @@ func TestSessionStopNotifierQueuesDreamCheck(t *testing.T) {
 	cfg := testConfig(t, homePaths)
 	cfg.Memory.Dream.CheckInterval = time.Hour
 
-	dream := &fakeDreamService{shouldRun: true}
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	sessions := &fakeSessionManager{}
+	dream := &fakeDreamService{
+		shouldRun: true,
+		runHook: func(ctx context.Context, spawn memory.SessionSpawner, workspace string) error {
+			return spawn(ctx, "memory-consolidation", "session-stop prompt", workspace)
+		},
+	}
 	var notifier session.Notifier
 
 	d := newTestDaemon(t, homePaths, cfg)
 	d.newSessionManager = func(_ context.Context, deps SessionManagerDeps) (SessionManager, error) {
 		notifier = deps.Notifier
-		return &fakeSessionManager{}, nil
+		return sessions, nil
 	}
 	d.newObserver = func(context.Context, RuntimeDeps) (Observer, error) {
 		return &fakeObserver{}, nil
@@ -996,10 +1003,16 @@ func TestSessionStopNotifierQueuesDreamCheck(t *testing.T) {
 		t.Fatal("session manager notifier = nil")
 	}
 
-	notifier.OnSessionStopped(context.Background(), &session.Session{ID: "sess-user", Type: session.SessionTypeUser})
+	notifier.OnSessionStopped(context.Background(), &session.Session{ID: "sess-user", Workspace: workspace, Type: session.SessionTypeUser})
 	waitForCondition(t, "dream run from session stop", func() bool {
 		return dream.runCount() == 1
 	})
+	waitForCondition(t, "dream session workspace propagated", func() bool {
+		return sessions.createCount() == 1
+	})
+	if got := sessions.createCall(0).Workspace; got != workspace {
+		t.Fatalf("Create() workspace = %q, want %q", got, workspace)
+	}
 
 	notifier.OnSessionStopped(context.Background(), &session.Session{ID: "sess-dream", Type: session.SessionTypeDream})
 	time.Sleep(20 * time.Millisecond)
@@ -1019,6 +1032,7 @@ func TestDreamSpawnerCreatesDreamSession(t *testing.T) {
 	homePaths := testHomePaths(t)
 	cfg := testConfig(t, homePaths)
 	sessions := &fakeSessionManager{}
+	workspace := filepath.Join(t.TempDir(), "workspace")
 
 	d := newTestDaemon(t, homePaths, cfg)
 	d.newSessionManager = func(context.Context, SessionManagerDeps) (SessionManager, error) {
@@ -1047,7 +1061,7 @@ func TestDreamSpawnerCreatesDreamSession(t *testing.T) {
 		t.Fatal("boot() did not configure the dream spawner")
 	}
 
-	if err := d.dreamSpawner(testContext(t), "memory-consolidation", "summarize recent sessions"); err != nil {
+	if err := d.dreamSpawner(testContext(t), "memory-consolidation", "summarize recent sessions", workspace); err != nil {
 		t.Fatalf("dream spawner error = %v", err)
 	}
 	if got := sessions.createCount(); got != 1 {
@@ -1059,11 +1073,84 @@ func TestDreamSpawnerCreatesDreamSession(t *testing.T) {
 	if got := sessions.createCall(0).AgentName; got != cfg.Memory.Dream.Agent {
 		t.Fatalf("Create() agent = %q, want %q", got, cfg.Memory.Dream.Agent)
 	}
+	if got := sessions.createCall(0).Workspace; got != workspace {
+		t.Fatalf("Create() workspace = %q, want %q", got, workspace)
+	}
 	if got := sessions.promptCount(); got != 1 || sessions.promptCall(0).msg != "summarize recent sessions" {
 		t.Fatalf("Prompt() calls = %d, want one prompt payload", got)
 	}
 	if got := sessions.stopCount(); got != 1 || sessions.stopCall(0) != "dream-1" {
 		t.Fatalf("Stop() calls = %d, want stop for created dream session", got)
+	}
+}
+
+func TestDreamSpawnerDerivesRecentWorkspacesFromSessions(t *testing.T) {
+	t.Parallel()
+
+	homePaths := testHomePaths(t)
+	cfg := testConfig(t, homePaths)
+	workspaceA := filepath.Join(t.TempDir(), "workspace-a")
+	workspaceB := filepath.Join(t.TempDir(), "workspace-b")
+	sessions := &fakeSessionManager{
+		infos: []*session.SessionInfo{
+			{ID: "dream-old", Workspace: workspaceA, Type: session.SessionTypeDream, UpdatedAt: time.Date(2026, 4, 3, 9, 0, 0, 0, time.UTC)},
+			{ID: "user-old", Workspace: workspaceA, Type: session.SessionTypeUser, UpdatedAt: time.Date(2026, 4, 3, 10, 0, 0, 0, time.UTC)},
+			{ID: "user-new", Workspace: workspaceB, Type: session.SessionTypeUser, UpdatedAt: time.Date(2026, 4, 4, 10, 0, 0, 0, time.UTC)},
+			{ID: "user-dup", Workspace: workspaceA, Type: session.SessionTypeUser, UpdatedAt: time.Date(2026, 4, 4, 9, 0, 0, 0, time.UTC)},
+		},
+	}
+
+	d := newTestDaemon(t, homePaths, cfg)
+	d.newSessionManager = func(context.Context, SessionManagerDeps) (SessionManager, error) {
+		return sessions, nil
+	}
+	d.newObserver = func(context.Context, RuntimeDeps) (Observer, error) {
+		return &fakeObserver{}, nil
+	}
+	d.httpFactory = func(context.Context, RuntimeDeps) (Server, error) {
+		return &fakeServer{name: "http"}, nil
+	}
+	d.udsFactory = func(context.Context, RuntimeDeps) (Server, error) {
+		return &fakeServer{name: "uds"}, nil
+	}
+
+	if err := d.boot(testContext(t)); err != nil {
+		t.Fatalf("boot() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if err := d.Shutdown(testContext(t)); err != nil {
+			t.Fatalf("Shutdown() error = %v", err)
+		}
+	})
+
+	globalMemoryDir := cfg.Memory.GlobalDir
+	if strings.TrimSpace(globalMemoryDir) == "" {
+		globalMemoryDir = homePaths.MemoryDir
+	}
+	lockPath := memory.ConsolidationLockPath(globalMemoryDir)
+	prior := time.Date(2026, 4, 4, 8, 0, 0, 0, time.UTC)
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		t.Fatalf("os.MkdirAll(lock dir) error = %v", err)
+	}
+	if err := os.WriteFile(lockPath, nil, 0o644); err != nil {
+		t.Fatalf("os.WriteFile(lock) error = %v", err)
+	}
+	if err := os.Chtimes(lockPath, prior, prior); err != nil {
+		t.Fatalf("os.Chtimes(lock) error = %v", err)
+	}
+
+	if err := d.dreamSpawner(testContext(t), "memory-consolidation", "summarize recent sessions", ""); err != nil {
+		t.Fatalf("dream spawner error = %v", err)
+	}
+
+	if got := sessions.createCount(); got != 2 {
+		t.Fatalf("Create() calls = %d, want 2", got)
+	}
+	if got := sessions.createCall(0).Workspace; got != workspaceB {
+		t.Fatalf("Create() workspace[0] = %q, want %q", got, workspaceB)
+	}
+	if got := sessions.createCall(1).Workspace; got != workspaceA {
+		t.Fatalf("Create() workspace[1] = %q, want %q", got, workspaceA)
 	}
 }
 
@@ -1592,7 +1679,7 @@ type fakeDreamService struct {
 	runErr         error
 	shouldRunCalls int
 	runCalls       int
-	runHook        func(context.Context, memory.SessionSpawner) error
+	runHook        func(context.Context, memory.SessionSpawner, string) error
 }
 
 func (f *fakeDreamService) ShouldRun() (bool, error) {
@@ -1602,7 +1689,7 @@ func (f *fakeDreamService) ShouldRun() (bool, error) {
 	return f.shouldRun, f.shouldRunErr
 }
 
-func (f *fakeDreamService) Run(ctx context.Context, spawn memory.SessionSpawner) error {
+func (f *fakeDreamService) Run(ctx context.Context, spawn memory.SessionSpawner, workspace string) error {
 	f.mu.Lock()
 	f.runCalls++
 	runHook := f.runHook
@@ -1610,7 +1697,7 @@ func (f *fakeDreamService) Run(ctx context.Context, spawn memory.SessionSpawner)
 	f.mu.Unlock()
 
 	if runHook != nil {
-		return runHook(ctx, spawn)
+		return runHook(ctx, spawn, workspace)
 	}
 	return runErr
 }

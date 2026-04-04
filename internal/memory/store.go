@@ -95,6 +95,23 @@ func (s *Store) Read(scope Scope, filename string) ([]byte, error) {
 	return content, nil
 }
 
+// Exists reports whether a memory file exists in the requested scope.
+func (s *Store) Exists(scope Scope, filename string) (bool, error) {
+	path, err := s.pathFor(scope, filename)
+	if err != nil {
+		return false, err
+	}
+
+	if _, err := os.Stat(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, fmt.Errorf("memory: stat %q: %w", path, err)
+	}
+
+	return true, nil
+}
+
 // Write validates the memory frontmatter and persists the raw file contents atomically.
 func (s *Store) Write(scope Scope, filename string, content []byte) error {
 	var header MemoryHeader

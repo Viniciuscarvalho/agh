@@ -651,35 +651,65 @@ func TestStalenessHelpers(t *testing.T) {
 	t.Parallel()
 
 	location := time.FixedZone("UTC-3", -3*60*60)
-	now := time.Now().In(location)
+	now := time.Date(2026, 4, 4, 10, 0, 0, 0, location)
 
 	today := time.Date(now.Year(), now.Month(), now.Day(), 10, 0, 0, 0, location)
 	yesterday := today.Add(-24 * time.Hour)
 	threeDaysAgo := today.Add(-72 * time.Hour)
 
-	if got := AgeDays(today); got != 0 {
+	if got := AgeDays(today, now); got != 0 {
 		t.Fatalf("AgeDays(today) = %d, want 0", got)
 	}
-	if got := AgeDays(yesterday); got != 1 {
+	if got := AgeDays(yesterday, now); got != 1 {
 		t.Fatalf("AgeDays(yesterday) = %d, want 1", got)
 	}
-	if got := AgeText(today); got != "today" {
+	if got := AgeText(today, now); got != "today" {
 		t.Fatalf("AgeText(today) = %q, want %q", got, "today")
 	}
-	if got := AgeText(yesterday); got != "yesterday" {
+	if got := AgeText(yesterday, now); got != "yesterday" {
 		t.Fatalf("AgeText(yesterday) = %q, want %q", got, "yesterday")
 	}
-	if got := AgeText(threeDaysAgo); got != "3 days ago" {
+	if got := AgeText(threeDaysAgo, now); got != "3 days ago" {
 		t.Fatalf("AgeText(threeDaysAgo) = %q, want %q", got, "3 days ago")
 	}
-	if got := FreshnessWarning(today); got != "" {
+	if got := FreshnessWarning(today, now); got != "" {
 		t.Fatalf("FreshnessWarning(today) = %q, want empty", got)
 	}
-	if got := FreshnessWarning(yesterday); got != "" {
+	if got := FreshnessWarning(yesterday, now); got != "" {
 		t.Fatalf("FreshnessWarning(yesterday) = %q, want empty", got)
 	}
-	if got := FreshnessWarning(threeDaysAgo); !strings.Contains(got, "3 days old") {
+	if got := FreshnessWarning(threeDaysAgo, now); !strings.Contains(got, "3 days old") {
 		t.Fatalf("FreshnessWarning(threeDaysAgo) = %q, want age caveat", got)
+	}
+}
+
+func TestStoreExists(t *testing.T) {
+	t.Parallel()
+
+	env := newTestStoreEnv(t)
+	content := mustMemoryContent(t, testMemoryMeta{
+		Name:        "User Memory",
+		Description: "desc",
+		Type:        MemoryTypeUser,
+	}, "hello")
+	if err := env.store.Write(ScopeWorkspace, "exists.md", content); err != nil {
+		t.Fatalf("Store.Write() error = %v", err)
+	}
+
+	exists, err := env.store.Exists(ScopeWorkspace, "exists.md")
+	if err != nil {
+		t.Fatalf("Store.Exists(exists.md) error = %v", err)
+	}
+	if !exists {
+		t.Fatal("Store.Exists(exists.md) = false, want true")
+	}
+
+	missing, err := env.store.Exists(ScopeWorkspace, "missing.md")
+	if err != nil {
+		t.Fatalf("Store.Exists(missing.md) error = %v", err)
+	}
+	if missing {
+		t.Fatal("Store.Exists(missing.md) = true, want false")
 	}
 }
 

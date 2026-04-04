@@ -257,8 +257,12 @@ func (h *Handlers) resolveMemoryLocation(filename string, rawScope string, rawWo
 		if err != nil {
 			return memoryLocation{}, err
 		}
-		if _, err := store.Read(scope, filename); err != nil {
+		exists, err := store.Exists(scope, filename)
+		if err != nil {
 			return memoryLocation{}, err
+		}
+		if !exists {
+			return memoryLocation{}, fmt.Errorf("%w: memory %q not found", os.ErrNotExist, filename)
 		}
 		return memoryLocation{Scope: scope, Workspace: workspace}, nil
 	}
@@ -279,11 +283,12 @@ func (h *Handlers) resolveMemoryLocation(filename string, rawScope string, rawWo
 		if err != nil {
 			return memoryLocation{}, err
 		}
-		if _, err := store.Read(candidate.Scope, filename); err == nil {
-			matches = append(matches, candidate)
-			continue
-		} else if !errors.Is(err, os.ErrNotExist) {
+		exists, err := store.Exists(candidate.Scope, filename)
+		if err != nil {
 			return memoryLocation{}, err
+		}
+		if exists {
+			matches = append(matches, candidate)
 		}
 	}
 

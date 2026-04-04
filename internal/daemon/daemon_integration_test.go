@@ -174,13 +174,23 @@ func TestRunDreamTickerAndSpawnerIntegration(t *testing.T) {
 	cfg := testConfig(t, homePaths)
 	cfg.Memory.Dream.CheckInterval = 10 * time.Millisecond
 
+	workspace := filepath.Join(t.TempDir(), "workspace")
 	dream := &fakeDreamService{
 		shouldRun: true,
-		runHook: func(ctx context.Context, spawn memory.SessionSpawner) error {
-			return spawn(ctx, "memory-consolidation", "integration prompt")
+		runHook: func(ctx context.Context, spawn memory.SessionSpawner, workspace string) error {
+			return spawn(ctx, "memory-consolidation", "integration prompt", workspace)
 		},
 	}
-	sessions := &fakeSessionManager{}
+	sessions := &fakeSessionManager{
+		infos: []*session.SessionInfo{
+			{
+				ID:        "sess-user",
+				Workspace: workspace,
+				Type:      session.SessionTypeUser,
+				UpdatedAt: time.Date(2026, 4, 4, 10, 0, 0, 0, time.UTC),
+			},
+		},
+	}
 
 	d, err := New(
 		WithHomePaths(homePaths),
@@ -224,6 +234,9 @@ func TestRunDreamTickerAndSpawnerIntegration(t *testing.T) {
 
 	if got := sessions.createCall(0).Type; got != session.SessionTypeDream {
 		t.Fatalf("Create() session type = %q, want %q", got, session.SessionTypeDream)
+	}
+	if got := sessions.createCall(0).Workspace; got != workspace {
+		t.Fatalf("Create() workspace = %q, want %q", got, workspace)
 	}
 	if got := sessions.promptCount(); got == 0 || sessions.promptCall(0).msg != "integration prompt" {
 		t.Fatalf("Prompt() calls = %d, want integration prompt", got)

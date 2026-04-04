@@ -138,49 +138,11 @@ func TestServiceShouldRunSessionGateFails(t *testing.T) {
 	}
 }
 
-func TestServiceShouldRunLockGateFails(t *testing.T) {
+func TestServiceShouldRunAllGatesPassWithoutLockSideEffects(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now().UTC().Round(0)
-	lock := &stubLock{
-		lastConsolidatedAt: now.Add(-48 * time.Hour),
-		tryAcquireFn: func() (time.Time, bool, error) {
-			return time.Time{}, false, nil
-		},
-	}
-	service := NewService(
-		withLock(lock),
-		WithMinHours(24),
-		WithMinSessions(3),
-		withNow(func() time.Time { return now }),
-		withSessionCounter(func(time.Time) (int, error) {
-			return 3, nil
-		}),
-	)
-
-	ok, err := service.ShouldRun()
-	if err != nil {
-		t.Fatalf("ShouldRun() error = %v", err)
-	}
-	if ok {
-		t.Fatal("ShouldRun() = true, want false")
-	}
-	if lock.tryAcquireCalls != 1 {
-		t.Fatalf("lock acquisitions = %d, want 1", lock.tryAcquireCalls)
-	}
-}
-
-func TestServiceShouldRunAllGatesPass(t *testing.T) {
-	t.Parallel()
-
-	now := time.Now().UTC().Round(0)
-	prior := now.Add(-72 * time.Hour)
-	lock := &stubLock{
-		lastConsolidatedAt: prior,
-		tryAcquireFn: func() (time.Time, bool, error) {
-			return prior, true, nil
-		},
-	}
+	lock := &stubLock{lastConsolidatedAt: now.Add(-48 * time.Hour)}
 	service := NewService(
 		withLock(lock),
 		WithMinHours(24),
@@ -198,11 +160,14 @@ func TestServiceShouldRunAllGatesPass(t *testing.T) {
 	if !ok {
 		t.Fatal("ShouldRun() = false, want true")
 	}
-	if !service.pending {
-		t.Fatal("service.pending = false, want true")
+	if lock.tryAcquireCalls != 0 {
+		t.Fatalf("lock acquisitions = %d, want 0", lock.tryAcquireCalls)
 	}
-	if !service.priorMtime.Equal(prior) {
-		t.Fatalf("service.priorMtime = %v, want %v", service.priorMtime, prior)
+	if service.pending {
+		t.Fatal("service.pending = true, want false")
+	}
+	if !service.priorMtime.IsZero() {
+		t.Fatalf("service.priorMtime = %v, want zero", service.priorMtime)
 	}
 }
 
@@ -239,15 +204,11 @@ func TestServiceShouldRunEvaluatesGatesInOrder(t *testing.T) {
 		}
 	})
 
-	t.Run("session gate runs before lock gate", func(t *testing.T) {
+	t.Run("session gate runs after time gate without touching lock", func(t *testing.T) {
 		now := time.Now().UTC().Round(0)
-		sequence := make([]string, 0, 2)
+		sequence := make([]string, 0, 1)
 		lock := &stubLock{
 			lastConsolidatedAt: now.Add(-48 * time.Hour),
-			tryAcquireFn: func() (time.Time, bool, error) {
-				sequence = append(sequence, "lock")
-				return time.Time{}, true, nil
-			},
 		}
 		service := NewService(
 			withLock(lock),
@@ -267,18 +228,22 @@ func TestServiceShouldRunEvaluatesGatesInOrder(t *testing.T) {
 		if !ok {
 			t.Fatal("ShouldRun() = false, want true")
 		}
-		if got := strings.Join(sequence, ","); got != "sessions,lock" {
-			t.Fatalf("sequence = %q, want sessions,lock", got)
+		if got := strings.Join(sequence, ","); got != "sessions" {
+			t.Fatalf("sequence = %q, want sessions", got)
+		}
+		if lock.tryAcquireCalls != 0 {
+			t.Fatalf("lock acquisitions = %d, want 0", lock.tryAcquireCalls)
 		}
 	})
 }
 
-func TestServiceRunCallsSessionSpawnerWithGoalAndPrompt(t *testing.T) {
+func TestServiceRunCallsSessionSpawnerWithGoalPromptAndWorkspace(t *testing.T) {
 	t.Parallel()
 
+	prior := time.Now().UTC().Add(-24 * time.Hour).Round(0)
 	lock := &stubLock{
 		tryAcquireFn: func() (time.Time, bool, error) {
-			return time.Time{}, true, nil
+			return prior, true, nil
 		},
 	}
 	service := NewService(
@@ -288,11 +253,14 @@ func TestServiceRunCallsSessionSpawnerWithGoalAndPrompt(t *testing.T) {
 
 	var gotGoal string
 	var gotPrompt string
-	err := service.Run(testContext(t), func(_ context.Context, goal, prompt string) error {
+	var gotWorkspace string
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	err := service.Run(testContext(t), func(_ context.Context, goal, prompt, workspace string) error {
 		gotGoal = goal
 		gotPrompt = prompt
+		gotWorkspace = workspace
 		return nil
-	})
+	}, workspace)
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
@@ -301,6 +269,12 @@ func TestServiceRunCallsSessionSpawnerWithGoalAndPrompt(t *testing.T) {
 	}
 	if gotPrompt != ConsolidationPrompt() {
 		t.Fatal("prompt passed to session spawner did not match embedded prompt")
+	}
+	if gotWorkspace != workspace {
+		t.Fatalf("workspace = %q, want %q", gotWorkspace, workspace)
+	}
+	if lock.tryAcquireCalls != 1 {
+		t.Fatalf("lock acquisitions = %d, want 1", lock.tryAcquireCalls)
 	}
 	if lock.releaseCalls != 1 {
 		t.Fatalf("release calls = %d, want 1", lock.releaseCalls)
@@ -318,9 +292,9 @@ func TestServiceRunRollsBackLockOnSessionSpawnerFailure(t *testing.T) {
 	}
 	service := NewService(withLock(lock))
 
-	err := service.Run(testContext(t), func(context.Context, string, string) error {
+	err := service.Run(testContext(t), func(context.Context, string, string, string) error {
 		return errors.New("boom")
-	})
+	}, "")
 	if err == nil {
 		t.Fatal("Run() error = nil, want non-nil")
 	}
@@ -349,9 +323,9 @@ func TestServiceRunReturnsJoinedSpawnAndRollbackErrors(t *testing.T) {
 	}
 	service := NewService(withLock(lock))
 
-	err := service.Run(testContext(t), func(context.Context, string, string) error {
+	err := service.Run(testContext(t), func(context.Context, string, string, string) error {
 		return spawnErr
-	})
+	}, "")
 	if err == nil {
 		t.Fatal("Run() error = nil, want non-nil")
 	}
@@ -373,7 +347,7 @@ func TestServiceRunReturnsErrLockUnavailableWhenBusy(t *testing.T) {
 	}
 	service := NewService(withLock(lock))
 
-	err := service.Run(testContext(t), func(context.Context, string, string) error { return nil })
+	err := service.Run(testContext(t), func(context.Context, string, string, string) error { return nil }, "")
 	if !errors.Is(err, ErrLockUnavailable) {
 		t.Fatalf("Run() error = %v, want ErrLockUnavailable", err)
 	}
@@ -390,10 +364,10 @@ func TestServiceRunValidatesInputs(t *testing.T) {
 
 	nilContext := func() context.Context { return nil }
 
-	if err := service.Run(nilContext(), func(context.Context, string, string) error { return nil }); err == nil {
+	if err := service.Run(nilContext(), func(context.Context, string, string, string) error { return nil }, ""); err == nil {
 		t.Fatal("Run(nil context, spawner) error = nil, want non-nil")
 	}
-	if err := service.Run(testContext(t), nil); err == nil {
+	if err := service.Run(testContext(t), nil, ""); err == nil {
 		t.Fatal("Run(ctx, nil) error = nil, want non-nil")
 	}
 }
@@ -602,7 +576,7 @@ func TestServiceRunSerializesConcurrentCalls(t *testing.T) {
 	errCh := make(chan error, 2)
 	var first sync.Once
 
-	spawner := func(context.Context, string, string) error {
+	spawner := func(context.Context, string, string, string) error {
 		current := active.Add(1)
 		for {
 			previous := maxActive.Load()
@@ -623,12 +597,12 @@ func TestServiceRunSerializesConcurrentCalls(t *testing.T) {
 	}
 
 	go func() {
-		errCh <- service.Run(testContext(t), spawner)
+		errCh <- service.Run(testContext(t), spawner, "")
 	}()
 	<-started
 
 	go func() {
-		errCh <- service.Run(testContext(t), spawner)
+		errCh <- service.Run(testContext(t), spawner, "")
 	}()
 
 	select {

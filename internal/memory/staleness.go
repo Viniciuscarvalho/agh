@@ -5,10 +5,9 @@ import (
 	"time"
 )
 
-// AgeDays reports the number of elapsed calendar-day boundaries since modTime.
-func AgeDays(modTime time.Time) int {
-	now := time.Now().In(modTime.Location())
-	days := calendarDayNumber(now) - calendarDayNumber(modTime.In(modTime.Location()))
+// AgeDays reports the number of elapsed calendar-day boundaries since modTime using the supplied clock value.
+func AgeDays(modTime time.Time, now time.Time) int {
+	days := calendarDayNumber(now.In(modTime.Location())) - calendarDayNumber(modTime.In(modTime.Location()))
 	if days < 0 {
 		return 0
 	}
@@ -16,9 +15,9 @@ func AgeDays(modTime time.Time) int {
 	return days
 }
 
-// AgeText returns a human-readable label for the memory age.
-func AgeText(modTime time.Time) string {
-	switch age := AgeDays(modTime); age {
+// AgeText returns a human-readable label for the memory age using the supplied clock value.
+func AgeText(modTime time.Time, now time.Time) string {
+	switch age := AgeDays(modTime, now); age {
 	case 0:
 		return "today"
 	case 1:
@@ -28,9 +27,9 @@ func AgeText(modTime time.Time) string {
 	}
 }
 
-// FreshnessWarning returns a staleness caveat for memories older than one day.
-func FreshnessWarning(modTime time.Time) string {
-	age := AgeDays(modTime)
+// FreshnessWarning returns a staleness caveat for memories older than one day using the supplied clock value.
+func FreshnessWarning(modTime time.Time, now time.Time) string {
+	age := AgeDays(modTime, now)
 	if age <= 1 {
 		return ""
 	}

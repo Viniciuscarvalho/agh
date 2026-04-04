@@ -24,8 +24,8 @@ var (
 	ErrLockUnavailable = errors.New("memory: consolidation lock is unavailable")
 )
 
-// SessionSpawner starts a one-shot consolidation session with the provided goal and prompt.
-type SessionSpawner func(ctx context.Context, goal, prompt string) error
+// SessionSpawner starts a one-shot consolidation session with the provided goal, prompt, and workspace context.
+type SessionSpawner func(ctx context.Context, goal, prompt, workspace string) error
 
 // Option configures a consolidation Service.
 type Option func(*Service)
@@ -156,7 +156,7 @@ func WithGoal(goal string) Option {
 	}
 }
 
-// ShouldRun evaluates the time, session, and lock gates in that order.
+// ShouldRun evaluates the time and session gates in that order.
 func (s *Service) ShouldRun() (bool, error) {
 	if err := s.validate(); err != nil {
 		return false, err
@@ -192,19 +192,8 @@ func (s *Service) ShouldRun() (bool, error) {
 		return false, nil
 	}
 
-	priorMtime, ok, err := s.acquireLock()
-	if err != nil {
-		return false, err
-	}
-	if !ok {
-		s.logger.Debug("memory: lock gate blocked consolidation", "lock_path", s.lockPath)
-		return false, nil
-	}
-
 	s.logger.Debug(
-		"memory: all consolidation gates passed",
-		"lock_path", s.lockPath,
-		"prior_mtime", priorMtime,
+		"memory: consolidation gates passed",
 		"completed_sessions", completedSessions,
 	)
 
@@ -212,7 +201,7 @@ func (s *Service) ShouldRun() (bool, error) {
 }
 
 // Run acquires the consolidation lock when needed and invokes the spawner with the embedded prompt.
-func (s *Service) Run(ctx context.Context, spawn SessionSpawner) error {
+func (s *Service) Run(ctx context.Context, spawn SessionSpawner, workspace string) error {
 	if err := s.validate(); err != nil {
 		return err
 	}
@@ -233,7 +222,7 @@ func (s *Service) Run(ctx context.Context, spawn SessionSpawner) error {
 
 	s.logger.Debug("memory: starting consolidation run", "goal", s.goal)
 
-	if err := spawn(ctx, s.goal, s.prompt); err != nil {
+	if err := spawn(ctx, s.goal, s.prompt, strings.TrimSpace(workspace)); err != nil {
 		s.logger.Debug("memory: consolidation run failed; rolling back lock", "error", err)
 		rollbackErr := s.completeRun(false, priorMtime)
 		return errors.Join(fmt.Errorf("memory: spawn consolidation session: %w", err), rollbackErr)
