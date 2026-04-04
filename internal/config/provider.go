@@ -119,11 +119,21 @@ func (c Config) ResolveAgent(agent AgentDef) (ResolvedAgent, error) {
 		permissions = string(c.Permissions.Mode)
 	}
 
+	command := strings.TrimSpace(agent.Command)
+	if command == "" {
+		command = strings.TrimSpace(provider.Command)
+	}
+
+	model := strings.TrimSpace(agent.Model)
+	if model == "" {
+		model = strings.TrimSpace(provider.DefaultModel)
+	}
+
 	resolved := ResolvedAgent{
 		Name:        agent.Name,
 		Provider:    agent.Provider,
-		Command:     firstNonBlank(agent.Command, provider.Command),
-		Model:       firstNonBlank(agent.Model, provider.DefaultModel),
+		Command:     command,
+		Model:       model,
 		Tools:       tools,
 		Permissions: permissions,
 		APIKeyEnv:   provider.APIKeyEnv,
@@ -297,14 +307,4 @@ func cloneStrings(values []string) []string {
 	}
 
 	return append([]string(nil), values...)
-}
-
-func firstNonBlank(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-
-	return ""
 }

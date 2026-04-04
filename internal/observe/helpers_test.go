@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pedronauck/agh/internal/acp"
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	"github.com/pedronauck/agh/internal/session"
 	"github.com/pedronauck/agh/internal/store"
@@ -200,30 +201,6 @@ func TestSessionDBSizeHelpers(t *testing.T) {
 	}
 }
 
-func TestNilObserverGuards(t *testing.T) {
-	t.Parallel()
-
-	var observer *Observer
-	if _, err := observer.QueryEvents(testContext(t), EventQuery{}); err == nil {
-		t.Fatal("QueryEvents(nil observer) error = nil, want non-nil")
-	}
-	if _, err := observer.QueryTokenStats(testContext(t), TokenStatsQuery{}); err == nil {
-		t.Fatal("QueryTokenStats(nil observer) error = nil, want non-nil")
-	}
-	if _, err := observer.QueryPermissionLog(testContext(t), PermissionLogQuery{}); err == nil {
-		t.Fatal("QueryPermissionLog(nil observer) error = nil, want non-nil")
-	}
-	if _, err := observer.Health(testContext(t)); err == nil {
-		t.Fatal("Health(nil observer) error = nil, want non-nil")
-	}
-	if _, err := observer.Reconcile(testContext(t)); err == nil {
-		t.Fatal("Reconcile(nil observer) error = nil, want non-nil")
-	}
-	if err := observer.Close(testContext(t)); err != nil {
-		t.Fatalf("Close(nil observer) error = %v", err)
-	}
-}
-
 func TestLoadSessionMetadataSkipsMissingMetaAndKeepsStoppedState(t *testing.T) {
 	t.Parallel()
 
@@ -266,7 +243,7 @@ func TestHelperFunctions(t *testing.T) {
 	if got := stringPointer(""); got != nil {
 		t.Fatalf("stringPointer(\"\") = %#v, want nil", got)
 	}
-	if got := summarizeEvent(session.AgentEvent{Raw: []byte(`{"hello":"world"}`)}); got != `{"hello":"world"}` {
+	if got := summarizeEvent(acp.AgentEvent{Raw: []byte(`{"hello":"world"}`)}); got != `{"hello":"world"}` {
 		t.Fatalf("summarizeEvent(raw) = %q", got)
 	}
 	long := truncateSummary(strings.Repeat("a", 300))

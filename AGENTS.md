@@ -8,6 +8,10 @@ AGH is an Agent Operating System — a Go single-binary daemon that manages AI a
 
 **Phases**: 1) Agent core (current) → 2) Memory/Skills/State layers → 3) Agent network protocol
 
+## Greenfield Alpha — Zero Legacy Tolerance
+
+No production users exist. Never sacrifice code quality for backward compatibility. Never write migration, compat, or defensive code for old state — delete the old thing instead of working around it.
+
 ## Critical Rules
 
 - **`make verify` MUST pass** before completing ANY task (runs `fmt → lint → test → build`). Zero warnings, zero errors. No exceptions.

@@ -84,11 +84,19 @@ func (h *Handlers) getAgent(c *gin.Context) {
 func agentPayloadFromDef(agent aghconfig.AgentDef) agentPayload {
 	mcpServers := make([]agentMCPServerJSON, 0, len(agent.MCPServers))
 	for _, server := range agent.MCPServers {
+		var env map[string]string
+		if len(server.Env) > 0 {
+			env = make(map[string]string, len(server.Env))
+			for key, value := range server.Env {
+				env[key] = value
+			}
+		}
+
 		mcpServers = append(mcpServers, agentMCPServerJSON{
 			Name:    server.Name,
 			Command: server.Command,
 			Args:    append([]string(nil), server.Args...),
-			Env:     cloneStringMap(server.Env),
+			Env:     env,
 		})
 	}
 
@@ -102,16 +110,4 @@ func agentPayloadFromDef(agent aghconfig.AgentDef) agentPayload {
 		MCPServers:  mcpServers,
 		Prompt:      agent.Prompt,
 	}
-}
-
-func cloneStringMap(input map[string]string) map[string]string {
-	if len(input) == 0 {
-		return nil
-	}
-
-	out := make(map[string]string, len(input))
-	for key, value := range input {
-		out[key] = value
-	}
-	return out
 }

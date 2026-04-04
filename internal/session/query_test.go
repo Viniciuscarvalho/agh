@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pedronauck/agh/internal/acp"
 	"github.com/pedronauck/agh/internal/store"
 )
 
@@ -387,11 +386,6 @@ func TestNewAgentProcessDefaultsAndNotifierNoop(t *testing.T) {
 	if got := proc.Args[0]; got != "--json" {
 		t.Fatalf("NewAgentProcess() copied args = %q, want %q", got, "--json")
 	}
-
-	var notifier nopNotifier
-	notifier.OnSessionCreated(testContext(t), nil)
-	notifier.OnSessionStopped(testContext(t), nil)
-	notifier.OnAgentEvent(testContext(t), "sess-1", AgentEvent{Type: acp.EventTypeDone})
 }
 
 func writeStoppedSessionArtifacts(t *testing.T, h *harness, id string, withDB bool) string {

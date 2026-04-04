@@ -508,9 +508,6 @@ func TestHelperUtilities(t *testing.T) {
 		t.Fatalf("lockedBuffer.String() = %q, want %q", buffer.String(), "stderr")
 	}
 
-	if firstNonBlank("", "  ", "value") != "value" {
-		t.Fatal("firstNonBlank() did not pick first non-blank value")
-	}
 	if chooseFloat64(nil, acpsdk.Ptr(1.2)) == nil {
 		t.Fatal("chooseFloat64(nil, fallback) = nil, want fallback")
 	}
@@ -604,17 +601,6 @@ func TestAccessorsAndValidationHelpers(t *testing.T) {
 	}
 	if err := (PromptRequest{}).Validate(); err == nil {
 		t.Fatal("PromptRequest.Validate() error = nil, want validation error")
-	}
-
-	nilProc := (*AgentProcess)(nil)
-	if done := nilProc.Done(); done == nil {
-		t.Fatal("(*AgentProcess)(nil).Done() = nil, want closed channel")
-	}
-	if err := nilProc.Wait(); err == nil {
-		t.Fatal("(*AgentProcess)(nil).Wait() error = nil, want error")
-	}
-	if stderr := nilProc.Stderr(); stderr != "" {
-		t.Fatalf("(*AgentProcess)(nil).Stderr() = %q, want empty", stderr)
 	}
 
 	proc := &AgentProcess{stderr: &lockedBuffer{}}

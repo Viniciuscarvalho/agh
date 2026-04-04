@@ -10,9 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pedronauck/agh/internal/acp"
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	"github.com/pedronauck/agh/internal/observe"
 	"github.com/pedronauck/agh/internal/session"
+	"github.com/pedronauck/agh/internal/store"
 )
 
 func TestCreateGetResumeAndStopHandlersReturnExpectedErrors(t *testing.T) {
@@ -82,22 +84,22 @@ func TestHandlersRejectBadPromptAndQueryValues(t *testing.T) {
 func TestPromptSessionHandlerCoversThoughtPermissionAndErrorBranches(t *testing.T) {
 	homePaths := newTestHomePaths(t)
 	manager := stubSessionManager{
-		promptFn: func(context.Context, string, string) (<-chan session.AgentEvent, error) {
-			ch := make(chan session.AgentEvent, 3)
-			ch <- session.AgentEvent{
+		promptFn: func(context.Context, string, string) (<-chan acp.AgentEvent, error) {
+			ch := make(chan acp.AgentEvent, 3)
+			ch <- acp.AgentEvent{
 				Type:      "thought",
 				TurnID:    "turn-err",
 				Timestamp: time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC),
 				Text:      "thinking",
 			}
-			ch <- session.AgentEvent{
+			ch <- acp.AgentEvent{
 				Type:      "permission",
 				TurnID:    "turn-err",
 				Timestamp: time.Date(2026, 4, 3, 12, 0, 1, 0, time.UTC),
 				Action:    "fs/read_text_file",
 				Decision:  "allow",
 			}
-			ch <- session.AgentEvent{
+			ch <- acp.AgentEvent{
 				Type:      "error",
 				TurnID:    "turn-err",
 				Timestamp: time.Date(2026, 4, 3, 12, 0, 2, 0, time.UTC),
@@ -143,7 +145,7 @@ func TestPromptSessionHandlerCoversThoughtPermissionAndErrorBranches(t *testing.
 func TestAgentObserveHealthAndDaemonStatusErrorPaths(t *testing.T) {
 	homePaths := newTestHomePaths(t)
 	handlers := newTestHandlers(t, stubSessionManager{}, stubObserver{
-		queryEventsFn: func(context.Context, observe.EventQuery) ([]observe.Event, error) {
+		queryEventsFn: func(context.Context, store.EventSummaryQuery) ([]store.EventSummary, error) {
 			return nil, errors.New("boom")
 		},
 		healthFn: func(context.Context) (observe.Health, error) {

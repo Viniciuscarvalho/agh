@@ -9,7 +9,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/pedronauck/agh/internal/acp"
-	"github.com/pedronauck/agh/internal/session"
 )
 
 type promptRequest struct {
@@ -114,7 +113,7 @@ func (h *Handlers) promptSession(c *gin.Context) {
 			return
 		case event, ok := <-events:
 			if !ok {
-				if err := state.finish(writer, session.AgentEvent{}); err != nil {
+				if err := state.finish(writer, acp.AgentEvent{}); err != nil {
 					return
 				}
 				return
@@ -158,7 +157,7 @@ func extractPromptMessage(req promptRequest) (string, error) {
 	return "", errors.New("message is required")
 }
 
-func (s *promptStreamState) emit(writer flushWriter, event session.AgentEvent) error {
+func (s *promptStreamState) emit(writer flushWriter, event acp.AgentEvent) error {
 	if err := s.ensureMessageStarted(writer, event); err != nil {
 		return err
 	}
@@ -195,12 +194,16 @@ func (s *promptStreamState) emit(writer flushWriter, event session.AgentEvent) e
 		}
 		if _, ok := s.toolStarted[toolCallID]; !ok {
 			s.toolStarted[toolCallID] = struct{}{}
+			toolName := strings.TrimSpace(event.Title)
+			if toolName == "" {
+				toolName = "tool"
+			}
 			if err := writeSSE(writer, sseMessage{
 				Name: "tool_call",
 				Data: map[string]any{
 					"type":       "tool-input-start",
 					"toolCallId": toolCallID,
-					"toolName":   firstNonBlank(strings.TrimSpace(event.Title), "tool"),
+					"toolName":   toolName,
 				},
 			}); err != nil {
 				return err
@@ -239,11 +242,15 @@ func (s *promptStreamState) emit(writer flushWriter, event session.AgentEvent) e
 		if err := s.closeOpenBlocks(writer); err != nil {
 			return err
 		}
+		errorText := strings.TrimSpace(event.Error)
+		if errorText == "" {
+			errorText = strings.TrimSpace(event.Text)
+		}
 		if err := writeSSE(writer, sseMessage{
 			Name: "error",
 			Data: map[string]any{
 				"type":      "error",
-				"errorText": firstNonBlank(strings.TrimSpace(event.Error), strings.TrimSpace(event.Text)),
+				"errorText": errorText,
 			},
 		}); err != nil {
 			return err
@@ -262,7 +269,7 @@ func (s *promptStreamState) emit(writer flushWriter, event session.AgentEvent) e
 	}
 }
 
-func (s *promptStreamState) ensureMessageStarted(writer flushWriter, event session.AgentEvent) error {
+func (s *promptStreamState) ensureMessageStarted(writer flushWriter, event acp.AgentEvent) error {
 	if s.messageStarted {
 		return nil
 	}
@@ -339,7 +346,7 @@ func (s *promptStreamState) closeOpenBlocks(writer flushWriter) error {
 	return nil
 }
 
-func (s *promptStreamState) finish(writer flushWriter, event session.AgentEvent) error {
+func (s *promptStreamState) finish(writer flushWriter, event acp.AgentEvent) error {
 	if s.finished {
 		return nil
 	}
@@ -363,7 +370,7 @@ func (s *promptStreamState) finish(writer flushWriter, event session.AgentEvent)
 	return writeSSERaw(writer, "", "[DONE]")
 }
 
-func agentEventPayloadFromEvent(event session.AgentEvent) agentEventPayload {
+func agentEventPayloadFromEvent(event acp.AgentEvent) agentEventPayload {
 	payload := agentEventPayload{
 		Type:       event.Type,
 		SessionID:  event.SessionID,
@@ -386,7 +393,7 @@ func agentEventPayloadFromEvent(event session.AgentEvent) agentEventPayload {
 	return payload
 }
 
-func tokenUsagePayloadFromUsage(usage *session.TokenUsage) *tokenUsagePayload {
+func tokenUsagePayloadFromUsage(usage *acp.TokenUsage) *tokenUsagePayload {
 	if usage == nil {
 		return nil
 	}
@@ -408,13 +415,4 @@ func tokenUsagePayloadFromUsage(usage *session.TokenUsage) *tokenUsagePayload {
 		payload.Timestamp = usage.Timestamp.UTC().Format(timeRFC3339Nano)
 	}
 	return payload
-}
-
-func firstNonBlank(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
 }

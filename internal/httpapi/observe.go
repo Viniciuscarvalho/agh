@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pedronauck/agh/internal/observe"
+	"github.com/pedronauck/agh/internal/store"
 )
 
 type observeEventPayload struct {
@@ -48,7 +48,7 @@ func (h *Handlers) health(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"health": health})
 }
 
-func observeEventPayloadFromEvent(event observe.Event) observeEventPayload {
+func observeEventPayloadFromEvent(event store.EventSummary) observeEventPayload {
 	return observeEventPayload{
 		ID:        event.ID,
 		SessionID: event.SessionID,

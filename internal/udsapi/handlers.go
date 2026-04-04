@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/pedronauck/agh/internal/acp"
 	aghconfig "github.com/pedronauck/agh/internal/config"
-	"github.com/pedronauck/agh/internal/observe"
 	"github.com/pedronauck/agh/internal/session"
 	"github.com/pedronauck/agh/internal/store"
 )
@@ -684,17 +684,17 @@ func parseSessionEventQuery(c *gin.Context) (store.EventQuery, error) {
 	}, nil
 }
 
-func parseObserveEventQuery(c *gin.Context) (observe.EventQuery, error) {
+func parseObserveEventQuery(c *gin.Context) (store.EventSummaryQuery, error) {
 	since, err := parseOptionalTime(c.Query("since"))
 	if err != nil {
-		return observe.EventQuery{}, err
+		return store.EventSummaryQuery{}, err
 	}
 	limit, err := parseOptionalInt(c.Query("limit"))
 	if err != nil {
-		return observe.EventQuery{}, err
+		return store.EventSummaryQuery{}, err
 	}
 
-	return observe.EventQuery{
+	return store.EventSummaryQuery{
 		SessionID: strings.TrimSpace(c.Query("session_id")),
 		AgentName: strings.TrimSpace(c.Query("agent_name")),
 		Type:      strings.TrimSpace(c.Query("type")),
@@ -768,7 +768,7 @@ func parseObserveCursor(raw string) (observeCursor, error) {
 	}, nil
 }
 
-func emitObserveEvents(writer flushWriter, events []observe.Event, cursor observeCursor) observeCursor {
+func emitObserveEvents(writer flushWriter, events []store.EventSummary, cursor observeCursor) observeCursor {
 	next := cursor
 	for _, event := range events {
 		if !observeEventAfterCursor(event, next) {
@@ -789,7 +789,7 @@ func emitObserveEvents(writer flushWriter, events []observe.Event, cursor observ
 	return next
 }
 
-func observeEventAfterCursor(event observe.Event, cursor observeCursor) bool {
+func observeEventAfterCursor(event store.EventSummary, cursor observeCursor) bool {
 	if cursor.Timestamp.IsZero() && strings.TrimSpace(cursor.ID) == "" {
 		return true
 	}
@@ -805,7 +805,7 @@ func observeEventAfterCursor(event observe.Event, cursor observeCursor) bool {
 	}
 }
 
-func observeEventID(event observe.Event) string {
+func observeEventID(event store.EventSummary) string {
 	return event.Timestamp.UTC().Format(time.RFC3339Nano) + "|" + event.ID
 }
 
@@ -903,7 +903,7 @@ func sessionPayloadFromInfo(info *session.SessionInfo) sessionPayload {
 	return payload
 }
 
-func acpCapsPayloadFromInfo(caps session.ACPCaps) *acpCapsPayload {
+func acpCapsPayloadFromInfo(caps acp.ACPCaps) *acpCapsPayload {
 	if !caps.SupportsLoadSession && len(caps.SupportedModes) == 0 && len(caps.SupportedModels) == 0 {
 		return nil
 	}
@@ -931,11 +931,19 @@ func sessionEventPayloadFromEvent(event store.SessionEvent) sessionEventPayload 
 func agentPayloadFromDef(agent aghconfig.AgentDef) agentPayload {
 	mcpServers := make([]agentMCPServerJSON, 0, len(agent.MCPServers))
 	for _, server := range agent.MCPServers {
+		var env map[string]string
+		if len(server.Env) > 0 {
+			env = make(map[string]string, len(server.Env))
+			for key, value := range server.Env {
+				env[key] = value
+			}
+		}
+
 		mcpServers = append(mcpServers, agentMCPServerJSON{
 			Name:    server.Name,
 			Command: server.Command,
 			Args:    append([]string(nil), server.Args...),
-			Env:     cloneStringMap(server.Env),
+			Env:     env,
 		})
 	}
 
@@ -951,7 +959,7 @@ func agentPayloadFromDef(agent aghconfig.AgentDef) agentPayload {
 	}
 }
 
-func agentEventPayloadFromEvent(event session.AgentEvent) agentEventPayload {
+func agentEventPayloadFromEvent(event acp.AgentEvent) agentEventPayload {
 	return agentEventPayload{
 		Type:       event.Type,
 		SessionID:  event.SessionID,
@@ -970,7 +978,7 @@ func agentEventPayloadFromEvent(event session.AgentEvent) agentEventPayload {
 	}
 }
 
-func tokenUsagePayloadFromUsage(usage *session.TokenUsage) *tokenUsagePayload {
+func tokenUsagePayloadFromUsage(usage *acp.TokenUsage) *tokenUsagePayload {
 	if usage == nil {
 		return nil
 	}
@@ -991,7 +999,7 @@ func tokenUsagePayloadFromUsage(usage *session.TokenUsage) *tokenUsagePayload {
 	}
 }
 
-func observeEventPayloadFromEvent(event observe.Event) observeEventPayload {
+func observeEventPayloadFromEvent(event store.EventSummary) observeEventPayload {
 	return observeEventPayload{
 		ID:        event.ID,
 		SessionID: event.SessionID,
@@ -1016,16 +1024,4 @@ func payloadJSON(raw string) json.RawMessage {
 		return json.RawMessage("null")
 	}
 	return json.RawMessage(encoded)
-}
-
-func cloneStringMap(input map[string]string) map[string]string {
-	if len(input) == 0 {
-		return nil
-	}
-
-	out := make(map[string]string, len(input))
-	for key, value := range input {
-		out[key] = value
-	}
-	return out
 }

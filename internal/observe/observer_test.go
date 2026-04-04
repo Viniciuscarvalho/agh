@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pedronauck/agh/internal/acp"
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	"github.com/pedronauck/agh/internal/session"
 	"github.com/pedronauck/agh/internal/store"
@@ -65,14 +66,14 @@ func TestOnAgentEventWritesEventSummaryToGlobalDB(t *testing.T) {
 	sess := newSession("sess-summary", session.StateActive, h.workspace, h.now)
 	h.observer.OnSessionCreated(testContext(t), sess)
 
-	h.observer.OnAgentEvent(testContext(t), sess.ID, session.AgentEvent{
+	h.observer.OnAgentEvent(testContext(t), sess.ID, acp.AgentEvent{
 		Type:      "agent_message",
 		TurnID:    "turn-1",
 		Timestamp: h.now.Add(time.Minute),
 		Text:      "assistant replied with the requested diff",
 	})
 
-	events, err := h.observer.QueryEvents(testContext(t), EventQuery{SessionID: sess.ID})
+	events, err := h.observer.QueryEvents(testContext(t), store.EventSummaryQuery{SessionID: sess.ID})
 	if err != nil {
 		t.Fatalf("QueryEvents() error = %v", err)
 	}
@@ -93,11 +94,11 @@ func TestOnAgentEventUpdatesTokenStatsWithNullableValues(t *testing.T) {
 
 	outputTokens := int64(4)
 	totalTokens := int64(4)
-	h.observer.OnAgentEvent(testContext(t), sess.ID, session.AgentEvent{
+	h.observer.OnAgentEvent(testContext(t), sess.ID, acp.AgentEvent{
 		Type:      "done",
 		TurnID:    "turn-usage",
 		Timestamp: h.now.Add(time.Minute),
-		Usage: &session.TokenUsage{
+		Usage: &acp.TokenUsage{
 			TurnID:       "turn-usage",
 			OutputTokens: &outputTokens,
 			TotalTokens:  &totalTokens,
@@ -105,7 +106,7 @@ func TestOnAgentEventUpdatesTokenStatsWithNullableValues(t *testing.T) {
 		},
 	})
 
-	stats, err := h.observer.QueryTokenStats(testContext(t), TokenStatsQuery{SessionID: sess.ID})
+	stats, err := h.observer.QueryTokenStats(testContext(t), store.TokenStatsQuery{SessionID: sess.ID})
 	if err != nil {
 		t.Fatalf("QueryTokenStats() error = %v", err)
 	}
@@ -130,7 +131,7 @@ func TestOnAgentEventWritesPermissionLog(t *testing.T) {
 	sess := newSession("sess-permission", session.StateActive, h.workspace, h.now)
 	h.observer.OnSessionCreated(testContext(t), sess)
 
-	h.observer.OnAgentEvent(testContext(t), sess.ID, session.AgentEvent{
+	h.observer.OnAgentEvent(testContext(t), sess.ID, acp.AgentEvent{
 		Type:      "permission",
 		TurnID:    "turn-perm",
 		Timestamp: h.now.Add(time.Minute),
@@ -139,7 +140,7 @@ func TestOnAgentEventWritesPermissionLog(t *testing.T) {
 		Decision:  "allow",
 	})
 
-	entries, err := h.observer.QueryPermissionLog(testContext(t), PermissionLogQuery{SessionID: sess.ID})
+	entries, err := h.observer.QueryPermissionLog(testContext(t), store.PermissionLogQuery{SessionID: sess.ID})
 	if err != nil {
 		t.Fatalf("QueryPermissionLog() error = %v", err)
 	}
@@ -155,14 +156,14 @@ func TestOnAgentEventSkipsUnknownSession(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.observer.OnAgentEvent(testContext(t), "missing", session.AgentEvent{
+	h.observer.OnAgentEvent(testContext(t), "missing", acp.AgentEvent{
 		Type:      "agent_message",
 		TurnID:    "turn-1",
 		Timestamp: h.now,
 		Text:      "ignored",
 	})
 
-	events, err := h.observer.QueryEvents(testContext(t), EventQuery{})
+	events, err := h.observer.QueryEvents(testContext(t), store.EventSummaryQuery{})
 	if err != nil {
 		t.Fatalf("QueryEvents() error = %v", err)
 	}
@@ -178,7 +179,7 @@ func TestNotifierLifecycleWritesThroughObserver(t *testing.T) {
 	sess := newSession("sess-nil-ctx", session.StateActive, h.workspace, h.now)
 
 	h.observer.OnSessionCreated(testContext(t), sess)
-	h.observer.OnAgentEvent(testContext(t), sess.ID, session.AgentEvent{
+	h.observer.OnAgentEvent(testContext(t), sess.ID, acp.AgentEvent{
 		Type:      "tool_result",
 		TurnID:    "turn-nil-ctx",
 		Timestamp: h.now.Add(time.Minute),
@@ -187,7 +188,7 @@ func TestNotifierLifecycleWritesThroughObserver(t *testing.T) {
 	sess.State = session.StateStopped
 	h.observer.OnSessionStopped(testContext(t), sess)
 
-	events, err := h.observer.QueryEvents(testContext(t), EventQuery{SessionID: sess.ID})
+	events, err := h.observer.QueryEvents(testContext(t), store.EventSummaryQuery{SessionID: sess.ID})
 	if err != nil {
 		t.Fatalf("QueryEvents() error = %v", err)
 	}
@@ -200,7 +201,7 @@ func TestOnAgentEventGuardBranches(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.observer.OnAgentEvent(testContext(t), "", session.AgentEvent{
+	h.observer.OnAgentEvent(testContext(t), "", acp.AgentEvent{
 		Type:      "agent_message",
 		TurnID:    "turn-empty-session",
 		Timestamp: h.now,
@@ -208,12 +209,12 @@ func TestOnAgentEventGuardBranches(t *testing.T) {
 
 	sess := newSession("sess-empty-type", session.StateActive, h.workspace, h.now)
 	h.observer.OnSessionCreated(testContext(t), sess)
-	h.observer.OnAgentEvent(testContext(t), sess.ID, session.AgentEvent{
+	h.observer.OnAgentEvent(testContext(t), sess.ID, acp.AgentEvent{
 		TurnID:    "turn-empty-type",
 		Timestamp: h.now,
 	})
 
-	events, err := h.observer.QueryEvents(testContext(t), EventQuery{})
+	events, err := h.observer.QueryEvents(testContext(t), store.EventSummaryQuery{})
 	if err != nil {
 		t.Fatalf("QueryEvents() error = %v", err)
 	}
@@ -232,7 +233,7 @@ func TestOnAgentEventPermissionWithoutResolvedPolicySkipsAudit(t *testing.T) {
 
 	sess := newSession("sess-no-policy", session.StateActive, h.workspace, h.now)
 	h.observer.OnSessionCreated(testContext(t), sess)
-	h.observer.OnAgentEvent(testContext(t), sess.ID, session.AgentEvent{
+	h.observer.OnAgentEvent(testContext(t), sess.ID, acp.AgentEvent{
 		Type:      "permission",
 		TurnID:    "turn-no-policy",
 		Timestamp: h.now.Add(time.Minute),
@@ -241,7 +242,7 @@ func TestOnAgentEventPermissionWithoutResolvedPolicySkipsAudit(t *testing.T) {
 		Decision:  "deny",
 	})
 
-	entries, err := h.observer.QueryPermissionLog(testContext(t), PermissionLogQuery{SessionID: sess.ID})
+	entries, err := h.observer.QueryPermissionLog(testContext(t), store.PermissionLogQuery{SessionID: sess.ID})
 	if err != nil {
 		t.Fatalf("QueryPermissionLog() error = %v", err)
 	}
@@ -262,7 +263,7 @@ func TestQueryEventsFilterBySessionID(t *testing.T) {
 	h.recordEvent(t, sessA.ID, "agent_message", h.now.Add(time.Minute), "a-1")
 	h.recordEvent(t, sessB.ID, "agent_message", h.now.Add(2*time.Minute), "b-1")
 
-	events, err := h.observer.QueryEvents(testContext(t), EventQuery{SessionID: sessB.ID})
+	events, err := h.observer.QueryEvents(testContext(t), store.EventSummaryQuery{SessionID: sessB.ID})
 	if err != nil {
 		t.Fatalf("QueryEvents() error = %v", err)
 	}
@@ -284,7 +285,7 @@ func TestQueryEventsFilterByEventType(t *testing.T) {
 	h.recordEvent(t, sess.ID, "agent_message", h.now.Add(time.Minute), "msg")
 	h.recordEvent(t, sess.ID, "tool_call", h.now.Add(2*time.Minute), "tool")
 
-	events, err := h.observer.QueryEvents(testContext(t), EventQuery{Type: "tool_call"})
+	events, err := h.observer.QueryEvents(testContext(t), store.EventSummaryQuery{Type: "tool_call"})
 	if err != nil {
 		t.Fatalf("QueryEvents() error = %v", err)
 	}
@@ -308,7 +309,7 @@ func TestQueryEventsFilterByTimeRange(t *testing.T) {
 	h.recordEvent(t, sess.ID, "agent_message", oldTs, "old")
 	h.recordEvent(t, sess.ID, "agent_message", newTs, "new")
 
-	events, err := h.observer.QueryEvents(testContext(t), EventQuery{Since: h.now.Add(2 * time.Minute)})
+	events, err := h.observer.QueryEvents(testContext(t), store.EventSummaryQuery{Since: h.now.Add(2 * time.Minute)})
 	if err != nil {
 		t.Fatalf("QueryEvents() error = %v", err)
 	}
@@ -331,7 +332,7 @@ func TestQueryEventsLimitReturnsMostRecentRowsInAscendingOrder(t *testing.T) {
 	h.recordEvent(t, sess.ID, "agent_message", h.now.Add(2*time.Minute), "two")
 	h.recordEvent(t, sess.ID, "agent_message", h.now.Add(3*time.Minute), "three")
 
-	events, err := h.observer.QueryEvents(testContext(t), EventQuery{Limit: 2})
+	events, err := h.observer.QueryEvents(testContext(t), store.EventSummaryQuery{Limit: 2})
 	if err != nil {
 		t.Fatalf("QueryEvents() error = %v", err)
 	}
@@ -444,7 +445,7 @@ func newHarness(t *testing.T) *harness {
 func (h *harness) recordEvent(t *testing.T, sessionID string, eventType string, timestamp time.Time, text string) {
 	t.Helper()
 
-	h.observer.OnAgentEvent(testContext(t), sessionID, session.AgentEvent{
+	h.observer.OnAgentEvent(testContext(t), sessionID, acp.AgentEvent{
 		Type:      eventType,
 		TurnID:    "turn-" + strings.ReplaceAll(text, " ", "-"),
 		Timestamp: timestamp,

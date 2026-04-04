@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/pedronauck/agh/internal/acp"
 )
 
 func TestSessionStateTransitions(t *testing.T) {
@@ -75,7 +77,7 @@ func TestSessionInfoCopiesCapabilities(t *testing.T) {
 		Workspace:    t.TempDir(),
 		State:        StateActive,
 		ACPSessionID: "acp-1",
-		ACPCaps: ACPCaps{
+		ACPCaps: acp.ACPCaps{
 			SupportsLoadSession: true,
 			SupportedModes:      []string{"chat"},
 			SupportedModels:     []string{"gpt"},

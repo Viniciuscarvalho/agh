@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pedronauck/agh/internal/acp"
 	"github.com/pedronauck/agh/internal/observe"
 	"github.com/pedronauck/agh/internal/session"
 	"github.com/pedronauck/agh/internal/store"
@@ -147,15 +148,15 @@ func TestResumeSessionHandlerReturnsSession(t *testing.T) {
 func TestPromptSessionHandlerReturnsSSEStream(t *testing.T) {
 	homePaths := newTestHomePaths(t)
 	manager := stubSessionManager{
-		promptFn: func(context.Context, string, string) (<-chan session.AgentEvent, error) {
-			ch := make(chan session.AgentEvent, 2)
-			ch <- session.AgentEvent{
+		promptFn: func(context.Context, string, string) (<-chan acp.AgentEvent, error) {
+			ch := make(chan acp.AgentEvent, 2)
+			ch <- acp.AgentEvent{
 				Type:      "agent_message",
 				TurnID:    "turn-1",
 				Timestamp: time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC),
 				Text:      "hello",
 			}
-			ch <- session.AgentEvent{
+			ch <- acp.AgentEvent{
 				Type:       "done",
 				TurnID:     "turn-1",
 				Timestamp:  time.Date(2026, 4, 3, 12, 0, 1, 0, time.UTC),
@@ -358,8 +359,8 @@ func TestGetAgentHandlerReturnsAgent(t *testing.T) {
 func TestObserveEventsHandlerReturnsEvents(t *testing.T) {
 	homePaths := newTestHomePaths(t)
 	observer := stubObserver{
-		queryEventsFn: func(context.Context, observe.EventQuery) ([]observe.Event, error) {
-			return []observe.Event{{
+		queryEventsFn: func(context.Context, store.EventSummaryQuery) ([]store.EventSummary, error) {
+			return []store.EventSummary{{
 				ID:        "sum-1",
 				SessionID: "sess-123",
 				Type:      "agent_message",
@@ -494,8 +495,8 @@ func TestObserveEventStreamUsesLastEventIDCursor(t *testing.T) {
 	homePaths := newTestHomePaths(t)
 	timestamp := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	observer := stubObserver{
-		queryEventsFn: func(context.Context, observe.EventQuery) ([]observe.Event, error) {
-			return []observe.Event{
+		queryEventsFn: func(context.Context, store.EventSummaryQuery) ([]store.EventSummary, error) {
+			return []store.EventSummary{
 				{ID: "sum-a", SessionID: "sess-1", Type: "agent_message", AgentName: "coder", Timestamp: timestamp},
 				{ID: "sum-b", SessionID: "sess-1", Type: "done", AgentName: "coder", Timestamp: timestamp},
 			}, nil
@@ -518,22 +519,5 @@ func TestObserveEventStreamUsesLastEventIDCursor(t *testing.T) {
 	}
 	if records[0].ID != timestamp.Format(time.RFC3339Nano)+"|sum-b" {
 		t.Fatalf("record id = %q, want %q", records[0].ID, timestamp.Format(time.RFC3339Nano)+"|sum-b")
-	}
-}
-
-func TestApproveHandlerReturnsNotImplemented(t *testing.T) {
-	homePaths := newTestHomePaths(t)
-	handlers := newTestHandlers(t, stubSessionManager{}, stubObserver{}, homePaths)
-	engine := newTestRouter(t, handlers)
-
-	recorder := performRequest(t, engine, http.MethodPost, "/api/sessions/sess-123/approve", []byte(`{"decision":"approve"}`))
-	if recorder.Code != http.StatusNotImplemented {
-		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNotImplemented)
-	}
-
-	var response errorPayload
-	decodeJSONResponse(t, recorder, &response)
-	if response.Error == "" {
-		t.Fatal("expected non-empty error response")
 	}
 }

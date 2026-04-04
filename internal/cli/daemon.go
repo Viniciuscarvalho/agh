@@ -25,21 +25,21 @@ type daemonProcess interface {
 }
 
 type execDaemonProcess struct {
-	cmd *exec.Cmd
+	cmd       *exec.Cmd
+	logPath   string
+	logOffset int64
 }
 
 func (p *execDaemonProcess) PID() int {
-	if p == nil || p.cmd == nil || p.cmd.Process == nil {
-		return 0
-	}
 	return p.cmd.Process.Pid
 }
 
 func (p *execDaemonProcess) Wait() error {
-	if p == nil || p.cmd == nil {
+	err := p.cmd.Wait()
+	if err == nil {
 		return nil
 	}
-	return p.cmd.Wait()
+	return attachCommandLog(err, p.logPath, p.logOffset)
 }
 
 func newDaemonCommand(deps commandDeps) *cobra.Command {
@@ -171,6 +171,9 @@ func runDaemonDetached(ctx context.Context, deps commandDeps) (DaemonStatus, err
 	if err != nil {
 		return DaemonStatus{}, err
 	}
+	if child == nil {
+		return DaemonStatus{}, errors.New("cli: detached daemon process is required")
+	}
 
 	status, err := waitForDaemonStart(ctx, deps, child)
 	if err != nil {
@@ -197,11 +200,7 @@ func waitForDaemonStart(ctx context.Context, deps commandDeps, child daemonProce
 
 	childErrCh := make(chan error, 1)
 	go func() {
-		if child != nil {
-			childErrCh <- child.Wait()
-			return
-		}
-		childErrCh <- nil
+		childErrCh <- child.Wait()
 	}()
 
 	ticker := time.NewTicker(deps.pollInterval)
@@ -373,6 +372,11 @@ func spawnDetachedDaemonProcess(homePaths aghconfig.HomePaths, executable func()
 		return nil, fmt.Errorf("cli: resolve executable: %w", err)
 	}
 
+	logInfo, err := logFile.Stat()
+	if err != nil {
+		_ = logFile.Close()
+		return nil, fmt.Errorf("cli: stat daemon log %q: %w", homePaths.LogFile, err)
+	}
 	child := exec.Command(binary, "daemon", "start", "--foreground", "--"+internalChildFlagName)
 	child.Env = os.Environ()
 	child.Stdin = nil
@@ -388,5 +392,48 @@ func spawnDetachedDaemonProcess(homePaths aghconfig.HomePaths, executable func()
 		return nil, fmt.Errorf("cli: close daemon log handle: %w", err)
 	}
 
-	return &execDaemonProcess{cmd: child}, nil
+	return &execDaemonProcess{cmd: child, logPath: homePaths.LogFile, logOffset: logInfo.Size()}, nil
+}
+
+func attachCommandLog(err error, logPath string, logOffset int64) error {
+	if err == nil {
+		return err
+	}
+	text, readErr := readCommandLog(logPath, logOffset)
+	if readErr != nil {
+		return err
+	}
+	text = recentCommandError(text)
+	if text == "" {
+		return err
+	}
+	return fmt.Errorf("%w: stderr=%s", err, text)
+}
+
+func readCommandLog(path string, offset int64) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("cli: read daemon log %q: %w", path, err)
+	}
+	if offset < 0 || offset > int64(len(data)) {
+		offset = 0
+	}
+	return strings.TrimSpace(string(data[offset:])), nil
+}
+
+func recentCommandError(logText string) string {
+	text := strings.TrimSpace(logText)
+	if text == "" {
+		return ""
+	}
+
+	lines := strings.Split(text, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(line, "error:") {
+			return line
+		}
+	}
+
+	return text
 }

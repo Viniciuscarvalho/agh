@@ -181,29 +181,12 @@ func New(ctx context.Context, opts ...Option) (*Observer, error) {
 
 // Close flushes and closes the backing global registry.
 func (o *Observer) Close(ctx context.Context) error {
-	if o == nil || o.registry == nil {
-		return nil
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	return o.registry.Close(ctx)
 }
 
 // OnSessionCreated registers the session in the global observability database.
 func (o *Observer) OnSessionCreated(ctx context.Context, sess *session.Session) {
-	if o == nil || o.registry == nil || sess == nil {
-		return
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
 	info := sess.Info()
-	if info == nil {
-		return
-	}
-
 	snapshot := observedSession{
 		agentName: info.AgentName,
 		workspace: info.Workspace,
@@ -226,17 +209,7 @@ func (o *Observer) OnSessionCreated(ctx context.Context, sess *session.Session) 
 
 // OnSessionStopped updates the session state in the global observability database.
 func (o *Observer) OnSessionStopped(ctx context.Context, sess *session.Session) {
-	if o == nil || o.registry == nil || sess == nil {
-		return
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
 	info := sess.Info()
-	if info == nil {
-		return
-	}
 
 	if err := o.registry.UpdateSessionState(ctx, store.SessionStateUpdate{
 		ID:           info.ID,
@@ -251,14 +224,7 @@ func (o *Observer) OnSessionStopped(ctx context.Context, sess *session.Session) 
 }
 
 // OnAgentEvent records one lightweight cross-session event summary and any derived aggregates.
-func (o *Observer) OnAgentEvent(ctx context.Context, sessionID string, event session.AgentEvent) {
-	if o == nil || o.registry == nil {
-		return
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
+func (o *Observer) OnAgentEvent(ctx context.Context, sessionID string, event acp.AgentEvent) {
 	id := strings.TrimSpace(sessionID)
 	if id == "" {
 		o.logger.Warn("observe: skipped agent event with empty session id", "event_type", event.Type)
@@ -401,7 +367,7 @@ func sessionInfoFromSession(info *session.SessionInfo) store.SessionInfo {
 	}
 }
 
-func summarizeEvent(event session.AgentEvent) string {
+func summarizeEvent(event acp.AgentEvent) string {
 	candidates := []string{
 		strings.TrimSpace(event.Text),
 		strings.TrimSpace(event.Title),
@@ -446,7 +412,7 @@ func truncateSummary(summary string) string {
 	return string(runes[:maxRunes-3]) + "..."
 }
 
-func shouldAggregateUsage(event session.AgentEvent) bool {
+func shouldAggregateUsage(event acp.AgentEvent) bool {
 	return strings.TrimSpace(event.Type) == acp.EventTypeDone && event.Usage != nil && !event.Usage.IsZero()
 }
 

@@ -2,6 +2,10 @@
 
 React 19 SPA with Vite 8, TanStack Router (file-based), TanStack Query v5, Tailwind CSS v4, shadcn/ui (base-nova), Zustand, Zod. Formatted with oxfmt, linted with oxlint.
 
+## Greenfield Alpha — Zero Legacy Tolerance
+
+No production users exist. Never sacrifice code quality for backward compatibility. Never write migration, compat, or defensive code for old state — delete the old thing instead of working around it.
+
 ## Critical Rules
 
 - **`make web-lint` and `make web-typecheck` MUST pass** before completing ANY web task. Zero warnings, zero errors.

@@ -1,13 +1,17 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { useCallback, useEffect, useRef } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Loader2, AlertCircle } from "lucide-react";
+import { toast } from "sonner";
 
 import { useSession } from "@/systems/session/hooks/use-sessions";
 import { useSessionChat } from "@/systems/session/hooks/use-session-chat";
+import { useSessionHistory } from "@/systems/session/hooks/use-session-history";
 import { useSessionStore } from "@/systems/session/stores/session-store";
 import { useStopSession, useResumeSession } from "@/systems/session/hooks/use-session-actions";
 import { ChatHeader } from "@/systems/session/components/chat-header";
 import { ChatView } from "@/systems/session/components/chat-view";
 import { MessageComposer } from "@/systems/session/components/message-composer";
+import { PermissionPrompt } from "@/systems/session/components/permission-prompt";
 
 export const Route = createFileRoute("/_app/session/$id")({
   component: SessionPage,
@@ -15,18 +19,50 @@ export const Route = createFileRoute("/_app/session/$id")({
 
 function SessionPage() {
   const { id } = Route.useParams();
+  const navigate = useNavigate();
+  const prevIdRef = useRef<string | null>(null);
+
   const { data: session, isLoading, error } = useSession(id);
   const messages = useSessionStore(s => s.messages);
   const isStreaming = useSessionStore(s => s.isStreaming);
   const pendingPermission = useSessionStore(s => s.pendingPermission);
+  const activeSessionId = useSessionStore(s => s.activeSessionId);
 
+  const { historyMessages, isLoadingHistory } = useSessionHistory(id);
   const { sendMessage, status } = useSessionChat({ sessionId: id });
   const stopMutation = useStopSession();
   const resumeMutation = useResumeSession();
 
-  const isDisabled = isStreaming || status === "submitted" || pendingPermission !== null;
+  // Session switch: initialize store when navigating to a new session
+  useEffect(() => {
+    if (prevIdRef.current === id) return;
+    prevIdRef.current = id;
 
-  if (isLoading) {
+    // If history is loaded, set the session with history messages
+    if (historyMessages) {
+      useSessionStore.getState().setActiveSession(id, historyMessages);
+    } else if (activeSessionId !== id) {
+      // No history yet, just set the active session with empty messages
+      useSessionStore.getState().setActiveSession(id, []);
+    }
+  }, [id, historyMessages, activeSessionId]);
+
+  // Handle 404 — navigate away with toast
+  useEffect(() => {
+    if (error?.message?.includes("not found")) {
+      toast.error("Session not found");
+      navigate({ to: "/" });
+    }
+  }, [error, navigate]);
+
+  const handlePermissionResolved = useCallback(() => {
+    useSessionStore.getState().setPendingPermission(null);
+  }, []);
+
+  const isDisabled = isStreaming || status === "submitted" || pendingPermission !== null;
+  const isStopped = session?.state === "stopped";
+
+  if (isLoading || isLoadingHistory) {
     return (
       <div className="flex flex-1 items-center justify-center">
         <Loader2 className="size-5 animate-spin text-[color:var(--ds-text-muted)]" />
@@ -55,7 +91,14 @@ function SessionPage() {
         onResume={() => resumeMutation.mutate(id)}
       />
       <ChatView messages={messages} isStreaming={isStreaming} />
-      <MessageComposer onSend={sendMessage} disabled={isDisabled} />
+      {pendingPermission && (
+        <PermissionPrompt
+          permission={pendingPermission}
+          sessionId={id}
+          onResolved={handlePermissionResolved}
+        />
+      )}
+      {!isStopped && <MessageComposer onSend={sendMessage} disabled={isDisabled} />}
     </div>
   );
 }

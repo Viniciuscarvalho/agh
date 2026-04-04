@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pedronauck/agh/internal/acp"
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	"github.com/pedronauck/agh/internal/observe"
 	"github.com/pedronauck/agh/internal/session"
@@ -259,7 +260,7 @@ func (f *integrationNotifierFanout) OnSessionStopped(ctx context.Context, sess *
 	}
 }
 
-func (f *integrationNotifierFanout) OnAgentEvent(ctx context.Context, sessionID string, event session.AgentEvent) {
+func (f *integrationNotifierFanout) OnAgentEvent(ctx context.Context, sessionID string, event acp.AgentEvent) {
 	for _, notifier := range f.notifiers {
 		notifier.OnAgentEvent(ctx, sessionID, event)
 	}
@@ -280,7 +281,7 @@ func newIntegrationDriver() *integrationDriver {
 	}
 }
 
-func (d *integrationDriver) Start(_ context.Context, opts session.StartOpts) (*session.AgentProcess, error) {
+func (d *integrationDriver) Start(_ context.Context, opts acp.StartOpts) (*session.AgentProcess, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -298,7 +299,7 @@ func (d *integrationDriver) Start(_ context.Context, opts session.StartOpts) (*s
 		Command:   opts.Command,
 		Cwd:       opts.Cwd,
 		SessionID: sessionID,
-		Caps: session.ACPCaps{
+		Caps: acp.ACPCaps{
 			SupportsLoadSession: true,
 			SupportedModels:     []string{"fake-model"},
 		},
@@ -313,16 +314,16 @@ func (d *integrationDriver) Start(_ context.Context, opts session.StartOpts) (*s
 	return proc, nil
 }
 
-func (d *integrationDriver) Prompt(_ context.Context, proc *session.AgentProcess, req session.PromptRequest) (<-chan session.AgentEvent, error) {
-	ch := make(chan session.AgentEvent, 2)
-	ch <- session.AgentEvent{
+func (d *integrationDriver) Prompt(_ context.Context, proc *session.AgentProcess, req acp.PromptRequest) (<-chan acp.AgentEvent, error) {
+	ch := make(chan acp.AgentEvent, 2)
+	ch <- acp.AgentEvent{
 		Type:      "agent_message",
 		SessionID: proc.SessionID,
 		TurnID:    req.TurnID,
 		Timestamp: time.Now().UTC(),
 		Text:      req.Message,
 	}
-	ch <- session.AgentEvent{
+	ch <- acp.AgentEvent{
 		Type:       "done",
 		SessionID:  proc.SessionID,
 		TurnID:     req.TurnID,

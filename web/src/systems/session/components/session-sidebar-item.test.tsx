@@ -135,4 +135,22 @@ describe("SessionSidebarItem", () => {
     const button = screen.getByTestId("sidebar-sub-button");
     expect(button).toHaveAttribute("data-active", "false");
   });
+
+  it("shows amber dot when session has pending permission", () => {
+    render(<SessionSidebarItem session={baseSession} hasPendingPermission={true} />);
+    const indicator = screen.getByTestId("permission-indicator");
+    expect(indicator).toBeInTheDocument();
+    expect(indicator.className).toContain("animate-pulse");
+    expect(indicator.className).toContain("bg-amber-500");
+  });
+
+  it("does not show amber dot when no pending permission", () => {
+    render(<SessionSidebarItem session={baseSession} hasPendingPermission={false} />);
+    expect(screen.queryByTestId("permission-indicator")).not.toBeInTheDocument();
+  });
+
+  it("does not show amber dot by default (undefined)", () => {
+    render(<SessionSidebarItem session={baseSession} />);
+    expect(screen.queryByTestId("permission-indicator")).not.toBeInTheDocument();
+  });
 });

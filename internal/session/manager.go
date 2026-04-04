@@ -187,7 +187,6 @@ func NewManager(opts ...Option) (*Manager, error) {
 		finalizing: make(map[string]struct{}),
 		logger:     slog.Default(),
 		driver:     NewACPDriverAdapter(acp.New()),
-		notifier:   nopNotifier{},
 		homePaths:  homePaths,
 		loadConfig: func(workspace string) (aghconfig.Config, error) {
 			if strings.TrimSpace(workspace) == "" {
@@ -222,9 +221,6 @@ func NewManager(opts ...Option) (*Manager, error) {
 	}
 	if manager.driver == nil {
 		return nil, errors.New("session: agent driver is required")
-	}
-	if manager.notifier == nil {
-		manager.notifier = nopNotifier{}
 	}
 	if manager.loadConfig == nil {
 		return nil, errors.New("session: config loader is required")
@@ -343,7 +339,7 @@ func (m *Manager) Create(ctx context.Context, opts CreateOpts) (_ *Session, err 
 		return nil, err
 	}
 
-	proc, err = m.driver.Start(ctx, StartOpts{
+	proc, err = m.driver.Start(ctx, acp.StartOpts{
 		AgentName:   resolved.Name,
 		Command:     resolved.Command,
 		Cwd:         workspace,
@@ -366,7 +362,9 @@ func (m *Manager) Create(ctx context.Context, opts CreateOpts) (_ *Session, err 
 	}
 
 	m.watchProcess(session)
-	m.notifier.OnSessionCreated(ctx, session)
+	if m.notifier != nil {
+		m.notifier.OnSessionCreated(ctx, session)
+	}
 
 	return session, nil
 }
@@ -496,7 +494,7 @@ func (m *Manager) Resume(ctx context.Context, id string) (_ *Session, err error)
 		return nil, err
 	}
 
-	proc, err = m.driver.Start(ctx, StartOpts{
+	proc, err = m.driver.Start(ctx, acp.StartOpts{
 		AgentName:       resolved.Name,
 		Command:         resolved.Command,
 		Cwd:             workspace,
@@ -520,13 +518,15 @@ func (m *Manager) Resume(ctx context.Context, id string) (_ *Session, err error)
 	}
 
 	m.watchProcess(session)
-	m.notifier.OnSessionCreated(ctx, session)
+	if m.notifier != nil {
+		m.notifier.OnSessionCreated(ctx, session)
+	}
 
 	return session, nil
 }
 
 // Prompt sends one prompt turn to an active session and mirrors the runtime stream into storage and observers.
-func (m *Manager) Prompt(ctx context.Context, id string, msg string) (<-chan AgentEvent, error) {
+func (m *Manager) Prompt(ctx context.Context, id string, msg string) (<-chan acp.AgentEvent, error) {
 	if ctx == nil {
 		return nil, errors.New("session: prompt context is required")
 	}
@@ -558,19 +558,19 @@ func (m *Manager) Prompt(ctx context.Context, id string, msg string) (<-chan Age
 		return nil, errors.New("session: agent process is not available")
 	}
 
-	source, err := m.driver.Prompt(ctx, proc, PromptRequest{TurnID: turnID, Message: message})
+	source, err := m.driver.Prompt(ctx, proc, acp.PromptRequest{TurnID: turnID, Message: message})
 	session.mu.RUnlock()
 	if err != nil {
 		return nil, fmt.Errorf("session: prompt session %q: %w", id, err)
 	}
 
-	out := make(chan AgentEvent, m.promptBufSize)
+	out := make(chan acp.AgentEvent, m.promptBufSize)
 	go m.pumpPrompt(ctx, session, turnID, source, out)
 	return out, nil
 }
 
 // ApprovePermission resolves one pending interactive permission request for an active session.
-func (m *Manager) ApprovePermission(ctx context.Context, id string, req ApproveRequest) error {
+func (m *Manager) ApprovePermission(ctx context.Context, id string, req acp.ApproveRequest) error {
 	if ctx == nil {
 		return errors.New("session: approval context is required")
 	}
@@ -751,7 +751,7 @@ func (m *Manager) writeMeta(session *Session) error {
 	return nil
 }
 
-func (m *Manager) pumpPrompt(ctx context.Context, session *Session, turnID string, source <-chan AgentEvent, out chan<- AgentEvent) {
+func (m *Manager) pumpPrompt(ctx context.Context, session *Session, turnID string, source <-chan acp.AgentEvent, out chan<- acp.AgentEvent) {
 	defer close(out)
 
 	for event := range source {
@@ -759,7 +759,9 @@ func (m *Manager) pumpPrompt(ctx context.Context, session *Session, turnID strin
 		if err := m.recordEvent(ctx, session, normalized); err != nil {
 			m.sessionLogger(session).Warn("session: record prompt event failed", "turn_id", turnID, "error", err)
 		}
-		m.notifier.OnAgentEvent(ctx, session.ID, normalized)
+		if m.notifier != nil {
+			m.notifier.OnAgentEvent(ctx, session.ID, normalized)
+		}
 
 		select {
 		case out <- normalized:
@@ -768,7 +770,7 @@ func (m *Manager) pumpPrompt(ctx context.Context, session *Session, turnID strin
 	}
 }
 
-func (m *Manager) normalizeEvent(session *Session, turnID string, event AgentEvent) AgentEvent {
+func (m *Manager) normalizeEvent(session *Session, turnID string, event acp.AgentEvent) acp.AgentEvent {
 	normalized := event
 	if strings.TrimSpace(normalized.TurnID) == "" {
 		normalized.TurnID = turnID
@@ -785,7 +787,7 @@ func (m *Manager) normalizeEvent(session *Session, turnID string, event AgentEve
 	return normalized
 }
 
-func (m *Manager) recordEvent(ctx context.Context, session *Session, event AgentEvent) error {
+func (m *Manager) recordEvent(ctx context.Context, session *Session, event acp.AgentEvent) error {
 	recorder := session.recorderHandle()
 	if recorder == nil {
 		return errors.New("session: event recorder is not available")
@@ -877,7 +879,7 @@ func (m *Manager) finalizeStopped(ctx context.Context, session *Session, waitErr
 	}
 
 	if waitErr != nil {
-		event := AgentEvent{
+		event := acp.AgentEvent{
 			Type:      acp.EventTypeError,
 			TurnID:    newID("turn"),
 			Timestamp: m.now(),
@@ -888,10 +890,12 @@ func (m *Manager) finalizeStopped(ctx context.Context, session *Session, waitErr
 		if err := m.recordEvent(ctx, session, normalized); err != nil {
 			errs = append(errs, err)
 		}
-		m.notifier.OnAgentEvent(ctx, session.ID, normalized)
+		if m.notifier != nil {
+			m.notifier.OnAgentEvent(ctx, session.ID, normalized)
+		}
 	}
 
-	stopEvent := AgentEvent{
+	stopEvent := acp.AgentEvent{
 		Type:      EventTypeSessionStopped,
 		TurnID:    newID("turn"),
 		Timestamp: m.now(),
@@ -906,7 +910,9 @@ func (m *Manager) finalizeStopped(ctx context.Context, session *Session, waitErr
 	if err := m.recordEvent(ctx, session, normalizedStop); err != nil {
 		errs = append(errs, err)
 	}
-	m.notifier.OnAgentEvent(ctx, session.ID, normalizedStop)
+	if m.notifier != nil {
+		m.notifier.OnAgentEvent(ctx, session.ID, normalizedStop)
+	}
 
 	if recorder := session.recorderHandle(); recorder != nil {
 		closeCtx, cancel := context.WithTimeout(context.Background(), defaultLifecycleTimeout)
@@ -925,7 +931,9 @@ func (m *Manager) finalizeStopped(ctx context.Context, session *Session, waitErr
 	}
 
 	m.remove(session.ID)
-	m.notifier.OnSessionStopped(ctx, session)
+	if m.notifier != nil {
+		m.notifier.OnSessionStopped(ctx, session)
+	}
 
 	return errors.Join(errs...)
 }
@@ -1010,7 +1018,7 @@ func resolveWorkspace(workspace string) (string, error) {
 	return absPath, nil
 }
 
-func marshalAgentEvent(event AgentEvent) (string, error) {
+func marshalAgentEvent(event acp.AgentEvent) (string, error) {
 	if len(event.Raw) > 0 {
 		return string(event.Raw), nil
 	}

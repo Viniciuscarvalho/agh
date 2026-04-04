@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/pedronauck/agh/internal/acp"
 	"github.com/pedronauck/agh/internal/session"
 	"github.com/pedronauck/agh/internal/store"
 )
@@ -187,7 +188,7 @@ func (h *Handlers) approveSession(c *gin.Context) {
 		return
 	}
 
-	approve := session.ApproveRequest{
+	approve := acp.ApproveRequest{
 		RequestID: req.RequestID,
 		TurnID:    req.TurnID,
 		Decision:  req.Decision,
@@ -294,7 +295,7 @@ func sessionPayloadFromInfo(info *session.SessionInfo) sessionPayload {
 	return payload
 }
 
-func acpCapsPayloadFromInfo(caps session.ACPCaps) *acpCapsPayload {
+func acpCapsPayloadFromInfo(caps acp.ACPCaps) *acpCapsPayload {
 	if !caps.SupportsLoadSession && len(caps.SupportedModes) == 0 && len(caps.SupportedModels) == 0 {
 		return nil
 	}

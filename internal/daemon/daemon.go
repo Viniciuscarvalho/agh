@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/pedronauck/agh/internal/acp"
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	"github.com/pedronauck/agh/internal/httpapi"
 	aghlogger "github.com/pedronauck/agh/internal/logger"
@@ -50,16 +51,16 @@ type SessionManager interface {
 	History(ctx context.Context, id string, query store.EventQuery) ([]store.TurnHistory, error)
 	Stop(ctx context.Context, id string) error
 	Resume(ctx context.Context, id string) (*session.Session, error)
-	Prompt(ctx context.Context, id string, msg string) (<-chan session.AgentEvent, error)
-	ApprovePermission(ctx context.Context, id string, req session.ApproveRequest) error
+	Prompt(ctx context.Context, id string, msg string) (<-chan acp.AgentEvent, error)
+	ApprovePermission(ctx context.Context, id string, req acp.ApproveRequest) error
 }
 
 // Observer is the observability surface consumed by daemon/.
 type Observer interface {
 	session.Notifier
-	QueryEvents(ctx context.Context, query observe.EventQuery) ([]observe.Event, error)
+	QueryEvents(ctx context.Context, query store.EventSummaryQuery) ([]store.EventSummary, error)
 	Health(ctx context.Context) (observe.Health, error)
-	Reconcile(ctx context.Context) (observe.ReconcileResult, error)
+	Reconcile(ctx context.Context) (store.ReconcileResult, error)
 }
 
 // Registry is the shared global database surface consumed by daemon/.
@@ -101,8 +102,6 @@ type processInfo struct {
 type notifierFanout struct {
 	notifiers []session.Notifier
 }
-
-type nopServer struct{}
 
 // Daemon is the sole AGH composition root.
 type Daemon struct {
@@ -937,19 +936,11 @@ func (f *notifierFanout) OnSessionStopped(ctx context.Context, sess *session.Ses
 	}
 }
 
-func (f *notifierFanout) OnAgentEvent(ctx context.Context, sessionID string, event session.AgentEvent) {
+func (f *notifierFanout) OnAgentEvent(ctx context.Context, sessionID string, event acp.AgentEvent) {
 	for _, notifier := range f.notifiers {
 		if notifier == nil {
 			continue
 		}
 		notifier.OnAgentEvent(ctx, sessionID, event)
 	}
-}
-
-func (nopServer) Start(context.Context) error {
-	return nil
-}
-
-func (nopServer) Shutdown(context.Context) error {
-	return nil
 }

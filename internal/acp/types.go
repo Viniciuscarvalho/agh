@@ -123,7 +123,9 @@ type TokenUsage struct {
 // Merge overlays non-nil usage fields from other into the receiver.
 func (u TokenUsage) Merge(other TokenUsage) TokenUsage {
 	merged := u
-	merged.TurnID = firstNonBlank(other.TurnID, merged.TurnID)
+	if turnID := strings.TrimSpace(other.TurnID); turnID != "" {
+		merged.TurnID = turnID
+	}
 	merged.InputTokens = chooseInt64(other.InputTokens, merged.InputTokens)
 	merged.OutputTokens = chooseInt64(other.OutputTokens, merged.OutputTokens)
 	merged.TotalTokens = chooseInt64(other.TotalTokens, merged.TotalTokens)
@@ -231,19 +233,11 @@ type lockedBuffer struct {
 
 // Done returns a channel that closes when the subprocess exits.
 func (p *AgentProcess) Done() <-chan struct{} {
-	if p == nil || p.done == nil {
-		ch := make(chan struct{})
-		close(ch)
-		return ch
-	}
 	return p.done
 }
 
 // Wait blocks until the subprocess exits and returns its final error state.
 func (p *AgentProcess) Wait() error {
-	if p == nil {
-		return errors.New("acp: agent process is required")
-	}
 	<-p.Done()
 	p.waitMu.RLock()
 	defer p.waitMu.RUnlock()
@@ -252,9 +246,6 @@ func (p *AgentProcess) Wait() error {
 
 // Stderr returns the currently captured stderr output for the subprocess.
 func (p *AgentProcess) Stderr() string {
-	if p == nil || p.stderr == nil {
-		return ""
-	}
 	return p.stderr.String()
 }
 
@@ -378,15 +369,6 @@ func appendBounded(dst []byte, src []byte, limit int) []byte {
 	}
 
 	return append([]byte(nil), combined[len(combined)-limit:]...)
-}
-
-func firstNonBlank(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
 }
 
 func chooseInt64(primary, fallback *int64) *int64 {

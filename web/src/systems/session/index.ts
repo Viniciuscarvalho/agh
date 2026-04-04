@@ -34,8 +34,14 @@ export {
 } from "./types";
 
 // Adapters
-export type { CreateSessionParams, FetchSessionEventsParams } from "./adapters/session-api";
+export type {
+  CreateSessionParams,
+  FetchSessionEventsParams,
+  ApproveSessionParams,
+  PermissionDecision,
+} from "./adapters/session-api";
 export {
+  approveSession,
   createSession,
   fetchSession,
   fetchSessionEvents,
@@ -56,7 +62,11 @@ export {
 
 // Lib
 export { SimpleStreamingBuffer, mergeStreamingChunk } from "./lib/streaming-buffer";
-export { mapAgentEventToUIMessage, extractPermissionRequest } from "./lib/event-mapper";
+export {
+  mapAgentEventToUIMessage,
+  extractPermissionRequest,
+  mapHistoryToMessages,
+} from "./lib/event-mapper";
 export {
   getToolIcon,
   getToolLabel,
@@ -80,6 +90,7 @@ export {
   type UseSessionChatOptions,
   type UseSessionChatReturn,
 } from "./hooks/use-session-chat";
+export { useSessionHistory, type UseSessionHistoryReturn } from "./hooks/use-session-history";
 
 // Components
 export { SessionSidebarItem } from "./components/session-sidebar-item";
@@ -99,3 +110,4 @@ export {
   ProcessingIndicator,
   type ProcessingIndicatorProps,
 } from "./components/processing-indicator";
+export { PermissionPrompt, type PermissionPromptProps } from "./components/permission-prompt";

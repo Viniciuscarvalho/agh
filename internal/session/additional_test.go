@@ -22,7 +22,7 @@ func TestCreateCleansUpOnStartFailure(t *testing.T) {
 
 	h := newHarness(t)
 	recorder := &stubRecorder{}
-	h.driver.startHook = func(opts StartOpts, sequence int) (*fakeProcess, error) {
+	h.driver.startHook = func(opts acp.StartOpts, sequence int) (*fakeProcess, error) {
 		return nil, errors.New("start failed")
 	}
 	h.manager = newManagerWithHarness(t, h,
@@ -96,7 +96,7 @@ func TestResumeCleansUpOnStartFailure(t *testing.T) {
 	}
 
 	recorder := &stubRecorder{}
-	h.driver.startHook = func(opts StartOpts, sequence int) (*fakeProcess, error) {
+	h.driver.startHook = func(opts acp.StartOpts, sequence int) (*fakeProcess, error) {
 		return nil, errors.New("resume failed")
 	}
 	h.manager = newManagerWithHarness(t, h,
@@ -242,8 +242,11 @@ func TestNewManagerOptionsAndValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewManager(normalized defaults) error = %v", err)
 	}
-	if manager.logger == nil || manager.notifier == nil || manager.now == nil || manager.newSessionID == nil || manager.newTurnID == nil {
+	if manager.logger == nil || manager.now == nil || manager.newSessionID == nil || manager.newTurnID == nil {
 		t.Fatal("NewManager() failed to restore default dependencies after nil overrides")
+	}
+	if manager.notifier != nil {
+		t.Fatal("NewManager() restored a notifier default, want nil")
 	}
 	if manager.promptBufSize != defaultPromptBufferSize {
 		t.Fatalf("promptBufSize = %d, want default %d", manager.promptBufSize, defaultPromptBufferSize)
@@ -368,7 +371,7 @@ func TestMarshalAgentEvent(t *testing.T) {
 	t.Parallel()
 
 	rawPayload := json.RawMessage(`{"raw":true}`)
-	raw, err := marshalAgentEvent(AgentEvent{Raw: rawPayload})
+	raw, err := marshalAgentEvent(acp.AgentEvent{Raw: rawPayload})
 	if err != nil {
 		t.Fatalf("marshalAgentEvent(raw) error = %v", err)
 	}
@@ -377,14 +380,14 @@ func TestMarshalAgentEvent(t *testing.T) {
 	}
 
 	totalTokens := int64(4)
-	payload, err := marshalAgentEvent(AgentEvent{
+	payload, err := marshalAgentEvent(acp.AgentEvent{
 		Type:      acp.EventTypeDone,
 		SessionID: "acp-1",
 		TurnID:    "turn-1",
 		Timestamp: time.Now().UTC(),
 		Text:      "done",
 		Error:     "none",
-		Usage: &TokenUsage{
+		Usage: &acp.TokenUsage{
 			TurnID:      "turn-1",
 			TotalTokens: &totalTokens,
 			Timestamp:   time.Now().UTC(),
@@ -409,25 +412,13 @@ func TestMarshalAgentEvent(t *testing.T) {
 func TestAgentProcessHelpersAndAdapterUtilities(t *testing.T) {
 	t.Parallel()
 
-	if err := (*AgentProcess)(nil).Wait(); err == nil {
-		t.Fatal("(*AgentProcess)(nil).Wait() error = nil, want non-nil")
-	}
-	if stderr := (*AgentProcess)(nil).Stderr(); stderr != "" {
-		t.Fatalf("(*AgentProcess)(nil).Stderr() = %q, want empty", stderr)
-	}
-	select {
-	case <-(*AgentProcess)(nil).Done():
-	default:
-		t.Fatal("(*AgentProcess)(nil).Done() returned open channel")
-	}
-
 	wrapped := wrapACPProcess(&acp.AgentProcess{
 		PID:       99,
 		AgentName: "coder",
 		Command:   "fake",
 		Cwd:       "/tmp",
 		SessionID: "acp-1",
-		Caps:      ACPCaps{SupportsLoadSession: true},
+		Caps:      acp.ACPCaps{SupportsLoadSession: true},
 		StartedAt: time.Now().UTC(),
 	})
 	if wrapped == nil || wrapped.PID != 99 || wrapped.SessionID != "acp-1" {
@@ -437,11 +428,6 @@ func TestAgentProcessHelpersAndAdapterUtilities(t *testing.T) {
 		t.Fatal("wrapACPProcess(nil) = non-nil, want nil")
 	}
 
-	var notifier Notifier = nopNotifier{}
-	notifier.OnSessionCreated(context.Background(), nil)
-	notifier.OnSessionStopped(context.Background(), nil)
-	notifier.OnAgentEvent(context.Background(), "sess-1", AgentEvent{})
-
 	manager := &Manager{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	if got := manager.sessionLogger(nil); got == nil {
 		t.Fatal("sessionLogger(nil) = nil, want logger")
@@ -450,23 +436,16 @@ func TestAgentProcessHelpersAndAdapterUtilities(t *testing.T) {
 		t.Fatal("sessionLogger(session) = nil, want logger")
 	}
 
-	adapter := NewACPDriverAdapter(nil)
-	if err := adapter.Cancel(context.Background(), &AgentProcess{}); err == nil {
-		t.Fatal("Cancel(unsupported process) error = nil, want non-nil")
-	}
+	adapter := NewACPDriverAdapter(acp.New())
 	if _, err := adapter.nativeProcess(&AgentProcess{}); err == nil {
 		t.Fatal("nativeProcess(unsupported process) error = nil, want non-nil")
 	}
 
-	realAdapter := NewACPDriverAdapter(acp.New())
-	if _, err := realAdapter.Start(context.Background(), StartOpts{}); err == nil {
+	if _, err := adapter.Start(context.Background(), acp.StartOpts{}); err == nil {
 		t.Fatal("Start(invalid opts) error = nil, want non-nil")
 	}
-	if err := realAdapter.Cancel(context.Background(), wrapACPProcess(&acp.AgentProcess{})); err == nil {
+	if err := adapter.Cancel(context.Background(), wrapACPProcess(&acp.AgentProcess{})); err == nil {
 		t.Fatal("Cancel(empty session id) error = nil, want non-nil")
-	}
-	if err := realAdapter.Stop(context.Background(), wrapACPProcess(&acp.AgentProcess{})); err != nil {
-		t.Fatalf("Stop(minimal process) error = %v, want nil", err)
 	}
 }
 

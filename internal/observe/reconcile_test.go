@@ -1,6 +1,7 @@
 package observe
 
 import (
+	"os"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -93,6 +94,65 @@ func TestReconciliationMarksMissingDirectoryAsOrphaned(t *testing.T) {
 	}
 	if sessions[0].State != "orphaned" {
 		t.Fatalf("sessions[0].State = %q, want orphaned", sessions[0].State)
+	}
+}
+
+func TestReconciliationSkipsLegacyStoppedSessionMetadata(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	validDir := filepath.Join(h.home.SessionsDir, "sess-valid")
+	validMetaPath := store.SessionMetaFile(validDir)
+	now := h.now.Add(45 * time.Minute)
+	if err := store.WriteSessionMeta(validMetaPath, store.SessionMeta{
+		ID:        "sess-valid",
+		Name:      "Valid",
+		AgentName: "coder",
+		Workspace: h.workspace,
+		State:     "active",
+		CreatedAt: now,
+		UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("WriteSessionMeta(valid) error = %v", err)
+	}
+
+	legacyDir := filepath.Join(h.home.SessionsDir, "sess-legacy")
+	if err := os.MkdirAll(legacyDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(legacyDir) error = %v", err)
+	}
+	legacyMeta := `{
+  "id": "sess-legacy",
+  "name": "legacy-session",
+  "goal": "Legacy prompt",
+  "workspace": "` + h.workspace + `",
+  "state": "stopped",
+  "created_at": "2026-04-01T03:57:38.428414Z",
+  "stopped_at": "2026-04-01T03:58:00.212132Z"
+}
+`
+	if err := os.WriteFile(store.SessionMetaFile(legacyDir), []byte(legacyMeta), 0o644); err != nil {
+		t.Fatalf("WriteFile(legacy meta) error = %v", err)
+	}
+
+	result, err := h.observer.Reconcile(testContext(t))
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	sort.Strings(result.Indexed)
+	if got, want := result.Indexed, []string{"sess-valid"}; !equalStrings(got, want) {
+		t.Fatalf("Indexed = %#v, want %#v", got, want)
+	}
+
+	sessions, err := h.observer.registry.ListSessions(testContext(t), store.SessionListQuery{})
+	if err != nil {
+		t.Fatalf("ListSessions() error = %v", err)
+	}
+	if got, want := len(sessions), 1; got != want {
+		t.Fatalf("len(sessions) = %d, want %d", got, want)
+	}
+	if sessions[0].ID != "sess-valid" {
+		t.Fatalf("sessions[0].ID = %q, want %q", sessions[0].ID, "sess-valid")
 	}
 }
 

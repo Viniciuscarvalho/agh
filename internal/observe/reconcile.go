@@ -13,26 +13,16 @@ import (
 	"github.com/pedronauck/agh/internal/store"
 )
 
-// ReconcileResult reports which sessions were indexed and which became orphaned.
-type ReconcileResult = store.ReconcileResult
-
 // Reconcile scans the sessions directory and reconciles the global session index.
-func (o *Observer) Reconcile(ctx context.Context) (ReconcileResult, error) {
-	if o == nil || o.registry == nil {
-		return ReconcileResult{}, errors.New("observe: observer is required")
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
+func (o *Observer) Reconcile(ctx context.Context) (store.ReconcileResult, error) {
 	sessions, err := o.loadSessionMetadata()
 	if err != nil {
-		return ReconcileResult{}, err
+		return store.ReconcileResult{}, err
 	}
 
 	result, err := o.registry.ReconcileSessions(ctx, sessions)
 	if err != nil {
-		return ReconcileResult{}, fmt.Errorf("observe: reconcile sessions: %w", err)
+		return store.ReconcileResult{}, fmt.Errorf("observe: reconcile sessions: %w", err)
 	}
 
 	return result, nil
@@ -60,7 +50,13 @@ func (o *Observer) loadSessionMetadata() ([]store.SessionInfo, error) {
 			if errors.Is(err, os.ErrNotExist) {
 				continue
 			}
-			return nil, fmt.Errorf("observe: read session meta %q: %w", metaPath, err)
+			o.logger.Warn(
+				"observe: skipping unreadable session metadata",
+				"session_id", strings.TrimSpace(entry.Name()),
+				"path", metaPath,
+				"error", err,
+			)
+			continue
 		}
 
 		normalized, err := o.normalizeRecoveredMeta(metaPath, meta)

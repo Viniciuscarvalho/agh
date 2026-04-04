@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/pedronauck/agh/internal/acp"
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	"github.com/pedronauck/agh/internal/observe"
 	"github.com/pedronauck/agh/internal/session"
@@ -43,13 +44,13 @@ type SessionManager interface {
 	History(ctx context.Context, id string, query store.EventQuery) ([]store.TurnHistory, error)
 	Stop(ctx context.Context, id string) error
 	Resume(ctx context.Context, id string) (*session.Session, error)
-	Prompt(ctx context.Context, id string, msg string) (<-chan session.AgentEvent, error)
-	ApprovePermission(ctx context.Context, id string, req session.ApproveRequest) error
+	Prompt(ctx context.Context, id string, msg string) (<-chan acp.AgentEvent, error)
+	ApprovePermission(ctx context.Context, id string, req acp.ApproveRequest) error
 }
 
 // Observer is the observability surface exposed over HTTP.
 type Observer interface {
-	QueryEvents(ctx context.Context, query observe.EventQuery) ([]observe.Event, error)
+	QueryEvents(ctx context.Context, query store.EventSummaryQuery) ([]store.EventSummary, error)
 	Health(ctx context.Context) (observe.Health, error)
 }
 

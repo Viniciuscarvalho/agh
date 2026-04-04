@@ -6,7 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pedronauck/agh/internal/acp"
 	"github.com/pedronauck/agh/internal/session"
+	"github.com/pedronauck/agh/internal/store"
 )
 
 func TestObserverIntegrationFullFlow(t *testing.T) {
@@ -14,7 +16,7 @@ func TestObserverIntegrationFullFlow(t *testing.T) {
 	sess := newSession("sess-integration", session.StateActive, h.workspace, h.now)
 
 	h.observer.OnSessionCreated(testContext(t), sess)
-	h.observer.OnAgentEvent(testContext(t), sess.ID, session.AgentEvent{
+	h.observer.OnAgentEvent(testContext(t), sess.ID, acp.AgentEvent{
 		Type:      "agent_message",
 		TurnID:    "turn-int-1",
 		Timestamp: h.now.Add(time.Minute),
@@ -22,18 +24,18 @@ func TestObserverIntegrationFullFlow(t *testing.T) {
 	})
 
 	totalTokens := int64(9)
-	h.observer.OnAgentEvent(testContext(t), sess.ID, session.AgentEvent{
+	h.observer.OnAgentEvent(testContext(t), sess.ID, acp.AgentEvent{
 		Type:      "done",
 		TurnID:    "turn-int-1",
 		Timestamp: h.now.Add(2 * time.Minute),
-		Usage: &session.TokenUsage{
+		Usage: &acp.TokenUsage{
 			TurnID:      "turn-int-1",
 			TotalTokens: &totalTokens,
 			Timestamp:   h.now.Add(2 * time.Minute),
 		},
 	})
 
-	h.observer.OnAgentEvent(testContext(t), sess.ID, session.AgentEvent{
+	h.observer.OnAgentEvent(testContext(t), sess.ID, acp.AgentEvent{
 		Type:      "permission",
 		TurnID:    "turn-int-2",
 		Timestamp: h.now.Add(3 * time.Minute),
@@ -46,7 +48,7 @@ func TestObserverIntegrationFullFlow(t *testing.T) {
 	sess.UpdatedAt = h.now.Add(4 * time.Minute)
 	h.observer.OnSessionStopped(testContext(t), sess)
 
-	events, err := h.observer.QueryEvents(testContext(t), EventQuery{SessionID: sess.ID})
+	events, err := h.observer.QueryEvents(testContext(t), store.EventSummaryQuery{SessionID: sess.ID})
 	if err != nil {
 		t.Fatalf("QueryEvents() error = %v", err)
 	}
@@ -54,7 +56,7 @@ func TestObserverIntegrationFullFlow(t *testing.T) {
 		t.Fatalf("len(events) = %d, want %d", got, want)
 	}
 
-	stats, err := h.observer.QueryTokenStats(testContext(t), TokenStatsQuery{SessionID: sess.ID})
+	stats, err := h.observer.QueryTokenStats(testContext(t), store.TokenStatsQuery{SessionID: sess.ID})
 	if err != nil {
 		t.Fatalf("QueryTokenStats() error = %v", err)
 	}
@@ -65,7 +67,7 @@ func TestObserverIntegrationFullFlow(t *testing.T) {
 		t.Fatalf("stats[0].TotalTokens = %#v, want 9", stats[0].TotalTokens)
 	}
 
-	permissions, err := h.observer.QueryPermissionLog(testContext(t), PermissionLogQuery{SessionID: sess.ID})
+	permissions, err := h.observer.QueryPermissionLog(testContext(t), store.PermissionLogQuery{SessionID: sess.ID})
 	if err != nil {
 		t.Fatalf("QueryPermissionLog() error = %v", err)
 	}

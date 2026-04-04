@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pedronauck/agh/internal/observe"
+	"github.com/pedronauck/agh/internal/acp"
 	"github.com/pedronauck/agh/internal/session"
 	"github.com/pedronauck/agh/internal/store"
 )
@@ -109,15 +109,15 @@ func TestStreamObserveEventsPollsForNewEvents(t *testing.T) {
 	done := make(chan struct{})
 	callCount := 0
 	observer := stubObserver{
-		queryEventsFn: func(context.Context, observe.EventQuery) ([]observe.Event, error) {
+		queryEventsFn: func(context.Context, store.EventSummaryQuery) ([]store.EventSummary, error) {
 			callCount++
 			timestamp := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 			switch callCount {
 			case 1:
-				return []observe.Event{{ID: "sum-1", SessionID: "sess-1", Type: "agent_message", AgentName: "coder", Timestamp: timestamp}}, nil
+				return []store.EventSummary{{ID: "sum-1", SessionID: "sess-1", Type: "agent_message", AgentName: "coder", Timestamp: timestamp}}, nil
 			case 2:
 				close(done)
-				return []observe.Event{{ID: "sum-2", SessionID: "sess-1", Type: "done", AgentName: "coder", Timestamp: timestamp.Add(time.Second)}}, nil
+				return []store.EventSummary{{ID: "sum-2", SessionID: "sess-1", Type: "done", AgentName: "coder", Timestamp: timestamp.Add(time.Second)}}, nil
 			default:
 				return nil, nil
 			}
@@ -141,17 +141,14 @@ func TestStreamObserveEventsPollsForNewEvents(t *testing.T) {
 }
 
 func TestHelperBuildersCoverRemainingBranches(t *testing.T) {
-	if got := cloneStringMap(map[string]string{"A": "1"}); got["A"] != "1" {
-		t.Fatalf("cloneStringMap() = %#v", got)
-	}
-	if acpCapsPayloadFromInfo(session.ACPCaps{SupportsLoadSession: true}) == nil {
+	if acpCapsPayloadFromInfo(acp.ACPCaps{SupportsLoadSession: true}) == nil {
 		t.Fatal("expected non-nil caps payload")
 	}
 	usage := int64(10)
-	if tokenUsagePayloadFromUsage(&session.TokenUsage{InputTokens: &usage}) == nil {
+	if tokenUsagePayloadFromUsage(&acp.TokenUsage{InputTokens: &usage}) == nil {
 		t.Fatal("expected non-nil token usage payload")
 	}
-	if !observeEventAfterCursor(observe.Event{ID: "b", Timestamp: time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)}, observeCursor{Timestamp: time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC), ID: "a"}) {
+	if !observeEventAfterCursor(store.EventSummary{ID: "b", Timestamp: time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)}, observeCursor{Timestamp: time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC), ID: "a"}) {
 		t.Fatal("expected event to sort after cursor")
 	}
 

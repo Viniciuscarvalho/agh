@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/pedronauck/agh/internal/acp"
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	"github.com/pedronauck/agh/internal/observe"
 	"github.com/pedronauck/agh/internal/session"
@@ -33,8 +34,8 @@ type stubSessionManager struct {
 	historyFn func(context.Context, string, store.EventQuery) ([]store.TurnHistory, error)
 	stopFn    func(context.Context, string) error
 	resumeFn  func(context.Context, string) (*session.Session, error)
-	promptFn  func(context.Context, string, string) (<-chan session.AgentEvent, error)
-	approveFn func(context.Context, string, session.ApproveRequest) error
+	promptFn  func(context.Context, string, string) (<-chan acp.AgentEvent, error)
+	approveFn func(context.Context, string, acp.ApproveRequest) error
 }
 
 func (s stubSessionManager) Create(ctx context.Context, opts session.CreateOpts) (*session.Session, error) {
@@ -97,16 +98,16 @@ func (s stubSessionManager) Resume(ctx context.Context, id string) (*session.Ses
 	return nil, nil
 }
 
-func (s stubSessionManager) Prompt(ctx context.Context, id string, msg string) (<-chan session.AgentEvent, error) {
+func (s stubSessionManager) Prompt(ctx context.Context, id string, msg string) (<-chan acp.AgentEvent, error) {
 	if s.promptFn != nil {
 		return s.promptFn(ctx, id, msg)
 	}
-	ch := make(chan session.AgentEvent)
+	ch := make(chan acp.AgentEvent)
 	close(ch)
 	return ch, nil
 }
 
-func (s stubSessionManager) ApprovePermission(ctx context.Context, id string, req session.ApproveRequest) error {
+func (s stubSessionManager) ApprovePermission(ctx context.Context, id string, req acp.ApproveRequest) error {
 	if s.approveFn != nil {
 		return s.approveFn(ctx, id, req)
 	}
@@ -114,11 +115,11 @@ func (s stubSessionManager) ApprovePermission(ctx context.Context, id string, re
 }
 
 type stubObserver struct {
-	queryEventsFn func(context.Context, observe.EventQuery) ([]observe.Event, error)
+	queryEventsFn func(context.Context, store.EventSummaryQuery) ([]store.EventSummary, error)
 	healthFn      func(context.Context) (observe.Health, error)
 }
 
-func (s stubObserver) QueryEvents(ctx context.Context, query observe.EventQuery) ([]observe.Event, error) {
+func (s stubObserver) QueryEvents(ctx context.Context, query store.EventSummaryQuery) ([]store.EventSummary, error) {
 	if s.queryEventsFn != nil {
 		return s.queryEventsFn(ctx, query)
 	}

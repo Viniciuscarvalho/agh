@@ -135,6 +135,35 @@ export async function fetchSessionEvents(
   return parsed.events;
 }
 
+// --- Approve Permission ---
+
+export type PermissionDecision = "allow-once" | "allow-always" | "reject-once" | "reject-always";
+
+export interface ApproveSessionParams {
+  request_id: string;
+  turn_id: string;
+  decision: PermissionDecision;
+}
+
+export async function approveSession(
+  id: string,
+  params: ApproveSessionParams,
+  signal?: AbortSignal
+): Promise<void> {
+  const res = await fetch(`/api/sessions/${encodeURIComponent(id)}/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+    signal,
+  });
+  if (!res.ok) {
+    if (res.status === 404) {
+      throw new Error(`Session not found: ${id}`);
+    }
+    throw new Error(`Failed to approve permission: ${res.status}`);
+  }
+}
+
 // --- Session History ---
 
 export async function fetchSessionHistory(

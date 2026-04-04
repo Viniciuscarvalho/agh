@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pedronauck/agh/internal/acp"
 	"github.com/pedronauck/agh/internal/store"
 )
 
@@ -39,7 +40,7 @@ type SessionInfo struct {
 	Workspace    string
 	State        SessionState
 	ACPSessionID string
-	ACPCaps      ACPCaps
+	ACPCaps      acp.ACPCaps
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -54,7 +55,7 @@ type Session struct {
 	Workspace    string
 	State        SessionState
 	ACPSessionID string
-	ACPCaps      ACPCaps
+	ACPCaps      acp.ACPCaps
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 
@@ -131,7 +132,7 @@ func (s *Session) processHandle() *AgentProcess {
 }
 
 // ApprovePermission resolves one pending permission request for an active session.
-func (s *Session) ApprovePermission(ctx context.Context, req ApproveRequest) error {
+func (s *Session) ApprovePermission(ctx context.Context, req acp.ApproveRequest) error {
 	if s == nil {
 		return errors.New("session: session is required")
 	}
@@ -276,8 +277,8 @@ func canTransition(current SessionState, next SessionState) bool {
 	}
 }
 
-func cloneCaps(caps ACPCaps) ACPCaps {
-	return ACPCaps{
+func cloneCaps(caps acp.ACPCaps) acp.ACPCaps {
+	return acp.ACPCaps{
 		SupportsLoadSession: caps.SupportsLoadSession,
 		SupportedModes:      append([]string(nil), caps.SupportedModes...),
 		SupportedModels:     append([]string(nil), caps.SupportedModels...),

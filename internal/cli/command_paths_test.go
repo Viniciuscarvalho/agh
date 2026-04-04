@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"testing"
 
+	aghconfig "github.com/pedronauck/agh/internal/config"
 	aghdaemon "github.com/pedronauck/agh/internal/daemon"
 )
 
@@ -168,5 +169,18 @@ func TestWriteCommandOutputErrors(t *testing.T) {
 
 	if _, _, err := executeRootCommand(t, newTestDeps(t, stubClient{}), "version", "-o", "bogus"); err == nil || !strings.Contains(err.Error(), "invalid output format") {
 		t.Fatalf("invalid output error = %v, want invalid output format", err)
+	}
+}
+
+func TestDaemonStartRejectsNilDetachedProcess(t *testing.T) {
+	t.Parallel()
+
+	deps := newTestDeps(t, stubClient{})
+	deps.spawnDetached = func(aghconfig.HomePaths) (daemonProcess, error) {
+		return nil, nil
+	}
+
+	if _, _, err := executeRootCommand(t, deps, "daemon", "start", "-o", "json"); err == nil || !strings.Contains(err.Error(), "detached daemon process is required") {
+		t.Fatalf("daemon start nil detached process error = %v, want detached daemon process is required", err)
 	}
 }

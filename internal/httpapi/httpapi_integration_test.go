@@ -6,7 +6,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pedronauck/agh/internal/acp"
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	"github.com/pedronauck/agh/internal/observe"
 	"github.com/pedronauck/agh/internal/session"
@@ -351,7 +351,7 @@ func (f *integrationNotifierFanout) OnSessionStopped(ctx context.Context, sess *
 	}
 }
 
-func (f *integrationNotifierFanout) OnAgentEvent(ctx context.Context, sessionID string, event session.AgentEvent) {
+func (f *integrationNotifierFanout) OnAgentEvent(ctx context.Context, sessionID string, event acp.AgentEvent) {
 	for _, notifier := range f.notifiers {
 		notifier.OnAgentEvent(ctx, sessionID, event)
 	}
@@ -363,7 +363,7 @@ type integrationDriver struct {
 	nextSess       int
 	permissionWait time.Duration
 	states         map[*session.AgentProcess]chan struct{}
-	approvals      map[*session.AgentProcess]chan session.ApproveRequest
+	approvals      map[*session.AgentProcess]chan acp.ApproveRequest
 }
 
 func newIntegrationDriver(permissionWait time.Duration) *integrationDriver {
@@ -375,11 +375,11 @@ func newIntegrationDriver(permissionWait time.Duration) *integrationDriver {
 		nextSess:       1,
 		permissionWait: permissionWait,
 		states:         make(map[*session.AgentProcess]chan struct{}),
-		approvals:      make(map[*session.AgentProcess]chan session.ApproveRequest),
+		approvals:      make(map[*session.AgentProcess]chan acp.ApproveRequest),
 	}
 }
 
-func (d *integrationDriver) Start(_ context.Context, opts session.StartOpts) (*session.AgentProcess, error) {
+func (d *integrationDriver) Start(_ context.Context, opts acp.StartOpts) (*session.AgentProcess, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -398,7 +398,7 @@ func (d *integrationDriver) Start(_ context.Context, opts session.StartOpts) (*s
 		Command:   opts.Command,
 		Cwd:       opts.Cwd,
 		SessionID: sessionID,
-		Caps: session.ACPCaps{
+		Caps: acp.ACPCaps{
 			SupportsLoadSession: true,
 			SupportedModels:     []string{"fake-model"},
 		},
@@ -408,11 +408,7 @@ func (d *integrationDriver) Start(_ context.Context, opts session.StartOpts) (*s
 			<-done
 			return nil
 		},
-		ApprovePermission: func(ctx context.Context, req session.ApproveRequest) error {
-			if ctx == nil {
-				return errors.New("approval context is required")
-			}
-
+		ApprovePermission: func(ctx context.Context, req acp.ApproveRequest) error {
 			d.mu.Lock()
 			approvalCh := d.approvals[proc]
 			d.mu.Unlock()
@@ -432,11 +428,11 @@ func (d *integrationDriver) Start(_ context.Context, opts session.StartOpts) (*s
 	return proc, nil
 }
 
-func (d *integrationDriver) Prompt(_ context.Context, proc *session.AgentProcess, req session.PromptRequest) (<-chan session.AgentEvent, error) {
+func (d *integrationDriver) Prompt(_ context.Context, proc *session.AgentProcess, req acp.PromptRequest) (<-chan acp.AgentEvent, error) {
 	if strings.Contains(req.Message, "request permission") {
-		events := make(chan session.AgentEvent, 6)
+		events := make(chan acp.AgentEvent, 6)
 		requestID := req.TurnID + ":tool-1"
-		approvalCh := make(chan session.ApproveRequest, 1)
+		approvalCh := make(chan acp.ApproveRequest, 1)
 
 		d.mu.Lock()
 		d.approvals[proc] = approvalCh
@@ -452,7 +448,7 @@ func (d *integrationDriver) Prompt(_ context.Context, proc *session.AgentProcess
 
 			raw := mustIntegrationJSON(tPermissionRaw(requestID))
 			ts := time.Now().UTC()
-			events <- session.AgentEvent{
+			events <- acp.AgentEvent{
 				Type:       "permission",
 				SessionID:  proc.SessionID,
 				TurnID:     req.TurnID,
@@ -473,7 +469,7 @@ func (d *integrationDriver) Prompt(_ context.Context, proc *session.AgentProcess
 			}
 
 			ts = time.Now().UTC()
-			events <- session.AgentEvent{
+			events <- acp.AgentEvent{
 				Type:       "permission",
 				SessionID:  proc.SessionID,
 				TurnID:     req.TurnID,
@@ -486,14 +482,14 @@ func (d *integrationDriver) Prompt(_ context.Context, proc *session.AgentProcess
 				Decision:   finalDecision,
 				Raw:        mustIntegrationJSON(tPermissionRawWithDecision(requestID, finalDecision)),
 			}
-			events <- session.AgentEvent{
+			events <- acp.AgentEvent{
 				Type:      "agent_message",
 				SessionID: proc.SessionID,
 				TurnID:    req.TurnID,
 				Timestamp: ts,
 				Text:      finalDecision,
 			}
-			events <- session.AgentEvent{
+			events <- acp.AgentEvent{
 				Type:       "done",
 				SessionID:  proc.SessionID,
 				TurnID:     req.TurnID,
@@ -504,15 +500,15 @@ func (d *integrationDriver) Prompt(_ context.Context, proc *session.AgentProcess
 		return events, nil
 	}
 
-	ch := make(chan session.AgentEvent, 4)
-	ch <- session.AgentEvent{
+	ch := make(chan acp.AgentEvent, 4)
+	ch <- acp.AgentEvent{
 		Type:      "agent_message",
 		SessionID: proc.SessionID,
 		TurnID:    req.TurnID,
 		Timestamp: time.Now().UTC(),
 		Text:      req.Message,
 	}
-	ch <- session.AgentEvent{
+	ch <- acp.AgentEvent{
 		Type:       "tool_call",
 		SessionID:  proc.SessionID,
 		TurnID:     req.TurnID,
@@ -520,14 +516,14 @@ func (d *integrationDriver) Prompt(_ context.Context, proc *session.AgentProcess
 		Title:      "read_file",
 		ToolCallID: "call-1",
 	}
-	ch <- session.AgentEvent{
+	ch <- acp.AgentEvent{
 		Type:       "tool_result",
 		SessionID:  proc.SessionID,
 		TurnID:     req.TurnID,
 		Timestamp:  time.Now().UTC(),
 		ToolCallID: "call-1",
 	}
-	ch <- session.AgentEvent{
+	ch <- acp.AgentEvent{
 		Type:       "done",
 		SessionID:  proc.SessionID,
 		TurnID:     req.TurnID,

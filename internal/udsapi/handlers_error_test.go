@@ -11,6 +11,7 @@ import (
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	"github.com/pedronauck/agh/internal/observe"
 	"github.com/pedronauck/agh/internal/session"
+	"github.com/pedronauck/agh/internal/store"
 )
 
 func TestCreateSessionHandlerRejectsBadJSONAndNotFound(t *testing.T) {
@@ -104,7 +105,7 @@ func TestSessionHandlersRejectBadQueryAndHeaderValues(t *testing.T) {
 func TestGetAgentAndObserveHandlersReturnErrors(t *testing.T) {
 	homePaths := newTestHomePaths(t)
 	handlers := newTestHandlers(t, stubSessionManager{}, stubObserver{
-		queryEventsFn: func(context.Context, observe.EventQuery) ([]observe.Event, error) {
+		queryEventsFn: func(context.Context, store.EventSummaryQuery) ([]store.EventSummary, error) {
 			return nil, errors.New("boom")
 		},
 	}, homePaths)
@@ -140,7 +141,7 @@ func TestListAgentsHandlesMissingDirectory(t *testing.T) {
 func TestObserveStreamAndHealthAndDaemonStatusErrorPaths(t *testing.T) {
 	homePaths := newTestHomePaths(t)
 	observer := stubObserver{
-		queryEventsFn: func(context.Context, observe.EventQuery) ([]observe.Event, error) {
+		queryEventsFn: func(context.Context, store.EventSummaryQuery) ([]store.EventSummary, error) {
 			return nil, errors.New("query failed")
 		},
 		healthFn: func(context.Context) (observe.Health, error) {

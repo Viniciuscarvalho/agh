@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pedronauck/agh/internal/observe"
 	"github.com/pedronauck/agh/internal/session"
+	"github.com/pedronauck/agh/internal/store"
 )
 
 const timeRFC3339Nano = time.RFC3339Nano
@@ -202,17 +202,17 @@ func (h *Handlers) streamObserveEvents(c *gin.Context) {
 	}
 }
 
-func parseObserveEventQuery(c *gin.Context) (observe.EventQuery, error) {
+func parseObserveEventQuery(c *gin.Context) (store.EventSummaryQuery, error) {
 	since, err := parseOptionalTime(c.Query("since"))
 	if err != nil {
-		return observe.EventQuery{}, err
+		return store.EventSummaryQuery{}, err
 	}
 	limit, err := parseOptionalInt(c.Query("limit"))
 	if err != nil {
-		return observe.EventQuery{}, err
+		return store.EventSummaryQuery{}, err
 	}
 
-	return observe.EventQuery{
+	return store.EventSummaryQuery{
 		SessionID: strings.TrimSpace(c.Query("session_id")),
 		AgentName: strings.TrimSpace(c.Query("agent_name")),
 		Type:      strings.TrimSpace(c.Query("type")),
@@ -243,7 +243,7 @@ func parseObserveCursor(raw string) (observeCursor, error) {
 	}, nil
 }
 
-func emitObserveEvents(writer flushWriter, events []observe.Event, cursor observeCursor) observeCursor {
+func emitObserveEvents(writer flushWriter, events []store.EventSummary, cursor observeCursor) observeCursor {
 	next := cursor
 	for _, event := range events {
 		if !observeEventAfterCursor(event, next) {
@@ -264,7 +264,7 @@ func emitObserveEvents(writer flushWriter, events []observe.Event, cursor observ
 	return next
 }
 
-func observeEventAfterCursor(event observe.Event, cursor observeCursor) bool {
+func observeEventAfterCursor(event store.EventSummary, cursor observeCursor) bool {
 	if cursor.Timestamp.IsZero() && strings.TrimSpace(cursor.ID) == "" {
 		return true
 	}
@@ -280,7 +280,7 @@ func observeEventAfterCursor(event observe.Event, cursor observeCursor) bool {
 	}
 }
 
-func observeEventID(event observe.Event) string {
+func observeEventID(event store.EventSummary) string {
 	return event.Timestamp.UTC().Format(timeRFC3339Nano) + "|" + event.ID
 }
 

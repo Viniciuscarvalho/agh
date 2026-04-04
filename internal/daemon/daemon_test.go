@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
+	"github.com/pedronauck/agh/internal/acp"
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	"github.com/pedronauck/agh/internal/observe"
 	"github.com/pedronauck/agh/internal/session"
@@ -138,7 +139,7 @@ func TestBootRemovesStaleSocketAndCleansOrphans(t *testing.T) {
 	}
 
 	registry := &recordingRegistry{path: homePaths.DatabaseFile}
-	observer := &fakeObserver{result: observe.ReconcileResult{Indexed: []string{"sess-a"}}}
+	observer := &fakeObserver{result: store.ReconcileResult{Indexed: []string{"sess-a"}}}
 	sessionManager := &fakeSessionManager{}
 	var signals []string
 	d.openRegistry = func(context.Context, string) (Registry, error) {
@@ -246,10 +247,10 @@ func TestBootRejectsConcurrentCallWhileFirstBootIsInProgress(t *testing.T) {
 		return &fakeObserver{}, nil
 	}
 	d.httpFactory = func(context.Context, RuntimeDeps) (Server, error) {
-		return nopServer{}, nil
+		return &fakeServer{name: "http"}, nil
 	}
 	d.udsFactory = func(context.Context, RuntimeDeps) (Server, error) {
-		return nopServer{}, nil
+		return &fakeServer{name: "uds"}, nil
 	}
 
 	firstBoot := make(chan error, 1)
@@ -502,8 +503,8 @@ func TestOptionsConfigureDaemon(t *testing.T) {
 	homePaths := testHomePaths(t)
 	cfg := testConfig(t, homePaths)
 	signalCh := make(chan os.Signal, 1)
-	httpFactory := func(context.Context, RuntimeDeps) (Server, error) { return nopServer{}, nil }
-	udsFactory := func(context.Context, RuntimeDeps) (Server, error) { return nopServer{}, nil }
+	httpFactory := func(context.Context, RuntimeDeps) (Server, error) { return &fakeServer{name: "http"}, nil }
+	udsFactory := func(context.Context, RuntimeDeps) (Server, error) { return &fakeServer{name: "uds"}, nil }
 	now := time.Date(2026, 4, 3, 15, 0, 0, 0, time.UTC)
 
 	d, err := New(
@@ -737,7 +738,7 @@ func TestNotifierFanoutDispatchesEvents(t *testing.T) {
 
 	fanout.OnSessionCreated(testContext(t), &session.Session{ID: "sess-1"})
 	fanout.OnSessionStopped(testContext(t), &session.Session{ID: "sess-2"})
-	fanout.OnAgentEvent(testContext(t), "sess-3", session.AgentEvent{Type: "message"})
+	fanout.OnAgentEvent(testContext(t), "sess-3", acp.AgentEvent{Type: "message"})
 
 	if got, want := first.events, []string{"created", "stopped", "agent"}; !equalStrings(got, want) {
 		t.Fatalf("first notifier events = %#v, want %#v", got, want)
@@ -773,7 +774,7 @@ func TestResolveDaemonPortUsesReporterWhenAvailable(t *testing.T) {
 	if got, want := resolveDaemonPort(2123, portReportingServer{port: 9090}), 9090; got != want {
 		t.Fatalf("resolveDaemonPort() = %d, want %d", got, want)
 	}
-	if got, want := resolveDaemonPort(2123, nopServer{}), 2123; got != want {
+	if got, want := resolveDaemonPort(2123, &fakeServer{name: "default"}), 2123; got != want {
 		t.Fatalf("resolveDaemonPort(default) = %d, want %d", got, want)
 	}
 }
@@ -1060,23 +1061,23 @@ func (f *fakeSessionManager) Resume(context.Context, string) (*session.Session, 
 	return nil, nil
 }
 
-func (f *fakeSessionManager) Prompt(context.Context, string, string) (<-chan session.AgentEvent, error) {
-	ch := make(chan session.AgentEvent)
+func (f *fakeSessionManager) Prompt(context.Context, string, string) (<-chan acp.AgentEvent, error) {
+	ch := make(chan acp.AgentEvent)
 	close(ch)
 	return ch, nil
 }
 
-func (f *fakeSessionManager) ApprovePermission(context.Context, string, session.ApproveRequest) error {
+func (f *fakeSessionManager) ApprovePermission(context.Context, string, acp.ApproveRequest) error {
 	return nil
 }
 
 type fakeObserver struct {
 	reconciled bool
-	result     observe.ReconcileResult
+	result     store.ReconcileResult
 	err        error
 }
 
-func (f *fakeObserver) QueryEvents(context.Context, observe.EventQuery) ([]observe.Event, error) {
+func (f *fakeObserver) QueryEvents(context.Context, store.EventSummaryQuery) ([]store.EventSummary, error) {
 	return nil, nil
 }
 
@@ -1084,7 +1085,7 @@ func (f *fakeObserver) Health(context.Context) (observe.Health, error) {
 	return observe.Health{Status: "ok"}, nil
 }
 
-func (f *fakeObserver) Reconcile(context.Context) (observe.ReconcileResult, error) {
+func (f *fakeObserver) Reconcile(context.Context) (store.ReconcileResult, error) {
 	f.reconciled = true
 	return f.result, f.err
 }
@@ -1093,7 +1094,7 @@ func (f *fakeObserver) OnSessionCreated(context.Context, *session.Session) {}
 
 func (f *fakeObserver) OnSessionStopped(context.Context, *session.Session) {}
 
-func (f *fakeObserver) OnAgentEvent(context.Context, string, session.AgentEvent) {}
+func (f *fakeObserver) OnAgentEvent(context.Context, string, acp.AgentEvent) {}
 
 type fakeServer struct {
 	name       string
@@ -1179,7 +1180,7 @@ func (n *recordingNotifier) OnSessionStopped(context.Context, *session.Session) 
 	n.events = append(n.events, "stopped")
 }
 
-func (n *recordingNotifier) OnAgentEvent(context.Context, string, session.AgentEvent) {
+func (n *recordingNotifier) OnAgentEvent(context.Context, string, acp.AgentEvent) {
 	n.events = append(n.events, "agent")
 }
 

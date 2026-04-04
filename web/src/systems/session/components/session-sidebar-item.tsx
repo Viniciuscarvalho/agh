@@ -8,6 +8,7 @@ import type { SessionPayload, SessionState } from "../types";
 
 interface SessionSidebarItemProps {
   session: SessionPayload;
+  hasPendingPermission?: boolean;
 }
 
 function StateBadge({ state }: { state: SessionState }) {
@@ -43,7 +44,7 @@ function StateBadge({ state }: { state: SessionState }) {
   }
 }
 
-function SessionSidebarItem({ session }: SessionSidebarItemProps) {
+function SessionSidebarItem({ session, hasPendingPermission }: SessionSidebarItemProps) {
   const matchRoute = useMatchRoute();
   const isActive = !!matchRoute({ to: "/session/$id", params: { id: session.id } });
   const displayTitle = session.name || session.id.slice(0, 8);
@@ -57,7 +58,14 @@ function SessionSidebarItem({ session }: SessionSidebarItemProps) {
         className={cn("gap-1.5", isActive && "font-medium")}
       >
         <span className="truncate text-xs">{displayTitle}</span>
-        <span className="ml-auto shrink-0">
+        <span className="ml-auto flex shrink-0 items-center gap-1.5">
+          {hasPendingPermission && (
+            <span
+              className="size-2 animate-pulse rounded-full bg-amber-500"
+              title="Permission pending"
+              data-testid="permission-indicator"
+            />
+          )}
           <StateBadge state={session.state} />
         </span>
       </SidebarMenuSubButton>

@@ -434,9 +434,6 @@ func (p *AgentProcess) clearPendingPermission(requestID string) {
 
 // ResolvePermission delivers a user decision to a waiting permission request.
 func (p *AgentProcess) ResolvePermission(req ApproveRequest) error {
-	if p == nil {
-		return errors.New("acp: agent process is required")
-	}
 	if err := req.Validate(); err != nil {
 		return err
 	}
@@ -460,7 +457,7 @@ func (p *AgentProcess) ResolvePermission(req ApproveRequest) error {
 }
 
 func (p *AgentProcess) permissionTimeoutOrDefault() time.Duration {
-	if p == nil || p.permissionTimeout <= 0 {
+	if p.permissionTimeout <= 0 {
 		return 5 * time.Minute
 	}
 	return p.permissionTimeout

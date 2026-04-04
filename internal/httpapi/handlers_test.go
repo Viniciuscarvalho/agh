@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pedronauck/agh/internal/acp"
 	"github.com/pedronauck/agh/internal/observe"
 	"github.com/pedronauck/agh/internal/session"
 	"github.com/pedronauck/agh/internal/store"
@@ -140,28 +141,28 @@ func TestStopSessionHandlerReturnsStopped(t *testing.T) {
 func TestPromptSessionHandlerReturnsAISDKSSEStream(t *testing.T) {
 	homePaths := newTestHomePaths(t)
 	manager := stubSessionManager{
-		promptFn: func(context.Context, string, string) (<-chan session.AgentEvent, error) {
-			ch := make(chan session.AgentEvent, 4)
-			ch <- session.AgentEvent{
+		promptFn: func(context.Context, string, string) (<-chan acp.AgentEvent, error) {
+			ch := make(chan acp.AgentEvent, 4)
+			ch <- acp.AgentEvent{
 				Type:      "agent_message",
 				TurnID:    "turn-1",
 				Timestamp: time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC),
 				Text:      "hello",
 			}
-			ch <- session.AgentEvent{
+			ch <- acp.AgentEvent{
 				Type:       "tool_call",
 				TurnID:     "turn-1",
 				Timestamp:  time.Date(2026, 4, 3, 12, 0, 1, 0, time.UTC),
 				Title:      "read_file",
 				ToolCallID: "call-1",
 			}
-			ch <- session.AgentEvent{
+			ch <- acp.AgentEvent{
 				Type:       "tool_result",
 				TurnID:     "turn-1",
 				Timestamp:  time.Date(2026, 4, 3, 12, 0, 2, 0, time.UTC),
 				ToolCallID: "call-1",
 			}
-			ch <- session.AgentEvent{
+			ch <- acp.AgentEvent{
 				Type:       "done",
 				TurnID:     "turn-1",
 				Timestamp:  time.Date(2026, 4, 3, 12, 0, 3, 0, time.UTC),
@@ -333,8 +334,8 @@ func TestListAgentsAndHealthHandlers(t *testing.T) {
 func TestObserveEventsAndApproveHandlers(t *testing.T) {
 	homePaths := newTestHomePaths(t)
 	handlers := newTestHandlers(t, stubSessionManager{}, stubObserver{
-		queryEventsFn: func(context.Context, observe.EventQuery) ([]observe.Event, error) {
-			return []observe.Event{{
+		queryEventsFn: func(context.Context, store.EventSummaryQuery) ([]store.EventSummary, error) {
+			return []store.EventSummary{{
 				ID:        "sum-1",
 				SessionID: "sess-1",
 				Type:      "agent_message",
@@ -385,7 +386,7 @@ func TestApproveSessionHandlerValidatesAndRoutes(t *testing.T) {
 
 	t.Run("session not found", func(t *testing.T) {
 		engine := newTestRouter(t, newTestHandlers(t, stubSessionManager{
-			approveFn: func(context.Context, string, session.ApproveRequest) error {
+			approveFn: func(context.Context, string, acp.ApproveRequest) error {
 				return session.ErrSessionNotFound
 			},
 		}, stubObserver{}, homePaths))
@@ -397,7 +398,7 @@ func TestApproveSessionHandlerValidatesAndRoutes(t *testing.T) {
 
 	t.Run("pending permission missing", func(t *testing.T) {
 		engine := newTestRouter(t, newTestHandlers(t, stubSessionManager{
-			approveFn: func(context.Context, string, session.ApproveRequest) error {
+			approveFn: func(context.Context, string, acp.ApproveRequest) error {
 				return session.ErrPendingPermissionNotFound
 			},
 		}, stubObserver{}, homePaths))
@@ -409,7 +410,7 @@ func TestApproveSessionHandlerValidatesAndRoutes(t *testing.T) {
 
 	t.Run("session not active", func(t *testing.T) {
 		engine := newTestRouter(t, newTestHandlers(t, stubSessionManager{
-			approveFn: func(context.Context, string, session.ApproveRequest) error {
+			approveFn: func(context.Context, string, acp.ApproveRequest) error {
 				return session.ErrSessionNotActive
 			},
 		}, stubObserver{}, homePaths))
@@ -422,10 +423,10 @@ func TestApproveSessionHandlerValidatesAndRoutes(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
 		var (
 			gotID  string
-			gotReq session.ApproveRequest
+			gotReq acp.ApproveRequest
 		)
 		engine := newTestRouter(t, newTestHandlers(t, stubSessionManager{
-			approveFn: func(_ context.Context, id string, req session.ApproveRequest) error {
+			approveFn: func(_ context.Context, id string, req acp.ApproveRequest) error {
 				gotID = id
 				gotReq = req
 				return nil

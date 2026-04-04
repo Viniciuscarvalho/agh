@@ -25,13 +25,6 @@ type Health struct {
 
 // Health returns the current daemon-local observability health snapshot.
 func (o *Observer) Health(ctx context.Context) (Health, error) {
-	if o == nil || o.registry == nil {
-		return Health{}, errors.New("observe: observer is required")
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
 	activeSessions, activeAgents, err := o.activeCounts(ctx)
 	if err != nil {
 		return Health{}, err

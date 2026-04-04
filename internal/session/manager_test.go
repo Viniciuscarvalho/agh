@@ -185,7 +185,7 @@ func TestApprovePermissionRoutesToActiveSession(t *testing.T) {
 		gotReq sessionApproveCapture
 		called bool
 	)
-	h.driver.approveHook = func(proc *fakeProcess, req ApproveRequest) error {
+	h.driver.approveHook = func(proc *fakeProcess, req acp.ApproveRequest) error {
 		called = true
 		gotReq = sessionApproveCapture{
 			SessionID: proc.handle.SessionID,
@@ -196,7 +196,7 @@ func TestApprovePermissionRoutesToActiveSession(t *testing.T) {
 		return nil
 	}
 
-	err := h.manager.ApprovePermission(testContext(t), session.ID, ApproveRequest{
+	err := h.manager.ApprovePermission(testContext(t), session.ID, acp.ApproveRequest{
 		RequestID: "req-1",
 		TurnID:    "turn-1",
 		Decision:  "allow-once",
@@ -221,7 +221,7 @@ func TestApprovePermissionReturnsNotActiveForStoppedSession(t *testing.T) {
 		t.Fatalf("Stop() error = %v", err)
 	}
 
-	err := h.manager.ApprovePermission(testContext(t), session.ID, ApproveRequest{
+	err := h.manager.ApprovePermission(testContext(t), session.ID, acp.ApproveRequest{
 		RequestID: "req-1",
 		Decision:  "allow-once",
 	})
@@ -259,10 +259,10 @@ func TestApprovePermissionMapsPendingLookupErrors(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			h.driver.approveHook = func(*fakeProcess, ApproveRequest) error {
+			h.driver.approveHook = func(*fakeProcess, acp.ApproveRequest) error {
 				return tc.hookErr
 			}
-			err := h.manager.ApprovePermission(testContext(t), session.ID, ApproveRequest{
+			err := h.manager.ApprovePermission(testContext(t), session.ID, acp.ApproveRequest{
 				RequestID: "req-1",
 				Decision:  "allow-once",
 			})
@@ -363,10 +363,10 @@ func TestPromptSerializesSetupAgainstConcurrentStop(t *testing.T) {
 
 	promptEntered := make(chan struct{})
 	releasePrompt := make(chan struct{})
-	h.driver.promptHook = func(proc *fakeProcess, req PromptRequest) (<-chan AgentEvent, error) {
+	h.driver.promptHook = func(proc *fakeProcess, req acp.PromptRequest) (<-chan acp.AgentEvent, error) {
 		close(promptEntered)
 		<-releasePrompt
-		events := make(chan AgentEvent)
+		events := make(chan acp.AgentEvent)
 		close(events)
 		return events, nil
 	}
@@ -413,13 +413,13 @@ func TestNormalizeEventSetsTimestampOnlyWhenZero(t *testing.T) {
 	session := createSession(t, h)
 	now := h.manager.now()
 
-	normalized := h.manager.normalizeEvent(session, "turn-1", AgentEvent{})
+	normalized := h.manager.normalizeEvent(session, "turn-1", acp.AgentEvent{})
 	if normalized.Timestamp.IsZero() {
 		t.Fatal("normalizeEvent() left zero timestamp")
 	}
 
 	explicit := time.Date(2026, 4, 3, 14, 0, 0, 0, time.UTC)
-	preserved := h.manager.normalizeEvent(session, "turn-1", AgentEvent{Timestamp: explicit})
+	preserved := h.manager.normalizeEvent(session, "turn-1", acp.AgentEvent{Timestamp: explicit})
 	if !preserved.Timestamp.Equal(explicit) {
 		t.Fatalf("normalizeEvent() timestamp = %v, want %v", preserved.Timestamp, explicit)
 	}
@@ -573,11 +573,8 @@ func TestCreatePassesMergedMCPServers(t *testing.T) {
 func TestACPDriverAdapterErrorPaths(t *testing.T) {
 	t.Parallel()
 
-	adapter := NewACPDriverAdapter(nil)
-	if _, err := adapter.Start(testContext(t), StartOpts{}); err == nil {
-		t.Fatal("Start(nil driver) error = nil, want non-nil")
-	}
-	if _, err := adapter.Prompt(testContext(t), &AgentProcess{}, PromptRequest{}); err == nil {
+	adapter := NewACPDriverAdapter(acp.New())
+	if _, err := adapter.Prompt(testContext(t), &AgentProcess{}, acp.PromptRequest{}); err == nil {
 		t.Fatal("Prompt(unsupported process) error = nil, want non-nil")
 	}
 	if err := adapter.Stop(testContext(t), &AgentProcess{}); err == nil {
@@ -673,10 +670,10 @@ func readMeta(t *testing.T, path string) store.SessionMeta {
 	return meta
 }
 
-func collectEvents(t *testing.T, eventsCh <-chan AgentEvent) []AgentEvent {
+func collectEvents(t *testing.T, eventsCh <-chan acp.AgentEvent) []acp.AgentEvent {
 	t.Helper()
 
-	events := make([]AgentEvent, 0, 4)
+	events := make([]acp.AgentEvent, 0, 4)
 	for event := range eventsCh {
 		events = append(events, event)
 	}
@@ -748,12 +745,12 @@ type fakeNotifier struct {
 	mu      sync.Mutex
 	created []*SessionInfo
 	stopped []*SessionInfo
-	events  map[string][]AgentEvent
+	events  map[string][]acp.AgentEvent
 }
 
 func newFakeNotifier() *fakeNotifier {
 	return &fakeNotifier{
-		events: make(map[string][]AgentEvent),
+		events: make(map[string][]acp.AgentEvent),
 	}
 }
 
@@ -769,7 +766,7 @@ func (n *fakeNotifier) OnSessionStopped(_ context.Context, session *Session) {
 	n.stopped = append(n.stopped, session.Info())
 }
 
-func (n *fakeNotifier) OnAgentEvent(_ context.Context, sessionID string, event AgentEvent) {
+func (n *fakeNotifier) OnAgentEvent(_ context.Context, sessionID string, event acp.AgentEvent) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.events[sessionID] = append(n.events[sessionID], event)
@@ -795,16 +792,16 @@ func (n *fakeNotifier) eventCount(sessionID string) int {
 
 type fakeDriver struct {
 	mu               sync.Mutex
-	startCalls       []StartOpts
-	promptCalls      []PromptRequest
+	startCalls       []acp.StartOpts
+	promptCalls      []acp.PromptRequest
 	stopCalls        int
 	cancelCalls      int
 	processes        map[*AgentProcess]*fakeProcess
 	lastProc         *fakeProcess
-	promptHook       func(proc *fakeProcess, req PromptRequest) (<-chan AgentEvent, error)
-	approveHook      func(proc *fakeProcess, req ApproveRequest) error
+	promptHook       func(proc *fakeProcess, req acp.PromptRequest) (<-chan acp.AgentEvent, error)
+	approveHook      func(proc *fakeProcess, req acp.ApproveRequest) error
 	stopHook         func(proc *fakeProcess) error
-	startHook        func(opts StartOpts, sequence int) (*fakeProcess, error)
+	startHook        func(opts acp.StartOpts, sequence int) (*fakeProcess, error)
 	fallbackOnResume bool
 }
 
@@ -814,7 +811,7 @@ func newFakeDriver() *fakeDriver {
 	}
 }
 
-func (d *fakeDriver) Start(_ context.Context, opts StartOpts) (*AgentProcess, error) {
+func (d *fakeDriver) Start(_ context.Context, opts acp.StartOpts) (*AgentProcess, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -843,10 +840,7 @@ func (d *fakeDriver) Start(_ context.Context, opts StartOpts) (*AgentProcess, er
 		return nil, err
 	}
 
-	proc.handle.approvePermissionFn = func(ctx context.Context, req ApproveRequest) error {
-		if ctx == nil {
-			return errors.New("test: approval context is required")
-		}
+	proc.handle.approvePermissionFn = func(ctx context.Context, req acp.ApproveRequest) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -866,7 +860,7 @@ func (d *fakeDriver) Start(_ context.Context, opts StartOpts) (*AgentProcess, er
 	return proc.handle, nil
 }
 
-func (d *fakeDriver) Prompt(_ context.Context, proc *AgentProcess, req PromptRequest) (<-chan AgentEvent, error) {
+func (d *fakeDriver) Prompt(_ context.Context, proc *AgentProcess, req acp.PromptRequest) (<-chan acp.AgentEvent, error) {
 	d.mu.Lock()
 	fakeProc := d.processes[proc]
 	d.promptCalls = append(d.promptCalls, req)
@@ -881,24 +875,24 @@ func (d *fakeDriver) Prompt(_ context.Context, proc *AgentProcess, req PromptReq
 	}
 
 	totalTokens := int64(9)
-	events := make(chan AgentEvent, 2)
+	events := make(chan acp.AgentEvent, 2)
 	go func() {
 		defer close(events)
 		ts := time.Now().UTC()
-		events <- AgentEvent{
+		events <- acp.AgentEvent{
 			Type:      acp.EventTypeAgentMessage,
 			SessionID: fakeProc.handle.SessionID,
 			TurnID:    req.TurnID,
 			Timestamp: ts,
 			Text:      "reply",
 		}
-		events <- AgentEvent{
+		events <- acp.AgentEvent{
 			Type:       acp.EventTypeDone,
 			SessionID:  fakeProc.handle.SessionID,
 			TurnID:     req.TurnID,
 			Timestamp:  ts,
 			StopReason: "end_turn",
-			Usage: &TokenUsage{
+			Usage: &acp.TokenUsage{
 				TurnID:      req.TurnID,
 				TotalTokens: &totalTokens,
 				Timestamp:   ts,
@@ -964,7 +958,7 @@ func newFakeProcess(agentName string, command string, cwd string, sessionID stri
 		Command:   command,
 		Cwd:       cwd,
 		SessionID: sessionID,
-		Caps: ACPCaps{
+		Caps: acp.ACPCaps{
 			SupportsLoadSession: true,
 			SupportedModes:      []string{"chat"},
 			SupportedModels:     []string{"gpt-4o"},

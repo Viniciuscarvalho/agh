@@ -10,24 +10,6 @@ import (
 	"github.com/pedronauck/agh/internal/store"
 )
 
-// StartOpts defines how a runtime agent process should be launched.
-type StartOpts = acp.StartOpts
-
-// PromptRequest describes one prompt turn sent to an active session.
-type PromptRequest = acp.PromptRequest
-
-// ApproveRequest resolves one pending permission request for an active session.
-type ApproveRequest = acp.ApproveRequest
-
-// AgentEvent is the streamed runtime event emitted by an active prompt.
-type AgentEvent = acp.AgentEvent
-
-// ACPCaps captures the capabilities reported by the ACP agent runtime.
-type ACPCaps = acp.ACPCaps
-
-// TokenUsage captures per-turn usage reported by the agent runtime.
-type TokenUsage = acp.TokenUsage
-
 // AgentProcess is the session-owned handle for a running agent process.
 type AgentProcess struct {
 	PID       int
@@ -36,13 +18,13 @@ type AgentProcess struct {
 	Args      []string
 	Cwd       string
 	SessionID string
-	Caps      ACPCaps
+	Caps      acp.ACPCaps
 	StartedAt time.Time
 
 	done                <-chan struct{}
 	waitFn              func() error
 	stderrFn            func() string
-	approvePermissionFn func(context.Context, ApproveRequest) error
+	approvePermissionFn func(context.Context, acp.ApproveRequest) error
 	native              any
 }
 
@@ -54,12 +36,12 @@ type AgentProcessOptions struct {
 	Args              []string
 	Cwd               string
 	SessionID         string
-	Caps              ACPCaps
+	Caps              acp.ACPCaps
 	StartedAt         time.Time
 	Done              <-chan struct{}
 	Wait              func() error
 	Stderr            func() string
-	ApprovePermission func(context.Context, ApproveRequest) error
+	ApprovePermission func(context.Context, acp.ApproveRequest) error
 }
 
 // NewAgentProcess constructs an AgentProcess for custom AgentDriver implementations.
@@ -102,42 +84,22 @@ func NewAgentProcess(opts AgentProcessOptions) *AgentProcess {
 
 // Done reports when the underlying runtime process exits.
 func (p *AgentProcess) Done() <-chan struct{} {
-	if p == nil || p.done == nil {
-		ch := make(chan struct{})
-		close(ch)
-		return ch
-	}
 	return p.done
 }
 
 // Wait blocks until the runtime process exits and returns its terminal error state.
 func (p *AgentProcess) Wait() error {
-	if p == nil {
-		return errors.New("session: agent process is required")
-	}
 	<-p.Done()
-	if p.waitFn == nil {
-		return nil
-	}
 	return p.waitFn()
 }
 
 // Stderr returns any captured stderr output for the runtime process.
 func (p *AgentProcess) Stderr() string {
-	if p == nil || p.stderrFn == nil {
-		return ""
-	}
 	return p.stderrFn()
 }
 
 // ApprovePermission resolves one pending interactive permission request.
-func (p *AgentProcess) ApprovePermission(ctx context.Context, req ApproveRequest) error {
-	if p == nil {
-		return errors.New("session: agent process is required")
-	}
-	if ctx == nil {
-		return errors.New("session: approval context is required")
-	}
+func (p *AgentProcess) ApprovePermission(ctx context.Context, req acp.ApproveRequest) error {
 	if p.approvePermissionFn == nil {
 		return errors.New("session: permission approval is not supported")
 	}
@@ -161,10 +123,7 @@ func wrapACPProcess(proc *acp.AgentProcess) *AgentProcess {
 		done:      proc.Done(),
 		waitFn:    proc.Wait,
 		stderrFn:  proc.Stderr,
-		approvePermissionFn: func(ctx context.Context, req ApproveRequest) error {
-			if ctx == nil {
-				return errors.New("session: approval context is required")
-			}
+		approvePermissionFn: func(ctx context.Context, req acp.ApproveRequest) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
@@ -176,8 +135,8 @@ func wrapACPProcess(proc *acp.AgentProcess) *AgentProcess {
 
 // AgentDriver defines the ACP functionality consumed by the session manager.
 type AgentDriver interface {
-	Start(ctx context.Context, opts StartOpts) (*AgentProcess, error)
-	Prompt(ctx context.Context, proc *AgentProcess, req PromptRequest) (<-chan AgentEvent, error)
+	Start(ctx context.Context, opts acp.StartOpts) (*AgentProcess, error)
+	Prompt(ctx context.Context, proc *AgentProcess, req acp.PromptRequest) (<-chan acp.AgentEvent, error)
 	Cancel(ctx context.Context, proc *AgentProcess) error
 	Stop(ctx context.Context, proc *AgentProcess) error
 }
@@ -195,16 +154,8 @@ type EventRecorder interface {
 type Notifier interface {
 	OnSessionCreated(ctx context.Context, session *Session)
 	OnSessionStopped(ctx context.Context, session *Session)
-	OnAgentEvent(ctx context.Context, sessionID string, event AgentEvent)
+	OnAgentEvent(ctx context.Context, sessionID string, event acp.AgentEvent)
 }
-
-type nopNotifier struct{}
-
-func (nopNotifier) OnSessionCreated(context.Context, *Session) {}
-
-func (nopNotifier) OnSessionStopped(context.Context, *Session) {}
-
-func (nopNotifier) OnAgentEvent(context.Context, string, AgentEvent) {}
 
 // ACPDriverAdapter adapts the concrete ACP driver to the session-local interface.
 type ACPDriverAdapter struct {
@@ -219,11 +170,7 @@ func NewACPDriverAdapter(driver *acp.Driver) *ACPDriverAdapter {
 }
 
 // Start launches a new ACP-backed runtime process.
-func (a *ACPDriverAdapter) Start(ctx context.Context, opts StartOpts) (*AgentProcess, error) {
-	if a == nil || a.driver == nil {
-		return nil, errors.New("session: acp driver is required")
-	}
-
+func (a *ACPDriverAdapter) Start(ctx context.Context, opts acp.StartOpts) (*AgentProcess, error) {
 	proc, err := a.driver.Start(ctx, opts)
 	if err != nil {
 		return nil, err
@@ -232,11 +179,7 @@ func (a *ACPDriverAdapter) Start(ctx context.Context, opts StartOpts) (*AgentPro
 }
 
 // Prompt streams prompt events from the wrapped ACP runtime.
-func (a *ACPDriverAdapter) Prompt(ctx context.Context, proc *AgentProcess, req PromptRequest) (<-chan AgentEvent, error) {
-	if a == nil || a.driver == nil {
-		return nil, errors.New("session: acp driver is required")
-	}
-
+func (a *ACPDriverAdapter) Prompt(ctx context.Context, proc *AgentProcess, req acp.PromptRequest) (<-chan acp.AgentEvent, error) {
 	native, err := a.nativeProcess(proc)
 	if err != nil {
 		return nil, err
@@ -246,10 +189,6 @@ func (a *ACPDriverAdapter) Prompt(ctx context.Context, proc *AgentProcess, req P
 
 // Cancel cooperatively cancels the active ACP prompt.
 func (a *ACPDriverAdapter) Cancel(ctx context.Context, proc *AgentProcess) error {
-	if a == nil || a.driver == nil {
-		return errors.New("session: acp driver is required")
-	}
-
 	native, err := a.nativeProcess(proc)
 	if err != nil {
 		return err
@@ -259,10 +198,6 @@ func (a *ACPDriverAdapter) Cancel(ctx context.Context, proc *AgentProcess) error
 
 // Stop stops the wrapped ACP runtime process.
 func (a *ACPDriverAdapter) Stop(ctx context.Context, proc *AgentProcess) error {
-	if a == nil || a.driver == nil {
-		return errors.New("session: acp driver is required")
-	}
-
 	native, err := a.nativeProcess(proc)
 	if err != nil {
 		return err
