@@ -31,7 +31,7 @@ Activate skills **before** writing code. Match task domain → activate all requ
 | Config / Logging        | `golang-pro`                              |                         |
 | Bug fix                 | `systematic-debugging` + `no-workarounds` | `testing-anti-patterns` |
 | Writing Go tests        | `testing-anti-patterns` + `golang-pro`    |                         |
-| Task completion         | `verification-before-completion`          |                         |
+| Task completion         | `cy-final-verify`                         |                         |
 | Architecture audit      | `architectural-analysis`                  | `adversarial-review`    |
 | Creative / new features | `brainstorming`                           |                         |
 | Git rebase/conflicts    | `git-rebase`                              |                         |

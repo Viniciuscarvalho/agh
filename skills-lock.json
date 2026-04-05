@@ -36,6 +36,11 @@
             "sourceType": "github",
             "computedHash": "33a8b5195481719e954b71762de56faaabc68c479602673894e0d0e47336756b"
         },
+        "skill-best-practices": {
+            "source": "pedronauck/skills",
+            "sourceType": "github",
+            "computedHash": "d53ae5bec0895e4fe802acc4a92441cfeb1cfda5ab18a10f6e96f153cb682c61"
+        },
         "storybook-stories": {
             "source": "pedronauck/skills",
             "sourceType": "github",

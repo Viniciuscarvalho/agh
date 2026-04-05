@@ -15,3 +15,4 @@ coverage.html
 .old_project/
 node_modules/
 coverage/
+.claude/skills
