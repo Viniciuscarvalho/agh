@@ -15,7 +15,9 @@ func TestManagerTranscriptAssemblesLegacyACPEvents(t *testing.T) {
 	h := newHarness(t)
 	session := createSession(t, h)
 	t.Cleanup(func() {
-		_ = h.manager.Stop(testContext(t), session.ID)
+		if err := h.manager.Stop(testContext(t), session.ID); err != nil {
+			t.Logf("h.manager.Stop failed for session %s: %v", session.ID, err)
+		}
 	})
 
 	recorder := session.recorderHandle()
@@ -145,7 +147,9 @@ func TestManagerTranscriptReadsCanonicalEnvelope(t *testing.T) {
 	h := newHarness(t)
 	session := createSession(t, h)
 	t.Cleanup(func() {
-		_ = h.manager.Stop(testContext(t), session.ID)
+		if err := h.manager.Stop(testContext(t), session.ID); err != nil {
+			t.Logf("h.manager.Stop failed for session %s: %v", session.ID, err)
+		}
 	})
 
 	events := []acp.AgentEvent{
@@ -211,5 +215,47 @@ func TestManagerTranscriptReadsCanonicalEnvelope(t *testing.T) {
 	}
 	if messages[3].ToolResult == nil || messages[3].ToolResult.Stdout != "ok" {
 		t.Fatalf("messages[3].ToolResult = %#v, want stdout ok", messages[3].ToolResult)
+	}
+}
+
+func TestParseLooseTranscriptEventBuildsToolResultFromLoosePayload(t *testing.T) {
+	t.Parallel()
+
+	event := parseLooseTranscriptEvent(transcriptEvent{Type: acp.EventTypeToolResult}, map[string]any{
+		"type":         acp.EventTypeToolResult,
+		"tool_call_id": "call-loose",
+		"title":        "Bash",
+		"rawInput": map[string]any{
+			"command": "pwd",
+		},
+		"rawOutput": map[string]any{
+			"stdout": "workspace\n",
+		},
+	})
+
+	if got := event.ToolCallID; got != "call-loose" {
+		t.Fatalf("ToolCallID = %q, want %q", got, "call-loose")
+	}
+	if got := event.ToolName; got != "Bash" {
+		t.Fatalf("ToolName = %q, want %q", got, "Bash")
+	}
+	if got := string(event.ToolInput); got != `{"command":"pwd"}` {
+		t.Fatalf("ToolInput = %s, want JSON command payload", got)
+	}
+	if event.ToolResult == nil {
+		t.Fatal("ToolResult = nil, want populated result")
+	}
+	if got := event.ToolResult.Stdout; got != "workspace\n" {
+		t.Fatalf("ToolResult.Stdout = %q, want %q", got, "workspace\n")
+	}
+	if event.ToolError {
+		t.Fatal("ToolError = true, want false")
+	}
+
+	if got := string(firstNonEmptyRaw(nil, json.RawMessage(`{"ok":true}`))); got != `{"ok":true}` {
+		t.Fatalf("firstNonEmptyRaw() = %s, want non-empty raw payload", got)
+	}
+	if got := firstNonNil(nil, "", "value"); got != "" {
+		t.Fatalf("firstNonNil(nil, \"\", \"value\") = %#v, want empty string first", got)
 	}
 }

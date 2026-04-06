@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -23,7 +24,10 @@ import (
 	"github.com/pedronauck/agh/internal/observe"
 	"github.com/pedronauck/agh/internal/session"
 	"github.com/pedronauck/agh/internal/store"
+	workspacepkg "github.com/pedronauck/agh/internal/workspace"
 )
+
+var errStubWorkspaceServiceNotImplemented = errors.New("stub workspace service method not implemented")
 
 type stubSessionManager struct {
 	createFn     func(context.Context, session.CreateOpts) (*session.Session, error)
@@ -133,6 +137,65 @@ func (s stubObserver) Health(ctx context.Context) (observe.Health, error) {
 	return observe.Health{Status: "ok"}, nil
 }
 
+type stubWorkspaceService struct {
+	registerFn          func(context.Context, workspacepkg.RegisterOptions) (workspacepkg.Workspace, error)
+	unregisterFn        func(context.Context, string) error
+	updateFn            func(context.Context, string, workspacepkg.UpdateOptions) error
+	listFn              func(context.Context) ([]workspacepkg.Workspace, error)
+	getFn               func(context.Context, string) (workspacepkg.Workspace, error)
+	resolveFn           func(context.Context, string) (workspacepkg.ResolvedWorkspace, error)
+	resolveOrRegisterFn func(context.Context, string) (workspacepkg.ResolvedWorkspace, error)
+}
+
+func (s stubWorkspaceService) Register(ctx context.Context, opts workspacepkg.RegisterOptions) (workspacepkg.Workspace, error) {
+	if s.registerFn != nil {
+		return s.registerFn(ctx, opts)
+	}
+	return workspacepkg.Workspace{}, errStubWorkspaceServiceNotImplemented
+}
+
+func (s stubWorkspaceService) Unregister(ctx context.Context, id string) error {
+	if s.unregisterFn != nil {
+		return s.unregisterFn(ctx, id)
+	}
+	return workspacepkg.ErrWorkspaceNotFound
+}
+
+func (s stubWorkspaceService) Update(ctx context.Context, id string, opts workspacepkg.UpdateOptions) error {
+	if s.updateFn != nil {
+		return s.updateFn(ctx, id, opts)
+	}
+	return workspacepkg.ErrWorkspaceNotFound
+}
+
+func (s stubWorkspaceService) List(ctx context.Context) ([]workspacepkg.Workspace, error) {
+	if s.listFn != nil {
+		return s.listFn(ctx)
+	}
+	return nil, nil
+}
+
+func (s stubWorkspaceService) Get(ctx context.Context, ref string) (workspacepkg.Workspace, error) {
+	if s.getFn != nil {
+		return s.getFn(ctx, ref)
+	}
+	return workspacepkg.Workspace{}, workspacepkg.ErrWorkspaceNotFound
+}
+
+func (s stubWorkspaceService) Resolve(ctx context.Context, ref string) (workspacepkg.ResolvedWorkspace, error) {
+	if s.resolveFn != nil {
+		return s.resolveFn(ctx, ref)
+	}
+	return workspacepkg.ResolvedWorkspace{}, workspacepkg.ErrWorkspaceNotFound
+}
+
+func (s stubWorkspaceService) ResolveOrRegister(ctx context.Context, path string) (workspacepkg.ResolvedWorkspace, error) {
+	if s.resolveOrRegisterFn != nil {
+		return s.resolveOrRegisterFn(ctx, path)
+	}
+	return workspacepkg.ResolvedWorkspace{}, errStubWorkspaceServiceNotImplemented
+}
+
 type sseRecord struct {
 	ID    string
 	Event string
@@ -142,9 +205,16 @@ type sseRecord struct {
 func newTestHandlers(t *testing.T, manager SessionManager, observer Observer, homePaths aghconfig.HomePaths) *Handlers {
 	t.Helper()
 
+	return newTestHandlersWithWorkspace(t, manager, observer, stubWorkspaceService{}, homePaths)
+}
+
+func newTestHandlersWithWorkspace(t *testing.T, manager SessionManager, observer Observer, workspaces WorkspaceService, homePaths aghconfig.HomePaths) *Handlers {
+	t.Helper()
+
 	return newHandlers(handlerConfig{
 		sessions:     manager,
 		observer:     observer,
+		workspaces:   workspaces,
 		homePaths:    homePaths,
 		config:       aghconfig.DefaultWithHome(homePaths),
 		logger:       discardLogger(),
@@ -210,26 +280,28 @@ You are `+name+`.
 func newSessionInfo(id string) *session.SessionInfo {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	return &session.SessionInfo{
-		ID:        id,
-		Name:      "demo",
-		AgentName: "coder",
-		Workspace: "/workspace",
-		State:     session.StateActive,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:          id,
+		Name:        "demo",
+		AgentName:   "coder",
+		WorkspaceID: "ws-workspace",
+		Workspace:   "/workspace",
+		State:       session.StateActive,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 }
 
 func newSession(id string) *session.Session {
 	info := newSessionInfo(id)
 	return &session.Session{
-		ID:        info.ID,
-		Name:      info.Name,
-		AgentName: info.AgentName,
-		Workspace: info.Workspace,
-		State:     info.State,
-		CreatedAt: info.CreatedAt,
-		UpdatedAt: info.UpdatedAt,
+		ID:          info.ID,
+		Name:        info.Name,
+		AgentName:   info.AgentName,
+		WorkspaceID: info.WorkspaceID,
+		Workspace:   info.Workspace,
+		State:       info.State,
+		CreatedAt:   info.CreatedAt,
+		UpdatedAt:   info.UpdatedAt,
 	}
 }
 
@@ -252,6 +324,24 @@ func decodeJSONResponse(t *testing.T, recorder *httptest.ResponseRecorder, dest 
 	if err := json.Unmarshal(recorder.Body.Bytes(), dest); err != nil {
 		t.Fatalf("json.Unmarshal(response) error = %v; body=%s", err, recorder.Body.String())
 	}
+}
+
+func decodeSSEData(t *testing.T, record sseRecord, dest any) {
+	t.Helper()
+
+	if err := json.Unmarshal(record.Data, dest); err != nil {
+		t.Fatalf("json.Unmarshal(sse data) error = %v; data=%s", err, string(record.Data))
+	}
+}
+
+func mustJSONBody(t *testing.T, value any) []byte {
+	t.Helper()
+
+	body, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	return body
 }
 
 func parseSSE(t *testing.T, body string) []sseRecord {
@@ -286,6 +376,19 @@ func parseSSE(t *testing.T, body string) []sseRecord {
 	}
 
 	return records
+}
+
+func TestStubWorkspaceServiceDefaultsReportUnconfiguredMethods(t *testing.T) {
+	t.Parallel()
+
+	service := stubWorkspaceService{}
+
+	if _, err := service.Register(context.Background(), workspacepkg.RegisterOptions{}); !errors.Is(err, errStubWorkspaceServiceNotImplemented) {
+		t.Fatalf("Register() error = %v, want %v", err, errStubWorkspaceServiceNotImplemented)
+	}
+	if _, err := service.ResolveOrRegister(context.Background(), "/workspace"); !errors.Is(err, errStubWorkspaceServiceNotImplemented) {
+		t.Fatalf("ResolveOrRegister() error = %v, want %v", err, errStubWorkspaceServiceNotImplemented)
+	}
 }
 
 func newUnixClient(t *testing.T, socketPath string) *http.Client {

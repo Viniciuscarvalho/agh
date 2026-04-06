@@ -15,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/pedronauck/agh/internal/acp"
+	"github.com/pedronauck/agh/internal/apisupport"
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	"github.com/pedronauck/agh/internal/memory"
 	"github.com/pedronauck/agh/internal/session"
@@ -24,6 +25,7 @@ import (
 type handlerConfig struct {
 	sessions     SessionManager
 	observer     Observer
+	workspaces   WorkspaceService
 	memoryStore  *memory.Store
 	dreamTrigger DreamTrigger
 	homePaths    aghconfig.HomePaths
@@ -39,6 +41,7 @@ type handlerConfig struct {
 type Handlers struct {
 	sessions     SessionManager
 	observer     Observer
+	workspaces   WorkspaceService
 	memoryStore  *memory.Store
 	dreamTrigger DreamTrigger
 	homePaths    aghconfig.HomePaths
@@ -52,9 +55,10 @@ type Handlers struct {
 }
 
 type createSessionRequest struct {
-	AgentName string `json:"agent_name"`
-	Name      string `json:"name"`
-	Workspace string `json:"workspace"`
+	AgentName     string `json:"agent_name"`
+	Name          string `json:"name"`
+	Workspace     string `json:"workspace"`
+	WorkspacePath string `json:"workspace_path"`
 }
 
 type promptRequest struct {
@@ -62,15 +66,16 @@ type promptRequest struct {
 }
 
 type sessionPayload struct {
-	ID           string          `json:"id"`
-	Name         string          `json:"name,omitempty"`
-	AgentName    string          `json:"agent_name"`
-	Workspace    string          `json:"workspace"`
-	State        string          `json:"state"`
-	ACPSessionID string          `json:"acp_session_id,omitempty"`
-	ACPCaps      *acpCapsPayload `json:"acp_caps,omitempty"`
-	CreatedAt    time.Time       `json:"created_at"`
-	UpdatedAt    time.Time       `json:"updated_at"`
+	ID            string          `json:"id"`
+	Name          string          `json:"name,omitempty"`
+	AgentName     string          `json:"agent_name"`
+	WorkspaceID   string          `json:"workspace_id,omitempty"`
+	WorkspacePath string          `json:"workspace_path,omitempty"`
+	State         string          `json:"state"`
+	ACPSessionID  string          `json:"acp_session_id,omitempty"`
+	ACPCaps       *acpCapsPayload `json:"acp_caps,omitempty"`
+	CreatedAt     time.Time       `json:"created_at"`
+	UpdatedAt     time.Time       `json:"updated_at"`
 }
 
 type acpCapsPayload struct {
@@ -80,14 +85,16 @@ type acpCapsPayload struct {
 }
 
 type sessionEventPayload struct {
-	ID        string          `json:"id"`
-	SessionID string          `json:"session_id"`
-	Sequence  int64           `json:"sequence"`
-	TurnID    string          `json:"turn_id"`
-	Type      string          `json:"type"`
-	AgentName string          `json:"agent_name"`
-	Content   json.RawMessage `json:"content"`
-	Timestamp time.Time       `json:"timestamp"`
+	ID            string          `json:"id"`
+	SessionID     string          `json:"session_id"`
+	Sequence      int64           `json:"sequence"`
+	TurnID        string          `json:"turn_id"`
+	Type          string          `json:"type"`
+	AgentName     string          `json:"agent_name"`
+	WorkspaceID   string          `json:"workspace_id,omitempty"`
+	WorkspacePath string          `json:"workspace_path,omitempty"`
+	Content       json.RawMessage `json:"content"`
+	Timestamp     time.Time       `json:"timestamp"`
 }
 
 type turnHistoryPayload struct {
@@ -211,6 +218,7 @@ func newHandlers(cfg handlerConfig) *Handlers {
 	return &Handlers{
 		sessions:     cfg.sessions,
 		observer:     cfg.observer,
+		workspaces:   cfg.workspaces,
 		memoryStore:  cfg.memoryStore,
 		dreamTrigger: cfg.dreamTrigger,
 		homePaths:    cfg.homePaths,
@@ -234,15 +242,17 @@ func (h *Handlers) listSessions(c *gin.Context) {
 		return
 	}
 
-	payload := make([]sessionPayload, 0, len(infos))
-	for _, info := range infos {
-		if info == nil {
-			continue
+	workspaceFilter := strings.TrimSpace(c.Query("workspace"))
+	if workspaceFilter != "" {
+		workspaceID, err := h.lookupWorkspaceID(c.Request.Context(), workspaceFilter)
+		if err != nil {
+			respondError(c, statusForWorkspaceError(err), err)
+			return
 		}
-		payload = append(payload, sessionPayloadFromInfo(info))
+		infos = filterSessionInfosByWorkspaceID(infos, workspaceID)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"sessions": payload})
+	c.JSON(http.StatusOK, gin.H{"sessions": sessionPayloadsFromInfos(infos)})
 }
 
 func (h *Handlers) createSession(c *gin.Context) {
@@ -251,11 +261,16 @@ func (h *Handlers) createSession(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, fmt.Errorf("udsapi: decode create session request: %w", err))
 		return
 	}
+	if err := validateCreateSessionRequest(req); err != nil {
+		respondError(c, http.StatusBadRequest, err)
+		return
+	}
 
 	sess, err := h.sessions.Create(c.Request.Context(), session.CreateOpts{
-		AgentName: req.AgentName,
-		Name:      req.Name,
-		Workspace: req.Workspace,
+		AgentName:     req.AgentName,
+		Name:          req.Name,
+		Workspace:     strings.TrimSpace(req.Workspace),
+		WorkspacePath: strings.TrimSpace(req.WorkspacePath),
 	})
 	if err != nil {
 		respondError(c, statusForSessionError(err), err)
@@ -344,6 +359,12 @@ func (h *Handlers) sessionEvents(c *gin.Context) {
 		return
 	}
 
+	info, err := h.sessions.Status(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		respondError(c, statusForSessionError(err), err)
+		return
+	}
+
 	events, err := h.sessions.Events(c.Request.Context(), c.Param("id"), query)
 	if err != nil {
 		respondError(c, statusForSessionError(err), err)
@@ -352,7 +373,7 @@ func (h *Handlers) sessionEvents(c *gin.Context) {
 
 	payload := make([]sessionEventPayload, 0, len(events))
 	for _, event := range events {
-		payload = append(payload, sessionEventPayloadFromEvent(event))
+		payload = append(payload, sessionEventPayloadFromEvent(event, info))
 	}
 
 	c.JSON(http.StatusOK, gin.H{"events": payload})
@@ -362,6 +383,12 @@ func (h *Handlers) sessionHistory(c *gin.Context) {
 	query, err := parseSessionEventQuery(c)
 	if err != nil {
 		respondError(c, http.StatusBadRequest, err)
+		return
+	}
+
+	info, err := h.sessions.Status(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		respondError(c, statusForSessionError(err), err)
 		return
 	}
 
@@ -375,7 +402,7 @@ func (h *Handlers) sessionHistory(c *gin.Context) {
 	for _, turn := range history {
 		events := make([]sessionEventPayload, 0, len(turn.Events))
 		for _, event := range turn.Events {
-			events = append(events, sessionEventPayloadFromEvent(event))
+			events = append(events, sessionEventPayloadFromEvent(event, info))
 		}
 		payload = append(payload, turnHistoryPayload{
 			TurnID: turn.TurnID,
@@ -397,7 +424,8 @@ func (h *Handlers) sessionTranscript(c *gin.Context) {
 }
 
 func (h *Handlers) streamSession(c *gin.Context) {
-	if _, err := h.sessions.Status(c.Request.Context(), c.Param("id")); err != nil {
+	info, err := h.sessions.Status(c.Request.Context(), c.Param("id"))
+	if err != nil {
 		respondError(c, statusForSessionError(err), err)
 		return
 	}
@@ -434,7 +462,7 @@ func (h *Handlers) streamSession(c *gin.Context) {
 		if err := writeSSE(writer, sseMessage{
 			ID:   strconv.FormatInt(event.Sequence, 10),
 			Name: event.Type,
-			Data: sessionEventPayloadFromEvent(event),
+			Data: sessionEventPayloadFromEvent(event, info),
 		}); err != nil {
 			return
 		}
@@ -468,13 +496,13 @@ func (h *Handlers) streamSession(c *gin.Context) {
 				if err := writeSSE(writer, sseMessage{
 					ID:   strconv.FormatInt(event.Sequence, 10),
 					Name: event.Type,
-					Data: sessionEventPayloadFromEvent(event),
+					Data: sessionEventPayloadFromEvent(event, info),
 				}); err != nil {
 					return
 				}
 			}
 			if len(events) == 0 {
-				info, err := h.sessions.Status(c.Request.Context(), c.Param("id"))
+				info, err = h.sessions.Status(c.Request.Context(), c.Param("id"))
 				if err != nil {
 					_ = writeSSE(writer, sseMessage{
 						Name: "error",
@@ -483,12 +511,15 @@ func (h *Handlers) streamSession(c *gin.Context) {
 					return
 				}
 				if info != nil && info.State == session.StateStopped {
+					workspaceID, workspacePath := sessionWorkspaceFromInfo(info)
 					_ = writeSSE(writer, sseMessage{
 						Name: session.EventTypeSessionStopped,
 						Data: sessionEventPayload{
-							SessionID: info.ID,
-							Type:      session.EventTypeSessionStopped,
-							Timestamp: info.UpdatedAt,
+							SessionID:     info.ID,
+							Type:          session.EventTypeSessionStopped,
+							WorkspaceID:   workspaceID,
+							WorkspacePath: workspacePath,
+							Timestamp:     info.UpdatedAt,
 						},
 					})
 					return
@@ -893,14 +924,7 @@ func respondError(c *gin.Context, status int, err error) {
 }
 
 func statusForSessionError(err error) int {
-	switch {
-	case errors.Is(err, session.ErrSessionNotFound), errors.Is(err, os.ErrNotExist):
-		return http.StatusNotFound
-	case errors.Is(err, session.ErrMaxSessionsReached):
-		return http.StatusConflict
-	default:
-		return http.StatusInternalServerError
-	}
+	return apisupport.StatusForSessionError(err)
 }
 
 func sessionPayloadFromInfo(info *session.SessionInfo) sessionPayload {
@@ -910,14 +934,15 @@ func sessionPayloadFromInfo(info *session.SessionInfo) sessionPayload {
 	}
 
 	payload = sessionPayload{
-		ID:           info.ID,
-		Name:         info.Name,
-		AgentName:    info.AgentName,
-		Workspace:    info.Workspace,
-		State:        string(info.State),
-		ACPSessionID: info.ACPSessionID,
-		CreatedAt:    info.CreatedAt,
-		UpdatedAt:    info.UpdatedAt,
+		ID:            info.ID,
+		Name:          info.Name,
+		AgentName:     info.AgentName,
+		WorkspaceID:   info.WorkspaceID,
+		WorkspacePath: info.Workspace,
+		State:         string(info.State),
+		ACPSessionID:  info.ACPSessionID,
+		CreatedAt:     info.CreatedAt,
+		UpdatedAt:     info.UpdatedAt,
 	}
 	if caps := acpCapsPayloadFromInfo(info.ACPCaps); caps != nil {
 		payload.ACPCaps = caps
@@ -937,17 +962,27 @@ func acpCapsPayloadFromInfo(caps acp.ACPCaps) *acpCapsPayload {
 	}
 }
 
-func sessionEventPayloadFromEvent(event store.SessionEvent) sessionEventPayload {
+func sessionEventPayloadFromEvent(event store.SessionEvent, info *session.SessionInfo) sessionEventPayload {
+	workspaceID, workspacePath := sessionWorkspaceFromInfo(info)
 	return sessionEventPayload{
-		ID:        event.ID,
-		SessionID: event.SessionID,
-		Sequence:  event.Sequence,
-		TurnID:    event.TurnID,
-		Type:      event.Type,
-		AgentName: event.AgentName,
-		Content:   payloadJSON(event.Content),
-		Timestamp: event.Timestamp,
+		ID:            event.ID,
+		SessionID:     event.SessionID,
+		Sequence:      event.Sequence,
+		TurnID:        event.TurnID,
+		Type:          event.Type,
+		AgentName:     event.AgentName,
+		WorkspaceID:   workspaceID,
+		WorkspacePath: workspacePath,
+		Content:       payloadJSON(event.Content),
+		Timestamp:     event.Timestamp,
 	}
+}
+
+func sessionWorkspaceFromInfo(info *session.SessionInfo) (string, string) {
+	if info == nil {
+		return "", ""
+	}
+	return strings.TrimSpace(info.WorkspaceID), strings.TrimSpace(info.Workspace)
 }
 
 func agentPayloadFromDef(agent aghconfig.AgentDef) agentPayload {

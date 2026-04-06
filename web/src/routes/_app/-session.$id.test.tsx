@@ -12,7 +12,8 @@ let sessionState: {
     id: string;
     name?: string;
     agent_name: string;
-    workspace: string;
+    workspace_id: string;
+    workspace_path: string;
     state: "starting" | "active" | "stopping" | "stopped";
     created_at: string;
     updated_at: string;
@@ -30,7 +31,8 @@ function makeSession(id: string) {
   return {
     id,
     agent_name: "coder",
-    workspace: "/workspace",
+    workspace_id: "ws_alpha",
+    workspace_path: "/workspace",
     state: "active" as const,
     created_at: "2026-04-03T12:00:00Z",
     updated_at: "2026-04-03T12:00:00Z",
@@ -76,6 +78,21 @@ vi.mock("@/systems/session/hooks/use-session-chat", () => ({
   }),
 }));
 
+vi.mock("@/systems/workspace", () => ({
+  useWorkspaces: () => ({
+    data: [
+      {
+        id: "ws_alpha",
+        root_dir: "/workspace",
+        add_dirs: [],
+        name: "alpha",
+        created_at: "2026-04-03T12:00:00Z",
+        updated_at: "2026-04-03T12:00:00Z",
+      },
+    ],
+  }),
+}));
+
 vi.mock("@/systems/session/hooks/use-session-actions", () => ({
   useStopSession: () => ({
     mutate: vi.fn(),
@@ -86,7 +103,9 @@ vi.mock("@/systems/session/hooks/use-session-actions", () => ({
 }));
 
 vi.mock("@/systems/session/components/chat-header", () => ({
-  ChatHeader: () => <div data-testid="chat-header" />,
+  ChatHeader: ({ workspaceName }: { workspaceName?: string }) => (
+    <div data-testid="chat-header">{workspaceName ?? "no-workspace"}</div>
+  ),
 }));
 
 vi.mock("@/systems/session/components/chat-view", () => ({
@@ -138,6 +157,7 @@ describe("SessionPage", () => {
   it("hydrates a late transcript for the active session", () => {
     const { rerender } = render(<SessionPage />);
 
+    expect(screen.getByTestId("chat-header")).toHaveTextContent("alpha");
     expect(screen.getByTestId("message-count")).toHaveTextContent("0");
 
     transcriptState = {
@@ -157,6 +177,7 @@ describe("SessionPage", () => {
     };
 
     const { rerender } = render(<SessionPage />);
+    expect(screen.getByTestId("chat-header")).toHaveTextContent("alpha");
     expect(screen.getByTestId("message-content")).toHaveTextContent("from-a");
 
     routeParams = { id: "sess-2" };

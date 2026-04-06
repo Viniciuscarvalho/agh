@@ -99,6 +99,18 @@ describe("AgentSidebarGroup", () => {
     expect(onNewSession).toHaveBeenCalledWith("claude-agent");
   });
 
+  it("disables the new-session action when requested", () => {
+    const onNewSession = vi.fn();
+    render(
+      <AgentSidebarGroup agent={mockAgent} onNewSession={onNewSession} newSessionDisabled={true} />
+    );
+
+    const action = screen.getByTestId("sidebar-group-action");
+    expect(action).toBeDisabled();
+    action.click();
+    expect(onNewSession).not.toHaveBeenCalled();
+  });
+
   it("renders one group per agent from mock data", () => {
     const agents: AgentPayload[] = [
       { name: "agent-1", provider: "claude", prompt: "prompt1" },
