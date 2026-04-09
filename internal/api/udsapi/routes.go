@@ -44,6 +44,15 @@ func RegisterRoutes(router gin.IRouter, handlers *Handlers) {
 		observe.GET("/health", handlers.Health)
 	}
 
+	skillsGroup := api.Group("/skills")
+	{
+		skillsGroup.GET("", handlers.ListSkills)
+		skillsGroup.GET("/:name", handlers.GetSkill)
+		skillsGroup.GET("/:name/content", handlers.GetSkillContent)
+		skillsGroup.POST("/:name/enable", handlers.EnableSkill)
+		skillsGroup.POST("/:name/disable", handlers.DisableSkill)
+	}
+
 	memoryGroup := api.Group("/memory")
 	{
 		memoryGroup.GET("", handlers.ListMemory)

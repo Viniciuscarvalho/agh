@@ -33,19 +33,20 @@ type Option func(*Server)
 type Server struct {
 	mu sync.Mutex
 
-	homePaths    aghconfig.HomePaths
-	config       aghconfig.Config
-	socketPath   string
-	logger       *slog.Logger
-	startedAt    time.Time
-	now          func() time.Time
-	pollInterval time.Duration
-	sessions     core.SessionManager
-	observer     core.Observer
-	workspaces   core.WorkspaceService
-	memoryStore  *memory.Store
-	dreamTrigger core.DreamTrigger
-	agentLoader  core.AgentLoader
+	homePaths      aghconfig.HomePaths
+	config         aghconfig.Config
+	socketPath     string
+	logger         *slog.Logger
+	startedAt      time.Time
+	now            func() time.Time
+	pollInterval   time.Duration
+	sessions       core.SessionManager
+	observer       core.Observer
+	workspaces     core.WorkspaceService
+	skillsRegistry core.SkillsRegistry
+	memoryStore    *memory.Store
+	dreamTrigger   core.DreamTrigger
+	agentLoader    core.AgentLoader
 
 	engine       *gin.Engine
 	handlers     *Handlers
@@ -58,18 +59,19 @@ type Server struct {
 }
 
 type handlerConfig struct {
-	sessions     core.SessionManager
-	observer     core.Observer
-	workspaces   core.WorkspaceService
-	memoryStore  *memory.Store
-	dreamTrigger core.DreamTrigger
-	homePaths    aghconfig.HomePaths
-	config       aghconfig.Config
-	logger       *slog.Logger
-	startedAt    time.Time
-	now          func() time.Time
-	pollInterval time.Duration
-	agentLoader  core.AgentLoader
+	sessions       core.SessionManager
+	observer       core.Observer
+	workspaces     core.WorkspaceService
+	skillsRegistry core.SkillsRegistry
+	memoryStore    *memory.Store
+	dreamTrigger   core.DreamTrigger
+	homePaths      aghconfig.HomePaths
+	config         aghconfig.Config
+	logger         *slog.Logger
+	startedAt      time.Time
+	now            func() time.Time
+	pollInterval   time.Duration
+	agentLoader    core.AgentLoader
 }
 
 // Handlers expose request/response and SSE endpoints for the AGH API.
@@ -154,6 +156,13 @@ func WithMemoryStore(store *memory.Store) Option {
 	}
 }
 
+// WithSkillsRegistry injects the skills registry surfaced by the daemon.
+func WithSkillsRegistry(registry core.SkillsRegistry) Option {
+	return func(server *Server) {
+		server.skillsRegistry = registry
+	}
+}
+
 // WithDreamTrigger injects the dream-consolidation trigger surfaced by the daemon.
 func WithDreamTrigger(trigger core.DreamTrigger) Option {
 	return func(server *Server) {
@@ -224,6 +233,9 @@ func New(opts ...Option) (*Server, error) {
 	if server.workspaces == nil {
 		return nil, errors.New("udsapi: workspace resolver is required")
 	}
+	if server.skillsRegistry == nil {
+		return nil, errors.New("udsapi: skills registry is required")
+	}
 	if strings.TrimSpace(server.config.Daemon.Socket) == "" {
 		server.config.Daemon.Socket = server.homePaths.DaemonSocket
 	}
@@ -239,18 +251,19 @@ func New(opts ...Option) (*Server, error) {
 	}
 
 	server.handlers = newHandlers(handlerConfig{
-		sessions:     server.sessions,
-		observer:     server.observer,
-		workspaces:   server.workspaces,
-		memoryStore:  server.memoryStore,
-		dreamTrigger: server.dreamTrigger,
-		homePaths:    server.homePaths,
-		config:       server.config,
-		logger:       server.logger,
-		startedAt:    server.startedAt,
-		now:          server.now,
-		pollInterval: server.pollInterval,
-		agentLoader:  server.agentLoader,
+		sessions:       server.sessions,
+		observer:       server.observer,
+		workspaces:     server.workspaces,
+		skillsRegistry: server.skillsRegistry,
+		memoryStore:    server.memoryStore,
+		dreamTrigger:   server.dreamTrigger,
+		homePaths:      server.homePaths,
+		config:         server.config,
+		logger:         server.logger,
+		startedAt:      server.startedAt,
+		now:            server.now,
+		pollInterval:   server.pollInterval,
+		agentLoader:    server.agentLoader,
 	})
 	RegisterRoutes(server.engine, server.handlers)
 
@@ -447,6 +460,7 @@ func newHandlers(cfg handlerConfig) *Handlers {
 			Sessions:                     cfg.sessions,
 			Observer:                     cfg.observer,
 			Workspaces:                   cfg.workspaces,
+			SkillsRegistry:               cfg.skillsRegistry,
 			MemoryStore:                  cfg.memoryStore,
 			DreamTrigger:                 cfg.dreamTrigger,
 			HomePaths:                    cfg.homePaths,

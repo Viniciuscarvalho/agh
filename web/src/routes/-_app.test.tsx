@@ -16,15 +16,42 @@ vi.mock("@/components/app-sidebar", () => ({
   AppSidebar: () => <nav data-testid="app-sidebar">Sidebar</nav>,
 }));
 
-vi.mock("@/components/ui/sidebar", () => ({
-  SidebarProvider: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="sidebar-provider">{children}</div>
-  ),
-  SidebarInset: ({ children, className }: { children: React.ReactNode; className?: string }) => (
-    <main data-testid="sidebar-inset" className={className}>
-      {children}
-    </main>
-  ),
+vi.mock("@/stores/sidebar-store", () => ({
+  useSidebarStore: (selector: (state: { collapsed: boolean; toggle: () => void }) => unknown) =>
+    selector({ collapsed: false, toggle: vi.fn() }),
+}));
+
+vi.mock("@/systems/daemon", () => ({
+  useDaemonHealth: () => ({
+    health: { version: "0.1.0" },
+    connectionStatus: "connected",
+  }),
+}));
+
+vi.mock("@/systems/agent", () => ({
+  useAgents: () => ({
+    data: [],
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
+vi.mock("@/systems/session", () => ({
+  useCreateSession: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
+  useSessions: () => ({
+    data: [],
+  }),
+}));
+
+vi.mock("@/systems/workspace", () => ({
+  useWorkspaces: () => ({
+    data: [],
+    isLoading: false,
+    isError: false,
+  }),
 }));
 
 import { Route } from "./_app";
@@ -33,28 +60,21 @@ describe("AppLayout", () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const AppLayout = (Route as any).component as () => React.ReactNode;
 
-  it("renders sidebar provider wrapping all content", () => {
-    render(<AppLayout />);
-    expect(screen.getByTestId("sidebar-provider")).toBeInTheDocument();
-  });
-
   it("renders sidebar and outlet", () => {
     render(<AppLayout />);
     expect(screen.getByTestId("app-sidebar")).toBeInTheDocument();
     expect(screen.getByTestId("outlet")).toBeInTheDocument();
   });
 
-  it("renders header inside sidebar inset", () => {
+  it("renders header alongside sidebar", () => {
     render(<AppLayout />);
-    const inset = screen.getByTestId("sidebar-inset");
-    const header = screen.getByTestId("app-header");
-    expect(inset).toContainElement(header);
+    expect(screen.getByTestId("app-header")).toBeInTheDocument();
+    expect(screen.getByTestId("app-sidebar")).toBeInTheDocument();
   });
 
-  it("renders outlet inside sidebar inset for child routes", () => {
+  it("renders outlet", () => {
     render(<AppLayout />);
-    const inset = screen.getByTestId("sidebar-inset");
     const outlet = screen.getByTestId("outlet");
-    expect(inset).toContainElement(outlet);
+    expect(outlet).toBeInTheDocument();
   });
 });

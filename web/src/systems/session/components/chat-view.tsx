@@ -112,10 +112,11 @@ export function mergeToolPairs(tools: UIMessage[]): UIMessage[] {
 
 interface ChatMessageRowProps {
   row: RowDescriptor;
+  agentName?: string;
 }
 
 const ChatMessageRow = memo(
-  function ChatMessageRow({ row }: ChatMessageRowProps) {
+  function ChatMessageRow({ row, agentName }: ChatMessageRowProps) {
     if (row.kind === "processing") {
       return <ProcessingIndicator />;
     }
@@ -123,7 +124,7 @@ const ChatMessageRow = memo(
     if (row.kind === "tool_group") {
       const cards = mergeToolPairs(row.tools);
       return (
-        <div className="px-4 py-0.5" data-testid="tool-group">
+        <div className="space-y-1 px-4 py-1" data-testid="tool-group">
           {cards.map(tool => (
             <ToolCallCard key={tool.id} message={tool} />
           ))}
@@ -131,9 +132,9 @@ const ChatMessageRow = memo(
       );
     }
 
-    return <MessageBubble message={row.msg} />;
+    return <MessageBubble message={row.msg} agentName={agentName} />;
   },
-  (prev, next) => prev.row === next.row
+  (prev, next) => prev.row === next.row && prev.agentName === next.agentName
 );
 
 // ── ChatView ──
@@ -141,15 +142,20 @@ const ChatMessageRow = memo(
 export interface ChatViewProps {
   messages: UIMessage[];
   isStreaming: boolean;
+  agentName?: string;
 }
 
-export const ChatView = memo(function ChatView({ messages, isStreaming }: ChatViewProps) {
+export const ChatView = memo(function ChatView({
+  messages,
+  isStreaming,
+  agentName,
+}: ChatViewProps) {
   if (messages.length === 0 && !isStreaming) {
     return (
       <div className="flex flex-1 items-center justify-center" data-testid="chat-empty-state">
         <div className="flex flex-col items-center gap-3">
-          <MessageSquare className="size-8 text-[color:var(--ds-text-muted)]/30" />
-          <p className="text-sm italic text-[color:var(--ds-text-muted)]">
+          <MessageSquare className="size-8 text-[color:var(--color-text-tertiary)]/30" />
+          <p className="text-sm italic text-[color:var(--color-text-tertiary)]">
             Send a message to start the conversation
           </p>
         </div>
@@ -157,10 +163,10 @@ export const ChatView = memo(function ChatView({ messages, isStreaming }: ChatVi
     );
   }
 
-  return <ChatViewContent messages={messages} isStreaming={isStreaming} />;
+  return <ChatViewContent messages={messages} isStreaming={isStreaming} agentName={agentName} />;
 });
 
-function ChatViewContent({ messages, isStreaming }: ChatViewProps) {
+function ChatViewContent({ messages, isStreaming, agentName }: ChatViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomLockedRef = useRef(true);
   const userScrollIntentRef = useRef(0);
@@ -287,7 +293,7 @@ function ChatViewContent({ messages, isStreaming }: ChatViewProps) {
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
-                <ChatMessageRow row={row} />
+                <ChatMessageRow row={row} agentName={agentName} />
               </div>
             );
           })}
@@ -300,7 +306,7 @@ function ChatViewContent({ messages, isStreaming }: ChatViewProps) {
             variant="secondary"
             size="sm"
             onClick={scrollToBottom}
-            className={cn("shadow-md", "border border-[color:var(--ds-line-subtle)]")}
+            className={cn("border border-[color:var(--color-divider)]")}
             data-testid="scroll-to-bottom"
           >
             <ArrowDown className="size-3.5" />

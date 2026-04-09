@@ -21,6 +21,7 @@ import (
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	"github.com/pedronauck/agh/internal/observe"
 	"github.com/pedronauck/agh/internal/session"
+	"github.com/pedronauck/agh/internal/skills"
 	"github.com/pedronauck/agh/internal/store"
 	"github.com/pedronauck/agh/internal/transcript"
 	workspacepkg "github.com/pedronauck/agh/internal/workspace"
@@ -204,6 +205,49 @@ func (s StubWorkspaceService) ResolveOrRegister(ctx context.Context, path string
 		return s.ResolveOrRegisterFn(ctx, path)
 	}
 	return workspacepkg.ResolvedWorkspace{}, ErrStubWorkspaceServiceNotImplemented
+}
+
+type StubSkillsRegistry struct {
+	GetFn          func(name string) (*skills.Skill, bool)
+	ListFn         func() []*skills.Skill
+	ForWorkspaceFn func(ctx context.Context, resolved workspacepkg.ResolvedWorkspace) ([]*skills.Skill, error)
+	LoadContentFn  func(ctx context.Context, skill *skills.Skill) (string, error)
+	SetEnabledFn   func(name string, resolved *workspacepkg.ResolvedWorkspace, enabled bool) error
+}
+
+func (s StubSkillsRegistry) Get(name string) (*skills.Skill, bool) {
+	if s.GetFn != nil {
+		return s.GetFn(name)
+	}
+	return nil, false
+}
+
+func (s StubSkillsRegistry) List() []*skills.Skill {
+	if s.ListFn != nil {
+		return s.ListFn()
+	}
+	return nil
+}
+
+func (s StubSkillsRegistry) ForWorkspace(ctx context.Context, resolved workspacepkg.ResolvedWorkspace) ([]*skills.Skill, error) {
+	if s.ForWorkspaceFn != nil {
+		return s.ForWorkspaceFn(ctx, resolved)
+	}
+	return nil, nil
+}
+
+func (s StubSkillsRegistry) LoadContent(ctx context.Context, skill *skills.Skill) (string, error) {
+	if s.LoadContentFn != nil {
+		return s.LoadContentFn(ctx, skill)
+	}
+	return "", nil
+}
+
+func (s StubSkillsRegistry) SetEnabled(name string, resolved *workspacepkg.ResolvedWorkspace, enabled bool) error {
+	if s.SetEnabledFn != nil {
+		return s.SetEnabledFn(name, resolved, enabled)
+	}
+	return nil
 }
 
 type SSERecord struct {

@@ -2,20 +2,86 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mutate = vi.fn();
+import { AppSidebar, type AppSidebarProps } from "@/components/app-sidebar";
 
-let agentsState = {
-  data: [] as Array<{ name: string; provider: string; prompt: string }>,
-  isLoading: false,
-  isError: false,
-};
+const onSelectWorkspace = vi.fn();
+const onToggleCollapsed = vi.fn();
+const onNewSession = vi.fn();
+let matchedRoute: Record<string, boolean> = {};
 
-let workspacesState = {
-  data: [
+vi.mock("lucide-react", () => ({
+  Book: () => <span data-testid="icon-book">book</span>,
+  Bot: () => <span>bot</span>,
+  ChevronRight: () => <span>chevron</span>,
+  Loader2: () => <span>loader</span>,
+  PanelLeftClose: () => <span>panel-close</span>,
+  PanelLeftOpen: () => <span>panel-open</span>,
+  Plus: () => <span>plus</span>,
+  Search: () => <span>search</span>,
+  Settings: () => <span>settings</span>,
+  Terminal: () => <span data-testid="icon-terminal">terminal</span>,
+  Wrench: () => <span data-testid="icon-wrench">wrench</span>,
+}));
+
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({
+    children,
+    to,
+    ...props
+  }: {
+    children: ReactNode;
+    to: string;
+    [key: string]: unknown;
+  }) => (
+    <a href={to} {...props}>
+      {children}
+    </a>
+  ),
+  useMatchRoute: () => (opts: { to: string }) => matchedRoute[opts.to] ?? false,
+}));
+
+vi.mock("@/components/ui/collapsible", () => ({
+  Collapsible: ({
+    children,
+    className,
+    defaultOpen = true,
+  }: {
+    children: ReactNode;
+    className?: string;
+    defaultOpen?: boolean;
+  }) => (
+    <div className={className} data-state={defaultOpen ? "open" : "closed"}>
+      {children}
+    </div>
+  ),
+  CollapsibleContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  CollapsibleTrigger: ({ children, className }: { children: ReactNode; className?: string }) => (
+    <button className={className}>{children}</button>
+  ),
+}));
+
+vi.mock("@/components/ui/kbd", () => ({
+  Kbd: ({ children }: { children: ReactNode }) => <kbd>{children}</kbd>,
+}));
+
+vi.mock("@/systems/agent", () => ({
+  AgentIcon: ({ provider }: { provider: string }) => (
+    <span data-testid={`agent-icon-${provider}`} />
+  ),
+}));
+
+vi.mock("@/systems/daemon", () => ({
+  ConnectionStatus: ({ status }: { status: string }) => (
+    <span data-testid="connection-status">{status}</span>
+  ),
+}));
+
+function makeProps(overrides: Partial<AppSidebarProps> = {}): AppSidebarProps {
+  const workspaces = [
     {
       id: "ws_alpha",
       root_dir: "/workspace/alpha",
-      add_dirs: [],
+      add_dirs: [] as string[],
       name: "alpha",
       created_at: "2026-04-06T10:00:00Z",
       updated_at: "2026-04-06T10:00:00Z",
@@ -23,200 +89,219 @@ let workspacesState = {
     {
       id: "ws_beta",
       root_dir: "/workspace/beta",
-      add_dirs: [],
+      add_dirs: [] as string[],
       name: "beta",
       created_at: "2026-04-06T10:00:00Z",
       updated_at: "2026-04-06T10:00:00Z",
     },
-  ],
-  isLoading: false,
-  isError: false,
-};
+  ];
 
-vi.mock("lucide-react", () => ({
-  AlertCircle: () => <span>alert</span>,
-  Bot: () => <span>bot</span>,
-  Loader2: () => <span>loader</span>,
-  Search: () => <span>search</span>,
-  Settings: () => <span>settings</span>,
-  Terminal: () => <span>terminal</span>,
-}));
-
-vi.mock("@/components/ui/sidebar", () => ({
-  Sidebar: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  SidebarContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  SidebarFooter: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  SidebarGroup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  SidebarGroupContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  SidebarGroupLabel: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  SidebarHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  SidebarMenu: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  SidebarMenuButton: ({ children, ...props }: { children: ReactNode; tooltip?: string }) => (
-    <button {...props}>{children}</button>
-  ),
-  SidebarMenuItem: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  SidebarRail: () => <div data-testid="sidebar-rail" />,
-  SidebarSeparator: () => <hr />,
-}));
-
-vi.mock("@/components/ui/kbd", () => ({
-  Kbd: ({ children }: { children: ReactNode }) => <kbd>{children}</kbd>,
-}));
-
-vi.mock("@/systems/agent/components/agent-sidebar-group", () => ({
-  AgentSidebarGroup: ({
-    agent,
-    onNewSession,
-    newSessionDisabled,
-    children,
-  }: {
-    agent: { name: string };
-    onNewSession?: (agentName: string) => void;
-    newSessionDisabled?: boolean;
-    children?: ReactNode;
-  }) => (
-    <div>
-      <button
-        data-testid={`new-session-${agent.name}`}
-        onClick={() => onNewSession?.(agent.name)}
-        disabled={newSessionDisabled}
-      >
-        New Session
-      </button>
-      {children}
-    </div>
-  ),
-}));
-
-vi.mock("@/systems/agent/hooks/use-agents", () => ({
-  useAgents: () => agentsState,
-}));
-
-vi.mock("@/systems/daemon/components/connection-status", () => ({
-  ConnectionStatus: ({ status }: { status: string }) => <span>{status}</span>,
-}));
-
-vi.mock("@/systems/daemon/hooks/use-daemon-health", () => ({
-  useDaemonHealth: () => ({
-    connectionStatus: "connected",
-  }),
-}));
-
-vi.mock("@/systems/session/components/session-sidebar-item", () => ({
-  SessionSidebarItem: ({ workspaceName }: { workspaceName?: string }) => (
-    <div>{workspaceName ?? "session-item"}</div>
-  ),
-}));
-
-vi.mock("@/systems/session/hooks/use-session-actions", () => ({
-  useCreateSession: () => ({
-    mutate,
-    isPending: false,
-  }),
-}));
-
-vi.mock("@/systems/session/hooks/use-sessions", () => ({
-  useSessions: () => ({
-    data: [],
-  }),
-}));
-
-vi.mock("@/systems/workspace", () => ({
-  WorkspaceSelector: ({
+  return {
+    collapsed: false,
+    onToggleCollapsed,
     workspaces,
-    value,
-    onValueChange,
-  }: {
-    workspaces: Array<{ id: string; name: string }>;
-    value: string | null;
-    onValueChange: (value: string) => void;
-  }) => (
-    <select
-      aria-label="Workspace"
-      value={value ?? ""}
-      onChange={event => onValueChange(event.currentTarget.value)}
-    >
-      {workspaces.map(workspace => (
-        <option key={workspace.id} value={workspace.id}>
-          {workspace.name}
-        </option>
-      ))}
-    </select>
-  ),
-  useWorkspaces: () => workspacesState,
-}));
-
-import { AppSidebar } from "./app-sidebar";
+    activeWorkspace: workspaces[0],
+    activeWorkspaceId: "ws_alpha",
+    onSelectWorkspace,
+    health: { version: "0.1.0" },
+    connectionStatus: "connected",
+    agents: [],
+    agentsLoading: false,
+    agentsError: false,
+    sessions: [],
+    onNewSession,
+    isCreatingSession: false,
+    ...overrides,
+  };
+}
 
 describe("AppSidebar", () => {
   beforeEach(() => {
-    agentsState = {
-      data: [],
-      isLoading: false,
-      isError: false,
-    };
-    workspacesState = {
-      data: [
-        {
-          id: "ws_alpha",
-          root_dir: "/workspace/alpha",
-          add_dirs: [],
-          name: "alpha",
-          created_at: "2026-04-06T10:00:00Z",
-          updated_at: "2026-04-06T10:00:00Z",
-        },
-        {
-          id: "ws_beta",
-          root_dir: "/workspace/beta",
-          add_dirs: [],
-          name: "beta",
-          created_at: "2026-04-06T10:00:00Z",
-          updated_at: "2026-04-06T10:00:00Z",
-        },
-      ],
-      isLoading: false,
-      isError: false,
-    };
-    mutate.mockReset();
+    matchedRoute = {};
+    onSelectWorkspace.mockReset();
+    onToggleCollapsed.mockReset();
+    onNewSession.mockReset();
   });
 
-  it("prompts the user to run agh install when no agents are loaded", () => {
-    render(<AppSidebar />);
-
-    expect(screen.getByText("Run `agh install` to bootstrap AGH")).toBeInTheDocument();
-  });
-
-  it("creates sessions in the selected workspace", () => {
-    agentsState = {
-      data: [{ name: "claude-agent", provider: "anthropic", prompt: "You are helpful." }],
-      isLoading: false,
-      isError: false,
-    };
-
-    render(<AppSidebar />);
-
-    fireEvent.change(screen.getByLabelText("Workspace"), {
-      target: { value: "ws_beta" },
+  describe("Icon Rail", () => {
+    it("renders the icon rail", () => {
+      render(<AppSidebar {...makeProps()} />);
+      expect(screen.getByTestId("icon-rail")).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByTestId("new-session-claude-agent"));
 
-    expect(mutate).toHaveBeenCalledWith({
-      agent_name: "claude-agent",
-      workspace: "ws_beta",
+    it("renders workspace circle avatars with single-letter labels", () => {
+      render(<AppSidebar {...makeProps()} />);
+      expect(screen.getByTestId("workspace-avatar-ws_alpha")).toHaveTextContent("A");
+      expect(screen.getByTestId("workspace-avatar-ws_beta")).toHaveTextContent("B");
+    });
+
+    it("renders app logo with accent background", () => {
+      render(<AppSidebar {...makeProps()} />);
+      expect(screen.getByTestId("app-logo").className).toContain("bg-[color:var(--color-accent)]");
+    });
+
+    it("highlights active workspace with accent ring border", () => {
+      render(<AppSidebar {...makeProps()} />);
+      expect(screen.getByTestId("workspace-avatar-ws_alpha").className).toContain(
+        "ring-[color:var(--color-accent)]"
+      );
+    });
+
+    it("does not highlight inactive workspaces", () => {
+      render(<AppSidebar {...makeProps()} />);
+      expect(screen.getByTestId("workspace-avatar-ws_beta").className).not.toContain(
+        "ring-[color:var(--color-accent)]"
+      );
+    });
+
+    it("selects a workspace on click", () => {
+      render(<AppSidebar {...makeProps()} />);
+      fireEvent.click(screen.getByTestId("workspace-avatar-ws_beta"));
+      expect(onSelectWorkspace).toHaveBeenCalledWith("ws_beta");
     });
   });
 
-  it("shows a workspace registration hint when no workspaces are available", () => {
-    workspacesState = {
-      data: [],
-      isLoading: false,
-      isError: false,
-    };
+  describe("Agent List", () => {
+    it("renders agents with session counts", () => {
+      render(
+        <AppSidebar
+          {...makeProps({
+            agents: [
+              { name: "coder", provider: "claude", prompt: "code" },
+              { name: "writer", provider: "openai", prompt: "write" },
+            ],
+            sessions: [
+              {
+                id: "s1",
+                name: "Session 1",
+                agent_name: "coder",
+                workspace_id: "ws_alpha",
+                workspace_path: "/workspace/alpha",
+                state: "active",
+                updated_at: "2026-04-06T10:00:00Z",
+                created_at: "2026-04-06T10:00:00Z",
+              },
+              {
+                id: "s2",
+                name: "Session 2",
+                agent_name: "coder",
+                workspace_id: "ws_alpha",
+                workspace_path: "/workspace/alpha",
+                state: "stopped",
+                updated_at: "2026-04-06T09:00:00Z",
+                created_at: "2026-04-06T09:00:00Z",
+              },
+            ],
+          })}
+        />
+      );
 
-    render(<AppSidebar />);
+      expect(screen.getByText("coder")).toBeInTheDocument();
+      expect(screen.getByText("writer")).toBeInTheDocument();
+      expect(screen.getByText("2")).toBeInTheDocument();
+      expect(screen.getByText("0")).toBeInTheDocument();
+    });
 
-    expect(
-      screen.getByText("Run `agh workspace add <path>` to register a workspace")
-    ).toBeInTheDocument();
+    it("shows bootstrap hint when no agents are loaded", () => {
+      render(<AppSidebar {...makeProps()} />);
+      expect(screen.getByText("Run `agh install` to bootstrap AGH")).toBeInTheDocument();
+    });
+
+    it("starts agents with zero sessions collapsed by default", () => {
+      render(
+        <AppSidebar
+          {...makeProps({
+            agents: [{ name: "writer", provider: "openai", prompt: "write" }],
+          })}
+        />
+      );
+
+      expect(screen.getByText("writer").closest('[data-state="closed"]')).toBeInTheDocument();
+    });
+
+    it("creates sessions in the selected workspace", () => {
+      render(
+        <AppSidebar
+          {...makeProps({
+            agents: [{ name: "claude-agent", provider: "anthropic", prompt: "You are helpful." }],
+          })}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId("new-session-claude-agent"));
+      expect(onNewSession).toHaveBeenCalledWith("claude-agent");
+    });
+  });
+
+  describe("Navigation", () => {
+    it("renders Knowledge nav item linking to /knowledge", () => {
+      render(<AppSidebar {...makeProps()} />);
+      expect(screen.getByTestId("nav-knowledge")).toHaveAttribute("href", "/knowledge");
+    });
+
+    it("renders Skills nav item linking to /skills", () => {
+      render(<AppSidebar {...makeProps()} />);
+      expect(screen.getByTestId("nav-skills")).toHaveAttribute("href", "/skills");
+    });
+
+    it("shows active indicator on active Knowledge nav", () => {
+      matchedRoute["/knowledge"] = true;
+      render(<AppSidebar {...makeProps()} />);
+      const indicator = screen.getByTestId("nav-active-knowledge");
+      expect(indicator.className).toContain("w-[3px]");
+      expect(indicator.className).toContain("bg-[color:var(--color-accent)]");
+    });
+
+    it("shows active indicator on active Skills nav", () => {
+      matchedRoute["/skills"] = true;
+      render(<AppSidebar {...makeProps()} />);
+      const indicator = screen.getByTestId("nav-active-skills");
+      expect(indicator.className).toContain("w-[3px]");
+      expect(indicator.className).toContain("bg-[color:var(--color-accent)]");
+    });
+
+    it("does not show active indicator when nav is not active", () => {
+      render(<AppSidebar {...makeProps()} />);
+      expect(screen.queryByTestId("nav-active-knowledge")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("nav-active-skills")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Collapse Toggle", () => {
+    it("panel is visible when not collapsed", () => {
+      render(<AppSidebar {...makeProps()} />);
+      const panel = screen.getByTestId("sidebar-panel");
+      expect(panel.className).toContain("w-[220px]");
+      expect(panel.className).not.toContain("w-0");
+    });
+
+    it("clicking collapse delegates to the route owner", () => {
+      render(<AppSidebar {...makeProps()} />);
+      fireEvent.click(screen.getByTestId("collapse-toggle"));
+      expect(onToggleCollapsed).toHaveBeenCalledTimes(1);
+    });
+
+    it("expand button appears when collapsed and delegates toggle", () => {
+      render(<AppSidebar {...makeProps({ collapsed: true })} />);
+      fireEvent.click(screen.getByTestId("expand-toggle"));
+      expect(onToggleCollapsed).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("System Footer", () => {
+    it("shows connection status", () => {
+      render(<AppSidebar {...makeProps()} />);
+      expect(screen.getByTestId("connection-status")).toHaveTextContent("connected");
+    });
+
+    it("shows version from daemon health", () => {
+      render(<AppSidebar {...makeProps()} />);
+      expect(screen.getByText("v0.1.0")).toBeInTheDocument();
+    });
+
+    it("shows settings button", () => {
+      render(<AppSidebar {...makeProps()} />);
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
   });
 });

@@ -26,6 +26,7 @@ var errStubWorkspaceServiceNotImplemented = testutil.ErrStubWorkspaceServiceNotI
 type stubSessionManager = testutil.StubSessionManager
 type stubObserver = testutil.StubObserver
 type stubWorkspaceService = testutil.StubWorkspaceService
+type stubSkillsRegistry = testutil.StubSkillsRegistry
 type sseRecord = testutil.SSERecord
 
 func newTestHandlers(t *testing.T, manager core.SessionManager, observer core.Observer, homePaths aghconfig.HomePaths) *Handlers {

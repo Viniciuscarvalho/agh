@@ -25,11 +25,12 @@ type Option func(*Registry)
 
 // Registry manages global skills loaded at boot and lazily cached workspace skills.
 type Registry struct {
-	mu              sync.RWMutex
-	globalSkills    map[string]*Skill
-	globalLoaded    bool
-	globalSnapshots map[string]filesnap.Snapshot
-	wsCache         map[string]*wsCache
+	mu                sync.RWMutex
+	globalSkills      map[string]*Skill
+	globalLoaded      bool
+	globalSnapshots   map[string]filesnap.Snapshot
+	workspaceDisabled map[string][]string
+	wsCache           map[string]*wsCache
 
 	globalVersion atomic.Int64
 
@@ -71,12 +72,13 @@ func WithNow(now func() time.Time) Option {
 // NewRegistry constructs a Registry with the provided configuration.
 func NewRegistry(cfg RegistryConfig, opts ...Option) *Registry {
 	registry := &Registry{
-		globalSkills:    make(map[string]*Skill),
-		globalSnapshots: make(map[string]filesnap.Snapshot),
-		wsCache:         make(map[string]*wsCache),
-		cfg:             cfg,
-		logger:          slog.Default(),
-		now:             time.Now,
+		globalSkills:      make(map[string]*Skill),
+		globalSnapshots:   make(map[string]filesnap.Snapshot),
+		workspaceDisabled: make(map[string][]string),
+		wsCache:           make(map[string]*wsCache),
+		cfg:               cfg,
+		logger:            slog.Default(),
+		now:               time.Now,
 	}
 
 	for _, opt := range opts {
@@ -131,6 +133,26 @@ func (r *Registry) List() []*Skill {
 	return mergedSkillList(globalSkills, nil)
 }
 
+// LoadContent loads the full markdown body for one resolved skill.
+func (r *Registry) LoadContent(ctx context.Context, skill *Skill) (string, error) {
+	if err := checkRegistryContext(ctx); err != nil {
+		return "", err
+	}
+	if skill == nil {
+		return "", errors.New("skills: skill is required")
+	}
+
+	switch skill.Source {
+	case SourceBundled:
+		if r.cfg.BundledFS == nil {
+			return "", errors.New("skills: bundled skills filesystem is required")
+		}
+		return readBundledSkillContent(r.cfg.BundledFS, skill.FilePath)
+	default:
+		return ReadSkillContent(skill.FilePath)
+	}
+}
+
 // ForWorkspace returns the global skill set overlaid with resolver-provided workspace skills.
 func (r *Registry) ForWorkspace(ctx context.Context, resolved workspacepkg.ResolvedWorkspace) ([]*Skill, error) {
 	if err := checkRegistryContext(ctx); err != nil {
@@ -164,7 +186,8 @@ func (r *Registry) ForWorkspace(ctx context.Context, resolved workspacepkg.Resol
 	}
 	r.mu.Unlock()
 
-	workspaceSkills, err := r.loadWorkspaceSkills(ctx, load.paths)
+	workspaceDisabled := r.workspaceDisabledSkillsSnapshot(cacheKey, resolved.Config.Skills.DisabledSkills)
+	workspaceSkills, err := r.loadWorkspaceSkills(ctx, load.paths, workspaceDisabled)
 	if err != nil {
 		return nil, err
 	}
@@ -182,12 +205,43 @@ func (r *Registry) ForWorkspace(ctx context.Context, resolved workspacepkg.Resol
 	return mergedSkillList(globalSkills, workspaceSkills), nil
 }
 
+// SetEnabled updates the runtime enabled state for a named skill and keeps the
+// disabled-skills overlay in sync so future reloads preserve the change.
+func (r *Registry) SetEnabled(name string, resolved *workspacepkg.ResolvedWorkspace, enabled bool) error {
+	trimmedName := strings.TrimSpace(name)
+	if trimmedName == "" {
+		return errors.New("skills: skill name is required")
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if cacheKey, workspaceSkill := r.workspaceSkillTargetLocked(trimmedName, resolved); workspaceSkill != nil {
+		workspaceSkill.Enabled = enabled
+		r.workspaceDisabled[cacheKey] = setDisabledSkill(r.workspaceDisabled[cacheKey], trimmedName, enabled)
+		r.globalVersion.Add(1)
+		return nil
+	}
+
+	globalSkill := r.globalSkills[trimmedName]
+	if globalSkill == nil {
+		return fmt.Errorf("skills: skill %q not found", trimmedName)
+	}
+
+	globalSkill.Enabled = enabled
+	r.cfg.DisabledSkills = setDisabledSkill(r.cfg.DisabledSkills, trimmedName, enabled)
+	r.globalVersion.Add(1)
+
+	return nil
+}
+
 func (r *Registry) reloadGlobal(ctx context.Context) error {
 	if err := checkRegistryContext(ctx); err != nil {
 		return err
 	}
 
-	loaded, snapshots, err := r.loadGlobalSkills(ctx)
+	disabledSkills := r.globalDisabledSkillsSnapshot()
+	loaded, snapshots, err := r.loadGlobalSkills(ctx, disabledSkills)
 	if err != nil {
 		return err
 	}
@@ -208,24 +262,24 @@ func (r *Registry) reloadGlobal(ctx context.Context) error {
 	return nil
 }
 
-func (r *Registry) loadGlobalSkills(ctx context.Context) (map[string]*Skill, map[string]filesnap.Snapshot, error) {
+func (r *Registry) loadGlobalSkills(ctx context.Context, disabledSkills []string) (map[string]*Skill, map[string]filesnap.Snapshot, error) {
 	skills := make(map[string]*Skill)
 	snapshots := make(map[string]filesnap.Snapshot)
 
-	if err := r.loadBundledSkills(ctx, skills); err != nil {
+	if err := r.loadBundledSkills(ctx, skills, disabledSkills); err != nil {
 		return nil, nil, err
 	}
-	if err := r.loadDirectorySkills(ctx, r.cfg.UserSkillsDir, SourceUser, skills, snapshots); err != nil {
+	if err := r.loadDirectorySkills(ctx, r.cfg.UserSkillsDir, SourceUser, skills, snapshots, disabledSkills); err != nil {
 		return nil, nil, err
 	}
-	if err := r.loadDirectorySkills(ctx, r.cfg.UserAgentsDir, SourceUser, skills, snapshots); err != nil {
+	if err := r.loadDirectorySkills(ctx, r.cfg.UserAgentsDir, SourceUser, skills, snapshots, disabledSkills); err != nil {
 		return nil, nil, err
 	}
 
 	return skills, snapshots, nil
 }
 
-func (r *Registry) loadWorkspaceSkills(ctx context.Context, paths []workspaceSkillPath) (map[string]*Skill, error) {
+func (r *Registry) loadWorkspaceSkills(ctx context.Context, paths []workspaceSkillPath, disabledSkills []string) (map[string]*Skill, error) {
 	skills := make(map[string]*Skill)
 
 	for _, path := range paths {
@@ -233,12 +287,12 @@ func (r *Registry) loadWorkspaceSkills(ctx context.Context, paths []workspaceSki
 			return nil, err
 		}
 
-		skill, err := ParseSkillFile(path.filePath)
+		skill, content, err := parseSkillFileDocument(path.filePath)
 		if err != nil {
 			return nil, err
 		}
 		skill.Source = path.source
-		if !r.processSkill(skills, skill) {
+		if !r.processSkill(skills, skill, content, disabledSkills) {
 			continue
 		}
 	}
@@ -246,7 +300,7 @@ func (r *Registry) loadWorkspaceSkills(ctx context.Context, paths []workspaceSki
 	return skills, nil
 }
 
-func (r *Registry) loadBundledSkills(ctx context.Context, dst map[string]*Skill) error {
+func (r *Registry) loadBundledSkills(ctx context.Context, dst map[string]*Skill, disabledSkills []string) error {
 	if r.cfg.BundledFS == nil {
 		return nil
 	}
@@ -261,11 +315,11 @@ func (r *Registry) loadBundledSkills(ctx context.Context, dst map[string]*Skill)
 			return err
 		}
 
-		skill, err := parseBundledSkill(r.cfg.BundledFS, skillPath)
+		skill, content, err := parseBundledSkillDocument(r.cfg.BundledFS, skillPath)
 		if err != nil {
 			return err
 		}
-		if !r.processSkill(dst, skill) {
+		if !r.processSkill(dst, skill, content, disabledSkills) {
 			continue
 		}
 	}
@@ -273,7 +327,7 @@ func (r *Registry) loadBundledSkills(ctx context.Context, dst map[string]*Skill)
 	return nil
 }
 
-func (r *Registry) loadDirectorySkills(ctx context.Context, dir string, source SkillSource, dst map[string]*Skill, snapshots map[string]filesnap.Snapshot) error {
+func (r *Registry) loadDirectorySkills(ctx context.Context, dir string, source SkillSource, dst map[string]*Skill, snapshots map[string]filesnap.Snapshot, disabledSkills []string) error {
 	root := strings.TrimSpace(dir)
 	if root == "" {
 		return nil
@@ -290,23 +344,23 @@ func (r *Registry) loadDirectorySkills(ctx context.Context, dir string, source S
 		return err
 	}
 
-	return r.loadSkillPaths(ctx, paths, source, dst)
+	return r.loadSkillPaths(ctx, paths, source, dst, disabledSkills)
 }
 
-func (r *Registry) loadSkillPaths(ctx context.Context, paths []string, source SkillSource, dst map[string]*Skill) error {
+func (r *Registry) loadSkillPaths(ctx context.Context, paths []string, source SkillSource, dst map[string]*Skill, disabledSkills []string) error {
 	for _, skillPath := range paths {
 		if err := checkRegistryContext(ctx); err != nil {
 			return err
 		}
 
-		skill, err := ParseSkillFile(skillPath)
+		skill, content, err := parseSkillFileDocument(skillPath)
 		if err != nil {
 			return err
 		}
 		if err := r.assignSourceAndProvenance(skill, source); err != nil {
 			return err
 		}
-		if !r.processSkill(dst, skill) {
+		if !r.processSkill(dst, skill, content, disabledSkills) {
 			continue
 		}
 	}
@@ -314,11 +368,11 @@ func (r *Registry) loadSkillPaths(ctx context.Context, paths []string, source Sk
 	return nil
 }
 
-func (r *Registry) processSkill(dst map[string]*Skill, skill *Skill) bool {
-	r.applyDisabled(skill)
+func (r *Registry) processSkill(dst map[string]*Skill, skill *Skill, content string, disabledSkills []string) bool {
+	r.applyDisabled(skill, disabledSkills)
 
 	verifyErr := r.verifyMarketplaceSkill(skill)
-	warnings := VerifyContent(skill.Content)
+	warnings := VerifyContent(content)
 	r.logVerificationWarnings(skill, warnings)
 	if verifyErr != nil {
 		return false
@@ -411,17 +465,95 @@ func recordSidecarSnapshots(paths []string, snapshots map[string]filesnap.Snapsh
 	return nil
 }
 
-func (r *Registry) applyDisabled(skill *Skill) {
+func (r *Registry) applyDisabled(skill *Skill, disabledSkills []string) {
 	if skill == nil {
 		return
 	}
 
-	for _, disabled := range r.cfg.DisabledSkills {
+	for _, disabled := range disabledSkills {
 		if strings.TrimSpace(disabled) == skill.Meta.Name {
 			skill.Enabled = false
 			return
 		}
 	}
+}
+
+func addDisabledSkill(disabled []string, name string) []string {
+	for _, existing := range disabled {
+		if strings.TrimSpace(existing) == name {
+			return disabled
+		}
+	}
+	return append(disabled, name)
+}
+
+func removeDisabledSkill(disabled []string, name string) []string {
+	if len(disabled) == 0 {
+		return nil
+	}
+
+	filtered := make([]string, 0, len(disabled))
+	for _, existing := range disabled {
+		if strings.TrimSpace(existing) == name {
+			continue
+		}
+		filtered = append(filtered, existing)
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+	return filtered
+}
+
+func setDisabledSkill(disabled []string, name string, enabled bool) []string {
+	if enabled {
+		return removeDisabledSkill(disabled, name)
+	}
+	return addDisabledSkill(disabled, name)
+}
+
+func (r *Registry) globalDisabledSkillsSnapshot() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	return slices.Clone(r.cfg.DisabledSkills)
+}
+
+func (r *Registry) workspaceDisabledSkillsSnapshot(cacheKey string, configured []string) []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	disabledSkills := mergeDisabledSkills(r.cfg.DisabledSkills, configured)
+	if cacheKey == "" {
+		return disabledSkills
+	}
+	return mergeDisabledSkills(disabledSkills, r.workspaceDisabled[cacheKey])
+}
+
+func mergeDisabledSkills(base []string, extra []string) []string {
+	merged := slices.Clone(base)
+	for _, name := range extra {
+		merged = addDisabledSkill(merged, strings.TrimSpace(name))
+	}
+	return merged
+}
+
+func (r *Registry) workspaceSkillTargetLocked(name string, resolved *workspacepkg.ResolvedWorkspace) (string, *Skill) {
+	if resolved == nil {
+		return "", nil
+	}
+
+	cacheKey := workspaceCacheKey(*resolved, nil)
+	if cacheKey == "" {
+		return "", nil
+	}
+
+	cached := r.wsCache[cacheKey]
+	if cached == nil {
+		return cacheKey, nil
+	}
+
+	return cacheKey, cached.skills[name]
 }
 
 func (r *Registry) overlaySkill(dst map[string]*Skill, skill *Skill) {
@@ -680,17 +812,22 @@ func (r *Registry) globalSnapshotState() (map[string]filesnap.Snapshot, bool) {
 }
 
 func parseBundledSkill(fsys fs.FS, skillPath string) (*Skill, error) {
+	skill, _, err := parseBundledSkillDocument(fsys, skillPath)
+	return skill, err
+}
+
+func readBundledSkillContent(fsys fs.FS, skillPath string) (string, error) {
+	_, body, err := parseBundledSkillDocument(fsys, skillPath)
+	if err != nil {
+		return "", err
+	}
+	return body, nil
+}
+
+func parseBundledSkillDocument(fsys fs.FS, skillPath string) (*Skill, string, error) {
 	content, err := fs.ReadFile(fsys, skillPath)
 	if err != nil {
-		return nil, fmt.Errorf("skills: read bundled skill %q: %w", skillPath, err)
-	}
-
-	meta, body, err := parseSkillContent(content)
-	if err != nil {
-		return nil, fmt.Errorf("skills: parse bundled skill %q: %w", skillPath, err)
-	}
-	if meta.Name == "" {
-		return nil, fmt.Errorf("skills: parse bundled skill %q: %w", skillPath, errSkillNameRequired)
+		return nil, "", fmt.Errorf("skills: read bundled skill %q: %w", skillPath, err)
 	}
 
 	dir := path.Dir(skillPath)
@@ -698,19 +835,7 @@ func parseBundledSkill(fsys fs.FS, skillPath string) (*Skill, error) {
 		dir = ""
 	}
 
-	skill := &Skill{
-		Meta:     meta,
-		Content:  body,
-		Source:   SourceBundled,
-		Dir:      dir,
-		FilePath: skillPath,
-		Enabled:  true,
-	}
-	if err := parseAGHMetadata(skill); err != nil {
-		return nil, fmt.Errorf("skills: parse bundled skill %q metadata.agh: %w", skillPath, err)
-	}
-
-	return skill, nil
+	return parseSkillDocument(skillPath, dir, content, SourceBundled)
 }
 
 func scanBundledFS(fsys fs.FS) ([]string, error) {
@@ -770,6 +895,11 @@ func fsPathDepth(current string, isDir bool) int {
 	}
 
 	return max(len(parts)-1, 0)
+}
+
+// SkillSourceName returns the canonical string label for a skill source.
+func SkillSourceName(source SkillSource) string {
+	return skillSourceName(source)
 }
 
 func skillSourceName(source SkillSource) string {
