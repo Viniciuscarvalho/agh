@@ -87,6 +87,7 @@ type SessionManagerDeps struct {
 	HomePaths         aghconfig.HomePaths
 	Logger            *slog.Logger
 	Notifier          session.Notifier
+	Hooks             session.HookDispatcher
 	PromptAssembler   session.PromptAssembler
 	SkillRegistry     session.SkillRegistry
 	MCPResolver       session.MCPResolver
@@ -129,6 +130,7 @@ type Daemon struct {
 	registry          Registry
 	memoryStore       *memory.Store
 	sessions          SessionManager
+	hooks             hookRuntime
 	observer          Observer
 	httpServer        Server
 	udsServer         Server
@@ -245,6 +247,7 @@ func New(opts ...Option) (*Daemon, error) {
 				session.WithLifecycleContext(ctx),
 				session.WithLogger(deps.Logger),
 				session.WithNotifier(deps.Notifier),
+				session.WithHookDispatcher(deps.Hooks),
 				session.WithPromptAssembler(deps.PromptAssembler),
 				session.WithSkillRegistry(deps.SkillRegistry),
 				session.WithMCPResolver(deps.MCPResolver),
@@ -373,6 +376,7 @@ func (d *Daemon) Shutdown(ctx context.Context) error {
 
 	d.mu.Lock()
 	sessions := d.sessions
+	hooks := d.hooks
 	httpServer := d.httpServer
 	udsServer := d.udsServer
 	registry := d.registry
@@ -384,6 +388,7 @@ func (d *Daemon) Shutdown(ctx context.Context) error {
 	skillsDone := d.skillsDone
 
 	d.sessions = nil
+	d.hooks = nil
 	d.httpServer = nil
 	d.udsServer = nil
 	d.observer = nil
@@ -408,6 +413,9 @@ func (d *Daemon) Shutdown(ctx context.Context) error {
 	stopSkillsWatcher(skillsCancel, skillsDone)
 	if err := d.stopSessions(ctx, sessions); err != nil {
 		errs = append(errs, err)
+	}
+	if hooks != nil {
+		hooks.Close()
 	}
 	if httpServer != nil {
 		if err := httpServer.Shutdown(ctx); err != nil {

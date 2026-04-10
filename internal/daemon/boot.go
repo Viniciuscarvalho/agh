@@ -10,9 +10,11 @@ import (
 
 	core "github.com/pedronauck/agh/internal/api/core"
 	aghconfig "github.com/pedronauck/agh/internal/config"
+	hookspkg "github.com/pedronauck/agh/internal/hooks"
 	aghlogger "github.com/pedronauck/agh/internal/logger"
 	"github.com/pedronauck/agh/internal/memory"
 	"github.com/pedronauck/agh/internal/memory/consolidation"
+	"github.com/pedronauck/agh/internal/observe"
 	"github.com/pedronauck/agh/internal/session"
 	"github.com/pedronauck/agh/internal/skills"
 	"github.com/pedronauck/agh/internal/skills/bundled"
@@ -70,7 +72,6 @@ func (d *Daemon) boot(ctx context.Context) (err error) {
 		memoryStore      *memory.Store
 		skillsRegistry   *skills.Registry
 		mcpResolver      *skills.MCPResolver
-		hookRunner       *skills.HookRunner
 		dreamSvc         consolidation.Service
 		dreamRuntime     *consolidation.Runtime
 		globalMemoryDir  string
@@ -119,13 +120,6 @@ func (d *Daemon) boot(ctx context.Context) (err error) {
 			return fmt.Errorf("daemon: load skills registry: %w", err)
 		}
 		mcpResolver = skills.NewMCPResolver(cfg.Skills, logger)
-		hookRunner = skills.NewHookRunner(cfg.Skills, logger)
-
-		skillsCancel, skillsDone = startSkillsWatcher(ctx, skillsRegistry, cfg.Skills.PollInterval)
-		cleanupFns = append(cleanupFns, func(context.Context) error {
-			stopSkillsWatcher(skillsCancel, skillsDone)
-			return nil
-		})
 		appendProviders = append(appendProviders, skills.NewCatalogProvider(skillsRegistry))
 	}
 
@@ -195,7 +189,7 @@ func (d *Daemon) boot(ctx context.Context) (err error) {
 	}
 
 	startedAt := d.now().UTC()
-	fanout := notifierFanout{}
+	notifier := newHooksNotifier(logger, d.now)
 	var skillRegistryDep session.SkillRegistry
 	if skillsRegistry != nil {
 		skillRegistryDep = skillsRegistry
@@ -207,7 +201,8 @@ func (d *Daemon) boot(ctx context.Context) (err error) {
 	sessions, err := d.newSessionManager(ctx, SessionManagerDeps{
 		HomePaths:         d.homePaths,
 		Logger:            logger,
-		Notifier:          &fanout,
+		Notifier:          notifier,
+		Hooks:             notifier,
 		PromptAssembler:   promptAssembler,
 		SkillRegistry:     skillRegistryDep,
 		MCPResolver:       mcpResolverDep,
@@ -257,18 +252,45 @@ func (d *Daemon) boot(ctx context.Context) (err error) {
 	if err != nil {
 		return fmt.Errorf("daemon: create observer: %w", err)
 	}
-	fanout.notifiers = append(fanout.notifiers, observer)
-	if skillsRegistry != nil && hookRunner != nil {
-		fanout.hookPhase = newSkillsHookDispatcher(skillsRegistry, hookRunner, workspaceResolver, logger)
-	}
 	deps.Observer = observer
-	if dreamSvc != nil {
-		fanout.postSessionStopped = append(fanout.postSessionStopped, func(_ context.Context, sess *session.Session) {
-			info := sess.Info()
-			if info == nil || info.Type == session.SessionTypeDream || strings.TrimSpace(info.WorkspaceID) == "" {
-				return
-			}
-			dreamRuntime.EnqueueCheck("session_stop", info.WorkspaceID)
+
+	nativeDecls, nativeExecutors := daemonNativeHooks(observer, dreamRuntime)
+	hookOptions := []hookspkg.Option{
+		hookspkg.WithLogger(logger),
+		hookspkg.WithNow(d.now),
+		hookspkg.WithDebugPatchAudit(strings.EqualFold(cfg.Log.Level, "debug")),
+		hookspkg.WithExecutorResolver(daemonExecutorResolver(nativeExecutors)),
+		hookspkg.WithNativeDeclarations(nativeDecls),
+		hookspkg.WithConfigDeclarationProvider(configDeclarationProvider(registry, workspaceResolver, logger)),
+		hookspkg.WithAgentDeclarationProvider(agentDeclarationProvider(registry, workspaceResolver, logger)),
+		hookspkg.WithSkillDeclarationProvider(skillDeclarationProvider(skillsRegistry, registry, workspaceResolver, cfg.Skills.AllowedMarketplaceHooks, logger)),
+	}
+	if sink, ok := observer.(hookspkg.TelemetrySink); ok {
+		hookOptions = append(hookOptions, hookspkg.WithTelemetrySink(sink))
+	}
+	hooks := hookspkg.NewHooks(hookOptions...)
+	if err := hooks.Rebuild(ctx); err != nil {
+		hooks.Close()
+		return fmt.Errorf("daemon: rebuild hooks: %w", err)
+	}
+	if hookAwareObserver, ok := observer.(interface {
+		AttachHooks(observe.HookCatalogSource)
+	}); ok {
+		hookAwareObserver.AttachHooks(hooks)
+	}
+	notifier.setRuntime(hooks, observer)
+	cleanupFns = append(cleanupFns, func(context.Context) error {
+		hooks.Close()
+		return nil
+	})
+
+	if skillsRegistry != nil {
+		skillsCancel, skillsDone = startSkillsWatcher(ctx, skillsRegistry, cfg.Skills.PollInterval, func(refreshCtx context.Context) error {
+			return hooks.Rebuild(refreshCtx)
+		})
+		cleanupFns = append(cleanupFns, func(context.Context) error {
+			stopSkillsWatcher(skillsCancel, skillsDone)
+			return nil
 		})
 	}
 
@@ -331,6 +353,7 @@ func (d *Daemon) boot(ctx context.Context) (err error) {
 	d.registry = registry
 	d.memoryStore = memoryStore
 	d.sessions = sessions
+	d.hooks = hooks
 	d.observer = observer
 	d.httpServer = httpServer
 	d.udsServer = udsServer
@@ -364,7 +387,7 @@ func (d *Daemon) skillsRegistryConfig(cfg aghconfig.Config) (skills.RegistryConf
 	}, nil
 }
 
-func startSkillsWatcher(ctx context.Context, registry *skills.Registry, interval time.Duration) (context.CancelFunc, chan struct{}) {
+func startSkillsWatcher(ctx context.Context, registry *skills.Registry, interval time.Duration, afterRefresh func(context.Context) error) (context.CancelFunc, chan struct{}) {
 	if registry == nil {
 		return nil, nil
 	}
@@ -372,6 +395,7 @@ func startSkillsWatcher(ctx context.Context, registry *skills.Registry, interval
 	watcherCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	watcher := skills.NewWatcher(registry, interval)
+	watcher.SetAfterRefresh(afterRefresh)
 	go func() {
 		defer close(done)
 		watcher.Start(watcherCtx)

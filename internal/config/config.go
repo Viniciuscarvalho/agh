@@ -123,6 +123,7 @@ type Config struct {
 	Log           LogConfig                 `toml:"log"`
 	Memory        MemoryConfig              `toml:"memory"`
 	Skills        SkillsConfig              `toml:"skills"`
+	Hooks         HooksConfig               `toml:"hooks"`
 }
 
 type loadOptions struct {
@@ -322,6 +323,9 @@ func (c Config) Validate() error {
 	}
 	if err := c.Skills.Validate(); err != nil {
 		return err
+	}
+	if err := c.Hooks.Validate(); err != nil {
+		return fmt.Errorf("validate hooks config: %w", err)
 	}
 
 	for name := range c.Providers {
