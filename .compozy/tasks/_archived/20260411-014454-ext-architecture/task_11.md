@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 title: Reference extensions (Go and TypeScript)
 type: docs
 complexity: medium
