@@ -40,6 +40,7 @@ type CreateOpts struct {
 	Name          string
 	Workspace     string
 	WorkspacePath string
+	Space         string
 	Type          SessionType
 }
 
@@ -59,22 +60,24 @@ type Manager struct {
 	pending    map[string]struct{}
 	finalizing map[string]chan struct{}
 
-	logger        *slog.Logger
-	driver        AgentDriver
-	notifier      Notifier
-	hooks         HookSet
-	skillRegistry SkillRegistry
-	mcpResolver   MCPResolver
-	homePaths     aghconfig.HomePaths
-	workspace     workspacepkg.WorkspaceResolver
-	openStore     StoreOpener
-	assembler     PromptAssembler
-	lifecycleCtx  context.Context
-	now           func() time.Time
-	newSessionID  IDGenerator
-	newTurnID     IDGenerator
-	maxSessions   int
-	promptBufSize int
+	logger          *slog.Logger
+	driver          AgentDriver
+	notifier        Notifier
+	networkPeers    NetworkPeerLifecycle
+	turnEndNotifier TurnEndNotifier
+	hooks           HookSet
+	skillRegistry   SkillRegistry
+	mcpResolver     MCPResolver
+	homePaths       aghconfig.HomePaths
+	workspace       workspacepkg.WorkspaceResolver
+	openStore       StoreOpener
+	assembler       PromptAssembler
+	lifecycleCtx    context.Context
+	now             func() time.Time
+	newSessionID    IDGenerator
+	newTurnID       IDGenerator
+	maxSessions     int
+	promptBufSize   int
 }
 
 // WithDriver injects the runtime driver used for session lifecycle operations.
@@ -275,6 +278,60 @@ func (m *Manager) Get(id string) (*Session, bool) {
 
 	session, ok := m.sessions[target]
 	return session, ok
+}
+
+// SetNetworkPeerLifecycle installs the late-bound network join/leave callbacks
+// used after session activation and before final stop cleanup.
+func (m *Manager) SetNetworkPeerLifecycle(lifecycle NetworkPeerLifecycle) {
+	if m == nil {
+		return
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.networkPeers = lifecycle
+}
+
+// SetTurnEndNotifier installs a post-construction callback invoked after each
+// prompt turn finishes.
+func (m *Manager) SetTurnEndNotifier(fn TurnEndNotifier) {
+	if m == nil {
+		return
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.turnEndNotifier = fn
+}
+
+// IsPrompting reports whether the target session currently has an in-flight
+// prompt setup or active turn.
+func (m *Manager) IsPrompting(id string) bool {
+	session, ok := m.Get(id)
+	if !ok {
+		return false
+	}
+	return session.IsPrompting()
+}
+
+func (m *Manager) currentNetworkPeerLifecycle() NetworkPeerLifecycle {
+	if m == nil {
+		return nil
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.networkPeers
+}
+
+func (m *Manager) currentTurnEndNotifier() TurnEndNotifier {
+	if m == nil {
+		return nil
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.turnEndNotifier
 }
 
 // List returns active in-memory sessions in stable order.

@@ -3514,6 +3514,42 @@ export interface operations {
               active_sessions: number;
               http_host: string;
               http_port: number;
+              network?: {
+                delivery_workers?: number;
+                enabled: boolean;
+                /** Format: int64 */
+                handoff_tagged_events?: number;
+                kind_metrics?: {
+                  /** Format: int64 */
+                  delivered?: number;
+                  kind: string;
+                  /** Format: int64 */
+                  received?: number;
+                  /** Format: int64 */
+                  rejected?: number;
+                  /** Format: int64 */
+                  sent?: number;
+                }[];
+                last_disconnect?: string;
+                listener_host?: string;
+                listener_port?: number;
+                local_peers?: number;
+                /** Format: int64 */
+                messages_delivered?: number;
+                /** Format: int64 */
+                messages_received?: number;
+                /** Format: int64 */
+                messages_rejected?: number;
+                /** Format: int64 */
+                messages_sent?: number;
+                queued_messages?: number;
+                queued_sessions?: number;
+                remote_peers?: number;
+                spaces?: number;
+                status: string;
+                /** Format: int64 */
+                workflow_tagged_events?: number;
+              } | null;
               pid: number;
               socket: string;
               /** Format: date-time */
@@ -4804,6 +4840,7 @@ export interface operations {
               created_at: string;
               id: string;
               name?: string;
+              space?: string;
               /** @enum {string} */
               state: "starting" | "active" | "stopping" | "stopped";
               stop_detail?: string;
@@ -4870,6 +4907,7 @@ export interface operations {
         "application/json": {
           agent_name?: string;
           name?: string;
+          space?: string;
           workspace?: string;
           workspace_path?: string;
         };
@@ -4895,6 +4933,7 @@ export interface operations {
               created_at: string;
               id: string;
               name?: string;
+              space?: string;
               /** @enum {string} */
               state: "starting" | "active" | "stopping" | "stopped";
               stop_detail?: string;
@@ -5001,6 +5040,7 @@ export interface operations {
               created_at: string;
               id: string;
               name?: string;
+              space?: string;
               /** @enum {string} */
               state: "starting" | "active" | "stopping" | "stopped";
               stop_detail?: string;
@@ -5390,6 +5430,7 @@ export interface operations {
               created_at: string;
               id: string;
               name?: string;
+              space?: string;
               /** @enum {string} */
               state: "starting" | "active" | "stopping" | "stopped";
               stop_detail?: string;
@@ -6423,6 +6464,7 @@ export interface operations {
               created_at: string;
               id: string;
               name?: string;
+              space?: string;
               /** @enum {string} */
               state: "starting" | "active" | "stopping" | "stopped";
               stop_detail?: string;

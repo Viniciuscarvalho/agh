@@ -5910,6 +5910,103 @@
                         "http_port": {
                           "type": "integer"
                         },
+                        "network": {
+                          "nullable": true,
+                          "properties": {
+                            "delivery_workers": {
+                              "type": "integer"
+                            },
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "handoff_tagged_events": {
+                              "format": "int64",
+                              "type": "integer"
+                            },
+                            "kind_metrics": {
+                              "items": {
+                                "properties": {
+                                  "delivered": {
+                                    "format": "int64",
+                                    "type": "integer"
+                                  },
+                                  "kind": {
+                                    "type": "string"
+                                  },
+                                  "received": {
+                                    "format": "int64",
+                                    "type": "integer"
+                                  },
+                                  "rejected": {
+                                    "format": "int64",
+                                    "type": "integer"
+                                  },
+                                  "sent": {
+                                    "format": "int64",
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "kind"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            },
+                            "last_disconnect": {
+                              "type": "string"
+                            },
+                            "listener_host": {
+                              "type": "string"
+                            },
+                            "listener_port": {
+                              "type": "integer"
+                            },
+                            "local_peers": {
+                              "type": "integer"
+                            },
+                            "messages_delivered": {
+                              "format": "int64",
+                              "type": "integer"
+                            },
+                            "messages_received": {
+                              "format": "int64",
+                              "type": "integer"
+                            },
+                            "messages_rejected": {
+                              "format": "int64",
+                              "type": "integer"
+                            },
+                            "messages_sent": {
+                              "format": "int64",
+                              "type": "integer"
+                            },
+                            "queued_messages": {
+                              "type": "integer"
+                            },
+                            "queued_sessions": {
+                              "type": "integer"
+                            },
+                            "remote_peers": {
+                              "type": "integer"
+                            },
+                            "spaces": {
+                              "type": "integer"
+                            },
+                            "status": {
+                              "type": "string"
+                            },
+                            "workflow_tagged_events": {
+                              "format": "int64",
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "status"
+                          ],
+                          "type": "object"
+                        },
                         "pid": {
                           "type": "integer"
                         },
@@ -8462,6 +8559,9 @@
                           "name": {
                             "type": "string"
                           },
+                          "space": {
+                            "type": "string"
+                          },
                           "state": {
                             "enum": [
                               "starting",
@@ -8583,6 +8683,9 @@
                   "name": {
                     "type": "string"
                   },
+                  "space": {
+                    "type": "string"
+                  },
                   "workspace": {
                     "type": "string"
                   },
@@ -8643,6 +8746,9 @@
                           "type": "string"
                         },
                         "name": {
+                          "type": "string"
+                        },
+                        "space": {
                           "type": "string"
                         },
                         "state": {
@@ -8914,6 +9020,9 @@
                           "type": "string"
                         },
                         "name": {
+                          "type": "string"
+                        },
+                        "space": {
                           "type": "string"
                         },
                         "state": {
@@ -9619,6 +9728,9 @@
                           "type": "string"
                         },
                         "name": {
+                          "type": "string"
+                        },
+                        "space": {
                           "type": "string"
                         },
                         "state": {
@@ -11661,6 +11773,9 @@
                             "type": "string"
                           },
                           "name": {
+                            "type": "string"
+                          },
+                          "space": {
                             "type": "string"
                           },
                           "state": {

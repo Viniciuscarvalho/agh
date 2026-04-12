@@ -48,6 +48,7 @@ type SessionInfo struct {
 	AgentName    string
 	WorkspaceID  string
 	Workspace    string
+	Space        string
 	Type         SessionType
 	State        SessionState
 	StopReason   store.StopReason
@@ -67,6 +68,7 @@ type Session struct {
 	AgentName    string
 	WorkspaceID  string
 	Workspace    string
+	Space        string
 	Type         SessionType
 	State        SessionState
 	stopCause    StopCause
@@ -83,8 +85,9 @@ type Session struct {
 	recorder   EventRecorder
 	process    *AgentProcess
 
-	promptSetupCount int
-	promptSetupDone  chan struct{}
+	promptSetupCount  int
+	promptSetupDone   chan struct{}
+	currentTurnSource TurnSource
 }
 
 // Info returns a consistent snapshot of the current session state.
@@ -102,6 +105,7 @@ func (s *Session) Info() *SessionInfo {
 		AgentName:    s.AgentName,
 		WorkspaceID:  s.WorkspaceID,
 		Workspace:    s.Workspace,
+		Space:        s.Space,
 		Type:         normalizeSessionType(s.Type),
 		State:        s.State,
 		StopReason:   s.stopReason,
@@ -187,6 +191,49 @@ func (s *Session) recorderHandle() EventRecorder {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.recorder
+}
+
+// CurrentTurnSource reports the provenance of the currently active prompt turn.
+func (s *Session) CurrentTurnSource() TurnSource {
+	if s == nil {
+		return ""
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.currentTurnSource
+}
+
+// IsPrompting reports whether the session currently has prompt setup or turn
+// execution in flight.
+func (s *Session) IsPrompting() bool {
+	if s == nil {
+		return false
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.promptSetupCount > 0 || s.currentTurnSource != ""
+}
+
+func (s *Session) setCurrentTurnSource(source TurnSource) {
+	if s == nil {
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.currentTurnSource = normalizeTurnSource(source)
+}
+
+func (s *Session) clearCurrentTurnSource() {
+	if s == nil {
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.currentTurnSource = ""
 }
 
 func (s *Session) updateFromProcess(proc *AgentProcess, now time.Time) {
@@ -370,11 +417,13 @@ func (s *Session) setStopClassification(reason store.StopReason, detail string) 
 	s.stopDetail = strings.TrimSpace(detail)
 }
 
-func (s *Session) activate(now time.Time) error {
+func (s *Session) activate(now time.Time, preserveStopReason bool) error {
 	if err := s.transition(StateActive, now); err != nil {
 		return err
 	}
-	s.clearStopClassification()
+	if !preserveStopReason {
+		s.clearStopClassification()
+	}
 	return nil
 }
 
@@ -457,6 +506,7 @@ func (s *Session) Meta() store.SessionMeta {
 		Name:         s.Name,
 		AgentName:    s.AgentName,
 		WorkspaceID:  s.WorkspaceID,
+		Space:        s.Space,
 		SessionType:  string(normalizeSessionType(s.Type)),
 		State:        string(s.State),
 		StopReason:   stopReasonPointer(s.stopReason),

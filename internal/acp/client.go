@@ -151,11 +151,13 @@ func (d *Driver) spawnProcess(normalized StartOpts) (*AgentProcess, error) {
 		return nil, err
 	}
 
+	processEnv := daemonMatchedEnv(normalized.Env)
+
 	managed, err := subprocess.Launch(context.Background(), subprocess.LaunchConfig{
 		Command:          command,
 		Args:             args,
 		Dir:              normalized.Cwd,
-		Env:              normalized.Env,
+		Env:              processEnv,
 		Logger:           d.logger,
 		DisableTransport: true,
 		ShutdownTimeout:  d.stopTimeout,
@@ -245,6 +247,9 @@ func (d *Driver) loadSession(ctx context.Context, process *AgentProcess, normali
 
 	process.SessionID = normalized.ResumeSessionID
 	process.Caps = captureCaps(process.Caps.SupportsLoadSession, loadResponse.Modes, loadResponse.Models)
+	if err := d.applySessionMode(ctx, process, normalized.Permissions); err != nil {
+		return fmt.Errorf("acp: set session mode for %q: %w", normalized.AgentName, err)
+	}
 	return nil
 }
 
@@ -265,7 +270,74 @@ func (d *Driver) createSession(ctx context.Context, process *AgentProcess, norma
 
 	process.SessionID = string(newResponse.SessionId)
 	process.Caps = captureCaps(process.Caps.SupportsLoadSession, newResponse.Modes, newResponse.Models)
+	if err := d.applySessionMode(ctx, process, normalized.Permissions); err != nil {
+		return fmt.Errorf("acp: set session mode for %q: %w", normalized.AgentName, err)
+	}
 	return nil
+}
+
+func (d *Driver) applySessionMode(ctx context.Context, process *AgentProcess, permissions aghconfig.PermissionMode) error {
+	if ctx == nil || process == nil || process.conn == nil {
+		return nil
+	}
+
+	modeID := preferredSessionMode(process.Caps.SupportedModes, permissions)
+	if modeID == "" {
+		return nil
+	}
+
+	_, err := acpsdk.SendRequest[acpsdk.SetSessionModeResponse](process.conn, ctx, acpsdk.AgentMethodSessionSetMode, acpsdk.SetSessionModeRequest{
+		SessionId: acpsdk.SessionId(process.SessionID),
+		ModeId:    acpsdk.SessionModeId(modeID),
+	})
+	return err
+}
+
+func preferredSessionMode(supported []string, permissions aghconfig.PermissionMode) string {
+	if len(supported) == 0 {
+		return ""
+	}
+
+	lookup := make(map[string]string, len(supported))
+	for _, mode := range supported {
+		trimmed := strings.TrimSpace(mode)
+		if trimmed == "" {
+			continue
+		}
+		lookup[strings.ToLower(trimmed)] = trimmed
+	}
+
+	candidates := sessionModeCandidates(permissions)
+	for _, candidate := range candidates {
+		if matched, ok := lookup[strings.ToLower(candidate)]; ok {
+			return matched
+		}
+	}
+	return ""
+}
+
+func sessionModeCandidates(permissions aghconfig.PermissionMode) []string {
+	switch permissions {
+	case aghconfig.PermissionModeApproveAll:
+		return []string{
+			"full-access",
+			"full_access",
+			"bypassPermissions",
+			"bypass_permissions",
+			"auto",
+			"acceptEdits",
+		}
+	case aghconfig.PermissionModeApproveReads, aghconfig.PermissionModeDenyAll:
+		return []string{
+			"read-only",
+			"read_only",
+			"readOnly",
+			"plan",
+			"ask",
+		}
+	default:
+		return nil
+	}
 }
 
 func (d *Driver) cleanupFailedStart(process *AgentProcess, startErr error) error {
@@ -514,6 +586,79 @@ func normalizeStartOpts(opts StartOpts) (StartOpts, error) {
 	normalized.SystemPrompt = strings.TrimSpace(normalized.SystemPrompt)
 
 	return normalized, nil
+}
+
+func daemonMatchedEnv(base []string) []string {
+	env := append([]string(nil), base...)
+	if len(env) == 0 {
+		env = os.Environ()
+	}
+
+	executable, err := os.Executable()
+	if err != nil {
+		return env
+	}
+	if resolved, resolveErr := filepath.EvalSymlinks(executable); resolveErr == nil && strings.TrimSpace(resolved) != "" {
+		executable = resolved
+	}
+	executable = strings.TrimSpace(executable)
+	if executable == "" {
+		return env
+	}
+
+	env = setEnvValue(env, "AGH_BIN", executable)
+
+	binDir := strings.TrimSpace(filepath.Dir(executable))
+	if binDir == "" {
+		return env
+	}
+
+	pathValue, _ := envValue(env, "PATH")
+	env = setEnvValue(env, "PATH", prependPathEntry(pathValue, binDir))
+	return env
+}
+
+func prependPathEntry(pathValue string, entry string) string {
+	cleanEntry := strings.TrimSpace(entry)
+	if cleanEntry == "" {
+		return pathValue
+	}
+
+	separator := string(os.PathListSeparator)
+	segments := strings.Split(pathValue, separator)
+	filtered := make([]string, 0, len(segments))
+	for _, segment := range segments {
+		trimmed := strings.TrimSpace(segment)
+		if trimmed == "" || trimmed == cleanEntry {
+			continue
+		}
+		filtered = append(filtered, trimmed)
+	}
+	return strings.Join(append([]string{cleanEntry}, filtered...), separator)
+}
+
+func envValue(env []string, key string) (string, bool) {
+	prefix := key + "="
+	for i := len(env) - 1; i >= 0; i-- {
+		variable := env[i]
+		if strings.HasPrefix(variable, prefix) {
+			return variable[len(prefix):], true
+		}
+	}
+	return "", false
+}
+
+func setEnvValue(env []string, key string, value string) []string {
+	prefix := key + "="
+	entry := prefix + value
+	filtered := env[:0]
+	for _, variable := range env {
+		if strings.HasPrefix(variable, prefix) {
+			continue
+		}
+		filtered = append(filtered, variable)
+	}
+	return append(filtered, entry)
 }
 
 func normalizeWorkspaceDir(path string, field string) (string, error) {

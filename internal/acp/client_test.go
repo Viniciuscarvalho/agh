@@ -280,6 +280,55 @@ func TestPromptPrependsSystemPromptOnce(t *testing.T) {
 	}
 }
 
+func TestDaemonMatchedEnvPinsCurrentBinary(t *testing.T) {
+	t.Parallel()
+
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable() error = %v", err)
+	}
+	if resolved, resolveErr := filepath.EvalSymlinks(executable); resolveErr == nil && strings.TrimSpace(resolved) != "" {
+		executable = resolved
+	}
+	binDir := filepath.Dir(executable)
+
+	env := daemonMatchedEnv([]string{
+		"PATH=/should-be-ignored",
+		"FOO=bar",
+		"AGH_BIN=/should-be-replaced",
+		"PATH=/usr/local/bin" + string(os.PathListSeparator) + binDir + string(os.PathListSeparator) + "/usr/bin",
+		"AGH_BIN=/should-also-be-replaced",
+	})
+
+	gotAGHBin, ok := envValue(env, "AGH_BIN")
+	if !ok || gotAGHBin != executable {
+		t.Fatalf("daemonMatchedEnv() AGH_BIN = %q, %v, want %q", gotAGHBin, ok, executable)
+	}
+
+	gotPath, ok := envValue(env, "PATH")
+	if !ok {
+		t.Fatal("daemonMatchedEnv() PATH missing")
+	}
+	wantPath := binDir + string(os.PathListSeparator) + "/usr/local/bin" + string(os.PathListSeparator) + "/usr/bin"
+	if gotPath != wantPath {
+		t.Fatalf("daemonMatchedEnv() PATH = %q, want %q", gotPath, wantPath)
+	}
+
+	pathCount := 0
+	aghBinCount := 0
+	for _, variable := range env {
+		switch {
+		case strings.HasPrefix(variable, "PATH="):
+			pathCount++
+		case strings.HasPrefix(variable, "AGH_BIN="):
+			aghBinCount++
+		}
+	}
+	if pathCount != 1 || aghBinCount != 1 {
+		t.Fatalf("daemonMatchedEnv() duplicate entries remain: PATH=%d AGH_BIN=%d env=%#v", pathCount, aghBinCount, env)
+	}
+}
+
 func TestPromptStreamsSessionUpdates(t *testing.T) {
 	t.Parallel()
 
@@ -347,6 +396,49 @@ func TestStartResumeUsesLoadSession(t *testing.T) {
 	}
 	if !slices.Equal(proc.Caps.SupportedModels, []string{"loaded-model"}) {
 		t.Fatalf("Start() supported models = %#v, want %#v", proc.Caps.SupportedModels, []string{"loaded-model"})
+	}
+}
+
+func TestStartApproveAllSetsPermissiveSessionModeWhenSupported(t *testing.T) {
+	t.Parallel()
+
+	driver := New()
+	captureFile := filepath.Join(t.TempDir(), "session-set-mode-new.jsonl")
+	proc := startHelperProcess(t, driver, "mode_mapping", "", StartOpts{
+		Permissions: aghconfig.PermissionModeApproveAll,
+		Env:         helperEnvWithCapture("mode_mapping", "", captureFile),
+	})
+	defer stopProcess(t, driver, proc)
+
+	params := captureRequestParams(t, captureFile, acpsdk.AgentMethodSessionSetMode)
+	request := decodeCapturedSetSessionModeRequest(t, params)
+	if got, want := request.SessionID, "sess-new"; got != want {
+		t.Fatalf("set-mode session id = %q, want %q", got, want)
+	}
+	if got, want := request.ModeID, "bypassPermissions"; got != want {
+		t.Fatalf("set-mode mode id = %q, want %q", got, want)
+	}
+}
+
+func TestStartResumeApproveReadsSetsReadOnlyLikeSessionModeWhenSupported(t *testing.T) {
+	t.Parallel()
+
+	driver := New()
+	captureFile := filepath.Join(t.TempDir(), "session-set-mode-load.jsonl")
+	proc := startHelperProcess(t, driver, "load_mode_mapping", "", StartOpts{
+		ResumeSessionID: "sess-existing",
+		Permissions:     aghconfig.PermissionModeApproveReads,
+		Env:             helperEnvWithCapture("load_mode_mapping", "", captureFile),
+	})
+	defer stopProcess(t, driver, proc)
+
+	params := captureRequestParams(t, captureFile, acpsdk.AgentMethodSessionSetMode)
+	request := decodeCapturedSetSessionModeRequest(t, params)
+	if got, want := request.SessionID, "sess-existing"; got != want {
+		t.Fatalf("set-mode session id = %q, want %q", got, want)
+	}
+	if got, want := request.ModeID, "plan"; got != want {
+		t.Fatalf("set-mode mode id = %q, want %q", got, want)
 	}
 }
 
@@ -806,6 +898,11 @@ type capturedLoadSessionRequest struct {
 	SessionID      string   `json:"sessionId"`
 }
 
+type capturedSetSessionModeRequest struct {
+	SessionID string `json:"sessionId"`
+	ModeID    string `json:"modeId"`
+}
+
 func captureRequestParams(t *testing.T, path string, method string) map[string]json.RawMessage {
 	t.Helper()
 
@@ -867,6 +964,20 @@ func decodeCapturedLoadSessionRequest(t *testing.T, params map[string]json.RawMe
 	return request
 }
 
+func decodeCapturedSetSessionModeRequest(t *testing.T, params map[string]json.RawMessage) capturedSetSessionModeRequest {
+	t.Helper()
+
+	raw, err := json.Marshal(params)
+	if err != nil {
+		t.Fatalf("json.Marshal(set-session-mode params) error = %v", err)
+	}
+	var request capturedSetSessionModeRequest
+	if err := json.Unmarshal(raw, &request); err != nil {
+		t.Fatalf("json.Unmarshal(set-session-mode request) error = %v", err)
+	}
+	return request
+}
+
 func mustCanonicalDir(t *testing.T, path string) string {
 	t.Helper()
 
@@ -905,7 +1016,7 @@ func (a *helperACPAgent) Initialize(context.Context, acpsdk.InitializeRequest) (
 	return acpsdk.InitializeResponse{
 		ProtocolVersion: acpsdk.ProtocolVersionNumber,
 		AgentCapabilities: acpsdk.AgentCapabilities{
-			LoadSession: a.scenario == "load_session" || a.scenario == "load_session_error",
+			LoadSession: a.scenario == "load_session" || a.scenario == "load_session_error" || a.scenario == "load_mode_mapping",
 		},
 		AuthMethods: []acpsdk.AuthMethod{},
 	}, nil
@@ -916,6 +1027,13 @@ func (a *helperACPAgent) Cancel(context.Context, acpsdk.CancelNotification) erro
 }
 
 func (a *helperACPAgent) NewSession(context.Context, acpsdk.NewSessionRequest) (acpsdk.NewSessionResponse, error) {
+	if a.scenario == "mode_mapping" {
+		return acpsdk.NewSessionResponse{
+			SessionId: "sess-new",
+			Modes:     helperModeStateWithCurrent("default", "default", "plan", "bypassPermissions"),
+			Models:    helperModelState("new-model"),
+		}, nil
+	}
 	return acpsdk.NewSessionResponse{
 		SessionId: "sess-new",
 		Modes:     helperModeState("new-mode"),
@@ -926,6 +1044,12 @@ func (a *helperACPAgent) NewSession(context.Context, acpsdk.NewSessionRequest) (
 func (a *helperACPAgent) LoadSession(context.Context, acpsdk.LoadSessionRequest) (acpsdk.LoadSessionResponse, error) {
 	if a.scenario == "load_session_error" {
 		return acpsdk.LoadSessionResponse{}, errors.New("load failed")
+	}
+	if a.scenario == "load_mode_mapping" {
+		return acpsdk.LoadSessionResponse{
+			Modes:  helperModeStateWithCurrent("default", "default", "plan", "bypassPermissions"),
+			Models: helperModelState("loaded-model"),
+		}, nil
 	}
 	return acpsdk.LoadSessionResponse{
 		Modes:  helperModeState("loaded-mode"),
@@ -997,6 +1121,78 @@ func (a *helperACPAgent) Prompt(ctx context.Context, params acpsdk.PromptRequest
 		}); sendErr != nil {
 			return acpsdk.PromptResponse{}, sendErr
 		}
+	case "network_guardrails":
+		targetPath := a.filePath
+		if targetPath == "" {
+			cwd, err := os.Getwd()
+			if err != nil {
+				return acpsdk.PromptResponse{}, err
+			}
+			targetPath = filepath.Join(cwd, "network-blocked.txt")
+		}
+
+		writeResult := "write_unexpected"
+		if _, err := a.conn.WriteTextFile(ctx, acpsdk.WriteTextFileRequest{
+			SessionId: params.SessionId,
+			Path:      targetPath,
+			Content:   "blocked",
+		}); err != nil {
+			writeResult = "write_blocked"
+		}
+		if sendErr := a.conn.SessionUpdate(ctx, acpsdk.SessionNotification{
+			SessionId: params.SessionId,
+			Update:    acpsdk.UpdateAgentMessageText(writeResult),
+		}); sendErr != nil {
+			return acpsdk.PromptResponse{}, sendErr
+		}
+
+		shellResult := "shell_unexpected"
+		if _, err := a.conn.CreateTerminal(ctx, acpsdk.CreateTerminalRequest{
+			SessionId: params.SessionId,
+			Command:   "sh",
+			Args:      []string{"-c", "printf nope"},
+		}); err != nil {
+			shellResult = "shell_blocked"
+		}
+		if sendErr := a.conn.SessionUpdate(ctx, acpsdk.SessionNotification{
+			SessionId: params.SessionId,
+			Update:    acpsdk.UpdateAgentMessageText(shellResult),
+		}); sendErr != nil {
+			return acpsdk.PromptResponse{}, sendErr
+		}
+
+		cwd, err := os.Getwd()
+		if err != nil {
+			return acpsdk.PromptResponse{}, err
+		}
+		createResp, err := a.conn.CreateTerminal(ctx, acpsdk.CreateTerminalRequest{
+			SessionId: params.SessionId,
+			Command:   "agh",
+			Args:      []string{"network", "status"},
+			Cwd:       acpsdk.Ptr(cwd),
+		})
+		if err != nil {
+			return acpsdk.PromptResponse{}, err
+		}
+		if _, err := a.conn.WaitForTerminalExit(ctx, acpsdk.WaitForTerminalExitRequest{
+			SessionId:  params.SessionId,
+			TerminalId: createResp.TerminalId,
+		}); err != nil {
+			return acpsdk.PromptResponse{}, err
+		}
+		outputResp, err := a.conn.TerminalOutput(ctx, acpsdk.TerminalOutputRequest{
+			SessionId:  params.SessionId,
+			TerminalId: createResp.TerminalId,
+		})
+		if err != nil {
+			return acpsdk.PromptResponse{}, err
+		}
+		if sendErr := a.conn.SessionUpdate(ctx, acpsdk.SessionNotification{
+			SessionId: params.SessionId,
+			Update:    acpsdk.UpdateAgentMessageText(outputResp.Output),
+		}); sendErr != nil {
+			return acpsdk.PromptResponse{}, sendErr
+		}
 	default:
 		updates := []acpsdk.SessionUpdate{
 			acpsdk.UpdateAgentMessageText("hello"),
@@ -1022,11 +1218,20 @@ func (a *helperACPAgent) SetSessionMode(context.Context, acpsdk.SetSessionModeRe
 }
 
 func helperModeState(id string) *acpsdk.SessionModeState {
+	return helperModeStateWithCurrent(id, id)
+}
+
+func helperModeStateWithCurrent(current string, available ...string) *acpsdk.SessionModeState {
+	modes := make([]acpsdk.SessionMode, 0, len(available))
+	for _, id := range available {
+		modes = append(modes, acpsdk.SessionMode{
+			Id:   acpsdk.SessionModeId(id),
+			Name: id,
+		})
+	}
 	return &acpsdk.SessionModeState{
-		CurrentModeId: acpsdk.SessionModeId(id),
-		AvailableModes: []acpsdk.SessionMode{
-			{Id: acpsdk.SessionModeId(id), Name: id},
-		},
+		CurrentModeId:  acpsdk.SessionModeId(current),
+		AvailableModes: modes,
 	}
 }
 

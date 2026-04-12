@@ -22,11 +22,13 @@ type sessionStartSpec struct {
 	sessionName            string
 	agentName              string
 	workspace              workspacepkg.ResolvedWorkspace
+	space                  string
 	sessionType            SessionType
 	postEvent              hookspkg.HookEvent
 	startAction            string
 	cleanupSessionDir      bool
 	includePromptUpdatedAt bool
+	preserveStopReason     bool
 	createdAt              time.Time
 	acpSessionID           string
 	stopReason             store.StopReason
@@ -59,6 +61,7 @@ func (m *Manager) prepareCreateStart(ctx context.Context, opts CreateOpts) (sess
 		sessionName:       strings.TrimSpace(opts.Name),
 		agentName:         strings.TrimSpace(agentName),
 		workspace:         resolvedWorkspace,
+		space:             strings.TrimSpace(opts.Space),
 		sessionType:       normalizeSessionType(opts.Type),
 		postEvent:         hookspkg.HookSessionPostCreate,
 		startAction:       "start",
@@ -82,10 +85,12 @@ func (m *Manager) prepareResumeStart(ctx context.Context, meta store.SessionMeta
 		sessionName:            meta.Name,
 		agentName:              meta.AgentName,
 		workspace:              resolvedWorkspace,
+		space:                  strings.TrimSpace(meta.Space),
 		sessionType:            normalizeSessionType(SessionType(meta.SessionType)),
 		postEvent:              hookspkg.HookSessionPostResume,
 		startAction:            "resume",
 		includePromptUpdatedAt: true,
+		preserveStopReason:     sessionMetaStopReason(meta) == store.StopAgentCrashed,
 		createdAt:              meta.CreatedAt,
 		acpSessionID:           derefString(meta.ACPSessionID),
 		stopReason:             sessionMetaStopReason(meta),
@@ -100,6 +105,10 @@ func (m *Manager) startSession(ctx context.Context, spec sessionStartSpec) (_ *S
 	}
 
 	startupPrompt, err := m.startupPrompt(ctx, spec.startupSessionContext(m.now()), agentDef, spec.workspace)
+	if err != nil {
+		return nil, err
+	}
+	startupPrompt, err = appendBundledNetworkSkill(startupPrompt, spec.space)
 	if err != nil {
 		return nil, err
 	}
@@ -163,6 +172,7 @@ func (m *Manager) startSession(ctx context.Context, spec sessionStartSpec) (_ *S
 		AgentName:    resolved.Name,
 		WorkspaceID:  spec.workspace.ID,
 		Workspace:    spec.workspace.RootDir,
+		Space:        spec.space,
 		Type:         normalizeSessionType(spec.sessionType),
 		State:        StateStarting,
 		stopReason:   spec.stopReason,
@@ -181,6 +191,7 @@ func (m *Manager) startSession(ctx context.Context, spec sessionStartSpec) (_ *S
 		Command:         resolved.Command,
 		Cwd:             spec.workspace.RootDir,
 		AdditionalDirs:  append([]string(nil), spec.workspace.AdditionalDirs...),
+		Env:             sessionStartEnv(os.Environ(), session),
 		MCPServers:      startMCPServers,
 		Permissions:     m.startPermissions(session.Type, resolved.Permissions),
 		SystemPrompt:    resolved.Prompt,
@@ -199,8 +210,9 @@ func (m *Manager) startSession(ctx context.Context, spec sessionStartSpec) (_ *S
 	if err != nil {
 		return nil, fmt.Errorf("session: %s agent for %q: %w", spec.startAction, spec.sessionID, err)
 	}
+	proc.configureRuntime(session.CurrentTurnSource)
 
-	if err := m.activateAndWatch(ctx, session, proc, resolved, spec.postEvent); err != nil {
+	if err := m.activateAndWatch(ctx, session, proc, resolved, spec.postEvent, spec.preserveStopReason); err != nil {
 		return nil, err
 	}
 
@@ -224,4 +236,71 @@ func (s sessionStartSpec) startupSessionContext(updatedAt time.Time) hookspkg.Se
 		ctx.UpdatedAt = updatedAt
 	}
 	return ctx
+}
+
+func sessionStartEnv(base []string, session *Session) []string {
+	env := append([]string(nil), base...)
+	if len(env) == 0 {
+		env = os.Environ()
+	}
+	if session == nil {
+		return env
+	}
+
+	env = setSessionStartEnvValue(env, "AGH_SESSION_ID", strings.TrimSpace(session.ID))
+	env = unsetSessionStartEnvKeys(env, "AGH_SESSION_SPACE", "AGH_PEER_ID")
+
+	space := strings.TrimSpace(session.Space)
+	if space == "" {
+		return env
+	}
+
+	env = setSessionStartEnvValue(env, "AGH_SESSION_SPACE", space)
+	env = setSessionStartEnvValue(env, "AGH_PEER_ID", networkPeerID(session.AgentName, session.ID))
+	return env
+}
+
+func setSessionStartEnvValue(env []string, key string, value string) []string {
+	trimmedKey := strings.TrimSpace(key)
+	if trimmedKey == "" {
+		return env
+	}
+	entry := trimmedKey + "=" + value
+	for i, current := range env {
+		existingKey, _, ok := strings.Cut(current, "=")
+		if ok && existingKey == trimmedKey {
+			env[i] = entry
+			return env
+		}
+	}
+	return append(env, entry)
+}
+
+func unsetSessionStartEnvKeys(env []string, keys ...string) []string {
+	if len(env) == 0 || len(keys) == 0 {
+		return env
+	}
+
+	blocked := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		trimmedKey := strings.TrimSpace(key)
+		if trimmedKey != "" {
+			blocked[trimmedKey] = struct{}{}
+		}
+	}
+	if len(blocked) == 0 {
+		return env
+	}
+
+	filtered := make([]string, 0, len(env))
+	for _, current := range env {
+		existingKey, _, ok := strings.Cut(current, "=")
+		if ok {
+			if _, blockedKey := blocked[existingKey]; blockedKey {
+				continue
+			}
+		}
+		filtered = append(filtered, current)
+	}
+	return filtered
 }

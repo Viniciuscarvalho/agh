@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -20,6 +21,7 @@ import (
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	hookspkg "github.com/pedronauck/agh/internal/hooks"
 	skillspkg "github.com/pedronauck/agh/internal/skills"
+	"github.com/pedronauck/agh/internal/skills/bundled"
 	"github.com/pedronauck/agh/internal/store"
 	"github.com/pedronauck/agh/internal/store/sessiondb"
 	"github.com/pedronauck/agh/internal/testutil"
@@ -67,8 +69,14 @@ func TestCreateOpensStoreRegistersSessionAndActivates(t *testing.T) {
 	if got := session.Info().Type; got != SessionTypeUser {
 		t.Fatalf("Create() type = %q, want %q", got, SessionTypeUser)
 	}
+	if got := session.Info().Space; got != "" {
+		t.Fatalf("Create() space = %q, want empty", got)
+	}
 	if meta := readMeta(t, session.MetaPath()); meta.SessionType != string(SessionTypeUser) {
 		t.Fatalf("meta session type = %q, want %q", meta.SessionType, SessionTypeUser)
+	}
+	if meta := readMeta(t, session.MetaPath()); meta.Space != "" {
+		t.Fatalf("meta space = %q, want empty", meta.Space)
 	}
 	if got := len(h.resolver.resolveCalls); got != 1 {
 		t.Fatalf("resolver Resolve() calls = %d, want 1", got)
@@ -223,6 +231,125 @@ func TestResumeLoadsMetaAndPassesStoredACPSessionID(t *testing.T) {
 	}
 	if got := resumed.Info().StopDetail; got != "" {
 		t.Fatalf("resumed stop detail = %q, want empty", got)
+	}
+}
+
+func TestCreateAndResumePreserveSpace(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	session, err := h.manager.Create(testutil.Context(t), CreateOpts{
+		AgentName: "coder",
+		Name:      "networked",
+		Workspace: h.workspaceID,
+		Space:     "builders",
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	if got := session.Info().Space; got != "builders" {
+		t.Fatalf("Create() space = %q, want %q", got, "builders")
+	}
+	if meta := readMeta(t, session.MetaPath()); meta.Space != "builders" {
+		t.Fatalf("meta space = %q, want %q", meta.Space, "builders")
+	}
+
+	if err := h.manager.Stop(testutil.Context(t), session.ID); err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+
+	stopped, err := h.manager.Status(testutil.Context(t), session.ID)
+	if err != nil {
+		t.Fatalf("Status(stopped) error = %v", err)
+	}
+	if got := stopped.Space; got != "builders" {
+		t.Fatalf("Status(stopped).Space = %q, want %q", got, "builders")
+	}
+
+	resumed, err := h.manager.Resume(testutil.Context(t), session.ID)
+	if err != nil {
+		t.Fatalf("Resume() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = h.manager.Stop(testutil.Context(t), resumed.ID)
+	})
+
+	if got := resumed.Info().Space; got != "builders" {
+		t.Fatalf("Resume() space = %q, want %q", got, "builders")
+	}
+	if meta := readMeta(t, resumed.MetaPath()); meta.Space != "builders" {
+		t.Fatalf("resumed meta space = %q, want %q", meta.Space, "builders")
+	}
+}
+
+func TestCreateResumeAndStopInvokeLateBoundNetworkPeerLifecycle(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	lifecycle := newFakeNetworkPeerLifecycle()
+	h.manager.SetNetworkPeerLifecycle(lifecycle)
+
+	session, err := h.manager.Create(testutil.Context(t), CreateOpts{
+		AgentName: "coder",
+		Name:      "networked",
+		Workspace: h.workspaceID,
+		Space:     "builders",
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	if got := lifecycle.joinCount(); got != 1 {
+		t.Fatalf("join calls after Create() = %d, want 1", got)
+	}
+	firstJoin := lifecycle.joinCall(0)
+	if got, want := firstJoin.sessionID, session.ID; got != want {
+		t.Fatalf("first join session_id = %q, want %q", got, want)
+	}
+	if got, want := firstJoin.peerID, "coder."+session.ID; got != want {
+		t.Fatalf("first join peer_id = %q, want %q", got, want)
+	}
+	if got, want := firstJoin.space, "builders"; got != want {
+		t.Fatalf("first join space = %q, want %q", got, want)
+	}
+
+	if err := h.manager.Stop(testutil.Context(t), session.ID); err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+	if got := lifecycle.leaveCount(); got != 1 {
+		t.Fatalf("leave calls after Stop() = %d, want 1", got)
+	}
+	if got, want := lifecycle.leaveCall(0), session.ID; got != want {
+		t.Fatalf("first leave session_id = %q, want %q", got, want)
+	}
+
+	resumed, err := h.manager.Resume(testutil.Context(t), session.ID)
+	if err != nil {
+		t.Fatalf("Resume() error = %v", err)
+	}
+	if got := lifecycle.joinCount(); got != 2 {
+		t.Fatalf("join calls after Resume() = %d, want 2", got)
+	}
+	secondJoin := lifecycle.joinCall(1)
+	if got, want := secondJoin.sessionID, resumed.ID; got != want {
+		t.Fatalf("second join session_id = %q, want %q", got, want)
+	}
+	if got, want := secondJoin.peerID, "coder."+resumed.ID; got != want {
+		t.Fatalf("second join peer_id = %q, want %q", got, want)
+	}
+	if got, want := secondJoin.space, "builders"; got != want {
+		t.Fatalf("second join space = %q, want %q", got, want)
+	}
+
+	if err := h.manager.Stop(testutil.Context(t), resumed.ID); err != nil {
+		t.Fatalf("Stop(resumed) error = %v", err)
+	}
+	if got := lifecycle.leaveCount(); got != 2 {
+		t.Fatalf("leave calls after resumed Stop() = %d, want 2", got)
+	}
+	if got, want := lifecycle.leaveCall(1), resumed.ID; got != want {
+		t.Fatalf("second leave session_id = %q, want %q", got, want)
 	}
 }
 
@@ -449,7 +576,7 @@ func TestActivateAndWatchUpdatesStateAndStartsWatcher(t *testing.T) {
 		t.Fatalf("Start() error = %v", err)
 	}
 
-	if err := h.manager.activateAndWatch(testutil.Context(t), session, proc, aghconfig.ResolvedAgent{Name: "coder"}, hookspkg.HookSessionPostCreate); err != nil {
+	if err := h.manager.activateAndWatch(testutil.Context(t), session, proc, aghconfig.ResolvedAgent{Name: "coder"}, hookspkg.HookSessionPostCreate, false); err != nil {
 		t.Fatalf("activateAndWatch() error = %v", err)
 	}
 
@@ -540,7 +667,7 @@ func TestActivateAndWatchRollsBackOnMetaWriteFailure(t *testing.T) {
 		t.Fatalf("Start() error = %v", err)
 	}
 
-	if err := h.manager.activateAndWatch(testutil.Context(t), session, proc, aghconfig.ResolvedAgent{Name: "coder"}, hookspkg.HookSessionPostCreate); err == nil {
+	if err := h.manager.activateAndWatch(testutil.Context(t), session, proc, aghconfig.ResolvedAgent{Name: "coder"}, hookspkg.HookSessionPostCreate, false); err == nil {
 		t.Fatal("activateAndWatch() error = nil, want non-nil")
 	}
 	if _, ok := h.manager.Get(session.ID); ok {
@@ -597,7 +724,7 @@ func TestPumpPromptReturnsWhenContextIsCanceledWhileWaitingForSource(t *testing.
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		h.manager.pumpPrompt(ctx, nil, newPromptTurnDispatchState(nil, "turn-1", hookInputClassUserMessage, ""), source, out)
+		h.manager.pumpPrompt(ctx, nil, newPromptTurnDispatchState(nil, "turn-1", TurnSourceUser, ""), source, out)
 	}()
 
 	cancel()
@@ -715,6 +842,46 @@ func TestPromptPersistsUserMessageBeforeDriverPrompt(t *testing.T) {
 	}
 	if !strings.Contains(storedBeforePrompt[0].Content, `"text":"remember me"`) {
 		t.Fatalf("stored user_message content = %s", storedBeforePrompt[0].Content)
+	}
+}
+
+func TestPromptWithOptsTracksTurnSourceAndClearsAfterPrompt(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	session := createSession(t, h)
+	t.Cleanup(func() {
+		_ = h.manager.Stop(testutil.Context(t), session.ID)
+	})
+
+	seenSources := make([]TurnSource, 0, 2)
+	h.driver.promptHook = func(_ *fakeProcess, _ acp.PromptRequest) (<-chan acp.AgentEvent, error) {
+		seenSources = append(seenSources, session.CurrentTurnSource())
+
+		ch := make(chan acp.AgentEvent)
+		close(ch)
+		return ch, nil
+	}
+
+	firstEvents, err := h.manager.PromptWithOpts(testutil.Context(t), session.ID, PromptOpts{
+		Message: "user prompt",
+	})
+	if err != nil {
+		t.Fatalf("PromptWithOpts(user) error = %v", err)
+	}
+	_ = collectEvents(t, firstEvents)
+
+	secondEvents, err := h.manager.PromptNetwork(testutil.Context(t), session.ID, "network prompt")
+	if err != nil {
+		t.Fatalf("PromptNetwork() error = %v", err)
+	}
+	_ = collectEvents(t, secondEvents)
+
+	if !slices.Equal(seenSources, []TurnSource{TurnSourceUser, TurnSourceNetwork}) {
+		t.Fatalf("seen turn sources = %#v, want %#v", seenSources, []TurnSource{TurnSourceUser, TurnSourceNetwork})
+	}
+	if got := session.CurrentTurnSource(); got != "" {
+		t.Fatalf("CurrentTurnSource() after prompts = %q, want empty", got)
 	}
 }
 
@@ -914,6 +1081,47 @@ func TestStopAndProcessExitFinalizeOnlyOnce(t *testing.T) {
 	if *meta.StopReason != store.StopUserCanceled {
 		t.Fatalf("meta.StopReason = %q, want %q", *meta.StopReason, store.StopUserCanceled)
 	}
+}
+
+func TestStopWaitsForProcessDoneAfterSuccessfulDriverStop(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	session := createSession(t, h)
+
+	release := make(chan struct{})
+	h.driver.stopHook = func(proc *fakeProcess) error {
+		go func() {
+			<-release
+			proc.exit()
+		}()
+		return nil
+	}
+
+	stopCtx, cancel := context.WithTimeout(testutil.Context(t), time.Second)
+	defer cancel()
+
+	stopDone := make(chan error, 1)
+	go func() {
+		stopDone <- h.manager.Stop(stopCtx, session.ID)
+	}()
+
+	select {
+	case err := <-stopDone:
+		t.Fatalf("Stop() completed early with %v, want it blocked on process exit", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(release)
+
+	if err := <-stopDone; err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+
+	waitForCondition(t, "stopped session finalization", func() bool {
+		_, ok := h.manager.Get(session.ID)
+		return !ok && readMeta(t, session.MetaPath()).State == string(StateStopped)
+	})
 }
 
 func TestPromptSerializesSetupAgainstConcurrentStop(t *testing.T) {
@@ -1287,6 +1495,44 @@ func TestCreateInvokesPromptAssemblerWhenConfigured(t *testing.T) {
 	}
 }
 
+func TestCreateWithSpaceAppendsBundledNetworkSkillAfterPromptAssembly(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	networkSkill, err := bundled.LoadContent(networkSkillName)
+	if err != nil {
+		t.Fatalf("LoadContent(%q) error = %v", networkSkillName, err)
+	}
+
+	h.manager = newManagerWithHarness(t, h, WithPromptAssembler(promptAssemblerFunc(func(_ context.Context, agent aghconfig.AgentDef, workspace workspacepkg.ResolvedWorkspace) (string, error) {
+		if got, want := workspace.RootDir, h.workspace; got != want {
+			t.Fatalf("assembler workspace = %q, want %q", got, want)
+		}
+		return agent.Prompt + "\n\nmemory block", nil
+	})))
+
+	session, err := h.manager.Create(testutil.Context(t), CreateOpts{
+		AgentName: "coder",
+		Name:      "networked",
+		Workspace: h.workspaceID,
+		Space:     "builders",
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = h.manager.Stop(testutil.Context(t), session.ID)
+	})
+
+	wantPrompt := "You are a coding assistant.\n\nmemory block\n\n" + networkSkill
+	if got := h.driver.startCalls[0].SystemPrompt; got != wantPrompt {
+		t.Fatalf("start system prompt = %q, want %q", got, wantPrompt)
+	}
+	if got := strings.Count(h.driver.startCalls[0].SystemPrompt, networkSkill); got != 1 {
+		t.Fatalf("network skill occurrences = %d, want 1", got)
+	}
+}
+
 func TestCreateUsesRawPromptWhenAssemblerIsNil(t *testing.T) {
 	t.Parallel()
 
@@ -1305,6 +1551,173 @@ func TestCreateUsesRawPromptWhenAssemblerIsNil(t *testing.T) {
 
 	if got := h.driver.startCalls[0].SystemPrompt; got != "You are a coding assistant." {
 		t.Fatalf("start system prompt = %q, want raw agent prompt", got)
+	}
+}
+
+func TestCreateWithoutSpaceDoesNotAppendBundledNetworkSkill(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t, WithPromptAssembler(nil))
+	networkSkill, err := bundled.LoadContent(networkSkillName)
+	if err != nil {
+		t.Fatalf("LoadContent(%q) error = %v", networkSkillName, err)
+	}
+
+	session, err := h.manager.Create(testutil.Context(t), CreateOpts{
+		AgentName: "coder",
+		Workspace: h.workspaceID,
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = h.manager.Stop(testutil.Context(t), session.ID)
+	})
+
+	if got := h.driver.startCalls[0].SystemPrompt; got != "You are a coding assistant." {
+		t.Fatalf("start system prompt = %q, want raw agent prompt", got)
+	}
+	if strings.Contains(h.driver.startCalls[0].SystemPrompt, networkSkill) {
+		t.Fatalf("start system prompt unexpectedly contains bundled network skill")
+	}
+}
+
+func TestResumeWithSpaceReinjectsBundledNetworkSkillOnce(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t, WithPromptAssembler(nil))
+	networkSkill, err := bundled.LoadContent(networkSkillName)
+	if err != nil {
+		t.Fatalf("LoadContent(%q) error = %v", networkSkillName, err)
+	}
+
+	session, err := h.manager.Create(testutil.Context(t), CreateOpts{
+		AgentName: "coder",
+		Name:      "networked",
+		Workspace: h.workspaceID,
+		Space:     "builders",
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if got := strings.Count(h.driver.startCalls[0].SystemPrompt, networkSkill); got != 1 {
+		t.Fatalf("create prompt network skill occurrences = %d, want 1", got)
+	}
+
+	if err := h.manager.Stop(testutil.Context(t), session.ID); err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+
+	resumed, err := h.manager.Resume(testutil.Context(t), session.ID)
+	if err != nil {
+		t.Fatalf("Resume() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = h.manager.Stop(testutil.Context(t), resumed.ID)
+	})
+
+	wantPrompt := "You are a coding assistant.\n\n" + networkSkill
+	if got := h.driver.startCalls[1].SystemPrompt; got != wantPrompt {
+		t.Fatalf("resume system prompt = %q, want %q", got, wantPrompt)
+	}
+	if got := strings.Count(h.driver.startCalls[1].SystemPrompt, networkSkill); got != 1 {
+		t.Fatalf("resume prompt network skill occurrences = %d, want 1", got)
+	}
+}
+
+func TestCreateWithSpaceInjectsNetworkSessionEnv(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t, WithPromptAssembler(nil))
+
+	session, err := h.manager.Create(testutil.Context(t), CreateOpts{
+		AgentName: "coder",
+		Name:      "networked",
+		Workspace: h.workspaceID,
+		Space:     "builders",
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = h.manager.Stop(testutil.Context(t), session.ID)
+	})
+
+	env := h.driver.startCalls[0].Env
+	if got, ok := lookupEnvValue(env, "AGH_SESSION_ID"); !ok || got != session.ID {
+		t.Fatalf("AGH_SESSION_ID = %q, %v, want %q", got, ok, session.ID)
+	}
+	if got, ok := lookupEnvValue(env, "AGH_SESSION_SPACE"); !ok || got != "builders" {
+		t.Fatalf("AGH_SESSION_SPACE = %q, %v, want %q", got, ok, "builders")
+	}
+	if got, ok := lookupEnvValue(env, "AGH_PEER_ID"); !ok || got != "coder."+session.ID {
+		t.Fatalf("AGH_PEER_ID = %q, %v, want %q", got, ok, "coder."+session.ID)
+	}
+}
+
+func TestCreateWithoutSpaceOmitsNetworkSpaceEnv(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t, WithPromptAssembler(nil))
+
+	session, err := h.manager.Create(testutil.Context(t), CreateOpts{
+		AgentName: "coder",
+		Workspace: h.workspaceID,
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = h.manager.Stop(testutil.Context(t), session.ID)
+	})
+
+	env := h.driver.startCalls[0].Env
+	if got, ok := lookupEnvValue(env, "AGH_SESSION_ID"); !ok || got != session.ID {
+		t.Fatalf("AGH_SESSION_ID = %q, %v, want %q", got, ok, session.ID)
+	}
+	if got, ok := lookupEnvValue(env, "AGH_SESSION_SPACE"); ok {
+		t.Fatalf("AGH_SESSION_SPACE = %q, want unset", got)
+	}
+	if got, ok := lookupEnvValue(env, "AGH_PEER_ID"); ok {
+		t.Fatalf("AGH_PEER_ID = %q, want unset", got)
+	}
+}
+
+func TestResumeWithSpaceReinjectsNetworkSessionEnv(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t, WithPromptAssembler(nil))
+
+	session, err := h.manager.Create(testutil.Context(t), CreateOpts{
+		AgentName: "coder",
+		Name:      "networked",
+		Workspace: h.workspaceID,
+		Space:     "builders",
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if err := h.manager.Stop(testutil.Context(t), session.ID); err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+
+	resumed, err := h.manager.Resume(testutil.Context(t), session.ID)
+	if err != nil {
+		t.Fatalf("Resume() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = h.manager.Stop(testutil.Context(t), resumed.ID)
+	})
+
+	env := h.driver.startCalls[1].Env
+	if got, ok := lookupEnvValue(env, "AGH_SESSION_ID"); !ok || got != resumed.ID {
+		t.Fatalf("AGH_SESSION_ID = %q, %v, want %q", got, ok, resumed.ID)
+	}
+	if got, ok := lookupEnvValue(env, "AGH_SESSION_SPACE"); !ok || got != "builders" {
+		t.Fatalf("AGH_SESSION_SPACE = %q, %v, want %q", got, ok, "builders")
+	}
+	if got, ok := lookupEnvValue(env, "AGH_PEER_ID"); !ok || got != "coder."+resumed.ID {
+		t.Fatalf("AGH_PEER_ID = %q, %v, want %q", got, ok, "coder."+resumed.ID)
 	}
 }
 
@@ -1677,6 +2090,64 @@ func (n *fakeNotifier) notificationOrder() []string {
 	return append([]string(nil), n.order...)
 }
 
+type fakeNetworkPeerLifecycle struct {
+	mu    sync.Mutex
+	joins []fakeNetworkJoinCall
+	left  []string
+}
+
+type fakeNetworkJoinCall struct {
+	sessionID string
+	peerID    string
+	space     string
+}
+
+func newFakeNetworkPeerLifecycle() *fakeNetworkPeerLifecycle {
+	return &fakeNetworkPeerLifecycle{}
+}
+
+func (f *fakeNetworkPeerLifecycle) JoinSpace(_ context.Context, sessionID string, peerID string, space string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.joins = append(f.joins, fakeNetworkJoinCall{
+		sessionID: sessionID,
+		peerID:    peerID,
+		space:     space,
+	})
+	return nil
+}
+
+func (f *fakeNetworkPeerLifecycle) LeaveSpace(_ context.Context, sessionID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.left = append(f.left, sessionID)
+	return nil
+}
+
+func (f *fakeNetworkPeerLifecycle) joinCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.joins)
+}
+
+func (f *fakeNetworkPeerLifecycle) joinCall(index int) fakeNetworkJoinCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.joins[index]
+}
+
+func (f *fakeNetworkPeerLifecycle) leaveCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.left)
+}
+
+func (f *fakeNetworkPeerLifecycle) leaveCall(index int) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.left[index]
+}
+
 type fakeEventRecorder struct {
 	closeCalls int
 }
@@ -1997,6 +2468,16 @@ func (d *fakeDriver) lastProcess() *fakeProcess {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.lastProc
+}
+
+func lookupEnvValue(env []string, key string) (string, bool) {
+	for _, entry := range env {
+		existingKey, value, ok := strings.Cut(entry, "=")
+		if ok && existingKey == key {
+			return value, true
+		}
+	}
+	return "", false
 }
 
 type fakeProcess struct {

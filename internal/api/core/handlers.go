@@ -29,6 +29,7 @@ type BaseHandlerConfig struct {
 	MaskInternalErrors           bool
 	IncludeSessionWorkspaceInSSE bool
 	Sessions                     SessionManager
+	Network                      NetworkService
 	Observer                     Observer
 	Automation                   AutomationManager
 	Channels                     ChannelService
@@ -54,6 +55,7 @@ type BaseHandlers struct {
 	MaskInternalErrors           bool
 	IncludeSessionWorkspaceInSSE bool
 	Sessions                     SessionManager
+	Network                      NetworkService
 	Observer                     Observer
 	Automation                   AutomationManager
 	Channels                     ChannelService
@@ -114,6 +116,7 @@ func NewBaseHandlers(cfg BaseHandlerConfig) *BaseHandlers {
 		MaskInternalErrors:           cfg.MaskInternalErrors,
 		IncludeSessionWorkspaceInSSE: cfg.IncludeSessionWorkspaceInSSE,
 		Sessions:                     cfg.Sessions,
+		Network:                      cfg.Network,
 		Observer:                     cfg.Observer,
 		Automation:                   cfg.Automation,
 		Channels:                     cfg.Channels,
@@ -195,6 +198,7 @@ func (h *BaseHandlers) CreateSession(c *gin.Context) {
 		Name:          req.Name,
 		Workspace:     strings.TrimSpace(req.Workspace),
 		WorkspacePath: strings.TrimSpace(req.WorkspacePath),
+		Space:         strings.TrimSpace(req.Space),
 		Type:          session.SessionTypeUser,
 	})
 	if err != nil {
@@ -605,6 +609,11 @@ func (h *BaseHandlers) DaemonStatus(c *gin.Context) {
 	if httpPort <= 0 {
 		httpPort = h.Config.HTTP.Port
 	}
+	networkStatus, err := h.networkStatusPayload(c.Request.Context())
+	if err != nil {
+		h.respondError(c, http.StatusInternalServerError, err)
+		return
+	}
 
 	c.JSON(http.StatusOK, contract.DaemonStatusResponse{
 		Daemon: contract.DaemonStatusPayload{
@@ -618,8 +627,31 @@ func (h *BaseHandlers) DaemonStatus(c *gin.Context) {
 			ActiveSessions: health.ActiveSessions,
 			TotalSessions:  len(sessions),
 			Version:        health.Version,
+			Network:        networkStatus,
 		},
 	})
+}
+
+func (h *BaseHandlers) networkStatusPayload(ctx context.Context) (*contract.NetworkStatusPayload, error) {
+	if !h.Config.Network.Enabled {
+		return &contract.NetworkStatusPayload{
+			Enabled: false,
+			Status:  "disabled",
+		}, nil
+	}
+	if h.Network == nil {
+		return nil, errors.New("api: network service is required when network is enabled")
+	}
+
+	status, err := h.Network.Status(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if status == nil {
+		return nil, errors.New("api: network status is required")
+	}
+
+	return NetworkStatusPayloadFromStatus(status), nil
 }
 
 func (h *BaseHandlers) daemonUserHomeDir() string {

@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/pedronauck/agh/internal/api/contract"
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	aghdaemon "github.com/pedronauck/agh/internal/daemon"
 	"github.com/pedronauck/agh/internal/version"
@@ -294,6 +295,11 @@ func daemonInfo(homePaths aghconfig.HomePaths, deps commandDeps) (aghdaemon.Info
 }
 
 func daemonStatusWithState(runtime runtimeContext, info aghdaemon.Info, status string) DaemonStatus {
+	networkStatus := daemonNetworkStatusFromInfo(runtime.Config, info.Network)
+	if strings.EqualFold(strings.TrimSpace(status), "stopped") {
+		networkStatus = nil
+	}
+
 	return DaemonStatus{
 		Status:         status,
 		PID:            info.PID,
@@ -304,41 +310,121 @@ func daemonStatusWithState(runtime runtimeContext, info aghdaemon.Info, status s
 		ActiveSessions: 0,
 		TotalSessions:  0,
 		Version:        version.Current().Version,
+		Network:        networkStatus,
 	}
 }
 
 func daemonStatusBundle(status DaemonStatus, now func() time.Time) outputBundle {
+	rows := []keyValue{
+		{Label: "Status", Value: stringOrDash(status.Status)},
+		{Label: "PID", Value: intOrDash(status.PID)},
+		{Label: "Started", Value: stringOrDash(formatTime(status.StartedAt))},
+		{Label: "Uptime", Value: stringOrDash(formatAge(now, status.StartedAt))},
+		{Label: "Socket", Value: stringOrDash(status.Socket)},
+		{Label: "HTTP", Value: stringOrDash(strings.TrimSpace(status.HTTPHost) + ":" + intOrDash(status.HTTPPort))},
+		{Label: "Active Sessions", Value: strconv.Itoa(status.ActiveSessions)},
+		{Label: "Total Sessions", Value: strconv.Itoa(status.TotalSessions)},
+		{Label: "Version", Value: stringOrDash(status.Version)},
+	}
+	labels := []string{
+		"status", "pid", "started_at", "uptime", "socket", "http_host", "http_port", "active_sessions", "total_sessions", "version",
+	}
+	values := []string{
+		status.Status,
+		strconv.Itoa(status.PID),
+		formatTime(status.StartedAt),
+		formatAge(now, status.StartedAt),
+		status.Socket,
+		status.HTTPHost,
+		strconv.Itoa(status.HTTPPort),
+		strconv.Itoa(status.ActiveSessions),
+		strconv.Itoa(status.TotalSessions),
+		status.Version,
+	}
+	if status.Network != nil {
+		rows = append(rows,
+			keyValue{Label: "Network", Value: stringOrDash(status.Network.Status)},
+			keyValue{Label: "Network Listener", Value: stringOrDash(networkListener(status.Network))},
+			keyValue{Label: "Network Local Peers", Value: strconv.Itoa(status.Network.LocalPeers)},
+			keyValue{Label: "Network Remote Peers", Value: strconv.Itoa(status.Network.RemotePeers)},
+			keyValue{Label: "Network Spaces", Value: strconv.Itoa(status.Network.Spaces)},
+			keyValue{Label: "Network Queued Messages", Value: strconv.Itoa(status.Network.QueuedMessages)},
+			keyValue{Label: "Network Delivery Workers", Value: strconv.Itoa(status.Network.DeliveryWorkers)},
+			keyValue{Label: "Network Messages Sent", Value: strconv.FormatInt(status.Network.MessagesSent, 10)},
+			keyValue{Label: "Network Messages Received", Value: strconv.FormatInt(status.Network.MessagesReceived, 10)},
+			keyValue{Label: "Network Messages Rejected", Value: strconv.FormatInt(status.Network.MessagesRejected, 10)},
+			keyValue{Label: "Network Messages Delivered", Value: strconv.FormatInt(status.Network.MessagesDelivered, 10)},
+			keyValue{Label: "Network Workflow Tagged", Value: strconv.FormatInt(status.Network.WorkflowTaggedEvents, 10)},
+			keyValue{Label: "Network Handoff Tagged", Value: strconv.FormatInt(status.Network.HandoffTaggedEvents, 10)},
+			keyValue{Label: "Network Last Disconnect", Value: stringOrDash(status.Network.LastDisconnect)},
+		)
+		labels = append(labels,
+			"network_status", "network_listener", "network_local_peers", "network_remote_peers", "network_spaces",
+			"network_queued_messages", "network_delivery_workers", "network_messages_sent", "network_messages_received",
+			"network_messages_rejected", "network_messages_delivered", "network_workflow_tagged_events",
+			"network_handoff_tagged_events", "network_last_disconnect",
+		)
+		values = append(values,
+			status.Network.Status,
+			networkListener(status.Network),
+			strconv.Itoa(status.Network.LocalPeers),
+			strconv.Itoa(status.Network.RemotePeers),
+			strconv.Itoa(status.Network.Spaces),
+			strconv.Itoa(status.Network.QueuedMessages),
+			strconv.Itoa(status.Network.DeliveryWorkers),
+			strconv.FormatInt(status.Network.MessagesSent, 10),
+			strconv.FormatInt(status.Network.MessagesReceived, 10),
+			strconv.FormatInt(status.Network.MessagesRejected, 10),
+			strconv.FormatInt(status.Network.MessagesDelivered, 10),
+			strconv.FormatInt(status.Network.WorkflowTaggedEvents, 10),
+			strconv.FormatInt(status.Network.HandoffTaggedEvents, 10),
+			status.Network.LastDisconnect,
+		)
+	}
+
 	return outputBundle{
 		jsonValue: status,
 		human: func() (string, error) {
-			return renderHumanSection("Daemon", []keyValue{
-				{Label: "Status", Value: stringOrDash(status.Status)},
-				{Label: "PID", Value: intOrDash(status.PID)},
-				{Label: "Started", Value: stringOrDash(formatTime(status.StartedAt))},
-				{Label: "Uptime", Value: stringOrDash(formatAge(now, status.StartedAt))},
-				{Label: "Socket", Value: stringOrDash(status.Socket)},
-				{Label: "HTTP", Value: stringOrDash(strings.TrimSpace(status.HTTPHost) + ":" + intOrDash(status.HTTPPort))},
-				{Label: "Active Sessions", Value: strconv.Itoa(status.ActiveSessions)},
-				{Label: "Total Sessions", Value: strconv.Itoa(status.TotalSessions)},
-				{Label: "Version", Value: stringOrDash(status.Version)},
-			}), nil
+			return renderHumanSection("Daemon", rows), nil
 		},
 		toon: func() (string, error) {
-			return renderToonObject("daemon", []string{
-				"status", "pid", "started_at", "uptime", "socket", "http_host", "http_port", "active_sessions", "total_sessions", "version",
-			}, []string{
-				status.Status,
-				strconv.Itoa(status.PID),
-				formatTime(status.StartedAt),
-				formatAge(now, status.StartedAt),
-				status.Socket,
-				status.HTTPHost,
-				strconv.Itoa(status.HTTPPort),
-				strconv.Itoa(status.ActiveSessions),
-				strconv.Itoa(status.TotalSessions),
-				status.Version,
-			}), nil
+			return renderToonObject("daemon", labels, values), nil
 		},
+	}
+}
+
+func daemonNetworkStatusFromInfo(cfg aghconfig.Config, info *aghdaemon.NetworkInfo) *contract.NetworkStatusPayload {
+	if info != nil {
+		return &contract.NetworkStatusPayload{
+			Enabled:      info.Enabled,
+			Status:       strings.TrimSpace(info.Status),
+			ListenerHost: strings.TrimSpace(info.ListenerHost),
+			ListenerPort: info.ListenerPort,
+		}
+	}
+	if !cfg.Network.Enabled {
+		return &contract.NetworkStatusPayload{
+			Enabled: false,
+			Status:  "disabled",
+		}
+	}
+	return nil
+}
+
+func networkListener(info *contract.NetworkStatusPayload) string {
+	if info == nil {
+		return ""
+	}
+	host := strings.TrimSpace(info.ListenerHost)
+	switch {
+	case host == "" && info.ListenerPort <= 0:
+		return ""
+	case host == "":
+		return intOrDash(info.ListenerPort)
+	case info.ListenerPort <= 0:
+		return host
+	default:
+		return host + ":" + strconv.Itoa(info.ListenerPort)
 	}
 }
 
