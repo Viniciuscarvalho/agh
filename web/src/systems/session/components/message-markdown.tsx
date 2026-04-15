@@ -16,6 +16,7 @@ import yaml from "react-syntax-highlighter/dist/esm/languages/prism/yaml";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 import { cn } from "@/lib/utils";
+import { CopyButton } from "./copy-button";
 
 SyntaxHighlighter.registerLanguage("bash", bash);
 SyntaxHighlighter.registerLanguage("diff", diff);
@@ -78,18 +79,32 @@ export const MessageMarkdown = memo(
 
             if (language) {
               return (
-                <SyntaxHighlighter
-                  style={oneDark}
-                  language={language}
-                  PreTag="div"
-                  customStyle={{
-                    margin: 0,
-                    borderRadius: "0.5rem",
-                    fontSize: "0.8125rem",
-                  }}
-                >
-                  {codeString}
-                </SyntaxHighlighter>
+                <div className="group/codeblock relative">
+                  <SyntaxHighlighter
+                    style={oneDark}
+                    language={language}
+                    PreTag="div"
+                    customStyle={{
+                      margin: 0,
+                      borderRadius: "0.5rem",
+                      fontSize: "0.8125rem",
+                    }}
+                  >
+                    {codeString}
+                  </SyntaxHighlighter>
+                  <CopyButton
+                    text={codeString}
+                    ariaLabel="Copy code"
+                    className={cn(
+                      "absolute top-2 right-2 rounded-md p-1.5",
+                      "border border-[color:var(--color-divider)] bg-[color:var(--color-surface-elevated)]",
+                      "opacity-0 transition-opacity duration-200",
+                      "group-hover/codeblock:opacity-100 group-focus-within/codeblock:opacity-100",
+                      "focus-visible:opacity-100",
+                      "text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-text-primary)]"
+                    )}
+                  />
+                </div>
               );
             }
 

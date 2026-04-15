@@ -57,7 +57,7 @@ describe("MessageBubble", () => {
 
     const bubble = screen.getByTestId("user-bubble");
     expect(bubble.className).toMatch(/bg-\[color:var\(--color-surface-elevated\)\]/);
-    expect(bubble.className).toContain("rounded-xl");
+    expect(bubble.className).toContain("rounded-2xl");
     expect(await screen.findByText("Hello")).toBeInTheDocument();
   });
 
@@ -137,6 +137,11 @@ describe("MessageBubble", () => {
   it("shows streaming placeholder when no content and isStreaming", () => {
     render(<MessageBubble message={makeMessage({ content: "", isStreaming: true })} />);
     expect(screen.getByText("...")).toBeInTheDocument();
+  });
+
+  it("does not render a copy button for empty user messages", () => {
+    render(<MessageBubble message={makeMessage({ role: "user", content: "" })} />);
+    expect(screen.queryByRole("button", { name: "Copy message" })).not.toBeInTheDocument();
   });
 
   it("does not re-render when content is unchanged (memo check)", async () => {

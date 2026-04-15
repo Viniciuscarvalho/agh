@@ -3,6 +3,7 @@ import { memo } from "react";
 import { cn } from "@/lib/utils";
 import { MessageMarkdown } from "@/systems/session/components/message-markdown";
 import type { UIMessage } from "../types";
+import { CopyButton } from "./copy-button";
 import { ThinkingBlock } from "./thinking-block";
 
 export interface MessageBubbleProps {
@@ -40,8 +41,8 @@ export const MessageBubble = memo(
         >
           <div
             className={cn(
-              "max-w-[85%] rounded-xl px-5 py-4",
-              "bg-[color:var(--color-surface-elevated)]"
+              "group/msgbubble relative max-w-[85%] rounded-2xl rounded-br-sm px-5 py-4",
+              "border border-[color:var(--color-divider)] bg-[color:var(--color-surface-elevated)]"
             )}
             data-testid="user-bubble"
           >
@@ -55,6 +56,27 @@ export const MessageBubble = memo(
                 <MessageMarkdown content={message.content} />
               </div>
             )}
+            {(message.content || timestamp) && (
+              <div className="mt-1.5 flex items-center justify-end gap-2">
+                {message.content ? (
+                  <CopyButton
+                    text={message.content}
+                    ariaLabel="Copy message"
+                    className={cn(
+                      "rounded-md p-1",
+                      "opacity-0 transition-opacity duration-200",
+                      "group-hover/msgbubble:opacity-100",
+                      "text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-text-primary)]"
+                    )}
+                  />
+                ) : null}
+                {timestamp ? (
+                  <span className="text-[10px] text-[color:var(--color-text-tertiary)]/50">
+                    {timestamp}
+                  </span>
+                ) : null}
+              </div>
+            )}
           </div>
         </div>
       );
@@ -62,7 +84,7 @@ export const MessageBubble = memo(
 
     return (
       <div
-        className="px-4 py-2"
+        className="group/msgbubble px-4 py-2"
         data-testid="message-bubble-assistant"
         data-message-id={message.id}
       >
@@ -94,6 +116,21 @@ export const MessageBubble = memo(
 
         {!message.content && message.isStreaming && (
           <span className="text-xs italic text-[color:var(--color-text-tertiary)]">...</span>
+        )}
+
+        {message.content && (
+          <div className="mt-1.5 flex items-center gap-2">
+            <CopyButton
+              text={message.content}
+              ariaLabel="Copy message"
+              className={cn(
+                "rounded-md p-1",
+                "opacity-0 transition-opacity duration-200",
+                "group-hover/msgbubble:opacity-100",
+                "text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-text-primary)]"
+              )}
+            />
+          </div>
         )}
       </div>
     );
