@@ -1,6 +1,6 @@
 //go:build integration
 
-package extension_test
+package extensionpkg_test
 
 import (
 	"bytes"

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 
@@ -30,7 +31,53 @@ const (
 	DefaultPath = "openapi/agh.json"
 )
 
-var rawMessageType = reflect.TypeOf(json.RawMessage{})
+var rawMessageType = reflect.TypeFor[json.RawMessage]()
+
+var schemaEnumValues = map[reflect.Type][]string{
+	reflect.TypeFor[automationpkg.Scope]():               automationScopeValues(),
+	reflect.TypeFor[automationpkg.JobSource]():           automationSourceValues(),
+	reflect.TypeFor[automationpkg.ScheduleMode]():        automationScheduleModeValues(),
+	reflect.TypeFor[automationpkg.RetryStrategy]():       automationRetryStrategyValues(),
+	reflect.TypeFor[automationpkg.RunStatus]():           automationRunStatusValues(),
+	reflect.TypeFor[taskpkg.Scope]():                     taskScopeValues(),
+	reflect.TypeFor[taskpkg.Status]():                    taskStatusValues(),
+	reflect.TypeFor[taskpkg.RunStatus]():                 taskRunStatusValues(),
+	reflect.TypeFor[taskpkg.ActorKind]():                 taskActorKindValues(),
+	reflect.TypeFor[taskpkg.OwnerKind]():                 taskOwnerKindValues(),
+	reflect.TypeFor[taskpkg.OriginKind]():                taskOriginKindValues(),
+	reflect.TypeFor[taskpkg.DependencyKind]():            taskDependencyKindValues(),
+	reflect.TypeFor[hooks.HookEvent]():                   hookEventValues(),
+	reflect.TypeFor[hooks.HookEventFamily]():             hookEventFamilyValues(),
+	reflect.TypeFor[hooks.HookMode]():                    hookModeValues(),
+	reflect.TypeFor[hooks.HookRunOutcome]():              hookOutcomeValues(),
+	reflect.TypeFor[hooks.HookSkillSource]():             hookSkillSourceValues(),
+	reflect.TypeFor[hooks.HookExecutorKind]():            hookExecutorKindValues(),
+	reflect.TypeFor[hooks.HookSource]():                  hookSourceValues(),
+	reflect.TypeFor[memory.Type]():                       memoryTypeValues(),
+	reflect.TypeFor[memory.Scope]():                      memoryScopeValues(),
+	reflect.TypeFor[bridgepkg.Scope]():                   bridgeScopeValues(),
+	reflect.TypeFor[bridgepkg.BridgeInstanceSource]():    bridgeInstanceSourceValues(),
+	reflect.TypeFor[bridgepkg.BridgeStatus]():            bridgeStatusValues(),
+	reflect.TypeFor[bridgepkg.BridgeDMPolicy]():          bridgeDMPolicyValues(),
+	reflect.TypeFor[bridgepkg.BridgeDegradationReason](): bridgeDegradationReasonValues(),
+	reflect.TypeFor[bridgepkg.DeliveryMode]():            deliveryModeValues(),
+	reflect.TypeFor[session.State]():                     sessionStateValues(),
+	reflect.TypeFor[store.StopReason]():                  stopReasonValues(),
+	reflect.TypeFor[tools.ToolSource]():                  toolSourceValues(),
+	reflect.TypeFor[extensionprotocol.HostAPIMethod]():   hostAPIMethodValues(),
+}
+
+var schemaCustomizers = map[reflect.Type]func(*openapi3.Schema){
+	rawMessageType: func(schema *openapi3.Schema) {
+		*schema = *openapi3.NewSchema()
+	},
+	reflect.TypeFor[contract.BridgeProviderConfigPayload](): func(schema *openapi3.Schema) {
+		*schema = *bridgeProviderConfigSchema()
+	},
+	reflect.TypeFor[contract.BridgeDeliveryDefaultsPayload](): func(schema *openapi3.Schema) {
+		*schema = *bridgeDeliveryDefaultsSchema()
+	},
+}
 
 // Transport identifies which daemon transport exposes a route.
 type Transport string
@@ -115,1676 +162,1681 @@ func Document() (*openapi3.T, error) {
 	return doc, nil
 }
 
+var operationRegistry = []OperationSpec{
+	{
+		Method:      "GET",
+		Path:        "/api/agents",
+		OperationID: "listAgents",
+		Summary:     "List all readable agent definitions",
+		Tags:        []string{"agents"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.AgentsResponse{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/agents/{name}",
+		OperationID: "getAgent",
+		Summary:     "Get one agent definition by name",
+		Tags:        []string{"agents"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("name", "Agent name"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.AgentResponse{}},
+			{Status: 404, Description: "Agent not found", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/automation/jobs",
+		OperationID: "listAutomationJobs",
+		Summary:     "List automation jobs",
+		Tags:        []string{"automation"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			enumQueryParam("scope", "Filter by automation scope", automationScopeValues()),
+			queryParam("workspace_id", "Filter by workspace id", false),
+			enumQueryParam("source", "Filter by job source", automationSourceValues()),
+			intQueryParam("limit", "Maximum number of records to return"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.JobsResponse{}},
+			{Status: 400, Description: "Invalid automation filter", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/automation/jobs",
+		OperationID: "createAutomationJob",
+		Summary:     "Create an automation job",
+		Tags:        []string{"automation"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		RequestBody: contract.CreateJobRequest{},
+		Responses: []ResponseSpec{
+			{Status: 201, Description: "Created", Body: contract.JobResponse{}},
+			{Status: 400, Description: "Invalid automation job request", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Automation job conflict", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/automation/jobs/{id}",
+		OperationID: "getAutomationJob",
+		Summary:     "Get one automation job",
+		Tags:        []string{"automation"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Automation job id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.JobResponse{}},
+			{Status: 404, Description: "Automation job not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "PATCH",
+		Path:        "/api/automation/jobs/{id}",
+		OperationID: "updateAutomationJob",
+		Summary:     "Update one automation job",
+		Tags:        []string{"automation"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Automation job id"),
+		},
+		RequestBody: contract.UpdateJobRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.JobResponse{}},
+			{Status: 400, Description: "Invalid automation job update", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Automation job not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Automation job conflict", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "DELETE",
+		Path:        "/api/automation/jobs/{id}",
+		OperationID: "deleteAutomationJob",
+		Summary:     "Delete one automation job",
+		Tags:        []string{"automation"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Automation job id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 204, Description: "No Content"},
+			{Status: 400, Description: "Invalid automation job delete request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Automation job not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/automation/jobs/{id}/trigger",
+		OperationID: "triggerAutomationJob",
+		Summary:     "Trigger one automation job immediately",
+		Tags:        []string{"automation"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Automation job id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.RunResponse{}},
+			{Status: 404, Description: "Automation job not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Automation run conflict", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/automation/jobs/{id}/runs",
+		OperationID: "listAutomationJobRuns",
+		Summary:     "List run history for one automation job",
+		Tags:        []string{"automation"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Automation job id"),
+			enumQueryParam("status", "Filter by run status", automationRunStatusValues()),
+			dateTimeQueryParam("since", "Only runs started since this timestamp"),
+			dateTimeQueryParam("until", "Only runs started before this timestamp"),
+			intQueryParam("limit", "Maximum number of records to return"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.RunsResponse{}},
+			{Status: 400, Description: "Invalid automation run filter", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Automation job not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/automation/triggers",
+		OperationID: "listAutomationTriggers",
+		Summary:     "List automation triggers",
+		Tags:        []string{"automation"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			enumQueryParam("scope", "Filter by automation scope", automationScopeValues()),
+			queryParam("workspace_id", "Filter by workspace id", false),
+			enumQueryParam("source", "Filter by trigger source", automationSourceValues()),
+			queryParam("event", "Filter by trigger event", false),
+			intQueryParam("limit", "Maximum number of records to return"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.TriggersResponse{}},
+			{Status: 400, Description: "Invalid automation filter", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/automation/triggers",
+		OperationID: "createAutomationTrigger",
+		Summary:     "Create an automation trigger",
+		Tags:        []string{"automation"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		RequestBody: contract.CreateTriggerRequest{},
+		Responses: []ResponseSpec{
+			{Status: 201, Description: "Created", Body: contract.TriggerResponse{}},
+			{Status: 400, Description: "Invalid automation trigger request", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Automation trigger conflict", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/automation/triggers/{id}",
+		OperationID: "getAutomationTrigger",
+		Summary:     "Get one automation trigger",
+		Tags:        []string{"automation"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Automation trigger id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.TriggerResponse{}},
+			{Status: 404, Description: "Automation trigger not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "PATCH",
+		Path:        "/api/automation/triggers/{id}",
+		OperationID: "updateAutomationTrigger",
+		Summary:     "Update one automation trigger",
+		Tags:        []string{"automation"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Automation trigger id"),
+		},
+		RequestBody: contract.UpdateTriggerRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.TriggerResponse{}},
+			{Status: 400, Description: "Invalid automation trigger update", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Automation trigger not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Automation trigger conflict", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "DELETE",
+		Path:        "/api/automation/triggers/{id}",
+		OperationID: "deleteAutomationTrigger",
+		Summary:     "Delete one automation trigger",
+		Tags:        []string{"automation"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Automation trigger id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 204, Description: "No Content"},
+			{Status: 400, Description: "Invalid automation trigger delete request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Automation trigger not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/automation/triggers/{id}/runs",
+		OperationID: "listAutomationTriggerRuns",
+		Summary:     "List run history for one automation trigger",
+		Tags:        []string{"automation"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Automation trigger id"),
+			enumQueryParam("status", "Filter by run status", automationRunStatusValues()),
+			dateTimeQueryParam("since", "Only runs started since this timestamp"),
+			dateTimeQueryParam("until", "Only runs started before this timestamp"),
+			intQueryParam("limit", "Maximum number of records to return"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.RunsResponse{}},
+			{Status: 400, Description: "Invalid automation run filter", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Automation trigger not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/automation/runs",
+		OperationID: "listAutomationRuns",
+		Summary:     "List automation runs",
+		Tags:        []string{"automation"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			queryParam("job_id", "Filter by automation job id", false),
+			queryParam("trigger_id", "Filter by automation trigger id", false),
+			enumQueryParam("status", "Filter by run status", automationRunStatusValues()),
+			dateTimeQueryParam("since", "Only runs started since this timestamp"),
+			dateTimeQueryParam("until", "Only runs started before this timestamp"),
+			intQueryParam("limit", "Maximum number of records to return"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.RunsResponse{}},
+			{Status: 400, Description: "Invalid automation run filter", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/automation/runs/{id}",
+		OperationID: "getAutomationRun",
+		Summary:     "Get one automation run",
+		Tags:        []string{"automation"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Automation run id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.RunResponse{}},
+			{Status: 404, Description: "Automation run not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/webhooks/global/{endpoint}",
+		OperationID: "deliverGlobalWebhook",
+		Summary:     "Deliver one global automation webhook",
+		Tags:        []string{"automation"},
+		Transports:  []Transport{TransportHTTP},
+		Parameters: []ParameterSpec{
+			pathParam("endpoint", "Webhook endpoint slug and id"),
+			headerParam("X-AGH-Webhook-Timestamp", "Signed webhook timestamp"),
+			headerParam("X-AGH-Webhook-Signature", "Signed webhook HMAC signature"),
+		},
+		RequestBody: map[string]any{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.WebhookDeliveryResponse{}},
+			{Status: 400, Description: "Invalid webhook request", Body: contract.ErrorPayload{}},
+			{Status: 401, Description: "Webhook authentication failed", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Webhook trigger not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/webhooks/workspaces/{workspace_id}/{endpoint}",
+		OperationID: "deliverWorkspaceWebhook",
+		Summary:     "Deliver one workspace-scoped automation webhook",
+		Tags:        []string{"automation"},
+		Transports:  []Transport{TransportHTTP},
+		Parameters: []ParameterSpec{
+			pathParam("workspace_id", "Workspace id"),
+			pathParam("endpoint", "Webhook endpoint slug and id"),
+			headerParam("X-AGH-Webhook-Timestamp", "Signed webhook timestamp"),
+			headerParam("X-AGH-Webhook-Signature", "Signed webhook HMAC signature"),
+		},
+		RequestBody: map[string]any{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.WebhookDeliveryResponse{}},
+			{Status: 400, Description: "Invalid webhook request", Body: contract.ErrorPayload{}},
+			{Status: 401, Description: "Webhook authentication failed", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Webhook trigger not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/bridges",
+		OperationID: "listBridges",
+		Summary:     "List persisted bridge instances",
+		Tags:        []string{"bridges"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.BridgesResponse{}},
+			{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/bridges",
+		OperationID: "createBridge",
+		Summary:     "Create a bridge instance",
+		Tags:        []string{"bridges"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		RequestBody: contract.CreateBridgeRequest{},
+		Responses: []ResponseSpec{
+			{Status: 201, Description: "Created", Body: contract.BridgeResponse{}},
+			{Status: 400, Description: "Invalid bridge request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/bridges/providers",
+		OperationID: "listBridgeProviders",
+		Summary:     "List installed bridge-capable providers",
+		Tags:        []string{"bridges"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.BridgeProvidersResponse{}},
+			{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/bridges/{id}",
+		OperationID: "getBridge",
+		Summary:     "Get one bridge instance",
+		Tags:        []string{"bridges"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Bridge instance id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.BridgeResponse{}},
+			{Status: 404, Description: "Bridge instance not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "PATCH",
+		Path:        "/api/bridges/{id}",
+		OperationID: "updateBridge",
+		Summary:     "Update mutable bridge instance fields",
+		Tags:        []string{"bridges"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Bridge instance id"),
+		},
+		RequestBody: contract.UpdateBridgeRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.BridgeResponse{}},
+			{Status: 400, Description: "Invalid bridge update", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Bridge instance or workspace not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/bridges/{id}/enable",
+		OperationID: "enableBridge",
+		Summary:     "Enable a bridge instance",
+		Tags:        []string{"bridges"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Bridge instance id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.BridgeResponse{}},
+			{Status: 404, Description: "Bridge instance not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Invalid bridge state transition", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/bridges/{id}/disable",
+		OperationID: "disableBridge",
+		Summary:     "Disable a bridge instance",
+		Tags:        []string{"bridges"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Bridge instance id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.BridgeResponse{}},
+			{Status: 404, Description: "Bridge instance not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Invalid bridge state transition", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/bridges/{id}/restart",
+		OperationID: "restartBridge",
+		Summary:     "Restart a bridge instance",
+		Tags:        []string{"bridges"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Bridge instance id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.BridgeResponse{}},
+			{Status: 404, Description: "Bridge instance not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Invalid bridge state transition", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/bridges/{id}/routes",
+		OperationID: "listBridgeRoutes",
+		Summary:     "List routes owned by a bridge instance",
+		Tags:        []string{"bridges"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Bridge instance id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.BridgeRoutesResponse{}},
+			{Status: 404, Description: "Bridge instance not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/bridges/{id}/secret-bindings",
+		OperationID: "listBridgeSecretBindings",
+		Summary:     "List persisted secret bindings for a bridge instance",
+		Tags:        []string{"bridges"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Bridge instance id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.BridgeSecretBindingsResponse{}},
+			{Status: 404, Description: "Bridge instance not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "PUT",
+		Path:        "/api/bridges/{id}/secret-bindings/{binding_name}",
+		OperationID: "putBridgeSecretBinding",
+		Summary:     "Create or update one bridge secret binding",
+		Tags:        []string{"bridges"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Bridge instance id"),
+			pathParam("binding_name", "Bridge provider secret slot name"),
+		},
+		RequestBody: contract.PutBridgeSecretBindingRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.BridgeSecretBindingResponse{}},
+			{Status: 400, Description: "Invalid bridge secret binding request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Bridge instance not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Bridge secret binding conflict", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "DELETE",
+		Path:        "/api/bridges/{id}/secret-bindings/{binding_name}",
+		OperationID: "deleteBridgeSecretBinding",
+		Summary:     "Delete one bridge secret binding",
+		Tags:        []string{"bridges"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Bridge instance id"),
+			pathParam("binding_name", "Bridge provider secret slot name"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 204, Description: "No Content"},
+			{
+				Status:      404,
+				Description: "Bridge instance or secret binding not found",
+				Body:        contract.ErrorPayload{},
+			},
+			{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/bridges/{id}/test-delivery",
+		OperationID: "testBridgeDelivery",
+		Summary:     "Resolve a typed outbound delivery target for a bridge instance",
+		Tags:        []string{"bridges"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Bridge instance id"),
+		},
+		RequestBody: contract.BridgeTestDeliveryRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.BridgeTestDeliveryResponse{}},
+			{Status: 400, Description: "Invalid delivery target request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Bridge instance not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Bridge instance is unavailable", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/daemon/status",
+		OperationID: "getDaemonStatus",
+		Summary:     "Get the daemon status snapshot",
+		Tags:        []string{"daemon"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.DaemonStatusResponse{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/network/status",
+		OperationID: "getNetworkStatus",
+		Summary:     "Get the network runtime status snapshot",
+		Tags:        []string{"network"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.NetworkStatusResponse{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/network/peers",
+		OperationID: "listNetworkPeers",
+		Summary:     "List visible network peers",
+		Tags:        []string{"network"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			queryParam("channel", "Filter peers by channel", false),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.NetworkPeersResponse{}},
+			{Status: 400, Description: "Invalid network filter", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Network runtime is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/network/peers/{peer_id}",
+		OperationID: "getNetworkPeer",
+		Summary:     "Get one visible network peer detail",
+		Tags:        []string{"network"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("peer_id", "Network peer id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.NetworkPeerResponse{}},
+			{Status: 404, Description: "Network peer not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Network runtime is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/network/channels",
+		OperationID: "listNetworkChannels",
+		Summary:     "List materialized network channels",
+		Tags:        []string{"network"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.NetworkChannelsResponse{}},
+			{Status: 503, Description: "Network runtime is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/network/channels",
+		OperationID: "createNetworkChannel",
+		Summary:     "Create a network channel by spawning agent sessions",
+		Tags:        []string{"network"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		RequestBody: contract.CreateNetworkChannelRequest{},
+		Responses: []ResponseSpec{
+			{Status: 201, Description: "Created", Body: contract.CreateNetworkChannelResponse{}},
+			{Status: 400, Description: "Invalid network channel request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Network runtime is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/network/channels/{channel}",
+		OperationID: "getNetworkChannel",
+		Summary:     "Get one network channel detail",
+		Tags:        []string{"network"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("channel", "Network channel"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.NetworkChannelResponse{}},
+			{Status: 400, Description: "Invalid network channel", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Network channel not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Network runtime is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/network/channels/{channel}/messages",
+		OperationID: "listNetworkChannelMessages",
+		Summary:     "List the read-only timeline for one network channel",
+		Tags:        []string{"network"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("channel", "Network channel"),
+			intQueryParam("limit", "Maximum number of timeline messages to return"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.NetworkChannelMessagesResponse{}},
+			{Status: 400, Description: "Invalid network channel", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Network channel not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Network runtime is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/network/send",
+		OperationID: "sendNetworkMessage",
+		Summary:     "Send one network message",
+		Tags:        []string{"network"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		RequestBody: contract.NetworkSendRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.NetworkSendResponse{}},
+			{Status: 400, Description: "Invalid network send request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Network target not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Network runtime is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/network/inbox",
+		OperationID: "listNetworkInbox",
+		Summary:     "List queued network inbox messages for one local session",
+		Tags:        []string{"network"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			queryParam("session_id", "Target local session id", true),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.NetworkInboxResponse{}},
+			{Status: 400, Description: "Invalid inbox request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Network target not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Network runtime is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/extensions",
+		OperationID: "listExtensions",
+		Summary:     "List installed extensions",
+		Tags:        []string{"extensions"},
+		Transports:  []Transport{TransportUDS},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.ExtensionsResponse{}},
+			{Status: 503, Description: "Extension service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/extensions",
+		OperationID: "installExtension",
+		Summary:     "Install an extension by path and checksum",
+		Tags:        []string{"extensions"},
+		Transports:  []Transport{TransportUDS},
+		RequestBody: contract.InstallExtensionRequest{},
+		Responses: []ResponseSpec{
+			{Status: 201, Description: "Created", Body: contract.ExtensionResponse{}},
+			{Status: 400, Description: "Invalid install request", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Extension service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/extensions/{name}",
+		OperationID: "getExtension",
+		Summary:     "Get one installed extension",
+		Tags:        []string{"extensions"},
+		Transports:  []Transport{TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("name", "Extension name"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.ExtensionResponse{}},
+			{Status: 404, Description: "Extension not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Extension service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/extensions/{name}/enable",
+		OperationID: "enableExtension",
+		Summary:     "Enable an installed extension",
+		Tags:        []string{"extensions"},
+		Transports:  []Transport{TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("name", "Extension name"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.ExtensionResponse{}},
+			{Status: 404, Description: "Extension not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Extension service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/extensions/{name}/disable",
+		OperationID: "disableExtension",
+		Summary:     "Disable an installed extension",
+		Tags:        []string{"extensions"},
+		Transports:  []Transport{TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("name", "Extension name"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.ExtensionResponse{}},
+			{Status: 404, Description: "Extension not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Extension service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/hooks/catalog",
+		OperationID: "getHookCatalog",
+		Summary:     "List the resolved hook catalog",
+		Tags:        []string{"hooks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			queryParam("workspace", "Workspace id or path", false),
+			queryParam("agent", "Agent name", false),
+			enumQueryParam("event", "Hook event name", hookEventValues()),
+			enumQueryParam("source", "Hook source", hookSourceValues()),
+			enumQueryParam("mode", "Hook mode", hookModeValues()),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.HookCatalogResponse{}},
+			{Status: 400, Description: "Invalid filter", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/hooks/runs",
+		OperationID: "getHookRuns",
+		Summary:     "List hook run history for one session",
+		Tags:        []string{"hooks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			queryParam("session", "Session id", true),
+			enumQueryParam("event", "Hook event name", hookEventValues()),
+			enumQueryParam("outcome", "Hook execution outcome", hookOutcomeValues()),
+			dateTimeQueryParam("since", "Only runs recorded since this timestamp"),
+			intQueryParam("last", "Maximum number of records to return"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.HookRunsResponse{}},
+			{Status: 400, Description: "Invalid filter", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Session not found", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/hooks/events",
+		OperationID: "getHookEvents",
+		Summary:     "List supported hook taxonomy metadata",
+		Tags:        []string{"hooks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			enumQueryParam("family", "Hook event family", hookEventFamilyValues()),
+			boolQueryParam("sync_only", "Only return sync-eligible events", false),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.HookEventsResponse{}},
+			{Status: 400, Description: "Invalid filter", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/memory",
+		OperationID: "listMemory",
+		Summary:     "List memory document headers",
+		Tags:        []string{"memory"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			enumQueryParam("scope", "Memory scope", memoryScopeValues()),
+			queryParam("workspace", "Workspace id or path", false),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: []memory.Header{}},
+			{Status: 400, Description: "Invalid memory filter", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Workspace or memory not found", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/memory/{filename}",
+		OperationID: "readMemory",
+		Summary:     "Read one memory document",
+		Tags:        []string{"memory"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("filename", "Memory filename"),
+			enumQueryParam("scope", "Memory scope", memoryScopeValues()),
+			queryParam("workspace", "Workspace id or path", false),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.MemoryReadResponse{}},
+			{Status: 400, Description: "Invalid memory reference", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Memory not found", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "PUT",
+		Path:        "/api/memory/{filename}",
+		OperationID: "writeMemory",
+		Summary:     "Write one memory document",
+		Tags:        []string{"memory"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("filename", "Memory filename"),
+		},
+		RequestBody: contract.MemoryWriteRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.MemoryMutationResponse{}},
+			{Status: 400, Description: "Invalid memory write request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "DELETE",
+		Path:        "/api/memory/{filename}",
+		OperationID: "deleteMemory",
+		Summary:     "Delete one memory document",
+		Tags:        []string{"memory"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("filename", "Memory filename"),
+			enumQueryParam("scope", "Memory scope", memoryScopeValues()),
+			queryParam("workspace", "Workspace id or path", false),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.MemoryMutationResponse{}},
+			{Status: 400, Description: "Invalid memory reference", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Memory not found", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/memory/consolidate",
+		OperationID: "consolidateMemory",
+		Summary:     "Trigger dream consolidation",
+		Tags:        []string{"memory"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		RequestBody: contract.MemoryConsolidateRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.MemoryConsolidateResponse{}},
+			{Status: 400, Description: "Invalid consolidate request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/observe/events",
+		OperationID: "listObserveEvents",
+		Summary:     "List observability events",
+		Tags:        []string{"observe"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			queryParam("session_id", "Session id", false),
+			queryParam("agent_name", "Agent name", false),
+			queryParam("type", "Event type", false),
+			dateTimeQueryParam("since", "Only events emitted since this timestamp"),
+			intQueryParam("limit", "Maximum number of records to return"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.ObserveEventsResponse{}},
+			{Status: 400, Description: "Invalid filter", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/observe/health",
+		OperationID: "getObserveHealth",
+		Summary:     "Get daemon health and memory health",
+		Tags:        []string{"observe"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.HealthResponse{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/sessions",
+		OperationID: "listSessions",
+		Summary:     "List sessions",
+		Tags:        []string{"sessions"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			queryParam("workspace", "Workspace id or path", false),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SessionsResponse{}},
+			{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/sessions",
+		OperationID: "createSession",
+		Summary:     "Create a session",
+		Tags:        []string{"sessions"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		RequestBody: contract.CreateSessionRequest{},
+		Responses: []ResponseSpec{
+			{Status: 201, Description: "Created", Body: contract.SessionResponse{}},
+			{Status: 400, Description: "Invalid create request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Session creation conflict", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/sessions/{id}",
+		OperationID: "getSession",
+		Summary:     "Get one session snapshot",
+		Tags:        []string{"sessions"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Session id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SessionResponse{}},
+			{Status: 404, Description: "Session not found", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "DELETE",
+		Path:        "/api/sessions/{id}",
+		OperationID: "stopSession",
+		Summary:     "Stop a session",
+		Tags:        []string{"sessions"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Session id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 204, Description: "No Content"},
+			{Status: 404, Description: "Session not found", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/sessions/{id}/resume",
+		OperationID: "resumeSession",
+		Summary:     "Resume a stopped session",
+		Tags:        []string{"sessions"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Session id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SessionResponse{}},
+			{Status: 404, Description: "Session not found", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/sessions/{id}/events",
+		OperationID: "listSessionEvents",
+		Summary:     "List persisted session events",
+		Tags:        []string{"sessions"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Session id"),
+			dateTimeQueryParam("since", "Only events emitted since this timestamp"),
+			intQueryParam("limit", "Maximum number of records to return"),
+			int64QueryParam("after_sequence", "Only return events after this sequence number", false),
+			queryParam("type", "Event type", false),
+			queryParam("agent_name", "Agent name", false),
+			queryParam("turn_id", "Turn id", false),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SessionEventsResponse{}},
+			{Status: 400, Description: "Invalid filter", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Session not found", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/sessions/{id}/history",
+		OperationID: "getSessionHistory",
+		Summary:     "List grouped session turn history",
+		Tags:        []string{"sessions"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Session id"),
+			dateTimeQueryParam("since", "Only events emitted since this timestamp"),
+			intQueryParam("limit", "Maximum number of records to return"),
+			int64QueryParam("after_sequence", "Only return events after this sequence number", false),
+			queryParam("type", "Event type", false),
+			queryParam("agent_name", "Agent name", false),
+			queryParam("turn_id", "Turn id", false),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SessionHistoryResponse{}},
+			{Status: 400, Description: "Invalid filter", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Session not found", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/sessions/{id}/transcript",
+		OperationID: "getSessionTranscript",
+		Summary:     "Get the canonical transcript for one session",
+		Tags:        []string{"sessions"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Session id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SessionTranscriptResponse{}},
+			{Status: 404, Description: "Session not found", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/sessions/{id}/approve",
+		OperationID: "approveSession",
+		Summary:     "Approve or deny an interactive permission request",
+		Tags:        []string{"sessions"},
+		Transports:  []Transport{TransportHTTP},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Session id"),
+		},
+		RequestBody: contract.ApproveSessionRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SessionApprovalResponse{}},
+			{Status: 400, Description: "Invalid approval request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Session not found", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/tasks",
+		OperationID: "listTasks",
+		Summary:     "List tasks",
+		Tags:        []string{"tasks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			enumQueryParam("scope", "Filter by task scope", taskScopeValues()),
+			queryParam("workspace", "Filter by workspace path, name, or ID", false),
+			enumQueryParam("status", "Filter by task status", taskStatusValues()),
+			enumQueryParam("owner_kind", "Filter by owner kind", taskOwnerKindValues()),
+			queryParam("owner_ref", "Filter by owner reference", false),
+			queryParam("parent_task_id", "Filter by parent task ID", false),
+			queryParam("network_channel", "Filter by network channel", false),
+			intQueryParam("limit", "Maximum number of records to return"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.TasksResponse{}},
+			{Status: 400, Description: "Invalid task filter", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/tasks",
+		OperationID: "createTask",
+		Summary:     "Create a task",
+		Tags:        []string{"tasks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		RequestBody: contract.CreateTaskRequest{},
+		Responses: []ResponseSpec{
+			{Status: 201, Description: "Created", Body: contract.TaskResponse{}},
+			{Status: 400, Description: "Invalid task request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
+			{Status: 413, Description: "Payload too large", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/tasks/{id}",
+		OperationID: "getTask",
+		Summary:     "Get one task with detail",
+		Tags:        []string{"tasks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Task id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.TaskDetailResponse{}},
+			{Status: 400, Description: "Invalid task id", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Task not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "PATCH",
+		Path:        "/api/tasks/{id}",
+		OperationID: "updateTask",
+		Summary:     "Update one task",
+		Tags:        []string{"tasks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Task id"),
+		},
+		RequestBody: contract.UpdateTaskRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.TaskResponse{}},
+			{Status: 400, Description: "Invalid task update", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Task not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Task update conflict", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/tasks/{id}/cancel",
+		OperationID: "cancelTask",
+		Summary:     "Cancel one task tree",
+		Tags:        []string{"tasks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Task id"),
+		},
+		RequestBody: contract.CancelTaskRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.TaskResponse{}},
+			{Status: 400, Description: "Invalid task cancel request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Task not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Task cancel conflict", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/tasks/{id}/children",
+		OperationID: "createChildTask",
+		Summary:     "Create one child task",
+		Tags:        []string{"tasks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Parent task id"),
+		},
+		RequestBody: contract.CreateTaskChildRequest{},
+		Responses: []ResponseSpec{
+			{Status: 201, Description: "Created", Body: contract.TaskResponse{}},
+			{Status: 400, Description: "Invalid child task request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Task or workspace not found", Body: contract.ErrorPayload{}},
+			{Status: 413, Description: "Payload too large", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/tasks/{id}/dependencies",
+		OperationID: "addTaskDependency",
+		Summary:     "Add one task dependency",
+		Tags:        []string{"tasks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Task id"),
+		},
+		RequestBody: contract.AddTaskDependencyRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.TaskDetailResponse{}},
+			{Status: 400, Description: "Invalid dependency request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Task not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Dependency conflict", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "DELETE",
+		Path:        "/api/tasks/{id}/dependencies/{depends_on_id}",
+		OperationID: "removeTaskDependency",
+		Summary:     "Remove one task dependency",
+		Tags:        []string{"tasks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Task id"),
+			pathParam("depends_on_id", "Dependency task id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.TaskDetailResponse{}},
+			{Status: 400, Description: "Invalid dependency request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Task or dependency not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/tasks/{id}/runs",
+		OperationID: "listTaskRuns",
+		Summary:     "List runs for one task",
+		Tags:        []string{"tasks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Task id"),
+			enumQueryParam("status", "Filter by run status", taskRunStatusValues()),
+			queryParam("session_id", "Filter by attached session id", false),
+			intQueryParam("limit", "Maximum number of records to return"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.TaskRunsResponse{}},
+			{Status: 400, Description: "Invalid task-run filter", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Task not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/tasks/{id}/runs",
+		OperationID: "enqueueTaskRun",
+		Summary:     "Enqueue one task run",
+		Tags:        []string{"tasks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Task id"),
+		},
+		RequestBody: contract.EnqueueTaskRunRequest{},
+		Responses: []ResponseSpec{
+			{Status: 201, Description: "Created", Body: contract.TaskRunResponse{}},
+			{Status: 400, Description: "Invalid task-run enqueue request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Task not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Task-run enqueue conflict", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/task-runs/{id}/claim",
+		OperationID: "claimTaskRun",
+		Summary:     "Claim one queued task run",
+		Tags:        []string{"tasks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Task run id"),
+		},
+		RequestBody: contract.ClaimTaskRunRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.TaskRunResponse{}},
+			{Status: 400, Description: "Invalid task-run claim request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Task run not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Task-run claim conflict", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/task-runs/{id}/start",
+		OperationID: "startTaskRun",
+		Summary:     "Start one claimed task run",
+		Tags:        []string{"tasks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Task run id"),
+		},
+		RequestBody: contract.StartTaskRunRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.TaskRunResponse{}},
+			{Status: 400, Description: "Invalid task-run start request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Task run not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Task-run start conflict", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/task-runs/{id}/attach-session",
+		OperationID: "attachTaskRunSession",
+		Summary:     "Attach an existing session to one task run",
+		Tags:        []string{"tasks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Task run id"),
+		},
+		RequestBody: contract.AttachTaskRunSessionRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.TaskRunResponse{}},
+			{Status: 400, Description: "Invalid attach-session request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Task run or session not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Attach-session conflict", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/task-runs/{id}/complete",
+		OperationID: "completeTaskRun",
+		Summary:     "Complete one running task run",
+		Tags:        []string{"tasks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Task run id"),
+		},
+		RequestBody: contract.CompleteTaskRunRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.TaskRunResponse{}},
+			{Status: 400, Description: "Invalid task-run completion request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Task run not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Task-run completion conflict", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/task-runs/{id}/fail",
+		OperationID: "failTaskRun",
+		Summary:     "Fail one task run",
+		Tags:        []string{"tasks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Task run id"),
+		},
+		RequestBody: contract.FailTaskRunRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.TaskRunResponse{}},
+			{Status: 400, Description: "Invalid task-run failure request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Task run not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Task-run failure conflict", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/task-runs/{id}/cancel",
+		OperationID: "cancelTaskRun",
+		Summary:     "Cancel one task run",
+		Tags:        []string{"tasks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Task run id"),
+		},
+		RequestBody: contract.CancelTaskRunRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.TaskRunResponse{}},
+			{Status: 400, Description: "Invalid task-run cancel request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Task run not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Task-run cancel conflict", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/skills",
+		OperationID: "listSkills",
+		Summary:     "List skills for one workspace",
+		Tags:        []string{"skills"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			queryParam("workspace", "Workspace id or path", true),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SkillsResponse{}},
+			{Status: 400, Description: "Invalid workspace filter", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Skills registry is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/skills/{name}",
+		OperationID: "getSkill",
+		Summary:     "Get one skill definition",
+		Tags:        []string{"skills"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("name", "Skill name"),
+			queryParam("workspace", "Workspace id or path", false),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SkillResponse{}},
+			{Status: 400, Description: "Invalid skill lookup", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Skill or workspace not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Skills registry is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/skills/{name}/content",
+		OperationID: "getSkillContent",
+		Summary:     "Get the raw content for one skill",
+		Tags:        []string{"skills"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("name", "Skill name"),
+			queryParam("workspace", "Workspace id or path", false),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SkillContentResponse{}},
+			{Status: 400, Description: "Invalid skill lookup", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Skill or workspace not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Skills registry is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/skills/{name}/enable",
+		OperationID: "enableSkill",
+		Summary:     "Enable one skill",
+		Tags:        []string{"skills"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("name", "Skill name"),
+			queryParam("workspace", "Workspace id or path", false),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SkillActionResponse{}},
+			{Status: 400, Description: "Invalid skill lookup", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Skill or workspace not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Skills registry is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/skills/{name}/disable",
+		OperationID: "disableSkill",
+		Summary:     "Disable one skill",
+		Tags:        []string{"skills"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("name", "Skill name"),
+			queryParam("workspace", "Workspace id or path", false),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SkillActionResponse{}},
+			{Status: 400, Description: "Invalid skill lookup", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Skill or workspace not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Skills registry is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/workspaces",
+		OperationID: "listWorkspaces",
+		Summary:     "List registered workspaces",
+		Tags:        []string{"workspaces"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.WorkspacesResponse{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/workspaces",
+		OperationID: "createWorkspace",
+		Summary:     "Register a workspace",
+		Tags:        []string{"workspaces"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		RequestBody: contract.CreateWorkspaceRequest{},
+		Responses: []ResponseSpec{
+			{Status: 201, Description: "Created", Body: contract.WorkspaceResponse{}},
+			{Status: 400, Description: "Invalid workspace request", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Workspace conflict", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/workspaces/{id}",
+		OperationID: "getWorkspace",
+		Summary:     "Get one resolved workspace with related data",
+		Tags:        []string{"workspaces"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Workspace id or path"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.WorkspaceDetailPayload{}},
+			{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "PATCH",
+		Path:        "/api/workspaces/{id}",
+		OperationID: "updateWorkspace",
+		Summary:     "Update a registered workspace",
+		Tags:        []string{"workspaces"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Workspace id"),
+		},
+		RequestBody: contract.UpdateWorkspaceRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.WorkspaceResponse{}},
+			{Status: 400, Description: "Invalid workspace update", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "DELETE",
+		Path:        "/api/workspaces/{id}",
+		OperationID: "deleteWorkspace",
+		Summary:     "Delete a registered workspace",
+		Tags:        []string{"workspaces"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Workspace id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 204, Description: "No Content"},
+			{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/workspaces/resolve",
+		OperationID: "resolveWorkspace",
+		Summary:     "Resolve or register a workspace from a path",
+		Tags:        []string{"workspaces"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		RequestBody: contract.ResolveWorkspaceRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.WorkspaceResponse{}},
+			{Status: 400, Description: "Invalid workspace path", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+}
+
 // Operations returns the canonical REST operation registry in deterministic order.
 func Operations() []OperationSpec {
-	ops := []OperationSpec{
-		{
-			Method:      "GET",
-			Path:        "/api/agents",
-			OperationID: "listAgents",
-			Summary:     "List all readable agent definitions",
-			Tags:        []string{"agents"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.AgentsResponse{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/agents/{name}",
-			OperationID: "getAgent",
-			Summary:     "Get one agent definition by name",
-			Tags:        []string{"agents"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("name", "Agent name"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.AgentResponse{}},
-				{Status: 404, Description: "Agent not found", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/automation/jobs",
-			OperationID: "listAutomationJobs",
-			Summary:     "List automation jobs",
-			Tags:        []string{"automation"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				enumQueryParam("scope", "Filter by automation scope", false, automationScopeValues()),
-				queryParam("workspace_id", "Filter by workspace id", false),
-				enumQueryParam("source", "Filter by job source", false, automationSourceValues()),
-				intQueryParam("limit", "Maximum number of records to return", false),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.JobsResponse{}},
-				{Status: 400, Description: "Invalid automation filter", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/automation/jobs",
-			OperationID: "createAutomationJob",
-			Summary:     "Create an automation job",
-			Tags:        []string{"automation"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			RequestBody: contract.CreateJobRequest{},
-			Responses: []ResponseSpec{
-				{Status: 201, Description: "Created", Body: contract.JobResponse{}},
-				{Status: 400, Description: "Invalid automation job request", Body: contract.ErrorPayload{}},
-				{Status: 409, Description: "Automation job conflict", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/automation/jobs/{id}",
-			OperationID: "getAutomationJob",
-			Summary:     "Get one automation job",
-			Tags:        []string{"automation"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Automation job id"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.JobResponse{}},
-				{Status: 404, Description: "Automation job not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "PATCH",
-			Path:        "/api/automation/jobs/{id}",
-			OperationID: "updateAutomationJob",
-			Summary:     "Update one automation job",
-			Tags:        []string{"automation"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Automation job id"),
-			},
-			RequestBody: contract.UpdateJobRequest{},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.JobResponse{}},
-				{Status: 400, Description: "Invalid automation job update", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Automation job not found", Body: contract.ErrorPayload{}},
-				{Status: 409, Description: "Automation job conflict", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "DELETE",
-			Path:        "/api/automation/jobs/{id}",
-			OperationID: "deleteAutomationJob",
-			Summary:     "Delete one automation job",
-			Tags:        []string{"automation"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Automation job id"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 204, Description: "No Content"},
-				{Status: 400, Description: "Invalid automation job delete request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Automation job not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/automation/jobs/{id}/trigger",
-			OperationID: "triggerAutomationJob",
-			Summary:     "Trigger one automation job immediately",
-			Tags:        []string{"automation"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Automation job id"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.RunResponse{}},
-				{Status: 404, Description: "Automation job not found", Body: contract.ErrorPayload{}},
-				{Status: 409, Description: "Automation run conflict", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/automation/jobs/{id}/runs",
-			OperationID: "listAutomationJobRuns",
-			Summary:     "List run history for one automation job",
-			Tags:        []string{"automation"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Automation job id"),
-				enumQueryParam("status", "Filter by run status", false, automationRunStatusValues()),
-				dateTimeQueryParam("since", "Only runs started since this timestamp", false),
-				dateTimeQueryParam("until", "Only runs started before this timestamp", false),
-				intQueryParam("limit", "Maximum number of records to return", false),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.RunsResponse{}},
-				{Status: 400, Description: "Invalid automation run filter", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Automation job not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/automation/triggers",
-			OperationID: "listAutomationTriggers",
-			Summary:     "List automation triggers",
-			Tags:        []string{"automation"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				enumQueryParam("scope", "Filter by automation scope", false, automationScopeValues()),
-				queryParam("workspace_id", "Filter by workspace id", false),
-				enumQueryParam("source", "Filter by trigger source", false, automationSourceValues()),
-				queryParam("event", "Filter by trigger event", false),
-				intQueryParam("limit", "Maximum number of records to return", false),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.TriggersResponse{}},
-				{Status: 400, Description: "Invalid automation filter", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/automation/triggers",
-			OperationID: "createAutomationTrigger",
-			Summary:     "Create an automation trigger",
-			Tags:        []string{"automation"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			RequestBody: contract.CreateTriggerRequest{},
-			Responses: []ResponseSpec{
-				{Status: 201, Description: "Created", Body: contract.TriggerResponse{}},
-				{Status: 400, Description: "Invalid automation trigger request", Body: contract.ErrorPayload{}},
-				{Status: 409, Description: "Automation trigger conflict", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/automation/triggers/{id}",
-			OperationID: "getAutomationTrigger",
-			Summary:     "Get one automation trigger",
-			Tags:        []string{"automation"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Automation trigger id"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.TriggerResponse{}},
-				{Status: 404, Description: "Automation trigger not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "PATCH",
-			Path:        "/api/automation/triggers/{id}",
-			OperationID: "updateAutomationTrigger",
-			Summary:     "Update one automation trigger",
-			Tags:        []string{"automation"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Automation trigger id"),
-			},
-			RequestBody: contract.UpdateTriggerRequest{},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.TriggerResponse{}},
-				{Status: 400, Description: "Invalid automation trigger update", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Automation trigger not found", Body: contract.ErrorPayload{}},
-				{Status: 409, Description: "Automation trigger conflict", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "DELETE",
-			Path:        "/api/automation/triggers/{id}",
-			OperationID: "deleteAutomationTrigger",
-			Summary:     "Delete one automation trigger",
-			Tags:        []string{"automation"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Automation trigger id"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 204, Description: "No Content"},
-				{Status: 400, Description: "Invalid automation trigger delete request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Automation trigger not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/automation/triggers/{id}/runs",
-			OperationID: "listAutomationTriggerRuns",
-			Summary:     "List run history for one automation trigger",
-			Tags:        []string{"automation"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Automation trigger id"),
-				enumQueryParam("status", "Filter by run status", false, automationRunStatusValues()),
-				dateTimeQueryParam("since", "Only runs started since this timestamp", false),
-				dateTimeQueryParam("until", "Only runs started before this timestamp", false),
-				intQueryParam("limit", "Maximum number of records to return", false),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.RunsResponse{}},
-				{Status: 400, Description: "Invalid automation run filter", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Automation trigger not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/automation/runs",
-			OperationID: "listAutomationRuns",
-			Summary:     "List automation runs",
-			Tags:        []string{"automation"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				queryParam("job_id", "Filter by automation job id", false),
-				queryParam("trigger_id", "Filter by automation trigger id", false),
-				enumQueryParam("status", "Filter by run status", false, automationRunStatusValues()),
-				dateTimeQueryParam("since", "Only runs started since this timestamp", false),
-				dateTimeQueryParam("until", "Only runs started before this timestamp", false),
-				intQueryParam("limit", "Maximum number of records to return", false),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.RunsResponse{}},
-				{Status: 400, Description: "Invalid automation run filter", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/automation/runs/{id}",
-			OperationID: "getAutomationRun",
-			Summary:     "Get one automation run",
-			Tags:        []string{"automation"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Automation run id"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.RunResponse{}},
-				{Status: 404, Description: "Automation run not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/webhooks/global/{endpoint}",
-			OperationID: "deliverGlobalWebhook",
-			Summary:     "Deliver one global automation webhook",
-			Tags:        []string{"automation"},
-			Transports:  []Transport{TransportHTTP},
-			Parameters: []ParameterSpec{
-				pathParam("endpoint", "Webhook endpoint slug and id"),
-				headerParam("X-AGH-Webhook-Timestamp", "Signed webhook timestamp", true),
-				headerParam("X-AGH-Webhook-Signature", "Signed webhook HMAC signature", true),
-			},
-			RequestBody: map[string]any{},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.WebhookDeliveryResponse{}},
-				{Status: 400, Description: "Invalid webhook request", Body: contract.ErrorPayload{}},
-				{Status: 401, Description: "Webhook authentication failed", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Webhook trigger not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/webhooks/workspaces/{workspace_id}/{endpoint}",
-			OperationID: "deliverWorkspaceWebhook",
-			Summary:     "Deliver one workspace-scoped automation webhook",
-			Tags:        []string{"automation"},
-			Transports:  []Transport{TransportHTTP},
-			Parameters: []ParameterSpec{
-				pathParam("workspace_id", "Workspace id"),
-				pathParam("endpoint", "Webhook endpoint slug and id"),
-				headerParam("X-AGH-Webhook-Timestamp", "Signed webhook timestamp", true),
-				headerParam("X-AGH-Webhook-Signature", "Signed webhook HMAC signature", true),
-			},
-			RequestBody: map[string]any{},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.WebhookDeliveryResponse{}},
-				{Status: 400, Description: "Invalid webhook request", Body: contract.ErrorPayload{}},
-				{Status: 401, Description: "Webhook authentication failed", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Webhook trigger not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Automation manager is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/bridges",
-			OperationID: "listBridges",
-			Summary:     "List persisted bridge instances",
-			Tags:        []string{"bridges"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.BridgesResponse{}},
-				{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/bridges",
-			OperationID: "createBridge",
-			Summary:     "Create a bridge instance",
-			Tags:        []string{"bridges"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			RequestBody: contract.CreateBridgeRequest{},
-			Responses: []ResponseSpec{
-				{Status: 201, Description: "Created", Body: contract.BridgeResponse{}},
-				{Status: 400, Description: "Invalid bridge request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/bridges/providers",
-			OperationID: "listBridgeProviders",
-			Summary:     "List installed bridge-capable providers",
-			Tags:        []string{"bridges"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.BridgeProvidersResponse{}},
-				{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/bridges/{id}",
-			OperationID: "getBridge",
-			Summary:     "Get one bridge instance",
-			Tags:        []string{"bridges"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Bridge instance id"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.BridgeResponse{}},
-				{Status: 404, Description: "Bridge instance not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "PATCH",
-			Path:        "/api/bridges/{id}",
-			OperationID: "updateBridge",
-			Summary:     "Update mutable bridge instance fields",
-			Tags:        []string{"bridges"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Bridge instance id"),
-			},
-			RequestBody: contract.UpdateBridgeRequest{},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.BridgeResponse{}},
-				{Status: 400, Description: "Invalid bridge update", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Bridge instance or workspace not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/bridges/{id}/enable",
-			OperationID: "enableBridge",
-			Summary:     "Enable a bridge instance",
-			Tags:        []string{"bridges"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Bridge instance id"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.BridgeResponse{}},
-				{Status: 404, Description: "Bridge instance not found", Body: contract.ErrorPayload{}},
-				{Status: 409, Description: "Invalid bridge state transition", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/bridges/{id}/disable",
-			OperationID: "disableBridge",
-			Summary:     "Disable a bridge instance",
-			Tags:        []string{"bridges"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Bridge instance id"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.BridgeResponse{}},
-				{Status: 404, Description: "Bridge instance not found", Body: contract.ErrorPayload{}},
-				{Status: 409, Description: "Invalid bridge state transition", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/bridges/{id}/restart",
-			OperationID: "restartBridge",
-			Summary:     "Restart a bridge instance",
-			Tags:        []string{"bridges"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Bridge instance id"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.BridgeResponse{}},
-				{Status: 404, Description: "Bridge instance not found", Body: contract.ErrorPayload{}},
-				{Status: 409, Description: "Invalid bridge state transition", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/bridges/{id}/routes",
-			OperationID: "listBridgeRoutes",
-			Summary:     "List routes owned by a bridge instance",
-			Tags:        []string{"bridges"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Bridge instance id"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.BridgeRoutesResponse{}},
-				{Status: 404, Description: "Bridge instance not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/bridges/{id}/secret-bindings",
-			OperationID: "listBridgeSecretBindings",
-			Summary:     "List persisted secret bindings for a bridge instance",
-			Tags:        []string{"bridges"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Bridge instance id"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.BridgeSecretBindingsResponse{}},
-				{Status: 404, Description: "Bridge instance not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "PUT",
-			Path:        "/api/bridges/{id}/secret-bindings/{binding_name}",
-			OperationID: "putBridgeSecretBinding",
-			Summary:     "Create or update one bridge secret binding",
-			Tags:        []string{"bridges"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Bridge instance id"),
-				pathParam("binding_name", "Bridge provider secret slot name"),
-			},
-			RequestBody: contract.PutBridgeSecretBindingRequest{},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.BridgeSecretBindingResponse{}},
-				{Status: 400, Description: "Invalid bridge secret binding request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Bridge instance not found", Body: contract.ErrorPayload{}},
-				{Status: 409, Description: "Bridge secret binding conflict", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "DELETE",
-			Path:        "/api/bridges/{id}/secret-bindings/{binding_name}",
-			OperationID: "deleteBridgeSecretBinding",
-			Summary:     "Delete one bridge secret binding",
-			Tags:        []string{"bridges"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Bridge instance id"),
-				pathParam("binding_name", "Bridge provider secret slot name"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 204, Description: "No Content"},
-				{Status: 404, Description: "Bridge instance or secret binding not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/bridges/{id}/test-delivery",
-			OperationID: "testBridgeDelivery",
-			Summary:     "Resolve a typed outbound delivery target for a bridge instance",
-			Tags:        []string{"bridges"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Bridge instance id"),
-			},
-			RequestBody: contract.BridgeTestDeliveryRequest{},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.BridgeTestDeliveryResponse{}},
-				{Status: 400, Description: "Invalid delivery target request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Bridge instance not found", Body: contract.ErrorPayload{}},
-				{Status: 409, Description: "Bridge instance is unavailable", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/daemon/status",
-			OperationID: "getDaemonStatus",
-			Summary:     "Get the daemon status snapshot",
-			Tags:        []string{"daemon"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.DaemonStatusResponse{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/network/status",
-			OperationID: "getNetworkStatus",
-			Summary:     "Get the network runtime status snapshot",
-			Tags:        []string{"network"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.NetworkStatusResponse{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/network/peers",
-			OperationID: "listNetworkPeers",
-			Summary:     "List visible network peers",
-			Tags:        []string{"network"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				queryParam("channel", "Filter peers by channel", false),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.NetworkPeersResponse{}},
-				{Status: 400, Description: "Invalid network filter", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Network runtime is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/network/peers/{peer_id}",
-			OperationID: "getNetworkPeer",
-			Summary:     "Get one visible network peer detail",
-			Tags:        []string{"network"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("peer_id", "Network peer id"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.NetworkPeerResponse{}},
-				{Status: 404, Description: "Network peer not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Network runtime is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/network/channels",
-			OperationID: "listNetworkChannels",
-			Summary:     "List materialized network channels",
-			Tags:        []string{"network"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.NetworkChannelsResponse{}},
-				{Status: 503, Description: "Network runtime is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/network/channels",
-			OperationID: "createNetworkChannel",
-			Summary:     "Create a network channel by spawning agent sessions",
-			Tags:        []string{"network"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			RequestBody: contract.CreateNetworkChannelRequest{},
-			Responses: []ResponseSpec{
-				{Status: 201, Description: "Created", Body: contract.CreateNetworkChannelResponse{}},
-				{Status: 400, Description: "Invalid network channel request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Network runtime is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/network/channels/{channel}",
-			OperationID: "getNetworkChannel",
-			Summary:     "Get one network channel detail",
-			Tags:        []string{"network"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("channel", "Network channel"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.NetworkChannelResponse{}},
-				{Status: 400, Description: "Invalid network channel", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Network channel not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Network runtime is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/network/channels/{channel}/messages",
-			OperationID: "listNetworkChannelMessages",
-			Summary:     "List the read-only timeline for one network channel",
-			Tags:        []string{"network"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("channel", "Network channel"),
-				intQueryParam("limit", "Maximum number of timeline messages to return", false),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.NetworkChannelMessagesResponse{}},
-				{Status: 400, Description: "Invalid network channel", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Network channel not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Network runtime is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/network/send",
-			OperationID: "sendNetworkMessage",
-			Summary:     "Send one network message",
-			Tags:        []string{"network"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			RequestBody: contract.NetworkSendRequest{},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.NetworkSendResponse{}},
-				{Status: 400, Description: "Invalid network send request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Network target not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Network runtime is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/network/inbox",
-			OperationID: "listNetworkInbox",
-			Summary:     "List queued network inbox messages for one local session",
-			Tags:        []string{"network"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				queryParam("session_id", "Target local session id", true),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.NetworkInboxResponse{}},
-				{Status: 400, Description: "Invalid inbox request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Network target not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Network runtime is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/extensions",
-			OperationID: "listExtensions",
-			Summary:     "List installed extensions",
-			Tags:        []string{"extensions"},
-			Transports:  []Transport{TransportUDS},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.ExtensionsResponse{}},
-				{Status: 503, Description: "Extension service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/extensions",
-			OperationID: "installExtension",
-			Summary:     "Install an extension by path and checksum",
-			Tags:        []string{"extensions"},
-			Transports:  []Transport{TransportUDS},
-			RequestBody: contract.InstallExtensionRequest{},
-			Responses: []ResponseSpec{
-				{Status: 201, Description: "Created", Body: contract.ExtensionResponse{}},
-				{Status: 400, Description: "Invalid install request", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Extension service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/extensions/{name}",
-			OperationID: "getExtension",
-			Summary:     "Get one installed extension",
-			Tags:        []string{"extensions"},
-			Transports:  []Transport{TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("name", "Extension name"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.ExtensionResponse{}},
-				{Status: 404, Description: "Extension not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Extension service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/extensions/{name}/enable",
-			OperationID: "enableExtension",
-			Summary:     "Enable an installed extension",
-			Tags:        []string{"extensions"},
-			Transports:  []Transport{TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("name", "Extension name"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.ExtensionResponse{}},
-				{Status: 404, Description: "Extension not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Extension service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/extensions/{name}/disable",
-			OperationID: "disableExtension",
-			Summary:     "Disable an installed extension",
-			Tags:        []string{"extensions"},
-			Transports:  []Transport{TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("name", "Extension name"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.ExtensionResponse{}},
-				{Status: 404, Description: "Extension not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Extension service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/hooks/catalog",
-			OperationID: "getHookCatalog",
-			Summary:     "List the resolved hook catalog",
-			Tags:        []string{"hooks"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				queryParam("workspace", "Workspace id or path", false),
-				queryParam("agent", "Agent name", false),
-				enumQueryParam("event", "Hook event name", false, hookEventValues()),
-				enumQueryParam("source", "Hook source", false, hookSourceValues()),
-				enumQueryParam("mode", "Hook mode", false, hookModeValues()),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.HookCatalogResponse{}},
-				{Status: 400, Description: "Invalid filter", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/hooks/runs",
-			OperationID: "getHookRuns",
-			Summary:     "List hook run history for one session",
-			Tags:        []string{"hooks"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				queryParam("session", "Session id", true),
-				enumQueryParam("event", "Hook event name", false, hookEventValues()),
-				enumQueryParam("outcome", "Hook execution outcome", false, hookOutcomeValues()),
-				dateTimeQueryParam("since", "Only runs recorded since this timestamp", false),
-				intQueryParam("last", "Maximum number of records to return", false),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.HookRunsResponse{}},
-				{Status: 400, Description: "Invalid filter", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Session not found", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/hooks/events",
-			OperationID: "getHookEvents",
-			Summary:     "List supported hook taxonomy metadata",
-			Tags:        []string{"hooks"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				enumQueryParam("family", "Hook event family", false, hookEventFamilyValues()),
-				boolQueryParam("sync_only", "Only return sync-eligible events", false),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.HookEventsResponse{}},
-				{Status: 400, Description: "Invalid filter", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/memory",
-			OperationID: "listMemory",
-			Summary:     "List memory document headers",
-			Tags:        []string{"memory"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				enumQueryParam("scope", "Memory scope", false, memoryScopeValues()),
-				queryParam("workspace", "Workspace id or path", false),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: []memory.MemoryHeader{}},
-				{Status: 400, Description: "Invalid memory filter", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Workspace or memory not found", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/memory/{filename}",
-			OperationID: "readMemory",
-			Summary:     "Read one memory document",
-			Tags:        []string{"memory"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("filename", "Memory filename"),
-				enumQueryParam("scope", "Memory scope", false, memoryScopeValues()),
-				queryParam("workspace", "Workspace id or path", false),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.MemoryReadResponse{}},
-				{Status: 400, Description: "Invalid memory reference", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Memory not found", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "PUT",
-			Path:        "/api/memory/{filename}",
-			OperationID: "writeMemory",
-			Summary:     "Write one memory document",
-			Tags:        []string{"memory"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("filename", "Memory filename"),
-			},
-			RequestBody: contract.MemoryWriteRequest{},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.MemoryMutationResponse{}},
-				{Status: 400, Description: "Invalid memory write request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "DELETE",
-			Path:        "/api/memory/{filename}",
-			OperationID: "deleteMemory",
-			Summary:     "Delete one memory document",
-			Tags:        []string{"memory"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("filename", "Memory filename"),
-				enumQueryParam("scope", "Memory scope", false, memoryScopeValues()),
-				queryParam("workspace", "Workspace id or path", false),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.MemoryMutationResponse{}},
-				{Status: 400, Description: "Invalid memory reference", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Memory not found", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/memory/consolidate",
-			OperationID: "consolidateMemory",
-			Summary:     "Trigger dream consolidation",
-			Tags:        []string{"memory"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			RequestBody: contract.MemoryConsolidateRequest{},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.MemoryConsolidateResponse{}},
-				{Status: 400, Description: "Invalid consolidate request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/observe/events",
-			OperationID: "listObserveEvents",
-			Summary:     "List observability events",
-			Tags:        []string{"observe"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				queryParam("session_id", "Session id", false),
-				queryParam("agent_name", "Agent name", false),
-				queryParam("type", "Event type", false),
-				dateTimeQueryParam("since", "Only events emitted since this timestamp", false),
-				intQueryParam("limit", "Maximum number of records to return", false),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.ObserveEventsResponse{}},
-				{Status: 400, Description: "Invalid filter", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/observe/health",
-			OperationID: "getObserveHealth",
-			Summary:     "Get daemon health and memory health",
-			Tags:        []string{"observe"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.HealthResponse{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/sessions",
-			OperationID: "listSessions",
-			Summary:     "List sessions",
-			Tags:        []string{"sessions"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				queryParam("workspace", "Workspace id or path", false),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.SessionsResponse{}},
-				{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/sessions",
-			OperationID: "createSession",
-			Summary:     "Create a session",
-			Tags:        []string{"sessions"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			RequestBody: contract.CreateSessionRequest{},
-			Responses: []ResponseSpec{
-				{Status: 201, Description: "Created", Body: contract.SessionResponse{}},
-				{Status: 400, Description: "Invalid create request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
-				{Status: 409, Description: "Session creation conflict", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/sessions/{id}",
-			OperationID: "getSession",
-			Summary:     "Get one session snapshot",
-			Tags:        []string{"sessions"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Session id"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.SessionResponse{}},
-				{Status: 404, Description: "Session not found", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "DELETE",
-			Path:        "/api/sessions/{id}",
-			OperationID: "stopSession",
-			Summary:     "Stop a session",
-			Tags:        []string{"sessions"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Session id"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 204, Description: "No Content"},
-				{Status: 404, Description: "Session not found", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/sessions/{id}/resume",
-			OperationID: "resumeSession",
-			Summary:     "Resume a stopped session",
-			Tags:        []string{"sessions"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Session id"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.SessionResponse{}},
-				{Status: 404, Description: "Session not found", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/sessions/{id}/events",
-			OperationID: "listSessionEvents",
-			Summary:     "List persisted session events",
-			Tags:        []string{"sessions"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Session id"),
-				dateTimeQueryParam("since", "Only events emitted since this timestamp", false),
-				intQueryParam("limit", "Maximum number of records to return", false),
-				int64QueryParam("after_sequence", "Only return events after this sequence number", false),
-				queryParam("type", "Event type", false),
-				queryParam("agent_name", "Agent name", false),
-				queryParam("turn_id", "Turn id", false),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.SessionEventsResponse{}},
-				{Status: 400, Description: "Invalid filter", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Session not found", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/sessions/{id}/history",
-			OperationID: "getSessionHistory",
-			Summary:     "List grouped session turn history",
-			Tags:        []string{"sessions"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Session id"),
-				dateTimeQueryParam("since", "Only events emitted since this timestamp", false),
-				intQueryParam("limit", "Maximum number of records to return", false),
-				int64QueryParam("after_sequence", "Only return events after this sequence number", false),
-				queryParam("type", "Event type", false),
-				queryParam("agent_name", "Agent name", false),
-				queryParam("turn_id", "Turn id", false),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.SessionHistoryResponse{}},
-				{Status: 400, Description: "Invalid filter", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Session not found", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/sessions/{id}/transcript",
-			OperationID: "getSessionTranscript",
-			Summary:     "Get the canonical transcript for one session",
-			Tags:        []string{"sessions"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Session id"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.SessionTranscriptResponse{}},
-				{Status: 404, Description: "Session not found", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/sessions/{id}/approve",
-			OperationID: "approveSession",
-			Summary:     "Approve or deny an interactive permission request",
-			Tags:        []string{"sessions"},
-			Transports:  []Transport{TransportHTTP},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Session id"),
-			},
-			RequestBody: contract.ApproveSessionRequest{},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.SessionApprovalResponse{}},
-				{Status: 400, Description: "Invalid approval request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Session not found", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/tasks",
-			OperationID: "listTasks",
-			Summary:     "List tasks",
-			Tags:        []string{"tasks"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				enumQueryParam("scope", "Filter by task scope", false, taskScopeValues()),
-				queryParam("workspace", "Filter by workspace path, name, or ID", false),
-				enumQueryParam("status", "Filter by task status", false, taskStatusValues()),
-				enumQueryParam("owner_kind", "Filter by owner kind", false, taskOwnerKindValues()),
-				queryParam("owner_ref", "Filter by owner reference", false),
-				queryParam("parent_task_id", "Filter by parent task ID", false),
-				queryParam("network_channel", "Filter by network channel", false),
-				intQueryParam("limit", "Maximum number of records to return", false),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.TasksResponse{}},
-				{Status: 400, Description: "Invalid task filter", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/tasks",
-			OperationID: "createTask",
-			Summary:     "Create a task",
-			Tags:        []string{"tasks"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			RequestBody: contract.CreateTaskRequest{},
-			Responses: []ResponseSpec{
-				{Status: 201, Description: "Created", Body: contract.TaskResponse{}},
-				{Status: 400, Description: "Invalid task request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
-				{Status: 413, Description: "Payload too large", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/tasks/{id}",
-			OperationID: "getTask",
-			Summary:     "Get one task with detail",
-			Tags:        []string{"tasks"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Task id"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.TaskDetailResponse{}},
-				{Status: 400, Description: "Invalid task id", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Task not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "PATCH",
-			Path:        "/api/tasks/{id}",
-			OperationID: "updateTask",
-			Summary:     "Update one task",
-			Tags:        []string{"tasks"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Task id"),
-			},
-			RequestBody: contract.UpdateTaskRequest{},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.TaskResponse{}},
-				{Status: 400, Description: "Invalid task update", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Task not found", Body: contract.ErrorPayload{}},
-				{Status: 409, Description: "Task update conflict", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/tasks/{id}/cancel",
-			OperationID: "cancelTask",
-			Summary:     "Cancel one task tree",
-			Tags:        []string{"tasks"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Task id"),
-			},
-			RequestBody: contract.CancelTaskRequest{},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.TaskResponse{}},
-				{Status: 400, Description: "Invalid task cancel request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Task not found", Body: contract.ErrorPayload{}},
-				{Status: 409, Description: "Task cancel conflict", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/tasks/{id}/children",
-			OperationID: "createChildTask",
-			Summary:     "Create one child task",
-			Tags:        []string{"tasks"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Parent task id"),
-			},
-			RequestBody: contract.CreateTaskChildRequest{},
-			Responses: []ResponseSpec{
-				{Status: 201, Description: "Created", Body: contract.TaskResponse{}},
-				{Status: 400, Description: "Invalid child task request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Task or workspace not found", Body: contract.ErrorPayload{}},
-				{Status: 413, Description: "Payload too large", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/tasks/{id}/dependencies",
-			OperationID: "addTaskDependency",
-			Summary:     "Add one task dependency",
-			Tags:        []string{"tasks"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Task id"),
-			},
-			RequestBody: contract.AddTaskDependencyRequest{},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.TaskDetailResponse{}},
-				{Status: 400, Description: "Invalid dependency request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Task not found", Body: contract.ErrorPayload{}},
-				{Status: 409, Description: "Dependency conflict", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "DELETE",
-			Path:        "/api/tasks/{id}/dependencies/{depends_on_id}",
-			OperationID: "removeTaskDependency",
-			Summary:     "Remove one task dependency",
-			Tags:        []string{"tasks"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Task id"),
-				pathParam("depends_on_id", "Dependency task id"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.TaskDetailResponse{}},
-				{Status: 400, Description: "Invalid dependency request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Task or dependency not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/tasks/{id}/runs",
-			OperationID: "listTaskRuns",
-			Summary:     "List runs for one task",
-			Tags:        []string{"tasks"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Task id"),
-				enumQueryParam("status", "Filter by run status", false, taskRunStatusValues()),
-				queryParam("session_id", "Filter by attached session id", false),
-				intQueryParam("limit", "Maximum number of records to return", false),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.TaskRunsResponse{}},
-				{Status: 400, Description: "Invalid task-run filter", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Task not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/tasks/{id}/runs",
-			OperationID: "enqueueTaskRun",
-			Summary:     "Enqueue one task run",
-			Tags:        []string{"tasks"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Task id"),
-			},
-			RequestBody: contract.EnqueueTaskRunRequest{},
-			Responses: []ResponseSpec{
-				{Status: 201, Description: "Created", Body: contract.TaskRunResponse{}},
-				{Status: 400, Description: "Invalid task-run enqueue request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Task not found", Body: contract.ErrorPayload{}},
-				{Status: 409, Description: "Task-run enqueue conflict", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/task-runs/{id}/claim",
-			OperationID: "claimTaskRun",
-			Summary:     "Claim one queued task run",
-			Tags:        []string{"tasks"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Task run id"),
-			},
-			RequestBody: contract.ClaimTaskRunRequest{},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.TaskRunResponse{}},
-				{Status: 400, Description: "Invalid task-run claim request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Task run not found", Body: contract.ErrorPayload{}},
-				{Status: 409, Description: "Task-run claim conflict", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/task-runs/{id}/start",
-			OperationID: "startTaskRun",
-			Summary:     "Start one claimed task run",
-			Tags:        []string{"tasks"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Task run id"),
-			},
-			RequestBody: contract.StartTaskRunRequest{},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.TaskRunResponse{}},
-				{Status: 400, Description: "Invalid task-run start request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Task run not found", Body: contract.ErrorPayload{}},
-				{Status: 409, Description: "Task-run start conflict", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/task-runs/{id}/attach-session",
-			OperationID: "attachTaskRunSession",
-			Summary:     "Attach an existing session to one task run",
-			Tags:        []string{"tasks"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Task run id"),
-			},
-			RequestBody: contract.AttachTaskRunSessionRequest{},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.TaskRunResponse{}},
-				{Status: 400, Description: "Invalid attach-session request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Task run or session not found", Body: contract.ErrorPayload{}},
-				{Status: 409, Description: "Attach-session conflict", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/task-runs/{id}/complete",
-			OperationID: "completeTaskRun",
-			Summary:     "Complete one running task run",
-			Tags:        []string{"tasks"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Task run id"),
-			},
-			RequestBody: contract.CompleteTaskRunRequest{},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.TaskRunResponse{}},
-				{Status: 400, Description: "Invalid task-run completion request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Task run not found", Body: contract.ErrorPayload{}},
-				{Status: 409, Description: "Task-run completion conflict", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/task-runs/{id}/fail",
-			OperationID: "failTaskRun",
-			Summary:     "Fail one task run",
-			Tags:        []string{"tasks"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Task run id"),
-			},
-			RequestBody: contract.FailTaskRunRequest{},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.TaskRunResponse{}},
-				{Status: 400, Description: "Invalid task-run failure request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Task run not found", Body: contract.ErrorPayload{}},
-				{Status: 409, Description: "Task-run failure conflict", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/task-runs/{id}/cancel",
-			OperationID: "cancelTaskRun",
-			Summary:     "Cancel one task run",
-			Tags:        []string{"tasks"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Task run id"),
-			},
-			RequestBody: contract.CancelTaskRunRequest{},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.TaskRunResponse{}},
-				{Status: 400, Description: "Invalid task-run cancel request", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Task run not found", Body: contract.ErrorPayload{}},
-				{Status: 409, Description: "Task-run cancel conflict", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/skills",
-			OperationID: "listSkills",
-			Summary:     "List skills for one workspace",
-			Tags:        []string{"skills"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				queryParam("workspace", "Workspace id or path", true),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.SkillsResponse{}},
-				{Status: 400, Description: "Invalid workspace filter", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Skills registry is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/skills/{name}",
-			OperationID: "getSkill",
-			Summary:     "Get one skill definition",
-			Tags:        []string{"skills"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("name", "Skill name"),
-				queryParam("workspace", "Workspace id or path", false),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.SkillResponse{}},
-				{Status: 400, Description: "Invalid skill lookup", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Skill or workspace not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Skills registry is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/skills/{name}/content",
-			OperationID: "getSkillContent",
-			Summary:     "Get the raw content for one skill",
-			Tags:        []string{"skills"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("name", "Skill name"),
-				queryParam("workspace", "Workspace id or path", false),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.SkillContentResponse{}},
-				{Status: 400, Description: "Invalid skill lookup", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Skill or workspace not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Skills registry is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/skills/{name}/enable",
-			OperationID: "enableSkill",
-			Summary:     "Enable one skill",
-			Tags:        []string{"skills"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("name", "Skill name"),
-				queryParam("workspace", "Workspace id or path", false),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.SkillActionResponse{}},
-				{Status: 400, Description: "Invalid skill lookup", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Skill or workspace not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Skills registry is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/skills/{name}/disable",
-			OperationID: "disableSkill",
-			Summary:     "Disable one skill",
-			Tags:        []string{"skills"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("name", "Skill name"),
-				queryParam("workspace", "Workspace id or path", false),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.SkillActionResponse{}},
-				{Status: 400, Description: "Invalid skill lookup", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Skill or workspace not found", Body: contract.ErrorPayload{}},
-				{Status: 503, Description: "Skills registry is not configured", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/workspaces",
-			OperationID: "listWorkspaces",
-			Summary:     "List registered workspaces",
-			Tags:        []string{"workspaces"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.WorkspacesResponse{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/workspaces",
-			OperationID: "createWorkspace",
-			Summary:     "Register a workspace",
-			Tags:        []string{"workspaces"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			RequestBody: contract.CreateWorkspaceRequest{},
-			Responses: []ResponseSpec{
-				{Status: 201, Description: "Created", Body: contract.WorkspaceResponse{}},
-				{Status: 400, Description: "Invalid workspace request", Body: contract.ErrorPayload{}},
-				{Status: 409, Description: "Workspace conflict", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/api/workspaces/{id}",
-			OperationID: "getWorkspace",
-			Summary:     "Get one resolved workspace with related data",
-			Tags:        []string{"workspaces"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Workspace id or path"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.WorkspaceDetailPayload{}},
-				{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "PATCH",
-			Path:        "/api/workspaces/{id}",
-			OperationID: "updateWorkspace",
-			Summary:     "Update a registered workspace",
-			Tags:        []string{"workspaces"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Workspace id"),
-			},
-			RequestBody: contract.UpdateWorkspaceRequest{},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.WorkspaceResponse{}},
-				{Status: 400, Description: "Invalid workspace update", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "DELETE",
-			Path:        "/api/workspaces/{id}",
-			OperationID: "deleteWorkspace",
-			Summary:     "Delete a registered workspace",
-			Tags:        []string{"workspaces"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			Parameters: []ParameterSpec{
-				pathParam("id", "Workspace id"),
-			},
-			Responses: []ResponseSpec{
-				{Status: 204, Description: "No Content"},
-				{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/api/workspaces/resolve",
-			OperationID: "resolveWorkspace",
-			Summary:     "Resolve or register a workspace from a path",
-			Tags:        []string{"workspaces"},
-			Transports:  []Transport{TransportHTTP, TransportUDS},
-			RequestBody: contract.ResolveWorkspaceRequest{},
-			Responses: []ResponseSpec{
-				{Status: 200, Description: "OK", Body: contract.WorkspaceResponse{}},
-				{Status: 400, Description: "Invalid workspace path", Body: contract.ErrorPayload{}},
-				{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
-				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
-			},
-		},
-	}
-
+	ops := append([]OperationSpec(nil), operationRegistry...)
 	sort.SliceStable(ops, func(i, j int) bool {
 		if ops[i].Path == ops[j].Path {
 			return ops[i].Method < ops[j].Method
@@ -1811,7 +1863,7 @@ func WriteFile(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return os.WriteFile(path, data, 0o600)
 }
 
 func buildOperation(schemas openapi3.Schemas, spec OperationSpec) (*openapi3.Operation, error) {
@@ -1916,112 +1968,14 @@ func schemaRefForParameter(spec ParameterSpec) *openapi3.SchemaRef {
 }
 
 func schemaCustomizer(_ string, t reflect.Type, _ reflect.StructTag, schema *openapi3.Schema) error {
-	switch t {
-	case rawMessageType:
-		*schema = *openapi3.NewSchema()
-		return nil
-	case reflect.TypeOf(automationpkg.AutomationScope("")):
-		setStringEnum(schema, automationScopeValues())
-		return nil
-	case reflect.TypeOf(automationpkg.JobSource("")):
-		setStringEnum(schema, automationSourceValues())
-		return nil
-	case reflect.TypeOf(automationpkg.ScheduleMode("")):
-		setStringEnum(schema, automationScheduleModeValues())
-		return nil
-	case reflect.TypeOf(automationpkg.RetryStrategy("")):
-		setStringEnum(schema, automationRetryStrategyValues())
-		return nil
-	case reflect.TypeOf(automationpkg.RunStatus("")):
-		setStringEnum(schema, automationRunStatusValues())
-		return nil
-	case reflect.TypeOf(taskpkg.Scope("")):
-		setStringEnum(schema, taskScopeValues())
-		return nil
-	case reflect.TypeOf(taskpkg.TaskStatus("")):
-		setStringEnum(schema, taskStatusValues())
-		return nil
-	case reflect.TypeOf(taskpkg.TaskRunStatus("")):
-		setStringEnum(schema, taskRunStatusValues())
-		return nil
-	case reflect.TypeOf(taskpkg.ActorKind("")):
-		setStringEnum(schema, taskActorKindValues())
-		return nil
-	case reflect.TypeOf(taskpkg.OwnerKind("")):
-		setStringEnum(schema, taskOwnerKindValues())
-		return nil
-	case reflect.TypeOf(taskpkg.OriginKind("")):
-		setStringEnum(schema, taskOriginKindValues())
-		return nil
-	case reflect.TypeOf(taskpkg.DependencyKind("")):
-		setStringEnum(schema, taskDependencyKindValues())
-		return nil
-	case reflect.TypeOf(hooks.HookEvent("")):
-		setStringEnum(schema, hookEventValues())
-		return nil
-	case reflect.TypeOf(hooks.HookEventFamily("")):
-		setStringEnum(schema, hookEventFamilyValues())
-		return nil
-	case reflect.TypeOf(hooks.HookMode("")):
-		setStringEnum(schema, hookModeValues())
-		return nil
-	case reflect.TypeOf(hooks.HookRunOutcome("")):
-		setStringEnum(schema, hookOutcomeValues())
-		return nil
-	case reflect.TypeOf(hooks.HookSkillSource("")):
-		setStringEnum(schema, hookSkillSourceValues())
-		return nil
-	case reflect.TypeOf(hooks.HookExecutorKind("")):
-		setStringEnum(schema, hookExecutorKindValues())
-		return nil
-	case reflect.TypeOf(hooks.HookSource(0)):
-		setStringEnum(schema, hookSourceValues())
-		return nil
-	case reflect.TypeOf(memory.MemoryType("")):
-		setStringEnum(schema, memoryTypeValues())
-		return nil
-	case reflect.TypeOf(memory.Scope("")):
-		setStringEnum(schema, memoryScopeValues())
-		return nil
-	case reflect.TypeOf(bridgepkg.Scope("")):
-		setStringEnum(schema, bridgeScopeValues())
-		return nil
-	case reflect.TypeOf(bridgepkg.BridgeInstanceSource("")):
-		setStringEnum(schema, bridgeInstanceSourceValues())
-		return nil
-	case reflect.TypeOf(bridgepkg.BridgeStatus("")):
-		setStringEnum(schema, bridgeStatusValues())
-		return nil
-	case reflect.TypeOf(bridgepkg.BridgeDMPolicy("")):
-		setStringEnum(schema, bridgeDMPolicyValues())
-		return nil
-	case reflect.TypeOf(bridgepkg.BridgeDegradationReason("")):
-		setStringEnum(schema, bridgeDegradationReasonValues())
-		return nil
-	case reflect.TypeOf(bridgepkg.DeliveryMode("")):
-		setStringEnum(schema, deliveryModeValues())
-		return nil
-	case reflect.TypeOf(contract.BridgeProviderConfigPayload{}):
-		*schema = *bridgeProviderConfigSchema()
-		return nil
-	case reflect.TypeOf(contract.BridgeDeliveryDefaultsPayload{}):
-		*schema = *bridgeDeliveryDefaultsSchema()
-		return nil
-	case reflect.TypeOf(session.SessionState("")):
-		setStringEnum(schema, sessionStateValues())
-		return nil
-	case reflect.TypeOf(store.StopReason("")):
-		setStringEnum(schema, stopReasonValues())
-		return nil
-	case reflect.TypeOf(tools.ToolSource(0)):
-		setStringEnum(schema, toolSourceValues())
-		return nil
-	case reflect.TypeOf(extensionprotocol.HostAPIMethod("")):
-		setStringEnum(schema, hostAPIMethodValues())
-		return nil
-	default:
+	if customizer, ok := schemaCustomizers[t]; ok {
+		customizer(schema)
 		return nil
 	}
+	if values, ok := schemaEnumValues[t]; ok {
+		setStringEnum(schema, values)
+	}
+	return nil
 }
 
 func applySchemaRequirements(schemaRef *openapi3.SchemaRef, t reflect.Type) {
@@ -2122,11 +2076,8 @@ func parseJSONField(field reflect.StructField) (name string, omitEmpty bool, ski
 	} else {
 		name = field.Name
 	}
-	for _, part := range parts[1:] {
-		if part == "omitempty" {
-			omitEmpty = true
-			break
-		}
+	if slices.Contains(parts[1:], "omitempty") {
+		omitEmpty = true
 	}
 	return name, omitEmpty, false
 }
@@ -2151,20 +2102,20 @@ func pathParam(name string, description string) ParameterSpec {
 	return ParameterSpec{Name: name, In: openapi3.ParameterInPath, Description: description, Required: true}
 }
 
-func headerParam(name string, description string, required bool) ParameterSpec {
-	return ParameterSpec{Name: name, In: openapi3.ParameterInHeader, Description: description, Required: required}
+func headerParam(name string, description string) ParameterSpec {
+	return ParameterSpec{Name: name, In: openapi3.ParameterInHeader, Description: description, Required: true}
 }
 
 func queryParam(name string, description string, required bool) ParameterSpec {
 	return ParameterSpec{Name: name, In: openapi3.ParameterInQuery, Description: description, Required: required}
 }
 
-func enumQueryParam(name string, description string, required bool, values []string) ParameterSpec {
+func enumQueryParam(name string, description string, values []string) ParameterSpec {
 	return ParameterSpec{
 		Name:        name,
 		In:          openapi3.ParameterInQuery,
 		Description: description,
-		Required:    required,
+		Required:    false,
 		Enum:        values,
 	}
 }
@@ -2179,12 +2130,12 @@ func boolQueryParam(name string, description string, required bool) ParameterSpe
 	}
 }
 
-func intQueryParam(name string, description string, required bool) ParameterSpec {
+func intQueryParam(name string, description string) ParameterSpec {
 	return ParameterSpec{
 		Name:        name,
 		In:          openapi3.ParameterInQuery,
 		Description: description,
-		Required:    required,
+		Required:    false,
 		Kind:        "integer",
 		Format:      "int32",
 	}
@@ -2201,12 +2152,12 @@ func int64QueryParam(name string, description string, required bool) ParameterSp
 	}
 }
 
-func dateTimeQueryParam(name string, description string, required bool) ParameterSpec {
+func dateTimeQueryParam(name string, description string) ParameterSpec {
 	return ParameterSpec{
 		Name:        name,
 		In:          openapi3.ParameterInQuery,
 		Description: description,
-		Required:    required,
+		Required:    false,
 		Format:      "date-time",
 	}
 }
@@ -2266,7 +2217,7 @@ func taskStatusValues() []string {
 		string(taskpkg.TaskStatusInProgress),
 		string(taskpkg.TaskStatusCompleted),
 		string(taskpkg.TaskStatusFailed),
-		string(taskpkg.TaskStatusCancelled),
+		string(taskpkg.TaskStatusCanceled),
 	}
 }
 
@@ -2278,7 +2229,7 @@ func taskRunStatusValues() []string {
 		string(taskpkg.TaskRunStatusRunning),
 		string(taskpkg.TaskRunStatusCompleted),
 		string(taskpkg.TaskRunStatusFailed),
-		string(taskpkg.TaskRunStatusCancelled),
+		string(taskpkg.TaskRunStatusCanceled),
 	}
 }
 

@@ -147,6 +147,8 @@ type rpcPeer struct {
 	pending sync.Map
 	wg      sync.WaitGroup
 	nextID  int64
+	errMu   sync.Mutex
+	err     error
 
 	handlers map[string]func(json.RawMessage) (any, error)
 }
@@ -171,6 +173,10 @@ func (p *rpcPeer) handle(method string, handler func(json.RawMessage) (any, erro
 
 func (p *rpcPeer) serve() error {
 	for p.scanner.Scan() {
+		if err := p.currentError(); err != nil {
+			return err
+		}
+
 		line := strings.TrimSpace(p.scanner.Text())
 		if line == "" {
 			continue
@@ -195,11 +201,18 @@ func (p *rpcPeer) serve() error {
 			continue
 		}
 		if pending, ok := p.pending.LoadAndDelete(idKey); ok {
-			pending.(chan rpcEnvelope) <- envelope
+			responseCh, ok := pending.(chan rpcEnvelope)
+			if !ok {
+				return fmt.Errorf("secret-guard: invalid pending response channel type %T", pending)
+			}
+			responseCh <- envelope
 		}
 	}
 
 	p.wg.Wait()
+	if err := p.currentError(); err != nil {
+		return err
+	}
 	if err := p.scanner.Err(); err != nil {
 		return fmt.Errorf("secret-guard: read rpc frame: %w", err)
 	}
@@ -209,7 +222,9 @@ func (p *rpcPeer) serve() error {
 func (p *rpcPeer) dispatchRequest(envelope rpcEnvelope) {
 	handler, ok := p.handlers[strings.TrimSpace(envelope.Method)]
 	if !ok {
-		_ = p.sendError(envelope.ID, rpcErrorPayload{Code: -32601, Message: "Method not found"})
+		if err := p.sendError(envelope.ID, rpcErrorPayload{Code: -32601, Message: "Method not found"}); err != nil {
+			p.recordError(fmt.Errorf("secret-guard: send method-not-found error: %w", err))
+		}
 		return
 	}
 
@@ -217,14 +232,42 @@ func (p *rpcPeer) dispatchRequest(envelope rpcEnvelope) {
 	if err != nil {
 		var rpcErr *runtimeRPCError
 		if errors.As(err, &rpcErr) {
-			_ = p.sendError(envelope.ID, rpcErrorPayload{Code: rpcErr.Code, Message: rpcErr.Message})
+			if sendErr := p.sendError(
+				envelope.ID,
+				rpcErrorPayload{Code: rpcErr.Code, Message: rpcErr.Message},
+			); sendErr != nil {
+				p.recordError(fmt.Errorf("secret-guard: send rpc error: %w", sendErr))
+			}
 			return
 		}
-		_ = p.sendError(envelope.ID, rpcErrorPayload{Code: -32603, Message: err.Error()})
+		if sendErr := p.sendError(envelope.ID, rpcErrorPayload{Code: -32603, Message: err.Error()}); sendErr != nil {
+			p.recordError(fmt.Errorf("secret-guard: send internal error: %w", sendErr))
+		}
 		return
 	}
 
-	_ = p.sendResult(envelope.ID, result)
+	if sendErr := p.sendResult(envelope.ID, result); sendErr != nil {
+		p.recordError(fmt.Errorf("secret-guard: send result: %w", sendErr))
+	}
+}
+
+func (p *rpcPeer) recordError(err error) {
+	if err == nil {
+		return
+	}
+	p.errMu.Lock()
+	defer p.errMu.Unlock()
+	if p.err == nil {
+		p.err = err
+		return
+	}
+	p.err = errors.Join(p.err, err)
+}
+
+func (p *rpcPeer) currentError() error {
+	p.errMu.Lock()
+	defer p.errMu.Unlock()
+	return p.err
 }
 
 func (p *rpcPeer) call(ctx context.Context, method string, params any, result any) error {
@@ -322,11 +365,13 @@ func (r *secretGuardRuntime) handleInitialize(params json.RawMessage) (any, erro
 	r.session = runtimeSession{request: request, response: response}
 	r.mu.Unlock()
 
-	writeJSONFile(os.Getenv(goHandshakeEnv), map[string]any{
+	if err := writeJSONFile(os.Getenv(goHandshakeEnv), map[string]any{
 		"request":  request,
 		"response": response,
 		"pid":      os.Getpid(),
-	})
+	}); err != nil {
+		return nil, err
+	}
 
 	go r.afterInitialize()
 
@@ -346,14 +391,19 @@ func (r *secretGuardRuntime) afterInitialize() {
 		marker["sessions"] = summaries
 	}
 	marker["pid"] = os.Getpid()
-	writeJSONFile(os.Getenv(goHostCallEnv), marker)
+	if err := writeJSONFile(os.Getenv(goHostCallEnv), marker); err != nil {
+		_, _ = fmt.Fprintf(r.stderr, "write host-call marker: %v\n", err)
+	}
 
 	crashMarker := strings.TrimSpace(os.Getenv(goCrashOnceEnv))
 	if crashMarker != "" && !fileExists(crashMarker) {
-		writeJSONFile(crashMarker, map[string]any{
+		if err := writeJSONFile(crashMarker, map[string]any{
 			"crashed": true,
 			"pid":     os.Getpid(),
-		})
+		}); err != nil {
+			_, _ = fmt.Fprintf(r.stderr, "write crash marker: %v\n", err)
+			return
+		}
 		go func() {
 			time.Sleep(150 * time.Millisecond)
 			os.Exit(23)
@@ -363,7 +413,7 @@ func (r *secretGuardRuntime) afterInitialize() {
 
 func (r *secretGuardRuntime) sessionsListWithRetry(ctx context.Context) ([]hostSessionSummary, error) {
 	var lastErr error
-	for attempt := 0; attempt < 5; attempt++ {
+	for attempt := range 5 {
 		var sessions []hostSessionSummary
 		err := r.peer.call(ctx, "sessions/list", map[string]any{}, &sessions)
 		if err == nil {
@@ -469,33 +519,39 @@ func bytesTrim(value []byte) []byte {
 	return []byte(strings.TrimSpace(string(value)))
 }
 
-func writeJSONFile(path string, value any) {
-	target := strings.TrimSpace(path)
-	if target == "" {
-		return
+func writeJSONFile(path string, value any) error {
+	target, err := resolveMarkerPath(path)
+	if err != nil {
+		return err
+	}
+	if !target.IsSet() {
+		return nil
 	}
 
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return
+	if err := target.EnsureParentDir(); err != nil {
+		return err
 	}
 
 	payload, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
-		return
+		return err
 	}
 	payload = append(payload, '\n')
-	_ = os.WriteFile(target, payload, 0o644)
+	return target.WriteFile(payload)
 }
 
 func appendMarkerLine(path string, line string) {
-	target := strings.TrimSpace(path)
-	if target == "" {
+	target, err := resolveMarkerPath(path)
+	if err != nil {
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+	if !target.IsSet() {
 		return
 	}
-	file, err := os.OpenFile(target, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err := target.EnsureParentDir(); err != nil {
+		return
+	}
+	file, err := target.OpenAppender()
 	if err != nil {
 		return
 	}
@@ -506,9 +562,129 @@ func appendMarkerLine(path string, line string) {
 }
 
 func fileExists(path string) bool {
-	if strings.TrimSpace(path) == "" {
+	target, err := resolveMarkerPath(path)
+	if err != nil || !target.IsSet() {
 		return false
 	}
-	_, err := os.Stat(path)
-	return err == nil
+	return target.Exists()
+}
+
+type markerPath struct {
+	root string
+	name string
+}
+
+func (p markerPath) IsSet() bool {
+	return strings.TrimSpace(p.root) != "" && strings.TrimSpace(p.name) != ""
+}
+
+func (p markerPath) parentDir() string {
+	return filepath.Dir(p.name)
+}
+
+func (p markerPath) openRoot() (*os.Root, error) {
+	if !p.IsSet() {
+		return nil, errors.New("secret-guard: marker path is not set")
+	}
+	root, err := os.OpenRoot(p.root)
+	if err != nil {
+		return nil, fmt.Errorf("secret-guard: open marker root %q: %w", p.root, err)
+	}
+	return root, nil
+}
+
+func (p markerPath) EnsureParentDir() error {
+	parent := p.parentDir()
+	if parent == "." {
+		return nil
+	}
+
+	root, err := p.openRoot()
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	return root.MkdirAll(parent, 0o755)
+}
+
+func (p markerPath) WriteFile(payload []byte) error {
+	root, err := p.openRoot()
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	return root.WriteFile(p.name, payload, 0o600)
+}
+
+func (p markerPath) OpenAppender() (*os.File, error) {
+	root, err := p.openRoot()
+	if err != nil {
+		return nil, err
+	}
+
+	file, openErr := root.OpenFile(p.name, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	closeErr := root.Close()
+	if openErr != nil {
+		return nil, openErr
+	}
+	if closeErr != nil {
+		_ = file.Close()
+		return nil, closeErr
+	}
+	return file, nil
+}
+
+func (p markerPath) Exists() bool {
+	root, err := p.openRoot()
+	if err != nil {
+		return false
+	}
+	defer root.Close()
+
+	_, statErr := root.Stat(p.name)
+	return statErr == nil
+}
+
+func resolveMarkerPath(path string) (markerPath, error) {
+	target := strings.TrimSpace(path)
+	if target == "" {
+		return markerPath{}, nil
+	}
+
+	cleanTarget := filepath.Clean(target)
+	if !filepath.IsAbs(cleanTarget) {
+		return markerPath{}, fmt.Errorf("secret-guard: marker path must be absolute: %q", path)
+	}
+
+	tempRoot := filepath.Clean(os.TempDir())
+	if marker, ok := markerPathWithinRoot(tempRoot, cleanTarget); ok {
+		return marker, nil
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return markerPath{}, fmt.Errorf("secret-guard: resolve cwd: %w", err)
+	}
+	cleanCWD := filepath.Clean(cwd)
+	if marker, ok := markerPathWithinRoot(cleanCWD, cleanTarget); ok {
+		return marker, nil
+	}
+
+	return markerPath{}, fmt.Errorf("secret-guard: marker path %q is outside allowed roots", cleanTarget)
+}
+
+func markerPathWithinRoot(root string, target string) (markerPath, bool) {
+	relative, err := filepath.Rel(root, target)
+	if err != nil {
+		return markerPath{}, false
+	}
+	if relative == "." || relative == ".." {
+		return markerPath{}, false
+	}
+	if filepath.IsAbs(relative) || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return markerPath{}, false
+	}
+	return markerPath{root: root, name: relative}, true
 }

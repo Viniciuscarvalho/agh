@@ -148,11 +148,56 @@ func TestBrokerDeliversInOrderPerRoutingKeyWhileOtherRoutesStayActive(t *testing
 
 	ctx := testutil.Context(t)
 	deliveries := []DeliveryEvent{
-		testDeliveryEvent(regA.DeliveryID, regA.BridgeInstanceID, regA.RoutingKey, regA.DeliveryTarget, 1, DeliveryEventTypeStart, "hello", false),
-		testDeliveryEvent(regA.DeliveryID, regA.BridgeInstanceID, regA.RoutingKey, regA.DeliveryTarget, 2, DeliveryEventTypeDelta, "hello again", false),
-		testDeliveryEvent(regA.DeliveryID, regA.BridgeInstanceID, regA.RoutingKey, regA.DeliveryTarget, 3, DeliveryEventTypeFinal, "hello again", true),
-		testDeliveryEvent(regB.DeliveryID, regB.BridgeInstanceID, regB.RoutingKey, regB.DeliveryTarget, 1, DeliveryEventTypeStart, "route b", false),
-		testDeliveryEvent(regB.DeliveryID, regB.BridgeInstanceID, regB.RoutingKey, regB.DeliveryTarget, 2, DeliveryEventTypeFinal, "route b", true),
+		testDeliveryEvent(
+			regA.DeliveryID,
+			regA.BridgeInstanceID,
+			regA.RoutingKey,
+			regA.DeliveryTarget,
+			1,
+			DeliveryEventTypeStart,
+			"hello",
+			false,
+		),
+		testDeliveryEvent(
+			regA.DeliveryID,
+			regA.BridgeInstanceID,
+			regA.RoutingKey,
+			regA.DeliveryTarget,
+			2,
+			DeliveryEventTypeDelta,
+			"hello again",
+			false,
+		),
+		testDeliveryEvent(
+			regA.DeliveryID,
+			regA.BridgeInstanceID,
+			regA.RoutingKey,
+			regA.DeliveryTarget,
+			3,
+			DeliveryEventTypeFinal,
+			"hello again",
+			true,
+		),
+		testDeliveryEvent(
+			regB.DeliveryID,
+			regB.BridgeInstanceID,
+			regB.RoutingKey,
+			regB.DeliveryTarget,
+			1,
+			DeliveryEventTypeStart,
+			"route b",
+			false,
+		),
+		testDeliveryEvent(
+			regB.DeliveryID,
+			regB.BridgeInstanceID,
+			regB.RoutingKey,
+			regB.DeliveryTarget,
+			2,
+			DeliveryEventTypeFinal,
+			"route b",
+			true,
+		),
 	}
 	for _, event := range deliveries {
 		if err := broker.Deliver(ctx, event); err != nil {
@@ -165,7 +210,13 @@ func TestBrokerDeliversInOrderPerRoutingKeyWhileOtherRoutesStayActive(t *testing
 	waitForAcks(t, transport, 4)
 
 	calls := transport.snapshotCalls()
-	assertDeliveryOrder(t, calls, regB.DeliveryID, []string{DeliveryEventTypeStart, DeliveryEventTypeFinal}, []int64{1, 2})
+	assertDeliveryOrder(
+		t,
+		calls,
+		regB.DeliveryID,
+		[]string{DeliveryEventTypeStart, DeliveryEventTypeFinal},
+		[]int64{1, 2},
+	)
 	assertDeliveryStartsAndFinishesInOrder(t, calls, regA.DeliveryID)
 }
 
@@ -202,10 +253,46 @@ func TestBrokerCoalescesIntermediateDeltaUnderBackpressure(t *testing.T) {
 
 	ctx := testutil.Context(t)
 	events := []DeliveryEvent{
-		testDeliveryEvent(reg.DeliveryID, reg.BridgeInstanceID, reg.RoutingKey, reg.DeliveryTarget, 1, DeliveryEventTypeStart, "h", false),
-		testDeliveryEvent(reg.DeliveryID, reg.BridgeInstanceID, reg.RoutingKey, reg.DeliveryTarget, 2, DeliveryEventTypeDelta, "he", false),
-		testDeliveryEvent(reg.DeliveryID, reg.BridgeInstanceID, reg.RoutingKey, reg.DeliveryTarget, 3, DeliveryEventTypeDelta, "hello", false),
-		testDeliveryEvent(reg.DeliveryID, reg.BridgeInstanceID, reg.RoutingKey, reg.DeliveryTarget, 4, DeliveryEventTypeFinal, "hello!", true),
+		testDeliveryEvent(
+			reg.DeliveryID,
+			reg.BridgeInstanceID,
+			reg.RoutingKey,
+			reg.DeliveryTarget,
+			1,
+			DeliveryEventTypeStart,
+			"h",
+			false,
+		),
+		testDeliveryEvent(
+			reg.DeliveryID,
+			reg.BridgeInstanceID,
+			reg.RoutingKey,
+			reg.DeliveryTarget,
+			2,
+			DeliveryEventTypeDelta,
+			"he",
+			false,
+		),
+		testDeliveryEvent(
+			reg.DeliveryID,
+			reg.BridgeInstanceID,
+			reg.RoutingKey,
+			reg.DeliveryTarget,
+			3,
+			DeliveryEventTypeDelta,
+			"hello",
+			false,
+		),
+		testDeliveryEvent(
+			reg.DeliveryID,
+			reg.BridgeInstanceID,
+			reg.RoutingKey,
+			reg.DeliveryTarget,
+			4,
+			DeliveryEventTypeFinal,
+			"hello!",
+			true,
+		),
 	}
 	for _, event := range events {
 		if err := broker.Deliver(ctx, event); err != nil {
@@ -221,7 +308,13 @@ func TestBrokerCoalescesIntermediateDeltaUnderBackpressure(t *testing.T) {
 	if len(calls) != 2 {
 		t.Fatalf("len(delivery calls) = %d, want 2 after coalescing", len(calls))
 	}
-	assertDeliveryOrder(t, calls, reg.DeliveryID, []string{DeliveryEventTypeStart, DeliveryEventTypeFinal}, []int64{1, 4})
+	assertDeliveryOrder(
+		t,
+		calls,
+		reg.DeliveryID,
+		[]string{DeliveryEventTypeStart, DeliveryEventTypeFinal},
+		[]int64{1, 4},
+	)
 	if got, want := calls[1].request.Event.Content.Text, "hello!"; got != want {
 		t.Fatalf("terminal content = %q, want %q", got, want)
 	}
@@ -267,10 +360,34 @@ func TestBrokerAckTracksRemoteAndReplacementIDs(t *testing.T) {
 	})
 
 	ctx := testutil.Context(t)
-	if err := broker.Deliver(ctx, testDeliveryEvent(reg.DeliveryID, reg.BridgeInstanceID, reg.RoutingKey, reg.DeliveryTarget, 1, DeliveryEventTypeStart, "hello", false)); err != nil {
+	if err := broker.Deliver(
+		ctx,
+		testDeliveryEvent(
+			reg.DeliveryID,
+			reg.BridgeInstanceID,
+			reg.RoutingKey,
+			reg.DeliveryTarget,
+			1,
+			DeliveryEventTypeStart,
+			"hello",
+			false,
+		),
+	); err != nil {
 		t.Fatalf("Deliver(start) error = %v", err)
 	}
-	if err := broker.Deliver(ctx, testDeliveryEvent(reg.DeliveryID, reg.BridgeInstanceID, reg.RoutingKey, reg.DeliveryTarget, 2, DeliveryEventTypeDelta, "hello world", false)); err != nil {
+	if err := broker.Deliver(
+		ctx,
+		testDeliveryEvent(
+			reg.DeliveryID,
+			reg.BridgeInstanceID,
+			reg.RoutingKey,
+			reg.DeliveryTarget,
+			2,
+			DeliveryEventTypeDelta,
+			"hello world",
+			false,
+		),
+	); err != nil {
 		t.Fatalf("Deliver(delta) error = %v", err)
 	}
 
@@ -334,11 +451,35 @@ func TestBrokerSnapshotCapturesActiveDeliveryAfterFailure(t *testing.T) {
 	})
 
 	ctx := testutil.Context(t)
-	if err := broker.Deliver(ctx, testDeliveryEvent(reg.DeliveryID, reg.BridgeInstanceID, reg.RoutingKey, reg.DeliveryTarget, 1, DeliveryEventTypeStart, "hello", false)); err != nil {
+	if err := broker.Deliver(
+		ctx,
+		testDeliveryEvent(
+			reg.DeliveryID,
+			reg.BridgeInstanceID,
+			reg.RoutingKey,
+			reg.DeliveryTarget,
+			1,
+			DeliveryEventTypeStart,
+			"hello",
+			false,
+		),
+	); err != nil {
 		t.Fatalf("Deliver(start) error = %v", err)
 	}
 	waitForCalls(t, transport, 1)
-	if err := broker.Deliver(ctx, testDeliveryEvent(reg.DeliveryID, reg.BridgeInstanceID, reg.RoutingKey, reg.DeliveryTarget, 2, DeliveryEventTypeDelta, "hello world", false)); err != nil {
+	if err := broker.Deliver(
+		ctx,
+		testDeliveryEvent(
+			reg.DeliveryID,
+			reg.BridgeInstanceID,
+			reg.RoutingKey,
+			reg.DeliveryTarget,
+			2,
+			DeliveryEventTypeDelta,
+			"hello world",
+			false,
+		),
+	); err != nil {
 		t.Fatalf("Deliver(delta) error = %v", err)
 	}
 
@@ -402,10 +543,34 @@ func TestBrokerDeliveryMetricsReflectBacklogAndClearAfterAck(t *testing.T) {
 	})
 
 	ctx := testutil.Context(t)
-	if err := broker.Deliver(ctx, testDeliveryEvent(reg.DeliveryID, reg.BridgeInstanceID, reg.RoutingKey, reg.DeliveryTarget, 1, DeliveryEventTypeStart, "hello", false)); err != nil {
+	if err := broker.Deliver(
+		ctx,
+		testDeliveryEvent(
+			reg.DeliveryID,
+			reg.BridgeInstanceID,
+			reg.RoutingKey,
+			reg.DeliveryTarget,
+			1,
+			DeliveryEventTypeStart,
+			"hello",
+			false,
+		),
+	); err != nil {
 		t.Fatalf("Deliver(start) error = %v", err)
 	}
-	if err := broker.Deliver(ctx, testDeliveryEvent(reg.DeliveryID, reg.BridgeInstanceID, reg.RoutingKey, reg.DeliveryTarget, 2, DeliveryEventTypeDelta, "hello again", false)); err != nil {
+	if err := broker.Deliver(
+		ctx,
+		testDeliveryEvent(
+			reg.DeliveryID,
+			reg.BridgeInstanceID,
+			reg.RoutingKey,
+			reg.DeliveryTarget,
+			2,
+			DeliveryEventTypeDelta,
+			"hello again",
+			false,
+		),
+	); err != nil {
 		t.Fatalf("Deliver(delta) error = %v", err)
 	}
 	waitForCalls(t, transport, 1)
@@ -451,10 +616,31 @@ func TestBrokerDeliveryMetricsCaptureTerminalFailures(t *testing.T) {
 	})
 
 	ctx := testutil.Context(t)
-	if err := broker.Deliver(ctx, testDeliveryEvent(reg.DeliveryID, reg.BridgeInstanceID, reg.RoutingKey, reg.DeliveryTarget, 1, DeliveryEventTypeStart, "hello", false)); err != nil {
+	if err := broker.Deliver(
+		ctx,
+		testDeliveryEvent(
+			reg.DeliveryID,
+			reg.BridgeInstanceID,
+			reg.RoutingKey,
+			reg.DeliveryTarget,
+			1,
+			DeliveryEventTypeStart,
+			"hello",
+			false,
+		),
+	); err != nil {
 		t.Fatalf("Deliver(start) error = %v", err)
 	}
-	errorEvent := testDeliveryEvent(reg.DeliveryID, reg.BridgeInstanceID, reg.RoutingKey, reg.DeliveryTarget, 2, DeliveryEventTypeError, "boom", true)
+	errorEvent := testDeliveryEvent(
+		reg.DeliveryID,
+		reg.BridgeInstanceID,
+		reg.RoutingKey,
+		reg.DeliveryTarget,
+		2,
+		DeliveryEventTypeError,
+		"boom",
+		true,
+	)
 	errorEvent.Error = &DeliveryErrorDetail{Message: "boom"}
 	if err := broker.Deliver(ctx, errorEvent); err != nil {
 		t.Fatalf("Deliver(error) error = %v", err)
@@ -512,18 +698,66 @@ func TestBrokerRejectedDeliverDoesNotAdvanceSnapshot(t *testing.T) {
 	})
 
 	ctx := testutil.Context(t)
-	if err := broker.Deliver(ctx, testDeliveryEvent(regA.DeliveryID, regA.BridgeInstanceID, regA.RoutingKey, regA.DeliveryTarget, 1, DeliveryEventTypeStart, "alpha", false)); err != nil {
+	if err := broker.Deliver(
+		ctx,
+		testDeliveryEvent(
+			regA.DeliveryID,
+			regA.BridgeInstanceID,
+			regA.RoutingKey,
+			regA.DeliveryTarget,
+			1,
+			DeliveryEventTypeStart,
+			"alpha",
+			false,
+		),
+	); err != nil {
 		t.Fatalf("Deliver(regA start) error = %v", err)
 	}
 	waitForCalls(t, transport, 1)
-	if err := broker.Deliver(ctx, testDeliveryEvent(regB.DeliveryID, regB.BridgeInstanceID, regB.RoutingKey, regB.DeliveryTarget, 1, DeliveryEventTypeStart, "bravo", false)); err != nil {
+	if err := broker.Deliver(
+		ctx,
+		testDeliveryEvent(
+			regB.DeliveryID,
+			regB.BridgeInstanceID,
+			regB.RoutingKey,
+			regB.DeliveryTarget,
+			1,
+			DeliveryEventTypeStart,
+			"bravo",
+			false,
+		),
+	); err != nil {
 		t.Fatalf("Deliver(regB start) error = %v", err)
 	}
-	if err := broker.Deliver(ctx, testDeliveryEvent(regB.DeliveryID, regB.BridgeInstanceID, regB.RoutingKey, regB.DeliveryTarget, 2, DeliveryEventTypeFinal, "bravo done", true)); err != nil {
+	if err := broker.Deliver(
+		ctx,
+		testDeliveryEvent(
+			regB.DeliveryID,
+			regB.BridgeInstanceID,
+			regB.RoutingKey,
+			regB.DeliveryTarget,
+			2,
+			DeliveryEventTypeFinal,
+			"bravo done",
+			true,
+		),
+	); err != nil {
 		t.Fatalf("Deliver(regB final) error = %v", err)
 	}
 
-	err := broker.Deliver(ctx, testDeliveryEvent(regA.DeliveryID, regA.BridgeInstanceID, regA.RoutingKey, regA.DeliveryTarget, 2, DeliveryEventTypeFinal, "alpha done", true))
+	err := broker.Deliver(
+		ctx,
+		testDeliveryEvent(
+			regA.DeliveryID,
+			regA.BridgeInstanceID,
+			regA.RoutingKey,
+			regA.DeliveryTarget,
+			2,
+			DeliveryEventTypeFinal,
+			"alpha done",
+			true,
+		),
+	)
 	if !errors.Is(err, ErrDeliveryQueueSaturated) {
 		t.Fatalf("Deliver(regA final) error = %v, want %v", err, ErrDeliveryQueueSaturated)
 	}
@@ -701,7 +935,13 @@ func assertDeliveryStartsAndFinishesInOrder(t *testing.T, calls []recordedDelive
 	lastSeq := int64(0)
 	for idx, call := range filtered {
 		if call.request.Event.Seq <= lastSeq {
-			t.Fatalf("delivery %q seq[%d] = %d, want increasing order after %d", deliveryID, idx, call.request.Event.Seq, lastSeq)
+			t.Fatalf(
+				"delivery %q seq[%d] = %d, want increasing order after %d",
+				deliveryID,
+				idx,
+				call.request.Event.Seq,
+				lastSeq,
+			)
 		}
 		lastSeq = call.request.Event.Seq
 	}

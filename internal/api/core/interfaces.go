@@ -29,9 +29,9 @@ type AgentLoader func(name string, homePaths aghconfig.HomePaths) (aghconfig.Age
 // ListAll may perform I/O to return the authoritative session set, so it accepts a context.
 type SessionManager interface {
 	Create(ctx context.Context, opts session.CreateOpts) (*session.Session, error)
-	List() []*session.SessionInfo
-	ListAll(ctx context.Context) ([]*session.SessionInfo, error)
-	Status(ctx context.Context, id string) (*session.SessionInfo, error)
+	List() []*session.Info
+	ListAll(ctx context.Context) ([]*session.Info, error)
+	Status(ctx context.Context, id string) (*session.Info, error)
 	Events(ctx context.Context, id string, query store.EventQuery) ([]store.SessionEvent, error)
 	History(ctx context.Context, id string, query store.EventQuery) ([]store.TurnHistory, error)
 	Transcript(ctx context.Context, id string) ([]transcript.Message, error)
@@ -83,7 +83,7 @@ type NetworkService interface {
 	Send(ctx context.Context, req network.SendRequest) (string, error)
 	ListPeers(ctx context.Context, channel string) ([]network.PeerInfo, error)
 	ListChannels(ctx context.Context) ([]network.ChannelInfo, error)
-	Status(ctx context.Context) (*network.NetworkStatus, error)
+	Status(ctx context.Context) (*network.Status, error)
 	Inbox(ctx context.Context, sessionID string) ([]network.Envelope, error)
 }
 
@@ -112,8 +112,16 @@ type AutomationManager interface {
 	ListTriggers(ctx context.Context, query automationpkg.TriggerListQuery) ([]automationpkg.Trigger, error)
 	Triggers(ctx context.Context) ([]automationpkg.Trigger, error)
 	GetTrigger(ctx context.Context, id string) (automationpkg.Trigger, error)
-	CreateTrigger(ctx context.Context, trigger automationpkg.Trigger, webhookSecret string) (automationpkg.Trigger, error)
-	UpdateTrigger(ctx context.Context, trigger automationpkg.Trigger, webhookSecret *string) (automationpkg.Trigger, error)
+	CreateTrigger(
+		ctx context.Context,
+		trigger automationpkg.Trigger,
+		webhookSecret string,
+	) (automationpkg.Trigger, error)
+	UpdateTrigger(
+		ctx context.Context,
+		trigger automationpkg.Trigger,
+		webhookSecret *string,
+	) (automationpkg.Trigger, error)
 	DeleteTrigger(ctx context.Context, id string) error
 	ListRuns(ctx context.Context, query automationpkg.RunQuery) ([]automationpkg.Run, error)
 	Runs(ctx context.Context, query automationpkg.RunQuery) ([]automationpkg.Run, error)
@@ -127,31 +135,81 @@ type AutomationManager interface {
 // TaskService exposes task-domain state and lifecycle surfaces to the API layer.
 type TaskService interface {
 	CreateTask(ctx context.Context, spec taskpkg.CreateTask, actor taskpkg.ActorContext) (*taskpkg.Task, error)
-	CreateChildTask(ctx context.Context, parentTaskID string, spec taskpkg.CreateTask, actor taskpkg.ActorContext) (*taskpkg.Task, error)
-	UpdateTask(ctx context.Context, id string, patch taskpkg.TaskPatch, actor taskpkg.ActorContext) (*taskpkg.Task, error)
-	CancelTask(ctx context.Context, id string, req taskpkg.CancelTask, actor taskpkg.ActorContext) (*taskpkg.Task, error)
+	CreateChildTask(
+		ctx context.Context,
+		parentTaskID string,
+		spec taskpkg.CreateTask,
+		actor taskpkg.ActorContext,
+	) (*taskpkg.Task, error)
+	UpdateTask(
+		ctx context.Context,
+		id string,
+		patch taskpkg.Patch,
+		actor taskpkg.ActorContext,
+	) (*taskpkg.Task, error)
+	CancelTask(
+		ctx context.Context,
+		id string,
+		req taskpkg.CancelTask,
+		actor taskpkg.ActorContext,
+	) (*taskpkg.Task, error)
 
 	AddDependency(ctx context.Context, spec taskpkg.AddDependency, actor taskpkg.ActorContext) error
 	RemoveDependency(ctx context.Context, taskID string, dependsOnID string, actor taskpkg.ActorContext) error
 
-	EnqueueRun(ctx context.Context, spec taskpkg.EnqueueRun, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error)
-	ClaimRun(ctx context.Context, runID string, claim taskpkg.ClaimRun, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error)
-	StartRun(ctx context.Context, runID string, req taskpkg.StartRun, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error)
-	AttachRunSession(ctx context.Context, runID string, sessionID string, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error)
-	CompleteRun(ctx context.Context, runID string, result taskpkg.RunResult, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error)
-	FailRun(ctx context.Context, runID string, failure taskpkg.RunFailure, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error)
-	CancelRun(ctx context.Context, runID string, req taskpkg.CancelRun, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error)
+	EnqueueRun(ctx context.Context, spec taskpkg.EnqueueRun, actor taskpkg.ActorContext) (*taskpkg.Run, error)
+	ClaimRun(
+		ctx context.Context,
+		runID string,
+		claim taskpkg.ClaimRun,
+		actor taskpkg.ActorContext,
+	) (*taskpkg.Run, error)
+	StartRun(
+		ctx context.Context,
+		runID string,
+		req taskpkg.StartRun,
+		actor taskpkg.ActorContext,
+	) (*taskpkg.Run, error)
+	AttachRunSession(
+		ctx context.Context,
+		runID string,
+		sessionID string,
+		actor taskpkg.ActorContext,
+	) (*taskpkg.Run, error)
+	CompleteRun(
+		ctx context.Context,
+		runID string,
+		result taskpkg.RunResult,
+		actor taskpkg.ActorContext,
+	) (*taskpkg.Run, error)
+	FailRun(
+		ctx context.Context,
+		runID string,
+		failure taskpkg.RunFailure,
+		actor taskpkg.ActorContext,
+	) (*taskpkg.Run, error)
+	CancelRun(
+		ctx context.Context,
+		runID string,
+		req taskpkg.CancelRun,
+		actor taskpkg.ActorContext,
+	) (*taskpkg.Run, error)
 
-	GetTask(ctx context.Context, id string, actor taskpkg.ActorContext) (*taskpkg.TaskView, error)
-	ListTaskRuns(ctx context.Context, taskID string, query taskpkg.TaskRunQuery, actor taskpkg.ActorContext) ([]taskpkg.TaskRun, error)
-	ListTasks(ctx context.Context, query taskpkg.TaskQuery, actor taskpkg.ActorContext) ([]taskpkg.TaskSummary, error)
+	GetTask(ctx context.Context, id string, actor taskpkg.ActorContext) (*taskpkg.View, error)
+	ListTaskRuns(
+		ctx context.Context,
+		taskID string,
+		query taskpkg.RunQuery,
+		actor taskpkg.ActorContext,
+	) ([]taskpkg.Run, error)
+	ListTasks(ctx context.Context, query taskpkg.Query, actor taskpkg.ActorContext) ([]taskpkg.Summary, error)
 }
 
 // SkillsRegistry exposes the skill catalog to the API layer.
 type SkillsRegistry interface {
 	Get(name string) (*skills.Skill, bool)
 	List() []*skills.Skill
-	ForWorkspace(ctx context.Context, resolved workspacepkg.ResolvedWorkspace) ([]*skills.Skill, error)
+	ForWorkspace(ctx context.Context, resolved *workspacepkg.ResolvedWorkspace) ([]*skills.Skill, error)
 	LoadContent(ctx context.Context, skill *skills.Skill) (string, error)
 	SetEnabled(name string, resolved *workspacepkg.ResolvedWorkspace, enabled bool) error
 }

@@ -13,7 +13,7 @@ func TestWhoamiReadsEnvironment(t *testing.T) {
 		envAgentID:   "agent-1",
 		envAgentName: "coder",
 	}
-	deps := newTestDeps(t, stubClient{})
+	deps := newTestDeps(t, &stubClient{})
 	deps.getenv = func(key string) string {
 		return values[key]
 	}

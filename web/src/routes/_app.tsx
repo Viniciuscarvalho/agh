@@ -1,66 +1,39 @@
-import { useState } from "react";
 import { Outlet, createFileRoute } from "@tanstack/react-router";
 
 import { AppHeader } from "@/components/app-header";
 import { AppSidebar } from "@/components/app-sidebar";
-import { useSidebarStore } from "@/stores/sidebar-store";
-import { useAgents } from "@/systems/agent";
-import { useDaemonHealth } from "@/systems/daemon";
-import { useCreateSession, useSessions } from "@/systems/session";
-import { useActiveWorkspace, WorkspaceOnboarding, WorkspaceSetupDialog } from "@/systems/workspace";
+import { useAppLayout } from "@/hooks/routes/use-app-layout";
+import { WorkspaceOnboarding, WorkspaceSetupDialog } from "@/systems/workspace";
 
 export const Route = createFileRoute("/_app")({
   component: AppLayout,
 });
 
 function AppLayout() {
-  const collapsed = useSidebarStore(state => state.collapsed);
-  const toggleCollapsed = useSidebarStore(state => state.toggle);
-  const { health, connectionStatus } = useDaemonHealth();
-  const {
-    workspaces,
-    hasWorkspaces,
-    activeWorkspace,
-    activeWorkspaceId,
-    setActiveWorkspaceId,
-    isLoading: areWorkspacesLoading,
-    isError: workspacesError,
-  } = useActiveWorkspace();
-  const { data: agents, isLoading: agentsLoading, isError: agentsError } = useAgents();
-  const [isWorkspaceSetupOpen, setWorkspaceSetupOpen] = useState(false);
+  const page = useAppLayout();
 
-  const { data: sessions } = useSessions(activeWorkspaceId, {
-    enabled: activeWorkspaceId !== null,
-  });
-  const createSession = useCreateSession();
-
-  const handleNewSession = (agentName: string) => {
-    if (!activeWorkspaceId) return;
-    createSession.mutate({ agent_name: agentName, workspace: activeWorkspaceId });
-  };
-
-  if (!areWorkspacesLoading && !workspacesError && !hasWorkspaces) {
-    return <WorkspaceOnboarding onWorkspaceResolved={setActiveWorkspaceId} />;
+  if (!page.areWorkspacesLoading && !page.workspacesError && !page.hasWorkspaces) {
+    return <WorkspaceOnboarding onWorkspaceResolved={page.setActiveWorkspaceId} />;
   }
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <AppSidebar
-        collapsed={collapsed}
-        onToggleCollapsed={toggleCollapsed}
-        workspaces={areWorkspacesLoading || workspacesError ? undefined : workspaces}
-        activeWorkspace={activeWorkspace}
-        activeWorkspaceId={activeWorkspaceId}
-        onSelectWorkspace={setActiveWorkspaceId}
-        onAddWorkspace={() => setWorkspaceSetupOpen(true)}
-        health={health}
-        connectionStatus={connectionStatus}
-        agents={agents}
-        agentsLoading={agentsLoading}
-        agentsError={agentsError}
-        sessions={sessions}
-        onNewSession={handleNewSession}
-        isCreatingSession={createSession.isPending}
+        collapsed={page.collapsed}
+        onToggleCollapsed={page.toggleCollapsed}
+        workspaces={page.areWorkspacesLoading || page.workspacesError ? undefined : page.workspaces}
+        activeWorkspace={page.activeWorkspace}
+        activeWorkspaceId={page.activeWorkspaceId}
+        onSelectWorkspace={page.setActiveWorkspaceId}
+        onAddWorkspace={page.openWorkspaceSetup}
+        health={page.health}
+        connectionStatus={page.connectionStatus}
+        agents={page.agents}
+        agentsLoading={page.agentsLoading}
+        agentsError={page.agentsError}
+        sessions={page.sessions}
+        onNewSession={page.handleNewSession}
+        isCreatingSession={page.isCreatingSession}
       />
       <div className="flex flex-1 flex-col overflow-hidden">
         <AppHeader />
@@ -69,9 +42,9 @@ function AppLayout() {
         </div>
       </div>
       <WorkspaceSetupDialog
-        open={isWorkspaceSetupOpen}
-        onOpenChange={setWorkspaceSetupOpen}
-        onWorkspaceResolved={setActiveWorkspaceId}
+        open={page.isWorkspaceSetupOpen}
+        onOpenChange={page.setWorkspaceSetupOpen}
+        onWorkspaceResolved={page.setActiveWorkspaceId}
       />
     </div>
   );

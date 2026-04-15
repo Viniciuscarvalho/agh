@@ -4,7 +4,7 @@ import { DefaultChatTransport } from "ai";
 import type { UIMessage as AIUIMessage } from "ai";
 import { SimpleStreamingBuffer } from "../lib/streaming-buffer";
 import { extractPermissionRequest } from "../lib/event-mapper";
-import { useSessionStore } from "../stores/session-store";
+import { useSessionStore } from "./use-session-store";
 import type { AgentEventPayload, UIMessage } from "../types";
 
 /**

@@ -195,7 +195,9 @@ func TestInstallerInstallRequiresManifestAtRoot(t *testing.T) {
 		},
 	}
 
-	_, err := NewInstaller(downloader).Install(context.Background(), "acme/missing", DownloadOpts{}, filepath.Join(t.TempDir(), "missing"))
+	_, err := NewInstaller(
+		downloader,
+	).Install(context.Background(), "acme/missing", DownloadOpts{}, filepath.Join(t.TempDir(), "missing"))
 	if !errors.Is(err, errInstallMissingManifest) {
 		t.Fatalf("Install() error = %v, want %v", err, errInstallMissingManifest)
 	}
@@ -217,7 +219,9 @@ func TestInstallerInstallCleansUpTempDirOnFailure(t *testing.T) {
 		},
 	}
 
-	_, err := NewInstaller(downloader).Install(context.Background(), "acme/missing", DownloadOpts{}, filepath.Join(parent, "missing"))
+	_, err := NewInstaller(
+		downloader,
+	).Install(context.Background(), "acme/missing", DownloadOpts{}, filepath.Join(parent, "missing"))
 	if err == nil {
 		t.Fatal("Install() error = nil, want failure")
 	}
@@ -246,7 +250,9 @@ func TestInstallerInstallWithContextCancellationClosesReaderAndCleansUp(t *testi
 
 	resultCh := make(chan error, 1)
 	go func() {
-		_, err := NewInstaller(downloader).Install(ctx, "acme/cancelled", DownloadOpts{}, filepath.Join(parent, "cancelled"))
+		_, err := NewInstaller(
+			downloader,
+		).Install(ctx, "acme/canceled", DownloadOpts{}, filepath.Join(parent, "canceled"))
 		resultCh <- err
 	}()
 
@@ -276,7 +282,9 @@ func TestInstallerInstallRejectsUnexpectedContentType(t *testing.T) {
 		},
 	}
 
-	_, err := NewInstaller(downloader).Install(context.Background(), "acme/html", DownloadOpts{}, filepath.Join(t.TempDir(), "html"))
+	_, err := NewInstaller(
+		downloader,
+	).Install(context.Background(), "acme/html", DownloadOpts{}, filepath.Join(t.TempDir(), "html"))
 	if !errors.Is(err, errUnexpectedContentType) {
 		t.Fatalf("Install() error = %v, want %v", err, errUnexpectedContentType)
 	}
@@ -401,7 +409,9 @@ func TestInstallerInstallBlocksCriticalVerificationContent(t *testing.T) {
 		},
 	}
 
-	_, err := NewInstaller(downloader).Install(context.Background(), "@acme/review", DownloadOpts{}, filepath.Join(t.TempDir(), "review"))
+	_, err := NewInstaller(
+		downloader,
+	).Install(context.Background(), "@acme/review", DownloadOpts{}, filepath.Join(t.TempDir(), "review"))
 	if !errors.Is(err, errVerificationBlocked) {
 		t.Fatalf("Install() error = %v, want %v", err, errVerificationBlocked)
 	}
@@ -481,7 +491,12 @@ func TestValidateDownloadContentTypeValidationErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validateDownloadContentType(tt.contentType)
 			if !errors.Is(err, errUnexpectedContentType) {
-				t.Fatalf("validateDownloadContentType(%q) error = %v, want %v", tt.contentType, err, errUnexpectedContentType)
+				t.Fatalf(
+					"validateDownloadContentType(%q) error = %v, want %v",
+					tt.contentType,
+					err,
+					errUnexpectedContentType,
+				)
 			}
 		})
 	}

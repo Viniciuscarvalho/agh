@@ -106,7 +106,6 @@ func TestResolveLinearInstanceConfigValidatesProviderOwnedModes(t *testing.T) {
 	}
 
 	for _, tt := range invalidCases {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			managed := linearTestManagedInstance("brg-" + strings.ReplaceAll(tt.name, " ", "-"))
@@ -316,7 +315,7 @@ func TestMapLinearWebhookPayloadsPreserveRoutingIdentity(t *testing.T) {
 			Name: "Bob Example",
 			URL:  "https://linear.app/acme/profiles/bob",
 		},
-	}, managed, now, "bot-user-id")
+	}, &managed, now, "bot-user-id")
 	if err != nil {
 		t.Fatalf("mapLinearAgentSessionEvent(prompted) error = %v", err)
 	}
@@ -338,7 +337,12 @@ func TestVerifyLinearWebhookSignatureAndTimestamp(t *testing.T) {
 	t.Parallel()
 
 	body := []byte(`{"type":"Comment","organizationId":"org-1"}`)
-	req := httptest.NewRequest(http.MethodPost, "http://example.test/linear", strings.NewReader(string(body)))
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"http://example.test/linear",
+		strings.NewReader(string(body)),
+	)
 	req.Header.Set("linear-signature", linearSignature("super-secret", body))
 
 	candidates := []resolvedInstanceConfig{
@@ -372,10 +376,18 @@ func TestExecuteLinearDeliveryCommentAndAgentSessionModes(t *testing.T) {
 		},
 	}
 
-	commentStart := linearTestDeliveryRequest("brg-linear-comments", "delivery-comment", 1, bridgepkg.DeliveryEventTypeStart, linearThreadRef{
-		IssueID:       "issue-123",
-		RootCommentID: "root-comment",
-	}, "hello", linearModeComments)
+	commentStart := linearTestDeliveryRequest(
+		"brg-linear-comments",
+		"delivery-comment",
+		1,
+		bridgepkg.DeliveryEventTypeStart,
+		linearThreadRef{
+			IssueID:       "issue-123",
+			RootCommentID: "root-comment",
+		},
+		"hello",
+		linearModeComments,
+	)
 	commentAck, state, err := executeLinearDelivery(context.Background(), api, resolvedInstanceConfig{
 		mode: linearModeComments,
 	}, commentStart, deliveryState{})
@@ -419,11 +431,19 @@ func TestExecuteLinearDeliveryCommentAndAgentSessionModes(t *testing.T) {
 		t.Fatalf("deletedComments = %#v, want %#v", got, want)
 	}
 
-	agentStart := linearTestDeliveryRequest("brg-linear-agent", "delivery-agent", 1, bridgepkg.DeliveryEventTypeStart, linearThreadRef{
-		IssueID:        "issue-456",
-		RootCommentID:  "comment-root",
-		AgentSessionID: "session-123",
-	}, "hello", linearModeAgentSessions)
+	agentStart := linearTestDeliveryRequest(
+		"brg-linear-agent",
+		"delivery-agent",
+		1,
+		bridgepkg.DeliveryEventTypeStart,
+		linearThreadRef{
+			IssueID:        "issue-456",
+			RootCommentID:  "comment-root",
+			AgentSessionID: "session-123",
+		},
+		"hello",
+		linearModeAgentSessions,
+	)
 	agentAck, agentState, err := executeLinearDelivery(context.Background(), api, resolvedInstanceConfig{
 		mode: linearModeAgentSessions,
 	}, agentStart, deliveryState{})
@@ -669,7 +689,9 @@ func TestLinearClientAPIKeyAndOAuthRequests(t *testing.T) {
 	if got, want := tokenBodies[0].Get("grant_type"), "client_credentials"; got != want {
 		t.Fatalf("grant_type = %q, want %q", got, want)
 	}
-	if got, want := tokenBodies[0].Get("scope"), "read,write,comments:create,issues:create,app:mentionable"; got != want {
+	if got, want := tokenBodies[0].Get(
+		"scope",
+	), "read,write,comments:create,issues:create,app:mentionable"; got != want {
 		t.Fatalf("scope = %q, want %q", got, want)
 	}
 	if len(graphQLCalls) < 5 {
@@ -784,7 +806,11 @@ func (a *recordingLinearAPI) DeleteComment(_ context.Context, commentID string) 
 	return nil
 }
 
-func (a *recordingLinearAPI) CreateAgentActivity(_ context.Context, _ string, body string) (*linearAgentActivity, error) {
+func (a *recordingLinearAPI) CreateAgentActivity(
+	_ context.Context,
+	_ string,
+	body string,
+) (*linearAgentActivity, error) {
 	a.agentActivities = append(a.agentActivities, body)
 	return &linearAgentActivity{
 		ID: "activity-" + string(rune(len(a.agentActivities)+'0')),
@@ -813,7 +839,7 @@ func linearTestDeliveryRequest(
 	eventType string,
 	thread linearThreadRef,
 	text string,
-	mode string,
+	_ string,
 ) bridgepkg.DeliveryRequest {
 	threadID := encodeLinearThreadID(thread)
 	return bridgepkg.DeliveryRequest{

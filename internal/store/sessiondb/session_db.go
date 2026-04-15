@@ -249,7 +249,11 @@ func (s *SessionDB) QueryHookRuns(ctx context.Context, query store.HookRunQuery)
 		return nil, err
 	}
 	if strings.TrimSpace(query.SessionID) != "" && strings.TrimSpace(query.SessionID) != s.sessionID {
-		return nil, fmt.Errorf("store: hook run query session id %q does not match session database %q", query.SessionID, s.sessionID)
+		return nil, fmt.Errorf(
+			"store: hook run query session id %q does not match session database %q",
+			query.SessionID,
+			s.sessionID,
+		)
 	}
 	if event := strings.TrimSpace(query.Event); event != "" {
 		if err := hookspkg.HookEvent(event).Validate(); err != nil {
@@ -262,7 +266,10 @@ func (s *SessionDB) QueryHookRuns(ctx context.Context, query store.HookRunQuery)
 		}
 	}
 
-	baseQuery := `SELECT rowid, hook_name, event, source, mode, duration_ns, outcome, dispatch_depth, patch_applied, error, required, recorded_at FROM hook_runs`
+	baseQuery := `SELECT
+		rowid, hook_name, event, source, mode, duration_ns, outcome,
+		dispatch_depth, patch_applied, error, required, recorded_at
+		FROM hook_runs`
 	where, args := store.BuildClauses(
 		store.StringClause("event", query.Event),
 		store.StringClause("outcome", string(query.Outcome)),
@@ -272,9 +279,11 @@ func (s *SessionDB) QueryHookRuns(ctx context.Context, query store.HookRunQuery)
 
 	sqlQuery := baseQuery
 	if query.Limit > 0 {
-		sqlQuery = `SELECT rowid, hook_name, event, source, mode, duration_ns, outcome, dispatch_depth, patch_applied, error, required, recorded_at
-			FROM (` + baseQuery + ` ORDER BY recorded_at DESC, rowid DESC LIMIT ?) AS recent_hook_runs
-			ORDER BY recorded_at ASC, rowid ASC`
+		sqlQuery = `SELECT
+				rowid, hook_name, event, source, mode, duration_ns, outcome,
+				dispatch_depth, patch_applied, error, required, recorded_at
+				FROM (` + baseQuery + ` ORDER BY recorded_at DESC, rowid DESC LIMIT ?) AS recent_hook_runs
+				ORDER BY recorded_at ASC, rowid ASC`
 		args = append(args, query.Limit)
 	} else {
 		sqlQuery += " ORDER BY recorded_at ASC, rowid ASC"

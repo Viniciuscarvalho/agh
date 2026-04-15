@@ -101,7 +101,10 @@ func verifyImportBoundaries(root string) ([]error, error) {
 				return fmt.Errorf("daemon: decode import path in %q: %w", path, err)
 			}
 			if _, forbidden := forbiddenImports[target]; forbidden {
-				violations = append(violations, fmt.Errorf("daemon: boundary violation: %s imports %s", importer, target))
+				violations = append(
+					violations,
+					fmt.Errorf("daemon: boundary violation: %s imports %s", importer, target),
+				)
 			}
 		}
 

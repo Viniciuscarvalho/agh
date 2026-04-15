@@ -43,7 +43,6 @@ func TestTaskSessionBridgeStartTaskSessionUsesDedicatedSystemSessions(t *testing
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -53,9 +52,9 @@ func TestTaskSessionBridgeStartTaskSessionUsesDedicatedSystemSessions(t *testing
 				t.Fatalf("newTaskSessionBridge() error = %v", err)
 			}
 
-			ref, err := bridge.StartTaskSession(context.Background(), taskpkg.StartTaskSession{
+			ref, err := bridge.StartTaskSession(context.Background(), &taskpkg.StartTaskSession{
 				Task: tc.taskRecord,
-				Run: taskpkg.TaskRun{
+				Run: taskpkg.Run{
 					ID:             "run-1",
 					TaskID:         tc.taskRecord.ID,
 					Status:         taskpkg.TaskRunStatusStarting,
@@ -100,9 +99,19 @@ func TestTaskSessionBridgeAttachTaskSessionRejectsStoppedSessions(t *testing.T) 
 	t.Parallel()
 
 	sessions := &fakeSessionManager{
-		infos: []*session.SessionInfo{
-			{ID: "sess-active", State: session.StateActive, WorkspaceID: "ws-active", CreatedAt: time.Date(2026, 4, 14, 18, 0, 0, 0, time.UTC)},
-			{ID: "sess-stopped", State: session.StateStopped, WorkspaceID: "ws-stopped", CreatedAt: time.Date(2026, 4, 14, 17, 0, 0, 0, time.UTC)},
+		infos: []*session.Info{
+			{
+				ID:          "sess-active",
+				State:       session.StateActive,
+				WorkspaceID: "ws-active",
+				CreatedAt:   time.Date(2026, 4, 14, 18, 0, 0, 0, time.UTC),
+			},
+			{
+				ID:          "sess-stopped",
+				State:       session.StateStopped,
+				WorkspaceID: "ws-stopped",
+				CreatedAt:   time.Date(2026, 4, 14, 17, 0, 0, 0, time.UTC),
+			},
 		},
 	}
 	bridge, err := newTaskSessionBridge(sessions, t.TempDir(), discardLogger())
@@ -118,7 +127,14 @@ func TestTaskSessionBridgeAttachTaskSessionRejectsStoppedSessions(t *testing.T) 
 		t.Fatalf("AttachTaskSession(active).SessionID = %q, want %q", got, want)
 	}
 
-	if _, err := bridge.AttachTaskSession(context.Background(), "run-1", "sess-stopped"); !errors.Is(err, taskpkg.ErrSessionAttachNotAllowed) {
+	if _, err := bridge.AttachTaskSession(
+		context.Background(),
+		"run-1",
+		"sess-stopped",
+	); !errors.Is(
+		err,
+		taskpkg.ErrSessionAttachNotAllowed,
+	) {
 		t.Fatalf("AttachTaskSession(stopped) error = %v, want %v", err, taskpkg.ErrSessionAttachNotAllowed)
 	}
 }
@@ -157,7 +173,7 @@ func TestPlanTaskRunRecoveryClassifiesClaimedStartingRunning(t *testing.T) {
 	t.Parallel()
 
 	sessions := &fakeSessionManager{
-		infos: []*session.SessionInfo{
+		infos: []*session.Info{
 			{ID: "sess-active", State: session.StateActive},
 			{ID: "sess-stopping", State: session.StateStopping},
 			{ID: "sess-stopped", State: session.StateStopped},
@@ -166,14 +182,14 @@ func TestPlanTaskRunRecoveryClassifiesClaimedStartingRunning(t *testing.T) {
 
 	testCases := []struct {
 		name       string
-		run        taskpkg.TaskRun
+		run        taskpkg.Run
 		wantAction taskpkg.RunBootRecoveryAction
 		wantState  string
 		wantNil    bool
 	}{
 		{
 			name: "Should requeue claimed runs without a bound session",
-			run: taskpkg.TaskRun{
+			run: taskpkg.Run{
 				ID:       "run-claimed",
 				TaskID:   "task-1",
 				Status:   taskpkg.TaskRunStatusClaimed,
@@ -186,7 +202,7 @@ func TestPlanTaskRunRecoveryClassifiesClaimedStartingRunning(t *testing.T) {
 		},
 		{
 			name: "Should resume starting runs when the bound session is active",
-			run: taskpkg.TaskRun{
+			run: taskpkg.Run{
 				ID:        "run-starting",
 				TaskID:    "task-2",
 				Status:    taskpkg.TaskRunStatusStarting,
@@ -200,7 +216,7 @@ func TestPlanTaskRunRecoveryClassifiesClaimedStartingRunning(t *testing.T) {
 		},
 		{
 			name: "Should keep running runs live while the bound session is stopping",
-			run: taskpkg.TaskRun{
+			run: taskpkg.Run{
 				ID:        "run-running",
 				TaskID:    "task-3",
 				Status:    taskpkg.TaskRunStatusRunning,
@@ -213,7 +229,7 @@ func TestPlanTaskRunRecoveryClassifiesClaimedStartingRunning(t *testing.T) {
 		},
 		{
 			name: "Should fail starting runs when the bound session is stopped",
-			run: taskpkg.TaskRun{
+			run: taskpkg.Run{
 				ID:        "run-orphaned-starting",
 				TaskID:    "task-4",
 				Status:    taskpkg.TaskRunStatusStarting,
@@ -227,7 +243,7 @@ func TestPlanTaskRunRecoveryClassifiesClaimedStartingRunning(t *testing.T) {
 		},
 		{
 			name: "Should fail running runs when the bound session is missing",
-			run: taskpkg.TaskRun{
+			run: taskpkg.Run{
 				ID:        "run-orphaned-running",
 				TaskID:    "task-5",
 				Status:    taskpkg.TaskRunStatusRunning,
@@ -242,7 +258,6 @@ func TestPlanTaskRunRecoveryClassifiesClaimedStartingRunning(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -281,27 +296,27 @@ func TestTaskSessionBridgeGuardsAndFallbackStopPaths(t *testing.T) {
 		t.Fatalf("newTaskSessionBridge() error = %v", err)
 	}
 
-	if _, err := bridge.StartTaskSession(nilTaskRuntimeContext(), taskpkg.StartTaskSession{}); err == nil {
+	if _, err := bridge.StartTaskSession(nilTaskRuntimeContext(), &taskpkg.StartTaskSession{}); err == nil {
 		t.Fatal("StartTaskSession(nil ctx) error = nil, want validation error")
 	}
-	if _, err := bridge.StartTaskSession(context.Background(), taskpkg.StartTaskSession{
+	if _, err := bridge.StartTaskSession(context.Background(), &taskpkg.StartTaskSession{
 		Task: taskpkg.Task{
 			ID:    "task-global",
 			Scope: taskpkg.ScopeGlobal,
 		},
-		Run: taskpkg.TaskRun{
+		Run: taskpkg.Run{
 			ID:      "run-global",
 			Attempt: 1,
 		},
 	}); err == nil {
 		t.Fatal("StartTaskSession(global without workspace path) error = nil, want validation error")
 	}
-	if _, err := bridge.StartTaskSession(context.Background(), taskpkg.StartTaskSession{
+	if _, err := bridge.StartTaskSession(context.Background(), &taskpkg.StartTaskSession{
 		Task: taskpkg.Task{
 			ID:    "task-invalid",
 			Scope: taskpkg.Scope("invalid"),
 		},
-		Run: taskpkg.TaskRun{
+		Run: taskpkg.Run{
 			ID:      "run-invalid",
 			Attempt: 1,
 		},
@@ -314,7 +329,14 @@ func TestTaskSessionBridgeGuardsAndFallbackStopPaths(t *testing.T) {
 	if err := bridge.RequestTaskStop(nilTaskRuntimeContext(), "sess-1", taskpkg.StopReasonCancellation); err == nil {
 		t.Fatal("RequestTaskStop(nil ctx) error = nil, want validation error")
 	}
-	if err := bridge.ForceTaskStop(context.Background(), "   ", taskpkg.StopReasonCancellation); !errors.Is(err, taskpkg.ErrValidation) {
+	if err := bridge.ForceTaskStop(
+		context.Background(),
+		"   ",
+		taskpkg.StopReasonCancellation,
+	); !errors.Is(
+		err,
+		taskpkg.ErrValidation,
+	) {
 		t.Fatalf("ForceTaskStop(blank id) error = %v, want %v", err, taskpkg.ErrValidation)
 	}
 
@@ -341,7 +363,11 @@ func TestTaskSessionBridgeGuardsAndFallbackStopPaths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newTaskSessionBridge(stop-only) error = %v", err)
 	}
-	if err := stopOnlyBridge.RequestTaskStop(context.Background(), "sess-fallback", taskpkg.StopReasonShutdown); err != nil {
+	if err := stopOnlyBridge.RequestTaskStop(
+		context.Background(),
+		"sess-fallback",
+		taskpkg.StopReasonShutdown,
+	); err != nil {
 		t.Fatalf("RequestTaskStop(fallback) error = %v", err)
 	}
 
@@ -360,19 +386,19 @@ func TestTaskSessionBridgeGuardsAndFallbackStopPaths(t *testing.T) {
 func TestTaskRuntimeHelpers(t *testing.T) {
 	t.Parallel()
 
-	if got, want := taskSessionName(taskpkg.StartTaskSession{
+	if got, want := taskSessionName(&taskpkg.StartTaskSession{
 		Task: taskpkg.Task{
 			Identifier: "build-index",
 		},
-		Run: taskpkg.TaskRun{
+		Run: taskpkg.Run{
 			ID:      "run-identifier",
 			Attempt: 3,
 		},
 	}), "task:build-index#3"; got != want {
 		t.Fatalf("taskSessionName(identifier) = %q, want %q", got, want)
 	}
-	if got, want := taskSessionName(taskpkg.StartTaskSession{
-		Run: taskpkg.TaskRun{
+	if got, want := taskSessionName(&taskpkg.StartTaskSession{
+		Run: taskpkg.Run{
 			ID:      "run-fallback",
 			Attempt: 4,
 		},
@@ -410,7 +436,7 @@ func TestTaskRuntimeHelpers(t *testing.T) {
 		t.Fatalf("taskSessionRuntimeState(blank id) state = %q, want %q", got, want)
 	}
 
-	if _, err := planTaskRunRecovery(context.Background(), nil, taskpkg.TaskRun{
+	if _, err := planTaskRunRecovery(context.Background(), nil, taskpkg.Run{
 		ID:     "run-1",
 		Status: taskpkg.TaskRunStatusClaimed,
 	}); err == nil {
@@ -426,11 +452,16 @@ func (m *taskBridgeStopOnlySessionManager) Create(context.Context, session.Creat
 	return nil, nil
 }
 
-func (m *taskBridgeStopOnlySessionManager) Status(context.Context, string) (*session.SessionInfo, error) {
+func (m *taskBridgeStopOnlySessionManager) Status(context.Context, string) (*session.Info, error) {
 	return nil, session.ErrSessionNotFound
 }
 
-func (m *taskBridgeStopOnlySessionManager) StopWithCause(_ context.Context, id string, cause session.StopCause, detail string) error {
+func (m *taskBridgeStopOnlySessionManager) StopWithCause(
+	_ context.Context,
+	id string,
+	cause session.StopCause,
+	detail string,
+) error {
 	m.stopCalls = append(m.stopCalls, fakeStopWithCauseCall{id: id, cause: cause, detail: detail})
 	return nil
 }

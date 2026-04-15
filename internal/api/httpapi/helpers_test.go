@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -24,9 +25,23 @@ type stubBridgeService = testutil.StubBridgeService
 type stubWorkspaceService = testutil.StubWorkspaceService
 type sseRecord = testutil.SSERecord
 
-func newTestHandlers(t *testing.T, manager core.SessionManager, observer core.Observer, homePaths aghconfig.HomePaths) *Handlers {
+func newTestHandlers(
+	t *testing.T,
+	manager core.SessionManager,
+	observer core.Observer,
+	homePaths aghconfig.HomePaths,
+) *Handlers {
 	t.Helper()
-	return newTestHandlersWithAutomationBridgesTasksAndWorkspace(t, manager, observer, nil, stubTaskManager{}, nil, stubWorkspaceService{}, homePaths)
+	return newTestHandlersWithAutomationBridgesTasksAndWorkspace(
+		t,
+		manager,
+		observer,
+		nil,
+		stubTaskManager{},
+		nil,
+		stubWorkspaceService{},
+		homePaths,
+	)
 }
 
 func newTestHandlersWithBridges(
@@ -38,7 +53,16 @@ func newTestHandlersWithBridges(
 	homePaths aghconfig.HomePaths,
 ) *Handlers {
 	t.Helper()
-	return newTestHandlersWithAutomationBridgesTasksAndWorkspace(t, manager, observer, nil, stubTaskManager{}, bridges, workspaces, homePaths)
+	return newTestHandlersWithAutomationBridgesTasksAndWorkspace(
+		t,
+		manager,
+		observer,
+		nil,
+		stubTaskManager{},
+		bridges,
+		workspaces,
+		homePaths,
+	)
 }
 
 func newTestHandlersWithAutomationBridgesTasksAndWorkspace(
@@ -57,7 +81,7 @@ func newTestHandlersWithAutomationBridgesTasksAndWorkspace(
 	cfg.HTTP.Host = "127.0.0.1"
 	cfg.HTTP.Port = 2123
 
-	return newHandlers(handlerConfig{
+	return newHandlers(&handlerConfig{
 		sessions:     manager,
 		tasks:        tasks,
 		observer:     observer,
@@ -76,7 +100,13 @@ func newTestHandlersWithAutomationBridgesTasksAndWorkspace(
 	})
 }
 
-func newTestHandlersWithWorkspace(t *testing.T, manager core.SessionManager, observer core.Observer, workspaces core.WorkspaceService, homePaths aghconfig.HomePaths) *Handlers {
+func newTestHandlersWithWorkspace(
+	t *testing.T,
+	manager core.SessionManager,
+	observer core.Observer,
+	workspaces core.WorkspaceService,
+	homePaths aghconfig.HomePaths,
+) *Handlers {
 	t.Helper()
 
 	return newTestHandlersWithBridges(t, manager, observer, nil, workspaces, homePaths)
@@ -116,7 +146,7 @@ func writeAgentDef(t *testing.T, homePaths aghconfig.HomePaths, name string) {
 	testutil.WriteAgentDef(t, homePaths, name)
 }
 
-func newSessionInfo(id string) *session.SessionInfo {
+func newSessionInfo(id string) *session.Info {
 	return testutil.NewSessionInfo(id)
 }
 
@@ -129,7 +159,13 @@ func performRequest(t *testing.T, engine http.Handler, method, path string, body
 	return testutil.PerformRequest(t, engine, method, path, body)
 }
 
-func performRequestWithHeaders(t *testing.T, engine http.Handler, method, path string, body []byte, headers map[string]string) *httptest.ResponseRecorder {
+func performRequestWithHeaders(
+	t *testing.T,
+	engine http.Handler,
+	method, path string,
+	body []byte,
+	headers map[string]string,
+) *httptest.ResponseRecorder {
 	t.Helper()
 	return testutil.PerformRequestWithHeaders(t, engine, method, path, body, headers)
 }
@@ -147,7 +183,8 @@ func parseSSE(t *testing.T, body string) []sseRecord {
 func freeTCPPort(t *testing.T) int {
 	t.Helper()
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	var listenConfig net.ListenConfig
+	ln, err := listenConfig.Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("net.Listen(:0) error = %v", err)
 	}

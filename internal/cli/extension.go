@@ -64,7 +64,8 @@ func newExtensionSearchCommand(deps commandDeps) *cobra.Command {
 			return writeCommandOutput(cmd, extensionSearchBundle(results))
 		},
 	}
-	cmd.Flags().IntVar(&limit, "limit", defaultExtensionRegistrySearchLimit, "Maximum number of extension registry results to return")
+	cmd.Flags().
+		IntVar(&limit, "limit", defaultExtensionRegistrySearchLimit, "Maximum number of extension registry results to return")
 	cmd.Flags().StringVar(&sourceFilter, "from", "", "Only query one configured extension registry source")
 	return cmd
 }
@@ -98,7 +99,8 @@ func newExtensionInstallCommand(deps commandDeps) *cobra.Command {
 				return err
 			}
 			if isLocalPath {
-				if strings.TrimSpace(sourceFilter) != "" || strings.TrimSpace(version) != "" || strings.TrimSpace(asset) != "" {
+				if strings.TrimSpace(sourceFilter) != "" || strings.TrimSpace(version) != "" ||
+					strings.TrimSpace(asset) != "" {
 					return errors.New("cli: --from, --version, and --asset are only supported for registry installs")
 				}
 
@@ -109,7 +111,14 @@ func newExtensionInstallCommand(deps commandDeps) *cobra.Command {
 				return writeCommandOutput(cmd, extensionBundle(item))
 			}
 
-			item, message, err := installMarketplaceExtension(cmd.Context(), deps, args[0], sourceFilter, version, asset)
+			item, message, err := installMarketplaceExtension(
+				cmd.Context(),
+				deps,
+				args[0],
+				sourceFilter,
+				version,
+				asset,
+			)
 			if err != nil {
 				return err
 			}
@@ -224,7 +233,7 @@ func newExtensionStatusCommand(deps commandDeps) *cobra.Command {
 }
 
 func loadExtensionRecords(ctx context.Context, deps commandDeps) ([]ExtensionRecord, error) {
-	client, running, _, err := extensionClientIfRunning(deps)
+	client, running, err := extensionClientIfRunning(deps)
 	if err != nil {
 		return nil, err
 	}
@@ -232,22 +241,30 @@ func loadExtensionRecords(ctx context.Context, deps commandDeps) ([]ExtensionRec
 		return client.ListExtensions(ctx)
 	}
 
-	return withLocalExtensionRegistry(ctx, deps, func(runtime runtimeContext, registry localExtensionRegistry) ([]ExtensionRecord, error) {
-		infos, err := registry.List()
-		if err != nil {
-			return nil, err
-		}
+	return withLocalExtensionRegistry(
+		ctx,
+		deps,
+		func(_ *runtimeContext, registry localExtensionRegistry) ([]ExtensionRecord, error) {
+			infos, err := registry.List()
+			if err != nil {
+				return nil, err
+			}
 
-		items := make([]ExtensionRecord, 0, len(infos))
-		for _, info := range infos {
-			items = append(items, localExtensionRecord(info, deps.now))
-		}
-		return items, nil
-	})
+			items := make([]ExtensionRecord, 0, len(infos))
+			for _, info := range infos {
+				items = append(items, localExtensionRecord(info, deps.now))
+			}
+			return items, nil
+		},
+	)
 }
 
-func installExtension(ctx context.Context, deps commandDeps, prepared preparedExtensionInstall) (ExtensionRecord, error) {
-	client, running, _, err := extensionClientIfRunning(deps)
+func installExtension(
+	ctx context.Context,
+	deps commandDeps,
+	prepared preparedExtensionInstall,
+) (ExtensionRecord, error) {
+	client, running, err := extensionClientIfRunning(deps)
 	if err != nil {
 		return ExtensionRecord{}, err
 	}
@@ -258,20 +275,24 @@ func installExtension(ctx context.Context, deps commandDeps, prepared preparedEx
 		})
 	}
 
-	return withLocalExtensionRegistry(ctx, deps, func(runtime runtimeContext, registry localExtensionRegistry) (ExtensionRecord, error) {
-		if err := installPreparedExtension(runtime.HomePaths, registry, prepared); err != nil {
-			return ExtensionRecord{}, err
-		}
-		info, err := registry.Get(prepared.Manifest.Name)
-		if err != nil {
-			return ExtensionRecord{}, err
-		}
-		return localExtensionRecord(*info, deps.now), nil
-	})
+	return withLocalExtensionRegistry(
+		ctx,
+		deps,
+		func(runtime *runtimeContext, registry localExtensionRegistry) (ExtensionRecord, error) {
+			if err := installPreparedExtension(runtime.HomePaths, registry, prepared); err != nil {
+				return ExtensionRecord{}, err
+			}
+			info, err := registry.Get(prepared.Manifest.Name)
+			if err != nil {
+				return ExtensionRecord{}, err
+			}
+			return localExtensionRecord(*info, deps.now), nil
+		},
+	)
 }
 
 func mutateExtensionEnabled(ctx context.Context, deps commandDeps, name string, enabled bool) (ExtensionRecord, error) {
-	client, running, _, err := extensionClientIfRunning(deps)
+	client, running, err := extensionClientIfRunning(deps)
 	if err != nil {
 		return ExtensionRecord{}, err
 	}
@@ -282,27 +303,31 @@ func mutateExtensionEnabled(ctx context.Context, deps commandDeps, name string, 
 		return client.DisableExtension(ctx, name)
 	}
 
-	return withLocalExtensionRegistry(ctx, deps, func(runtime runtimeContext, registry localExtensionRegistry) (ExtensionRecord, error) {
-		if enabled {
-			if err := registry.Enable(name); err != nil {
-				return ExtensionRecord{}, err
+	return withLocalExtensionRegistry(
+		ctx,
+		deps,
+		func(_ *runtimeContext, registry localExtensionRegistry) (ExtensionRecord, error) {
+			if enabled {
+				if err := registry.Enable(name); err != nil {
+					return ExtensionRecord{}, err
+				}
+			} else {
+				if err := registry.Disable(name); err != nil {
+					return ExtensionRecord{}, err
+				}
 			}
-		} else {
-			if err := registry.Disable(name); err != nil {
-				return ExtensionRecord{}, err
-			}
-		}
 
-		info, err := registry.Get(name)
-		if err != nil {
-			return ExtensionRecord{}, err
-		}
-		return localExtensionRecord(*info, deps.now), nil
-	})
+			info, err := registry.Get(name)
+			if err != nil {
+				return ExtensionRecord{}, err
+			}
+			return localExtensionRecord(*info, deps.now), nil
+		},
+	)
 }
 
 func extensionStatus(ctx context.Context, deps commandDeps, name string) (ExtensionRecord, error) {
-	client, running, _, err := extensionClientIfRunning(deps)
+	client, running, err := extensionClientIfRunning(deps)
 	if err != nil {
 		return ExtensionRecord{}, err
 	}
@@ -310,40 +335,48 @@ func extensionStatus(ctx context.Context, deps commandDeps, name string) (Extens
 		return client.ExtensionStatus(ctx, name)
 	}
 
-	return withLocalExtensionRegistry(ctx, deps, func(runtime runtimeContext, registry localExtensionRegistry) (ExtensionRecord, error) {
-		info, err := registry.Get(name)
-		if err != nil {
-			return ExtensionRecord{}, err
-		}
-		return localExtensionRecord(*info, deps.now), nil
-	})
+	return withLocalExtensionRegistry(
+		ctx,
+		deps,
+		func(_ *runtimeContext, registry localExtensionRegistry) (ExtensionRecord, error) {
+			info, err := registry.Get(name)
+			if err != nil {
+				return ExtensionRecord{}, err
+			}
+			return localExtensionRecord(*info, deps.now), nil
+		},
+	)
 }
 
-func extensionClientIfRunning(deps commandDeps) (DaemonClient, bool, runtimeContext, error) {
+func extensionClientIfRunning(deps commandDeps) (DaemonClient, bool, error) {
 	runtime, err := loadRuntimeContext(deps)
 	if err != nil {
-		return nil, false, runtimeContext{}, err
+		return nil, false, err
 	}
 
 	info, running, err := daemonInfo(runtime.HomePaths, deps)
 	if err != nil {
-		return nil, false, runtimeContext{}, err
+		return nil, false, err
 	}
 	if !running {
-		return nil, false, runtime, nil
+		return nil, false, nil
 	}
 	if info == (aghdaemon.Info{}) {
-		return nil, false, runtime, nil
+		return nil, false, nil
 	}
 
-	client, _, err := clientFromDeps(deps)
+	client, err := clientFromDeps(deps)
 	if err != nil {
-		return nil, false, runtimeContext{}, err
+		return nil, false, err
 	}
-	return client, true, runtime, nil
+	return client, true, nil
 }
 
-func withLocalExtensionRegistry[T any](ctx context.Context, deps commandDeps, fn func(runtime runtimeContext, registry localExtensionRegistry) (T, error)) (result T, err error) {
+func withLocalExtensionRegistry[T any](
+	ctx context.Context,
+	deps commandDeps,
+	fn func(runtime *runtimeContext, registry localExtensionRegistry) (T, error),
+) (result T, err error) {
 	runtime, err := loadRuntimeContext(deps)
 	if err != nil {
 		return result, err
@@ -436,7 +469,11 @@ func prepareLocalExtensionInstallIfPresent(path string) (preparedExtensionInstal
 	return prepared, true, nil
 }
 
-func installPreparedExtension(homePaths aghconfig.HomePaths, registry localExtensionRegistry, prepared preparedExtensionInstall) error {
+func installPreparedExtension(
+	homePaths aghconfig.HomePaths,
+	registry localExtensionRegistry,
+	prepared preparedExtensionInstall,
+) error {
 	if registry == nil {
 		return errors.New("extension: registry is required")
 	}
@@ -448,7 +485,7 @@ func installPreparedExtension(homePaths aghconfig.HomePaths, registry localExten
 
 func extensionUpdatesRequireRestart(items []extensionUpdateItem) bool {
 	for _, item := range items {
-		if item.Status == "updated" {
+		if item.Status == skillUpdateStatusUpdated {
 			return true
 		}
 	}
@@ -524,7 +561,19 @@ func extensionBundle(item ExtensionRecord) outputBundle {
 		},
 		toon: func() (string, error) {
 			return renderToonObject("extension", []string{
-				"name", "version", "type", "source", "enabled", "state", "daemon_running", "pid", "uptime_seconds", "health", "last_error", "capabilities", "actions",
+				"name",
+				"version",
+				"type",
+				"source",
+				"enabled",
+				"state",
+				"daemon_running",
+				"pid",
+				"uptime_seconds",
+				"health",
+				"last_error",
+				"capabilities",
+				"actions",
 			}, []string{
 				item.Name,
 				item.Version,

@@ -43,7 +43,10 @@ func NewCatalogProvider(registry *Registry) *CatalogProvider {
 
 // PromptSection loads the workspace-scoped skills and returns their XML-like
 // catalog representation.
-func (cp *CatalogProvider) PromptSection(ctx context.Context, workspace workspacepkg.ResolvedWorkspace) (string, error) {
+func (cp *CatalogProvider) PromptSection(
+	ctx context.Context,
+	workspace *workspacepkg.ResolvedWorkspace,
+) (string, error) {
 	if cp == nil || cp.registry == nil {
 		return "", nil
 	}
@@ -122,7 +125,10 @@ func escapeCatalogAttr(value string) string {
 	return catalogAttrReplacer.Replace(value)
 }
 
-func catalogWorkspaceLabel(workspace workspacepkg.ResolvedWorkspace) string {
+func catalogWorkspaceLabel(workspace *workspacepkg.ResolvedWorkspace) string {
+	if workspace == nil {
+		return "<global>"
+	}
 	if name := strings.TrimSpace(workspace.Name); name != "" {
 		return name
 	}

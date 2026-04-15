@@ -33,13 +33,14 @@ type asyncPool struct {
 	drainTimeout  time.Duration
 	metrics       *hookMetrics
 
-	mu      sync.RWMutex
-	ctx     context.Context
-	cancel  context.CancelFunc
-	tasks   chan asyncTask
-	wg      sync.WaitGroup
-	started bool
-	closed  bool
+	mu       sync.RWMutex
+	ctx      context.Context
+	stopCh   chan struct{}
+	stopOnce sync.Once
+	tasks    chan asyncTask
+	wg       sync.WaitGroup
+	started  bool
+	closed   bool
 }
 
 func newAsyncPool(cfg asyncPoolConfig) *asyncPool {
@@ -86,7 +87,8 @@ func (p *asyncPool) Start(parent context.Context) {
 		return
 	}
 
-	p.ctx, p.cancel = context.WithCancel(parent)
+	p.stopCh = make(chan struct{})
+	p.ctx = asyncPoolContext(parent, p.stopCh)
 	p.tasks = make(chan asyncTask, p.queueCapacity)
 	p.started = true
 
@@ -153,13 +155,10 @@ func (p *asyncPool) Close() {
 	}
 
 	tasks := p.tasks
-	cancel := p.cancel
 	drainTimeout := p.drainTimeout
 	p.mu.Unlock()
 
-	if cancel != nil {
-		defer cancel()
-	}
+	defer p.stopWorkers()
 
 	close(tasks)
 
@@ -176,10 +175,8 @@ func (p *asyncPool) Close() {
 	case <-done:
 		return
 	case <-drainCtx.Done():
+		p.stopWorkers()
 		discardAsyncTasks(tasks)
-		if cancel != nil {
-			cancel()
-		}
 		<-done
 	}
 }
@@ -232,4 +229,32 @@ func discardAsyncTasks(tasks <-chan asyncTask) {
 			return
 		}
 	}
+}
+
+func (p *asyncPool) stopWorkers() {
+	if p == nil {
+		return
+	}
+
+	p.stopOnce.Do(func() {
+		if p.stopCh != nil {
+			close(p.stopCh)
+		}
+	})
+}
+
+func asyncPoolContext(parent context.Context, stopCh <-chan struct{}) context.Context {
+	if parent == nil {
+		parent = context.Background()
+	}
+
+	ctx, cancel := context.WithCancel(parent)
+	go func() {
+		defer cancel()
+		select {
+		case <-stopCh:
+		case <-ctx.Done():
+		}
+	}()
+	return ctx
 }

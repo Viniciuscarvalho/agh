@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -95,11 +96,8 @@ func TestStoreSQLiteHelpers(t *testing.T) {
 		"synchronous(NORMAL)",
 	} {
 		var found bool
-		for _, pragma := range pragmas {
-			if pragma == want {
-				found = true
-				break
-			}
+		if slices.Contains(pragmas, want) {
+			found = true
 		}
 		if !found {
 			t.Fatalf("sqliteDSN() pragmas = %#v, want %q", pragmas, want)
@@ -148,7 +146,12 @@ func TestStoreSQLiteHelpers(t *testing.T) {
 		t.Fatalf("Checkpoint() error = %v", err)
 	}
 
-	if mode, err := querySingleString(testutil.Context(t), db, "PRAGMA journal_mode"); err != nil || !strings.EqualFold(mode, "wal") {
+	if mode, err := querySingleString(
+		testutil.Context(t),
+		db,
+		"PRAGMA journal_mode",
+	); err != nil ||
+		!strings.EqualFold(mode, "wal") {
 		t.Fatalf("querySingleString(journal_mode) = (%q, %v), want wal", mode, err)
 	}
 	verifyConnPragmas := func(t *testing.T, conn *sql.Conn) {
@@ -218,9 +221,14 @@ func TestStoreSQLiteRecoveryAndFailures(t *testing.T) {
 		t.Fatalf("len(corrupt files) = %d, want %d (%v)", got, want, matches)
 	}
 
-	if _, err := openSQLiteDatabaseOnce(testutil.Context(t), filepath.Join(t.TempDir(), "init-fail.db"), func(ctx context.Context, db *sql.DB) error {
-		return errors.New("boom")
-	}); err == nil || !strings.Contains(err.Error(), "initialize sqlite database") {
+	if _, err := openSQLiteDatabaseOnce(
+		testutil.Context(t),
+		filepath.Join(t.TempDir(), "init-fail.db"),
+		func(_ context.Context, _ *sql.DB) error {
+			return errors.New("boom")
+		},
+	); err == nil ||
+		!strings.Contains(err.Error(), "initialize sqlite database") {
 		t.Fatalf("openSQLiteDatabaseOnce(init fail) error = %v, want initialize failure", err)
 	}
 

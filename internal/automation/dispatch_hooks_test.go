@@ -175,33 +175,51 @@ type recordingAutomationHooks struct {
 	runFailed        []hookspkg.AutomationRunFailedPayload
 }
 
-func (r *recordingAutomationHooks) DispatchAutomationJobPreFire(ctx context.Context, payload hookspkg.AutomationJobPreFirePayload) (hookspkg.AutomationJobPreFirePayload, error) {
+func (r *recordingAutomationHooks) DispatchAutomationJobPreFire(
+	ctx context.Context,
+	payload hookspkg.AutomationJobPreFirePayload,
+) (hookspkg.AutomationJobPreFirePayload, error) {
 	if r != nil && r.onJobPreFire != nil {
 		return r.onJobPreFire(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (r *recordingAutomationHooks) DispatchAutomationJobPostFire(_ context.Context, payload hookspkg.AutomationJobPostFirePayload) (hookspkg.AutomationJobPostFirePayload, error) {
+func (r *recordingAutomationHooks) DispatchAutomationJobPostFire(
+	_ context.Context,
+	payload hookspkg.AutomationJobPostFirePayload,
+) (hookspkg.AutomationJobPostFirePayload, error) {
 	return payload, nil
 }
 
-func (r *recordingAutomationHooks) DispatchAutomationTriggerPreFire(ctx context.Context, payload hookspkg.AutomationTriggerPreFirePayload) (hookspkg.AutomationTriggerPreFirePayload, error) {
+func (r *recordingAutomationHooks) DispatchAutomationTriggerPreFire(
+	ctx context.Context,
+	payload hookspkg.AutomationTriggerPreFirePayload,
+) (hookspkg.AutomationTriggerPreFirePayload, error) {
 	if r != nil && r.onTriggerPreFire != nil {
 		return r.onTriggerPreFire(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (r *recordingAutomationHooks) DispatchAutomationTriggerPostFire(_ context.Context, payload hookspkg.AutomationTriggerPostFirePayload) (hookspkg.AutomationTriggerPostFirePayload, error) {
+func (r *recordingAutomationHooks) DispatchAutomationTriggerPostFire(
+	_ context.Context,
+	payload hookspkg.AutomationTriggerPostFirePayload,
+) (hookspkg.AutomationTriggerPostFirePayload, error) {
 	return payload, nil
 }
 
-func (r *recordingAutomationHooks) DispatchAutomationRunCompleted(_ context.Context, payload hookspkg.AutomationRunCompletedPayload) (hookspkg.AutomationRunCompletedPayload, error) {
+func (r *recordingAutomationHooks) DispatchAutomationRunCompleted(
+	_ context.Context,
+	payload hookspkg.AutomationRunCompletedPayload,
+) (hookspkg.AutomationRunCompletedPayload, error) {
 	return payload, nil
 }
 
-func (r *recordingAutomationHooks) DispatchAutomationRunFailed(_ context.Context, payload hookspkg.AutomationRunFailedPayload) (hookspkg.AutomationRunFailedPayload, error) {
+func (r *recordingAutomationHooks) DispatchAutomationRunFailed(
+	_ context.Context,
+	payload hookspkg.AutomationRunFailedPayload,
+) (hookspkg.AutomationRunFailedPayload, error) {
 	if r != nil {
 		r.runFailed = append(r.runFailed, payload)
 	}

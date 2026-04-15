@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -44,7 +45,7 @@ type managerRuntimeComponent interface {
 // trigger ingress.
 type SessionManager interface {
 	SessionCreator
-	Status(ctx context.Context, id string) (*session.SessionInfo, error)
+	Status(ctx context.Context, id string) (*session.Info, error)
 }
 
 // Store is the automation persistence surface consumed by the composed
@@ -130,7 +131,7 @@ type managerOptions struct {
 	store               Store
 	sessions            SessionManager
 	tasks               TaskService
-	workspaceResolver   workspacepkg.WorkspaceResolver
+	workspaceResolver   workspacepkg.RuntimeResolver
 	config              aghconfig.AutomationConfig
 	logger              *slog.Logger
 	globalWorkspacePath string
@@ -141,13 +142,83 @@ type managerOptions struct {
 	now                 func() time.Time
 }
 
+func defaultManagerOptions() managerOptions {
+	return managerOptions{
+		logger: slog.Default(),
+		now: func() time.Time {
+			return time.Now().UTC()
+		},
+		config: aghconfig.AutomationConfig{
+			Timezone:          DefaultTimezone,
+			MaxConcurrentJobs: DefaultMaxConcurrentJobs,
+			DefaultFireLimit:  DefaultFireLimitConfig(),
+		},
+	}
+}
+
+func applyManagerOptions(options *managerOptions, opts []Option) {
+	for _, opt := range opts {
+		if opt != nil {
+			opt(options)
+		}
+	}
+}
+
+func finalizeManagerOptions(options *managerOptions) error {
+	if options.store == nil {
+		return errors.New("automation: store is required")
+	}
+	if options.sessions == nil {
+		return errors.New("automation: session manager is required")
+	}
+	if options.workspaceResolver == nil {
+		return errors.New("automation: workspace resolver is required")
+	}
+	if options.logger == nil {
+		options.logger = slog.Default()
+	}
+	if options.now == nil {
+		options.now = func() time.Time {
+			return time.Now().UTC()
+		}
+	}
+	if strings.TrimSpace(options.config.Timezone) == "" {
+		options.config.Timezone = DefaultTimezone
+	}
+	if options.config.MaxConcurrentJobs <= 0 {
+		options.config.MaxConcurrentJobs = DefaultMaxConcurrentJobs
+	}
+	if options.config.DefaultFireLimit.Max == 0 || strings.TrimSpace(options.config.DefaultFireLimit.Window) == "" {
+		options.config.DefaultFireLimit = DefaultFireLimitConfig()
+	}
+	if options.webhookSecrets == nil {
+		options.webhookSecrets = storeWebhookSecretResolver{store: options.store}
+	}
+	if strings.TrimSpace(options.globalWorkspacePath) == "" {
+		return errors.New("automation: global workspace path is required")
+	}
+	return nil
+}
+
+func managerDispatcherOptions(options managerOptions) []DispatcherOption {
+	dispatcherOpts := []DispatcherOption{
+		WithDispatcherLogger(options.logger),
+		WithDispatcherGlobalWorkspacePath(options.globalWorkspacePath),
+		WithDispatcherMaxConcurrent(options.config.MaxConcurrentJobs),
+	}
+	if options.tasks != nil {
+		dispatcherOpts = append(dispatcherOpts, WithDispatcherTasks(options.tasks))
+	}
+	return append(dispatcherOpts, options.dispatcherOptions...)
+}
+
 // Manager composes persistence, dispatch, schedules, triggers, and runtime
 // status into one daemon-owned automation subsystem.
 type Manager struct {
 	store               Store
 	sessions            SessionManager
 	tasks               TaskService
-	workspaceResolver   workspacepkg.WorkspaceResolver
+	workspaceResolver   workspacepkg.RuntimeResolver
 	config              aghconfig.AutomationConfig
 	logger              *slog.Logger
 	globalWorkspacePath string
@@ -194,7 +265,7 @@ func WithTasks(tasks TaskService) Option {
 
 // WithWorkspaceResolver injects the canonical workspace resolver used to turn
 // TOML workspace references into registered workspace IDs.
-func WithWorkspaceResolver(resolver workspacepkg.WorkspaceResolver) Option {
+func WithWorkspaceResolver(resolver workspacepkg.RuntimeResolver) Option {
 	return func(opts *managerOptions) {
 		opts.workspaceResolver = resolver
 	}
@@ -231,7 +302,7 @@ func WithWebhookSecretResolver(resolver WebhookSecretResolver) Option {
 }
 
 // WithHooks injects the automation lifecycle hook dispatcher used by the shared dispatcher path.
-func WithHooks(hooks AutomationHookDispatcher) Option {
+func WithHooks(hooks HookDispatcher) Option {
 	return func(opts *managerOptions) {
 		if hooks == nil {
 			return
@@ -273,65 +344,13 @@ func WithManagerNow(now func() time.Time) Option {
 
 // New constructs the composed automation manager.
 func New(opts ...Option) (*Manager, error) {
-	options := managerOptions{
-		logger: slog.Default(),
-		now: func() time.Time {
-			return time.Now().UTC()
-		},
-		config: aghconfig.AutomationConfig{
-			Timezone:          DefaultTimezone,
-			MaxConcurrentJobs: DefaultMaxConcurrentJobs,
-			DefaultFireLimit:  DefaultFireLimitConfig(),
-		},
-	}
-	for _, opt := range opts {
-		if opt != nil {
-			opt(&options)
-		}
+	options := defaultManagerOptions()
+	applyManagerOptions(&options, opts)
+	if err := finalizeManagerOptions(&options); err != nil {
+		return nil, err
 	}
 
-	if options.store == nil {
-		return nil, errors.New("automation: store is required")
-	}
-	if options.sessions == nil {
-		return nil, errors.New("automation: session manager is required")
-	}
-	if options.workspaceResolver == nil {
-		return nil, errors.New("automation: workspace resolver is required")
-	}
-	if options.logger == nil {
-		options.logger = slog.Default()
-	}
-	if options.now == nil {
-		options.now = func() time.Time {
-			return time.Now().UTC()
-		}
-	}
-	if strings.TrimSpace(options.config.Timezone) == "" {
-		options.config.Timezone = DefaultTimezone
-	}
-	if options.config.MaxConcurrentJobs <= 0 {
-		options.config.MaxConcurrentJobs = DefaultMaxConcurrentJobs
-	}
-	if options.config.DefaultFireLimit.Max == 0 || strings.TrimSpace(options.config.DefaultFireLimit.Window) == "" {
-		options.config.DefaultFireLimit = DefaultFireLimitConfig()
-	}
-	if options.webhookSecrets == nil {
-		options.webhookSecrets = storeWebhookSecretResolver{store: options.store}
-	}
-	if strings.TrimSpace(options.globalWorkspacePath) == "" {
-		return nil, errors.New("automation: global workspace path is required")
-	}
-
-	dispatcherOpts := []DispatcherOption{
-		WithDispatcherLogger(options.logger),
-		WithDispatcherGlobalWorkspacePath(options.globalWorkspacePath),
-		WithDispatcherMaxConcurrent(options.config.MaxConcurrentJobs),
-	}
-	if options.tasks != nil {
-		dispatcherOpts = append(dispatcherOpts, WithDispatcherTasks(options.tasks))
-	}
-	dispatcherOpts = append(dispatcherOpts, options.dispatcherOptions...)
+	dispatcherOpts := managerDispatcherOptions(options)
 	dispatcher, err := NewDispatcher(options.sessions, options.store, dispatcherOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("automation: construct dispatcher: %w", err)
@@ -565,7 +584,10 @@ func (m *Manager) UpdateJob(ctx context.Context, job Job) (Job, error) {
 	currentEffective, err := m.effectiveJobFromStored(ctx, updatedStored)
 	if err != nil {
 		if _, rollbackErr := m.store.UpdateJob(ctx, currentStored); rollbackErr != nil {
-			return Job{}, errors.Join(err, fmt.Errorf("automation: restore job %q after load failure: %w", currentStored.ID, rollbackErr))
+			return Job{}, errors.Join(
+				err,
+				fmt.Errorf("automation: restore job %q after load failure: %w", currentStored.ID, rollbackErr),
+			)
 		}
 		return Job{}, err
 	}
@@ -1404,7 +1426,12 @@ func (m *Manager) syncJobsForSource(ctx context.Context, source JobSource, desir
 	return synced, removed, nil
 }
 
-func (m *Manager) syncTriggersForSource(ctx context.Context, source JobSource, desired []Trigger, desiredSecrets map[string]string) (int, int, error) {
+func (m *Manager) syncTriggersForSource(
+	ctx context.Context,
+	source JobSource,
+	desired []Trigger,
+	desiredSecrets map[string]string,
+) (int, int, error) {
 	existing, err := m.store.ListTriggers(ctx, TriggerListQuery{Source: source})
 	if err != nil {
 		return 0, 0, err
@@ -1443,7 +1470,11 @@ func (m *Manager) syncTriggersForSource(ctx context.Context, source JobSource, d
 		if _, ok := desiredByID[id]; ok {
 			continue
 		}
-		if err := m.store.DeleteTriggerWebhookSecret(ctx, id); err != nil && !errors.Is(err, ErrTriggerWebhookSecretNotFound) {
+		if err := m.store.DeleteTriggerWebhookSecret(
+			ctx,
+			id,
+		); err != nil &&
+			!errors.Is(err, ErrTriggerWebhookSecretNotFound) {
 			return 0, 0, err
 		}
 		if err := m.store.DeleteTrigger(ctx, id); err != nil {
@@ -1555,7 +1586,11 @@ func (m *Manager) resolveConfigTriggerWebhookSecret(raw aghconfig.AutomationTrig
 	return strings.TrimSpace(secret), nil
 }
 
-func (m *Manager) resolveConfigWorkspace(ctx context.Context, scope AutomationScope, workspaceRef string) (string, error) {
+func (m *Manager) resolveConfigWorkspace(
+	ctx context.Context,
+	scope Scope,
+	workspaceRef string,
+) (string, error) {
 	if scope == AutomationScopeGlobal {
 		return "", nil
 	}
@@ -1646,7 +1681,12 @@ func isOverlayManagedSource(source JobSource) bool {
 	}
 }
 
-func (m *Manager) syncTriggerWebhookSecret(ctx context.Context, previous Trigger, current Trigger, webhookSecret *string) error {
+func (m *Manager) syncTriggerWebhookSecret(
+	ctx context.Context,
+	previous Trigger,
+	current Trigger,
+	webhookSecret *string,
+) error {
 	if !strings.EqualFold(strings.TrimSpace(current.Event), "webhook") {
 		return m.store.DeleteTriggerWebhookSecret(ctx, current.ID)
 	}
@@ -1661,7 +1701,12 @@ func (m *Manager) syncTriggerWebhookSecret(ctx context.Context, previous Trigger
 	return m.store.SetTriggerWebhookSecret(ctx, current.ID, secret)
 }
 
-func (m *Manager) syncManagedTriggerWebhookSecret(ctx context.Context, _ Trigger, current Trigger, secret string) error {
+func (m *Manager) syncManagedTriggerWebhookSecret(
+	ctx context.Context,
+	_ Trigger,
+	current Trigger,
+	secret string,
+) error {
 	if !strings.EqualFold(strings.TrimSpace(current.Event), "webhook") {
 		return m.store.DeleteTriggerWebhookSecret(ctx, current.ID)
 	}
@@ -1681,7 +1726,12 @@ func (m *Manager) ensureTriggerWebhookID(ctx context.Context, trigger Trigger) (
 	return m.store.UpdateTrigger(ctx, next)
 }
 
-func (m *Manager) desiredWebhookSecret(ctx context.Context, previous Trigger, current Trigger, webhookSecret *string) (string, error) {
+func (m *Manager) desiredWebhookSecret(
+	ctx context.Context,
+	previous Trigger,
+	current Trigger,
+	webhookSecret *string,
+) (string, error) {
 	if webhookSecret != nil {
 		return strings.TrimSpace(*webhookSecret), nil
 	}
@@ -1859,7 +1909,13 @@ func (m *Manager) fireSessionCreated(ctx context.Context, sess *session.Session)
 	mergedCtx, cancel := mergedRuntimeContext(ctx, runtimeCtx)
 	defer cancel()
 	if _, err := engine.FireSessionCreated(mergedCtx, sess); err != nil {
-		m.logger.Warn("automation.manager.session_created_trigger_failed", "session_id", strings.TrimSpace(sess.ID), "error", err)
+		m.logger.Warn(
+			"automation.manager.session_created_trigger_failed",
+			"session_id",
+			strings.TrimSpace(sess.ID),
+			"error",
+			err,
+		)
 	}
 }
 
@@ -1874,7 +1930,13 @@ func (m *Manager) fireSessionStopped(ctx context.Context, sess *session.Session)
 	mergedCtx, cancel := mergedRuntimeContext(ctx, runtimeCtx)
 	defer cancel()
 	if _, err := engine.FireSessionStopped(mergedCtx, sess); err != nil {
-		m.logger.Warn("automation.manager.session_stopped_trigger_failed", "session_id", strings.TrimSpace(sess.ID), "error", err)
+		m.logger.Warn(
+			"automation.manager.session_stopped_trigger_failed",
+			"session_id",
+			strings.TrimSpace(sess.ID),
+			"error",
+			err,
+		)
 	}
 }
 
@@ -1907,7 +1969,12 @@ func (m *Manager) cleanupCreatedTrigger(ctx context.Context, triggerID string) e
 	return errors.Join(errs...)
 }
 
-func (m *Manager) shutdownStartupRuntime(ctx context.Context, runtimeCancel context.CancelFunc, scheduler *Scheduler, triggerEngine *TriggerEngine) error {
+func (m *Manager) shutdownStartupRuntime(
+	ctx context.Context,
+	runtimeCancel context.CancelFunc,
+	scheduler *Scheduler,
+	triggerEngine *TriggerEngine,
+) error {
 	if runtimeCancel != nil {
 		runtimeCancel()
 	}
@@ -2021,15 +2088,15 @@ func countEnabledTriggers(triggers []Trigger) int {
 	return count
 }
 
-func configJobID(scope AutomationScope, workspaceID string, name string) string {
+func configJobID(scope Scope, workspaceID string, name string) string {
 	return stableConfigID("jobcfg", string(scope), workspaceID, name)
 }
 
-func configTriggerID(scope AutomationScope, workspaceID string, name string) string {
+func configTriggerID(scope Scope, workspaceID string, name string) string {
 	return stableConfigID("trgcfg", string(scope), workspaceID, name)
 }
 
-func configWebhookID(scope AutomationScope, workspaceID string, name string) string {
+func configWebhookID(scope Scope, workspaceID string, name string) string {
 	return stableConfigID("wbh", string(scope), workspaceID, name)
 }
 
@@ -2184,9 +2251,7 @@ func cloneFilter(source map[string]string) map[string]string {
 		return nil
 	}
 	cloned := make(map[string]string, len(source))
-	for key, value := range source {
-		cloned[key] = value
-	}
+	maps.Copy(cloned, source)
 	return cloned
 }
 
@@ -2220,7 +2285,11 @@ type managerHookTelemetrySink struct {
 	manager *Manager
 }
 
-func (s managerHookTelemetrySink) WriteHookRecord(ctx context.Context, sessionID string, record hookspkg.HookRunRecord) error {
+func (s managerHookTelemetrySink) WriteHookRecord(
+	ctx context.Context,
+	sessionID string,
+	record hookspkg.HookRunRecord,
+) error {
 	if s.manager == nil {
 		return nil
 	}

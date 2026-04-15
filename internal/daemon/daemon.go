@@ -35,7 +35,9 @@ import (
 
 const defaultShutdownTimeout = 10 * time.Second
 
-var errMissingNetworkBindingSurface = errors.New("daemon: session manager does not implement the network binding surface")
+var errMissingNetworkBindingSurface = errors.New(
+	"daemon: session manager does not implement the network binding surface",
+)
 
 // Option customizes daemon construction.
 type Option func(*Daemon)
@@ -58,7 +60,7 @@ type Registry interface {
 	observe.Registry
 	store.NetworkAuditStore
 	store.NetworkMessageStore
-	workspacepkg.WorkspaceStore
+	workspacepkg.Store
 }
 
 // Server is a daemon-owned runtime component with explicit start and shutdown phases.
@@ -80,7 +82,7 @@ type RuntimeDeps struct {
 	Bridges           core.BridgeService
 	Registry          Registry
 	MemoryStore       *memory.Store
-	WorkspaceResolver workspacepkg.WorkspaceResolver
+	WorkspaceResolver workspacepkg.RuntimeResolver
 	WorkspaceService  core.WorkspaceService
 	SkillsRegistry    core.SkillsRegistry
 	DreamTrigger      DreamTrigger
@@ -139,7 +141,10 @@ func bridgeObserveSource(service core.BridgeService) observe.BridgeSource {
 	if service == nil {
 		return nil
 	}
-	source, _ := service.(observe.BridgeSource)
+	source, ok := service.(observe.BridgeSource)
+	if !ok {
+		return nil
+	}
 	return source
 }
 
@@ -151,7 +156,7 @@ type extensionManagerDeps struct {
 	MemoryStore       *memory.Store
 	Observer          Observer
 	SkillsRegistry    *skills.Registry
-	WorkspaceResolver workspacepkg.WorkspaceResolver
+	WorkspaceResolver workspacepkg.RuntimeResolver
 	Logger            *slog.Logger
 	BridgeRegistry    bridgepkg.Registry
 	BridgeDedupStore  bridgeDedupStore
@@ -184,9 +189,9 @@ type automationManagerDeps struct {
 	Store               automationpkg.Store
 	Sessions            SessionManager
 	Tasks               taskpkg.Manager
-	WorkspaceResolver   workspacepkg.WorkspaceResolver
+	WorkspaceResolver   workspacepkg.RuntimeResolver
 	Config              aghconfig.AutomationConfig
-	Hooks               automationpkg.AutomationHookDispatcher
+	Hooks               automationpkg.HookDispatcher
 	Logger              *slog.Logger
 	GlobalWorkspacePath string
 }
@@ -200,7 +205,7 @@ type SessionManagerDeps struct {
 	PromptAssembler   session.PromptAssembler
 	SkillRegistry     session.SkillRegistry
 	MCPResolver       session.MCPResolver
-	WorkspaceResolver workspacepkg.WorkspaceResolver
+	WorkspaceResolver workspacepkg.RuntimeResolver
 }
 
 // Daemon is the sole AGH composition root.
@@ -252,10 +257,28 @@ type Daemon struct {
 	httpServer           Server
 	udsServer            Server
 	dreamRuntime         *consolidation.Runtime
-	workspaceResolver    workspacepkg.WorkspaceResolver
+	workspaceResolver    workspacepkg.RuntimeResolver
 	skillsRegistry       *skills.Registry
 	skillsCancel         context.CancelFunc
 	skillsDone           chan struct{}
+}
+
+type shutdownTargets struct {
+	sessions     SessionManager
+	network      networkRuntime
+	hooks        hookRuntime
+	extensions   extensionRuntime
+	automation   automationRuntime
+	bridges      *bridgeRuntime
+	httpServer   Server
+	udsServer    Server
+	registry     Registry
+	lock         *Lock
+	closeLogger  func() error
+	infoPath     string
+	dreamRuntime *consolidation.Runtime
+	skillsCancel context.CancelFunc
+	skillsDone   chan struct{}
 }
 
 // WithHomePaths overrides the resolved AGH home layout.
@@ -266,10 +289,14 @@ func WithHomePaths(homePaths aghconfig.HomePaths) Option {
 }
 
 // WithConfig overrides daemon-level configuration loading.
-func WithConfig(cfg aghconfig.Config) Option {
+func WithConfig(cfg *aghconfig.Config) Option {
 	return func(d *Daemon) {
+		if cfg == nil {
+			return
+		}
+		cfgCopy := *cfg
 		d.loadConfig = func() (aghconfig.Config, error) {
-			return cfg, nil
+			return cfgCopy, nil
 		}
 	}
 }
@@ -351,14 +378,20 @@ func New(opts ...Option) (*Daemon, error) {
 		}
 	}
 
-	if err := d.applyDefaults(); err != nil {
-		return nil, err
-	}
+	d.applyDefaults()
 
 	return d, nil
 }
 
-func (d *Daemon) applyDefaults() error {
+func (d *Daemon) applyDefaults() {
+	d.applyCoreDefaults()
+	d.applyRuntimeFactoryDefaults()
+	d.applyServerFactoryDefaults()
+	d.applySystemDefaults()
+	d.applyTimingDefaults()
+}
+
+func (d *Daemon) applyCoreDefaults() {
 	if d.now == nil {
 		d.now = func() time.Time {
 			return time.Now().UTC()
@@ -375,116 +408,155 @@ func (d *Daemon) applyDefaults() error {
 			return globaldb.OpenGlobalDB(ctx, path)
 		}
 	}
-	if d.newSessionManager == nil {
-		d.newSessionManager = func(ctx context.Context, deps SessionManagerDeps) (SessionManager, error) {
-			return session.NewManager(
-				session.WithHomePaths(deps.HomePaths),
-				session.WithLifecycleContext(ctx),
-				session.WithLogger(deps.Logger),
-				session.WithNotifier(deps.Notifier),
-				session.WithHookSet(deps.Hooks),
-				session.WithPromptAssembler(deps.PromptAssembler),
-				session.WithSkillRegistry(deps.SkillRegistry),
-				session.WithMCPResolver(deps.MCPResolver),
-				session.WithWorkspaceResolver(deps.WorkspaceResolver),
-			)
-		}
-	}
+}
+
+func (d *Daemon) applyRuntimeFactoryDefaults() {
+	d.applySessionManagerFactoryDefault()
 	if d.newDreamService == nil {
 		d.newDreamService = func(opts ...memory.Option) consolidation.Service {
 			return memory.NewService(opts...)
 		}
 	}
-	if d.newObserver == nil {
-		d.newObserver = func(ctx context.Context, deps RuntimeDeps) (Observer, error) {
-			source, ok := deps.Sessions.(observe.SessionSource)
-			if !ok {
-				return nil, errors.New("daemon: session manager does not implement observe session source")
-			}
-			return observe.New(
-				ctx,
-				observe.WithRegistry(deps.Registry),
-				observe.WithHomePaths(deps.HomePaths),
-				observe.WithSessionSource(source),
-				observe.WithWorkspaceResolver(deps.WorkspaceResolver),
-				observe.WithLogger(deps.Logger),
-				observe.WithStartTime(deps.StartedAt),
-				observe.WithBridgeSource(bridgeObserveSource(deps.Bridges)),
-			)
-		}
+	d.applyObserverFactoryDefault()
+	d.applyExtensionManagerFactoryDefault()
+	d.applyAutomationManagerFactoryDefault()
+}
+
+func (d *Daemon) applySessionManagerFactoryDefault() {
+	if d.newSessionManager != nil {
+		return
 	}
-	if d.newExtensionManager == nil {
-		d.newExtensionManager = func(deps extensionManagerDeps) extensionRuntime {
-			if deps.Registry == nil {
-				return nil
-			}
-
-			capChecker := &extensionpkg.CapabilityChecker{}
-			hostAPIOpts := []extensionpkg.HostAPIOption{
-				extensionpkg.WithHostAPIAutomationGetter(deps.Automation),
-				extensionpkg.WithHostAPITaskManager(deps.Tasks),
-				extensionpkg.WithHostAPICapabilityChecker(capChecker),
-				extensionpkg.WithHostAPIWorkspaceResolver(deps.WorkspaceResolver),
-			}
-			if deps.BridgeRegistry != nil {
-				hostAPIOpts = append(hostAPIOpts, extensionpkg.WithHostAPIBridgeRegistry(deps.BridgeRegistry))
-			}
-			if deps.BridgeDedupStore != nil {
-				hostAPIOpts = append(hostAPIOpts, extensionpkg.WithHostAPIBridgeDedupStore(deps.BridgeDedupStore))
-			}
-			if deps.BridgeBroker != nil {
-				hostAPIOpts = append(hostAPIOpts, extensionpkg.WithHostAPIDeliveryBroker(deps.BridgeBroker))
-			}
-
-			hostAPI := extensionpkg.NewHostAPIHandler(
-				deps.Sessions,
-				deps.MemoryStore,
-				deps.Observer,
-				deps.SkillsRegistry,
-				hostAPIOpts...,
-			)
-
-			opts := []extensionpkg.Option{
-				extensionpkg.WithCapabilityChecker(capChecker),
-				extensionpkg.WithSkillsRegistry(deps.SkillsRegistry),
-				extensionpkg.WithLogger(deps.Logger),
-			}
-			if sink, ok := deps.Observer.(extensionpkg.BridgeTelemetrySink); ok {
-				opts = append(opts, extensionpkg.WithBridgeTelemetrySink(sink))
-			}
-			if deps.BridgeRuntime != nil {
-				opts = append(opts, extensionpkg.WithBridgeRuntimeResolver(deps.BridgeRuntime))
-			}
-			for method, handler := range hostAPI.MethodHandlers() {
-				opts = append(opts, extensionpkg.WithHostMethodHandler(method, handler))
-			}
-
-			return extensionpkg.NewManager(deps.Registry, opts...)
-		}
+	d.newSessionManager = func(ctx context.Context, deps SessionManagerDeps) (SessionManager, error) {
+		return session.NewManager(
+			session.WithHomePaths(deps.HomePaths),
+			session.WithLifecycleContext(ctx),
+			session.WithLogger(deps.Logger),
+			session.WithNotifier(deps.Notifier),
+			session.WithHookSet(deps.Hooks),
+			session.WithPromptAssembler(deps.PromptAssembler),
+			session.WithSkillRegistry(deps.SkillRegistry),
+			session.WithMCPResolver(deps.MCPResolver),
+			session.WithWorkspaceResolver(deps.WorkspaceResolver),
+		)
 	}
-	if d.newAutomationManager == nil {
-		d.newAutomationManager = func(deps automationManagerDeps) (automationRuntime, error) {
-			manager, err := automationpkg.New(
-				automationpkg.WithStore(deps.Store),
-				automationpkg.WithSessions(deps.Sessions),
-				automationpkg.WithTasks(deps.Tasks),
-				automationpkg.WithWorkspaceResolver(deps.WorkspaceResolver),
-				automationpkg.WithConfig(deps.Config),
-				automationpkg.WithHooks(deps.Hooks),
-				automationpkg.WithLogger(deps.Logger),
-				automationpkg.WithGlobalWorkspacePath(deps.GlobalWorkspacePath),
-			)
-			if err != nil {
-				return nil, err
-			}
-			return manager, nil
-		}
+}
+
+func (d *Daemon) applyObserverFactoryDefault() {
+	if d.newObserver != nil {
+		return
 	}
+	d.newObserver = func(ctx context.Context, deps RuntimeDeps) (Observer, error) {
+		source, ok := deps.Sessions.(observe.SessionSource)
+		if !ok {
+			return nil, errors.New("daemon: session manager does not implement observe session source")
+		}
+		return observe.New(
+			ctx,
+			observe.WithRegistry(deps.Registry),
+			observe.WithHomePaths(deps.HomePaths),
+			observe.WithSessionSource(source),
+			observe.WithWorkspaceResolver(deps.WorkspaceResolver),
+			observe.WithLogger(deps.Logger),
+			observe.WithStartTime(deps.StartedAt),
+			observe.WithBridgeSource(bridgeObserveSource(deps.Bridges)),
+		)
+	}
+}
+
+func (d *Daemon) applyExtensionManagerFactoryDefault() {
+	if d.newExtensionManager != nil {
+		return
+	}
+	d.newExtensionManager = func(deps extensionManagerDeps) extensionRuntime {
+		if deps.Registry == nil {
+			return nil
+		}
+
+		capChecker := &extensionpkg.CapabilityChecker{}
+		hostAPI := extensionpkg.NewHostAPIHandler(
+			deps.Sessions,
+			deps.MemoryStore,
+			deps.Observer,
+			deps.SkillsRegistry,
+			buildHostAPIOptions(deps, capChecker)...,
+		)
+
+		return extensionpkg.NewManager(deps.Registry, buildExtensionManagerOptions(deps, capChecker, hostAPI)...)
+	}
+}
+
+func buildHostAPIOptions(
+	deps extensionManagerDeps,
+	capChecker *extensionpkg.CapabilityChecker,
+) []extensionpkg.HostAPIOption {
+	opts := []extensionpkg.HostAPIOption{
+		extensionpkg.WithHostAPIAutomationGetter(deps.Automation),
+		extensionpkg.WithHostAPITaskManager(deps.Tasks),
+		extensionpkg.WithHostAPICapabilityChecker(capChecker),
+		extensionpkg.WithHostAPIWorkspaceResolver(deps.WorkspaceResolver),
+	}
+	if deps.BridgeRegistry != nil {
+		opts = append(opts, extensionpkg.WithHostAPIBridgeRegistry(deps.BridgeRegistry))
+	}
+	if deps.BridgeDedupStore != nil {
+		opts = append(opts, extensionpkg.WithHostAPIBridgeDedupStore(deps.BridgeDedupStore))
+	}
+	if deps.BridgeBroker != nil {
+		opts = append(opts, extensionpkg.WithHostAPIDeliveryBroker(deps.BridgeBroker))
+	}
+	return opts
+}
+
+func buildExtensionManagerOptions(
+	deps extensionManagerDeps,
+	capChecker *extensionpkg.CapabilityChecker,
+	hostAPI *extensionpkg.HostAPIHandler,
+) []extensionpkg.Option {
+	opts := []extensionpkg.Option{
+		extensionpkg.WithCapabilityChecker(capChecker),
+		extensionpkg.WithSkillsRegistry(deps.SkillsRegistry),
+		extensionpkg.WithLogger(deps.Logger),
+	}
+	if sink, ok := deps.Observer.(extensionpkg.BridgeTelemetrySink); ok {
+		opts = append(opts, extensionpkg.WithBridgeTelemetrySink(sink))
+	}
+	if deps.BridgeRuntime != nil {
+		opts = append(opts, extensionpkg.WithBridgeRuntimeResolver(deps.BridgeRuntime))
+	}
+	for method, handler := range hostAPI.MethodHandlers() {
+		opts = append(opts, extensionpkg.WithHostMethodHandler(method, handler))
+	}
+	return opts
+}
+
+func (d *Daemon) applyAutomationManagerFactoryDefault() {
+	if d.newAutomationManager != nil {
+		return
+	}
+	d.newAutomationManager = func(deps automationManagerDeps) (automationRuntime, error) {
+		manager, err := automationpkg.New(
+			automationpkg.WithStore(deps.Store),
+			automationpkg.WithSessions(deps.Sessions),
+			automationpkg.WithTasks(deps.Tasks),
+			automationpkg.WithWorkspaceResolver(deps.WorkspaceResolver),
+			automationpkg.WithConfig(deps.Config),
+			automationpkg.WithHooks(deps.Hooks),
+			automationpkg.WithLogger(deps.Logger),
+			automationpkg.WithGlobalWorkspacePath(deps.GlobalWorkspacePath),
+		)
+		if err != nil {
+			return nil, err
+		}
+		return manager, nil
+	}
+}
+
+func (d *Daemon) applyServerFactoryDefaults() {
 	if d.httpFactory == nil {
 		d.httpFactory = func(_ context.Context, deps RuntimeDeps) (Server, error) {
 			return httpapi.New(
 				httpapi.WithHomePaths(deps.HomePaths),
-				httpapi.WithConfig(deps.Config),
+				httpapi.WithConfig(&deps.Config),
 				httpapi.WithLogger(deps.Logger),
 				httpapi.WithStartedAt(deps.StartedAt),
 				httpapi.WithSessionManager(deps.Sessions),
@@ -506,7 +578,7 @@ func (d *Daemon) applyDefaults() error {
 		d.udsFactory = func(_ context.Context, deps RuntimeDeps) (Server, error) {
 			return udsapi.New(
 				udsapi.WithHomePaths(deps.HomePaths),
-				udsapi.WithConfig(deps.Config),
+				udsapi.WithConfig(&deps.Config),
 				udsapi.WithLogger(deps.Logger),
 				udsapi.WithStartedAt(deps.StartedAt),
 				udsapi.WithSessionManager(deps.Sessions),
@@ -525,6 +597,9 @@ func (d *Daemon) applyDefaults() error {
 			)
 		}
 	}
+}
+
+func (d *Daemon) applySystemDefaults() {
 	if d.listProcesses == nil {
 		d.listProcesses = listProcesses
 	}
@@ -548,14 +623,15 @@ func (d *Daemon) applyDefaults() error {
 			return loadConfigFromHome(d.homePaths)
 		}
 	}
+}
+
+func (d *Daemon) applyTimingDefaults() {
 	if d.orphanGraceWait <= 0 {
 		d.orphanGraceWait = orphanCleanupGraceWait
 	}
 	if d.orphanPollWait <= 0 {
 		d.orphanPollWait = orphanCleanupPollWait
 	}
-
-	return nil
 }
 
 // Run boots the daemon, blocks until signal or context cancellation, then performs graceful shutdown.
@@ -592,24 +668,36 @@ func (d *Daemon) Shutdown(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	return d.shutdownDetached(ctx, d.detachShutdownTargets())
+}
 
+func (d *Daemon) detachShutdownTargets() shutdownTargets {
 	d.mu.Lock()
-	sessions := d.sessions
-	network := d.network
-	hooks := d.hooks
-	extensions := d.extensions
-	automation := d.automation
-	bridges := d.bridges
-	httpServer := d.httpServer
-	udsServer := d.udsServer
-	registry := d.registry
-	lock := d.lock
-	closeLogger := d.closeLogger
-	infoPath := d.homePaths.DaemonInfo
-	dreamRuntime := d.dreamRuntime
-	skillsCancel := d.skillsCancel
-	skillsDone := d.skillsDone
+	defer d.mu.Unlock()
 
+	targets := shutdownTargets{
+		sessions:     d.sessions,
+		network:      d.network,
+		hooks:        d.hooks,
+		extensions:   d.extensions,
+		automation:   d.automation,
+		bridges:      d.bridges,
+		httpServer:   d.httpServer,
+		udsServer:    d.udsServer,
+		registry:     d.registry,
+		lock:         d.lock,
+		closeLogger:  d.closeLogger,
+		infoPath:     d.homePaths.DaemonInfo,
+		dreamRuntime: d.dreamRuntime,
+		skillsCancel: d.skillsCancel,
+		skillsDone:   d.skillsDone,
+	}
+
+	d.resetRuntimeStateLocked()
+	return targets
+}
+
+func (d *Daemon) resetRuntimeStateLocked() {
 	d.sessions = nil
 	d.tasks = nil
 	d.hooks = nil
@@ -632,67 +720,72 @@ func (d *Daemon) Shutdown(ctx context.Context) error {
 	d.skillsDone = nil
 	d.bridges = nil
 	d.network = nil
-	d.mu.Unlock()
+}
 
+func (d *Daemon) shutdownDetached(ctx context.Context, targets shutdownTargets) error {
 	var errs []error
-	if dreamRuntime != nil {
-		dreamRuntime.Shutdown()
-	}
-	stopSkillsWatcher(skillsCancel, skillsDone)
-	if extensions != nil {
-		if err := extensions.Stop(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("daemon: stop extensions: %w", err))
-		}
-	}
-	if automation != nil {
-		if err := automation.Shutdown(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("daemon: shutdown automation: %w", err))
-		}
-	}
-	if err := d.stopSessions(ctx, sessions); err != nil {
-		errs = append(errs, err)
-	}
-	if httpServer != nil {
-		if err := httpServer.Shutdown(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("daemon: shutdown http server: %w", err))
-		}
-	}
-	if udsServer != nil {
-		if err := udsServer.Shutdown(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("daemon: shutdown uds server: %w", err))
-		}
-	}
-	if bridges != nil {
-		bridges.Close()
-	}
-	if network != nil {
-		if err := network.Shutdown(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("daemon: shutdown network runtime: %w", err))
-		}
-	}
-	if hooks != nil {
-		hooks.Close()
-	}
-	if err := RemoveInfo(infoPath); err != nil {
-		errs = append(errs, err)
-	}
-	if registry != nil {
-		if err := registry.Close(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("daemon: close global database: %w", err))
-		}
-	}
-	if lock != nil {
-		if err := lock.Release(); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	if closeLogger != nil {
-		if err := closeLogger(); err != nil {
-			errs = append(errs, fmt.Errorf("daemon: close logger: %w", err))
-		}
-	}
-
+	d.shutdownRuntimeWorkers(ctx, targets, &errs)
+	d.shutdownServersAndHooks(ctx, targets, &errs)
+	d.shutdownPersistentResources(ctx, targets, &errs)
 	return errors.Join(errs...)
+}
+
+func (d *Daemon) shutdownRuntimeWorkers(ctx context.Context, targets shutdownTargets, errs *[]error) {
+	if targets.dreamRuntime != nil {
+		targets.dreamRuntime.Shutdown()
+	}
+	stopSkillsWatcher(targets.skillsCancel, targets.skillsDone)
+	if targets.extensions != nil {
+		appendWrappedError(errs, "daemon: stop extensions", targets.extensions.Stop(ctx))
+	}
+	if targets.automation != nil {
+		appendWrappedError(errs, "daemon: shutdown automation", targets.automation.Shutdown(ctx))
+	}
+	if err := d.stopSessions(ctx, targets.sessions); err != nil {
+		*errs = append(*errs, err)
+	}
+}
+
+func (d *Daemon) shutdownServersAndHooks(ctx context.Context, targets shutdownTargets, errs *[]error) {
+	if targets.httpServer != nil {
+		appendWrappedError(errs, "daemon: shutdown http server", targets.httpServer.Shutdown(ctx))
+	}
+	if targets.udsServer != nil {
+		appendWrappedError(errs, "daemon: shutdown uds server", targets.udsServer.Shutdown(ctx))
+	}
+	if targets.bridges != nil {
+		targets.bridges.Close()
+	}
+	if targets.network != nil {
+		appendWrappedError(errs, "daemon: shutdown network runtime", targets.network.Shutdown(ctx))
+	}
+	if targets.hooks != nil {
+		targets.hooks.Close()
+	}
+}
+
+func (d *Daemon) shutdownPersistentResources(ctx context.Context, targets shutdownTargets, errs *[]error) {
+	if err := RemoveInfo(targets.infoPath); err != nil {
+		*errs = append(*errs, err)
+	}
+	if targets.registry != nil {
+		appendWrappedError(errs, "daemon: close global database", targets.registry.Close(ctx))
+	}
+	if targets.lock != nil {
+		if err := targets.lock.Release(); err != nil {
+			*errs = append(*errs, err)
+		}
+	}
+	if targets.closeLogger != nil {
+		appendWrappedError(errs, "daemon: close logger", targets.closeLogger())
+	}
+}
+
+func appendWrappedError(errs *[]error, prefix string, err error) {
+	if errs == nil || err == nil {
+		return
+	}
+	*errs = append(*errs, fmt.Errorf("%s: %w", prefix, err))
 }
 
 func (d *Daemon) runtimeLogger() *slog.Logger {

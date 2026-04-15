@@ -113,7 +113,7 @@ describe("automation formatter helpers", () => {
     expect(automationStatusTone("enabled")).toBe("success");
     expect(automationStatusTone("scheduled")).toBe("warning");
     expect(automationStatusTone("failed")).toBe("danger");
-    expect(automationStatusTone("cancelled")).toBe("neutral");
+    expect(automationStatusTone("canceled")).toBe("neutral");
     expect(automationStatusTone("disabled")).toBe("neutral");
     expect(automationSemanticTone("running")).toBe("amber");
     expect(automationScopeTone("workspace")).toBe("violet");

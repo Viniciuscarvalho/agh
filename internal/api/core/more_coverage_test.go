@@ -45,7 +45,14 @@ func TestObserveAndSSEHelpers(t *testing.T) {
 	t.Parallel()
 
 	timestamp := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
-	event := store.EventSummary{ID: "ev-1", SessionID: "sess-1", Sequence: 7, Type: "agent_message", AgentName: "coder", Timestamp: timestamp}
+	event := store.EventSummary{
+		ID:        "ev-1",
+		SessionID: "sess-1",
+		Sequence:  7,
+		Type:      "agent_message",
+		AgentName: "coder",
+		Timestamp: timestamp,
+	}
 
 	if !core.ObserveEventAfterCursor(event, core.ObserveCursor{}) {
 		t.Fatal("ObserveEventAfterCursor(empty cursor) = false, want true")
@@ -75,7 +82,10 @@ func TestObserveAndSSEHelpers(t *testing.T) {
 		t.Fatalf("EmitObserveEvents(failing writer) cursor = %#v, want %#v", got, prior)
 	}
 
-	if err := core.WriteSSE(writer, core.SSEMessage{ID: "2", Name: "done", Data: map[string]string{"ok": "true"}}); err != nil {
+	if err := core.WriteSSE(
+		writer,
+		core.SSEMessage{ID: "2", Name: "done", Data: map[string]string{"ok": "true"}},
+	); err != nil {
 		t.Fatalf("WriteSSE() error = %v", err)
 	}
 	if err := core.WriteSSERaw(writer, "3", `"raw"`, "raw"); err != nil {
@@ -124,7 +134,7 @@ func TestConversionAndStatusHelpers(t *testing.T) {
 		t.Fatalf("NewMemoryValidationError(nil) = %v, want nil", got)
 	}
 
-	sessions := core.SessionPayloadsForWorkspace([]*session.SessionInfo{
+	sessions := core.SessionPayloadsForWorkspace([]*session.Info{
 		{ID: "sess-1", WorkspaceID: "ws_alpha"},
 		{ID: "sess-2", WorkspaceID: "ws_beta"},
 	}, "ws_alpha")
@@ -137,8 +147,8 @@ func TestBaseHandlersWorkspaceFilteringAndDefaults(t *testing.T) {
 	t.Parallel()
 
 	manager := testutil.StubSessionManager{
-		ListAllFn: func(context.Context) ([]*session.SessionInfo, error) {
-			return []*session.SessionInfo{
+		ListAllFn: func(context.Context) ([]*session.Info, error) {
+			return []*session.Info{
 				{ID: "sess-1", WorkspaceID: "ws_alpha"},
 				{ID: "sess-2", WorkspaceID: "ws_beta"},
 			}, nil
@@ -179,7 +189,7 @@ func TestBaseHandlersWorkspaceFilteringAndDefaults(t *testing.T) {
 		t.Fatalf("daemon user home dir = %q, want %q", payload.Daemon.UserHomeDir, resolvedUserHomeDir)
 	}
 
-	handlers := core.NewBaseHandlers(core.BaseHandlerConfig{})
+	handlers := core.NewBaseHandlers(&core.BaseHandlerConfig{})
 	if handlers.TransportName != "" {
 		t.Fatalf("TransportName default = %q, want empty", handlers.TransportName)
 	}
@@ -217,14 +227,15 @@ func TestMemoryWrapperExports(t *testing.T) {
 	if err := store.EnsureDirs(); err != nil {
 		t.Fatalf("EnsureDirs() error = %v", err)
 	}
-	if err := store.ForWorkspace(workspace).Write(memory.ScopeWorkspace, "note.md", []byte("---\nname: note\ndescription: desc\ntype: project\n---\n\nbody")); err != nil {
+	if err := store.ForWorkspace(workspace).
+		Write(memory.ScopeWorkspace, "note.md", []byte("---\nname: note\ndescription: desc\ntype: project\n---\n\nbody")); err != nil {
 		t.Fatalf("Write() error = %v", err)
 	}
 	manager := testutil.StubSessionManager{
-		ListAllFn: func(context.Context) ([]*session.SessionInfo, error) {
+		ListAllFn: func(context.Context) ([]*session.Info, error) {
 			info := testutil.NewSessionInfo("sess-a")
 			info.Workspace = workspace
-			return []*session.SessionInfo{info}, nil
+			return []*session.Info{info}, nil
 		},
 	}
 	fixture := newHandlerFixture(t, manager, testutil.StubObserver{}, testutil.StubWorkspaceService{}, store, nil)
@@ -248,10 +259,20 @@ func TestObserveStreamAndParseObserveQuery(t *testing.T) {
 			ts := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 			switch callCount {
 			case 1:
-				return []store.EventSummary{{ID: "sum-1", SessionID: "sess-1", Type: "agent_message", AgentName: "coder", Timestamp: ts}}, nil
+				return []store.EventSummary{
+					{ID: "sum-1", SessionID: "sess-1", Type: "agent_message", AgentName: "coder", Timestamp: ts},
+				}, nil
 			case 2:
 				close(done)
-				return []store.EventSummary{{ID: "sum-2", SessionID: "sess-1", Type: "done", AgentName: "coder", Timestamp: ts.Add(time.Second)}}, nil
+				return []store.EventSummary{
+					{
+						ID:        "sum-2",
+						SessionID: "sess-1",
+						Type:      "done",
+						AgentName: "coder",
+						Timestamp: ts.Add(time.Second),
+					},
+				}, nil
 			default:
 				return nil, nil
 			}
@@ -272,7 +293,14 @@ func TestObserveStreamAndParseObserveQuery(t *testing.T) {
 func TestBaseHandlersGetAgentNotFound(t *testing.T) {
 	t.Parallel()
 
-	fixture := newHandlerFixture(t, testutil.StubSessionManager{}, testutil.StubObserver{}, testutil.StubWorkspaceService{}, nil, nil)
+	fixture := newHandlerFixture(
+		t,
+		testutil.StubSessionManager{},
+		testutil.StubObserver{},
+		testutil.StubWorkspaceService{},
+		nil,
+		nil,
+	)
 	fixture.Handlers.AgentLoader = func(string, aghconfig.HomePaths) (aghconfig.AgentDef, error) {
 		return aghconfig.AgentDef{}, os.ErrNotExist
 	}

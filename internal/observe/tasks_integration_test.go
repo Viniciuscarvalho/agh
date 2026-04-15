@@ -37,8 +37,14 @@ type taskStopCall struct {
 	Reason    taskpkg.StopReason
 }
 
-func (e *observeSessionExecutor) StartTaskSession(_ context.Context, spec taskpkg.StartTaskSession) (*taskpkg.SessionRef, error) {
-	e.startCalls = append(e.startCalls, spec)
+func (e *observeSessionExecutor) StartTaskSession(
+	_ context.Context,
+	spec *taskpkg.StartTaskSession,
+) (*taskpkg.SessionRef, error) {
+	if spec == nil {
+		return nil, taskpkg.ErrValidation
+	}
+	e.startCalls = append(e.startCalls, *spec)
 	if e.nextSessionID == "" {
 		e.nextSessionID = "sess-observe-1"
 	}
@@ -236,13 +242,13 @@ func TestObserveHealthReflectsRecoveryAndForcedStopOutcomes(t *testing.T) {
 	if got, want := health.Tasks.RecoverySinceStart.Failed, 1; got != want {
 		t.Fatalf("health.Tasks.RecoverySinceStart.Failed = %d, want %d", got, want)
 	}
-	if !containsTaskTotal(health.Tasks.TaskTotals, taskpkg.ScopeWorkspace, taskpkg.TaskStatusCancelled, "", 1) {
+	if !containsTaskTotal(health.Tasks.TaskTotals, taskpkg.ScopeWorkspace, taskpkg.TaskStatusCanceled, "", 1) {
 		t.Fatalf("health.Tasks.TaskTotals = %#v, want cancelled task count 1", health.Tasks.TaskTotals)
 	}
 	if !containsTaskTotal(health.Tasks.TaskTotals, taskpkg.ScopeWorkspace, taskpkg.TaskStatusFailed, "", 1) {
 		t.Fatalf("health.Tasks.TaskTotals = %#v, want failed task count 1", health.Tasks.TaskTotals)
 	}
-	if !containsRunTotal(health.Tasks.RunTotals, taskpkg.TaskRunStatusCancelled, taskpkg.OriginKindCLI, "", 1) {
+	if !containsRunTotal(health.Tasks.RunTotals, taskpkg.TaskRunStatusCanceled, taskpkg.OriginKindCLI, "", 1) {
 		t.Fatalf("health.Tasks.RunTotals = %#v, want cancelled/cli run count 1", health.Tasks.RunTotals)
 	}
 	if !containsRunTotal(health.Tasks.RunTotals, taskpkg.TaskRunStatusFailed, taskpkg.OriginKindCLI, "", 1) {
@@ -250,7 +256,7 @@ func TestObserveHealthReflectsRecoveryAndForcedStopOutcomes(t *testing.T) {
 	}
 }
 
-func newObserveTaskManager(t *testing.T, h *harness, executor *observeSessionExecutor, clock *observeTaskClock) *taskpkg.TaskManager {
+func newObserveTaskManager(t *testing.T, h *harness, executor *observeSessionExecutor, clock *observeTaskClock) *taskpkg.Service {
 	t.Helper()
 
 	sequence := 0

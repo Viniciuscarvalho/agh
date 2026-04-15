@@ -1,4 +1,4 @@
-package extension
+package extensionpkg
 
 import (
 	"context"
@@ -512,11 +512,10 @@ func TestHostAPIHandlerBridgesMessagesIngestRejectsInvalidPayloads(t *testing.T)
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := env.callWithContext(t, ctx, "telegram-adapter", "bridges/messages/ingest", tt.params)
+			_, err := env.callWithContext(ctx, t, "telegram-adapter", "bridges/messages/ingest", tt.params)
 			assertRPCErrorCode(t, err, tt.wantCode)
 			assertErrorContains(t, err, tt.wantText)
 			if got := env.driver.promptCount(); got != tt.promptWant {
@@ -540,7 +539,7 @@ func TestHostAPIHandlerBridgesMessagesIngestRejectsDisabledOrUnknownInstances(t 
 	})
 	disabledCtx := env.bridgeContext(t, disabled)
 
-	_, err := env.callWithContext(t, disabledCtx, "telegram-adapter", "bridges/messages/ingest", map[string]any{
+	_, err := env.callWithContext(disabledCtx, t, "telegram-adapter", "bridges/messages/ingest", map[string]any{
 		"bridge_instance_id":  disabled.ID,
 		"scope":               disabled.Scope,
 		"workspace_id":        disabled.WorkspaceID,
@@ -562,7 +561,7 @@ func TestHostAPIHandlerBridgesMessagesIngestRejectsDisabledOrUnknownInstances(t 
 	})
 	readyCtx := env.bridgeContext(t, ready)
 
-	_, err = env.callWithContext(t, readyCtx, "telegram-adapter", "bridges/messages/ingest", map[string]any{
+	_, err = env.callWithContext(readyCtx, t, "telegram-adapter", "bridges/messages/ingest", map[string]any{
 		"bridge_instance_id":  "brg-missing",
 		"scope":               ready.Scope,
 		"workspace_id":        ready.WorkspaceID,
@@ -600,7 +599,7 @@ func TestHostAPIHandlerBridgesMessagesIngestSuppressesDuplicateWebhookRetries(t 
 		"content":             map[string]any{"text": "hello"},
 	}
 
-	first, err := env.callWithContext(t, ctx, "telegram-adapter", "bridges/messages/ingest", params)
+	first, err := env.callWithContext(ctx, t, "telegram-adapter", "bridges/messages/ingest", params)
 	if err != nil {
 		t.Fatalf("first ingest error = %v", err)
 	}
@@ -614,7 +613,7 @@ func TestHostAPIHandlerBridgesMessagesIngestSuppressesDuplicateWebhookRetries(t 
 
 	env.advanceTime(5 * time.Minute)
 
-	second, err := env.callWithContext(t, ctx, "telegram-adapter", "bridges/messages/ingest", params)
+	second, err := env.callWithContext(ctx, t, "telegram-adapter", "bridges/messages/ingest", params)
 	if err != nil {
 		t.Fatalf("duplicate ingest error = %v", err)
 	}
@@ -656,21 +655,21 @@ func TestHostAPIHandlerBridgesInstancesReportStateRejectsInvalidUpdates(t *testi
 	})
 	readyCtx := env.bridgeContext(t, ready)
 
-	_, err := env.callWithContext(t, readyCtx, "telegram-adapter", "bridges/instances/report_state", map[string]any{
+	_, err := env.callWithContext(readyCtx, t, "telegram-adapter", "bridges/instances/report_state", map[string]any{
 		"bridge_instance_id": ready.ID,
 		"status":             "disabled",
 	})
 	assertRPCErrorCode(t, err, HostAPIInvalidParamsCode)
 	assertErrorContains(t, err, "operator-controlled")
 
-	_, err = env.callWithContext(t, readyCtx, "telegram-adapter", "bridges/instances/report_state", map[string]any{
+	_, err = env.callWithContext(readyCtx, t, "telegram-adapter", "bridges/instances/report_state", map[string]any{
 		"bridge_instance_id": ready.ID,
 		"status":             "bogus",
 	})
 	assertRPCErrorCode(t, err, HostAPIInvalidParamsCode)
 	assertErrorContains(t, err, "unsupported bridge status")
 
-	_, err = env.callWithContext(t, readyCtx, "telegram-adapter", "bridges/instances/report_state", map[string]any{
+	_, err = env.callWithContext(readyCtx, t, "telegram-adapter", "bridges/instances/report_state", map[string]any{
 		"status": "ready",
 	})
 	assertRPCErrorCode(t, err, HostAPIInvalidParamsCode)
@@ -689,7 +688,7 @@ func TestHostAPIHandlerBridgesInstancesReportStateRejectsConflictingDegradationC
 	})
 	ctx := env.bridgeContext(t, instance)
 
-	_, err := env.callWithContext(t, ctx, "telegram-adapter", "bridges/instances/report_state", map[string]any{
+	_, err := env.callWithContext(ctx, t, "telegram-adapter", "bridges/instances/report_state", map[string]any{
 		"bridge_instance_id": instance.ID,
 		"status":             "degraded",
 		"clear_degradation":  true,
@@ -705,18 +704,25 @@ func TestHostAPIHandlerBridgesInstancesReportStateClearsDegradationOnRecovery(t 
 	t.Parallel()
 
 	env := newHostAPITestEnv(t)
-	env.grant("telegram-adapter", []string{"bridges/instances/report_state", "bridges/instances/get"}, []string{"bridge.write", "bridge.read"})
+	env.grant(
+		"telegram-adapter",
+		[]string{"bridges/instances/report_state", "bridges/instances/get"},
+		[]string{"bridge.write", "bridge.read"},
+	)
 
 	instance := env.createBridgeInstance(t, bridgepkg.CreateInstanceRequest{
-		ID:            "brg-report-state-recovery",
-		Enabled:       true,
-		Status:        bridgepkg.BridgeStatusAuthRequired,
-		Degradation:   &bridgepkg.BridgeDegradation{Reason: bridgepkg.BridgeDegradationReasonAuthFailed, Message: "expired"},
+		ID:      "brg-report-state-recovery",
+		Enabled: true,
+		Status:  bridgepkg.BridgeStatusAuthRequired,
+		Degradation: &bridgepkg.BridgeDegradation{
+			Reason:  bridgepkg.BridgeDegradationReasonAuthFailed,
+			Message: "expired",
+		},
 		RoutingPolicy: bridgepkg.RoutingPolicy{IncludePeer: true},
 	})
 	ctx := env.bridgeContext(t, instance)
 
-	result, err := env.callWithContext(t, ctx, "telegram-adapter", "bridges/instances/report_state", map[string]any{
+	result, err := env.callWithContext(ctx, t, "telegram-adapter", "bridges/instances/report_state", map[string]any{
 		"bridge_instance_id": instance.ID,
 		"status":             "starting",
 	})
@@ -730,7 +736,7 @@ func TestHostAPIHandlerBridgesInstancesReportStateClearsDegradationOnRecovery(t 
 		t.Fatalf("updated.Degradation = %#v, want nil", updated.Degradation)
 	}
 
-	fetched, err := env.callWithContext(t, ctx, "telegram-adapter", "bridges/instances/get", map[string]any{
+	fetched, err := env.callWithContext(ctx, t, "telegram-adapter", "bridges/instances/get", map[string]any{
 		"bridge_instance_id": instance.ID,
 	})
 	if err != nil {
@@ -757,7 +763,7 @@ func TestHostAPIHandlerBridgesInstancesGetRejectsMismatchedRuntimeOwnership(t *t
 	})
 	ctx := env.bridgeContext(t, other)
 
-	_, err := env.callWithContext(t, ctx, "telegram-adapter", "bridges/instances/get", map[string]any{
+	_, err := env.callWithContext(ctx, t, "telegram-adapter", "bridges/instances/get", map[string]any{
 		"bridge_instance_id": other.ID,
 	})
 	assertRPCErrorCode(t, err, HostAPINotFoundCode)
@@ -817,7 +823,7 @@ func TestHostAPIHandlerBridgesInstancesListReturnsOwnedInstancesForProviderRunti
 
 	ctx := env.bridgeContextForInstances(t, first, second)
 
-	listedResult, err := env.callWithContext(t, ctx, "telegram-adapter", "bridges/instances/list", nil)
+	listedResult, err := env.callWithContext(ctx, t, "telegram-adapter", "bridges/instances/list", nil)
 	if err != nil {
 		t.Fatalf("Handle(bridges/instances/list) error = %v", err)
 	}
@@ -831,7 +837,7 @@ func TestHostAPIHandlerBridgesInstancesListReturnsOwnedInstancesForProviderRunti
 		t.Fatalf("listed ids = %#v, want %#v", got, want)
 	}
 
-	fetchedResult, err := env.callWithContext(t, ctx, "telegram-adapter", "bridges/instances/get", map[string]any{
+	fetchedResult, err := env.callWithContext(ctx, t, "telegram-adapter", "bridges/instances/get", map[string]any{
 		"bridge_instance_id": second.ID,
 	})
 	if err != nil {
@@ -857,7 +863,7 @@ func TestHostAPIHandlerBridgesInstancesListAllowsZeroManagedInstances(t *testing
 		Platform:       "telegram",
 	})
 
-	result, err := env.callWithContext(t, ctx, "telegram-adapter", "bridges/instances/list", nil)
+	result, err := env.callWithContext(ctx, t, "telegram-adapter", "bridges/instances/list", nil)
 	if err != nil {
 		t.Fatalf("Handle(bridges/instances/list zero) error = %v", err)
 	}
@@ -890,11 +896,8 @@ func TestHostAPIHandlerBridgesMessagesIngestConcurrentSameRoutingKeyCreatesOneSe
 	results := make([]ingestResult, 2)
 	var wg sync.WaitGroup
 	for idx := range results {
-		idx := idx
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			res, err := env.callWithContext(t, ctx, "telegram-adapter", "bridges/messages/ingest", map[string]any{
+		wg.Go(func() {
+			res, err := env.callWithContext(ctx, t, "telegram-adapter", "bridges/messages/ingest", map[string]any{
 				"bridge_instance_id":  instance.ID,
 				"scope":               instance.Scope,
 				"workspace_id":        instance.WorkspaceID,
@@ -909,7 +912,7 @@ func TestHostAPIHandlerBridgesMessagesIngestConcurrentSameRoutingKeyCreatesOneSe
 				return
 			}
 			decodeResult(t, res, &results[idx].result)
-		}()
+		})
 	}
 	wg.Wait()
 
@@ -974,7 +977,7 @@ func TestHostAPIHandlerBridgesMessagesIngestRebindsStaleRouteToReplacementSessio
 		t.Fatalf("bridges.UpsertRoute() error = %v", err)
 	}
 
-	result, err := env.callWithContext(t, ctx, "telegram-adapter", "bridges/messages/ingest", map[string]any{
+	result, err := env.callWithContext(ctx, t, "telegram-adapter", "bridges/messages/ingest", map[string]any{
 		"bridge_instance_id":  instance.ID,
 		"scope":               instance.Scope,
 		"workspace_id":        instance.WorkspaceID,
@@ -1028,7 +1031,7 @@ func TestHostAPIHandlerBridgesMessagesIngestExpiredDedupAllowsReingest(t *testin
 		"content":             map[string]any{"text": "hello"},
 	}
 
-	if _, err := env.callWithContext(t, ctx, "telegram-adapter", "bridges/messages/ingest", params); err != nil {
+	if _, err := env.callWithContext(ctx, t, "telegram-adapter", "bridges/messages/ingest", params); err != nil {
 		t.Fatalf("first ingest error = %v", err)
 	}
 	if got := env.driver.promptCount(); got != 1 {
@@ -1036,11 +1039,18 @@ func TestHostAPIHandlerBridgesMessagesIngestExpiredDedupAllowsReingest(t *testin
 	}
 
 	env.advanceTime(20 * time.Minute)
-	if _, err := env.registry.GetBridgeIngestDedup(testutil.Context(t), "idem-expiry", env.currentTime()); !errors.Is(err, bridgepkg.ErrIngestDedupRecordNotFound) {
+	if _, err := env.registry.GetBridgeIngestDedup(
+		testutil.Context(t),
+		"idem-expiry",
+		env.currentTime(),
+	); !errors.Is(
+		err,
+		bridgepkg.ErrIngestDedupRecordNotFound,
+	) {
 		t.Fatalf("GetBridgeIngestDedup(expired) error = %v, want ErrIngestDedupRecordNotFound", err)
 	}
 
-	if _, err := env.callWithContext(t, ctx, "telegram-adapter", "bridges/messages/ingest", params); err != nil {
+	if _, err := env.callWithContext(ctx, t, "telegram-adapter", "bridges/messages/ingest", params); err != nil {
 		t.Fatalf("second ingest after expiry error = %v", err)
 	}
 	if got := env.driver.promptCount(); got != 2 {
@@ -1090,7 +1100,7 @@ func TestHostAPIHandlerBridgesMessagesIngestRegistersPromptDelivery(t *testing.T
 		"content":             map[string]any{"text": "hello"},
 	}
 
-	if _, err := env.callWithContext(t, ctx, "telegram-adapter", "bridges/messages/ingest", params); err != nil {
+	if _, err := env.callWithContext(ctx, t, "telegram-adapter", "bridges/messages/ingest", params); err != nil {
 		t.Fatalf("Handle(bridges/messages/ingest) error = %v", err)
 	}
 
@@ -1195,15 +1205,21 @@ func TestHostAPIHandlerRegisterPromptDeliveryReplaysStoredPromptEvents(t *testin
 		t.Fatalf("BuildRoutingKey() error = %v", err)
 	}
 
-	if err := env.handler.registerPromptDelivery(testutil.Context(t), *instance, routingKey, sess.ID, hostAPIPromptSubmission{
-		TurnID: prompt.TurnID,
-		SeedEvents: []bridgepkg.DeliveryProjectionEvent{{
-			Type:      acp.EventTypeUserMessage,
-			TurnID:    prompt.TurnID,
-			Timestamp: env.currentTime(),
-			Text:      "replay me",
-		}},
-	}); err != nil {
+	if err := env.handler.registerPromptDelivery(
+		testutil.Context(t),
+		*instance,
+		routingKey,
+		sess.ID,
+		hostAPIPromptSubmission{
+			TurnID: prompt.TurnID,
+			SeedEvents: []bridgepkg.DeliveryProjectionEvent{{
+				Type:      acp.EventTypeUserMessage,
+				TurnID:    prompt.TurnID,
+				Timestamp: env.currentTime(),
+				Text:      "replay me",
+			}},
+		},
+	); err != nil {
 		t.Fatalf("registerPromptDelivery() error = %v", err)
 	}
 
@@ -1250,7 +1266,11 @@ func TestBridgeHostAPIHelpersMapErrorsAndFormatInboundMetadata(t *testing.T) {
 
 	assertRPCErrorCode(t, mapBridgeLookupError("brg-1", bridgepkg.ErrBridgeInstanceNotFound), HostAPINotFoundCode)
 	assertRPCErrorCode(t, mapBridgeRouteError("brg-1", bridgepkg.ErrBridgeInstanceUnavailable), HostAPIUnavailableCode)
-	assertRPCErrorCode(t, mapBridgeStateUpdateError("brg-1", bridgepkg.ErrInvalidBridgeStateTransition), HostAPIInvalidParamsCode)
+	assertRPCErrorCode(
+		t,
+		mapBridgeStateUpdateError("brg-1", bridgepkg.ErrInvalidBridgeStateTransition),
+		HostAPIInvalidParamsCode,
+	)
 
 	env := newHostAPITestEnv(t)
 	if err := env.handler.stopBridgeSession(testutil.Context(t), "missing-session"); err != nil {
@@ -1375,7 +1395,10 @@ func TestHostAPIHandlerCapabilityErrorsCarryMethodAndRequiredCapabilities(t *tes
 		}},
 		{method: "bridges/instances/list", params: nil},
 		{method: "bridges/instances/get", params: map[string]any{"bridge_instance_id": "brg-1"}},
-		{method: "bridges/instances/report_state", params: map[string]any{"bridge_instance_id": "brg-1", "status": "ready"}},
+		{
+			method: "bridges/instances/report_state",
+			params: map[string]any{"bridge_instance_id": "brg-1", "status": "ready"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -1723,7 +1746,12 @@ func TestHostAPIHandlerAutomationTriggerCRUDAndConfigGuardrails(t *testing.T) {
 	_, err = env.call(t, "ext-automation", "automation/triggers/delete", map[string]any{"id": configTrigger.ID})
 	assertRPCErrorCode(t, err, HostAPIInvalidParamsCode)
 
-	if _, err := env.call(t, "ext-automation", "automation/triggers/delete", map[string]any{"id": created.ID}); err != nil {
+	if _, err := env.call(
+		t,
+		"ext-automation",
+		"automation/triggers/delete",
+		map[string]any{"id": created.ID},
+	); err != nil {
 		t.Fatalf("Handle(automation/triggers/delete) error = %v", err)
 	}
 }
@@ -1914,7 +1942,6 @@ func TestHostAPIHandlerTaskOperationsRequireCapabilities(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -2220,12 +2247,12 @@ func TestHostAPIHandlerTasksUpdateAndCancelMutateTask(t *testing.T) {
 		t.Fatalf("Handle(tasks/cancel) error = %v", err)
 	}
 
-	var cancelled apicontract.TaskPayload
-	decodeResult(t, cancelResult, &cancelled)
-	if got, want := cancelled.Status, taskpkg.TaskStatusCancelled; got != want {
+	var canceled apicontract.TaskPayload
+	decodeResult(t, cancelResult, &canceled)
+	if got, want := canceled.Status, taskpkg.TaskStatusCanceled; got != want {
 		t.Fatalf("tasks/cancel status = %q, want %q", got, want)
 	}
-	if cancelled.ClosedAt.IsZero() {
+	if canceled.ClosedAt.IsZero() {
 		t.Fatal("tasks/cancel closed_at = zero, want terminal timestamp")
 	}
 
@@ -2233,7 +2260,7 @@ func TestHostAPIHandlerTasksUpdateAndCancelMutateTask(t *testing.T) {
 	if err != nil {
 		t.Fatalf("registry.GetTask(%q) error = %v", created.ID, err)
 	}
-	if got, want := stored.Status, taskpkg.TaskStatusCancelled; got != want {
+	if got, want := stored.Status, taskpkg.TaskStatusCanceled; got != want {
 		t.Fatalf("stored.Status = %q, want %q", got, want)
 	}
 	if stored.Owner != nil {
@@ -2393,7 +2420,7 @@ func TestHostAPIHandlerTaskRunLifecycleOperationsAndFiltering(t *testing.T) {
 		t.Fatalf("tasks/runs/fail error = %q, want %q", got, want)
 	}
 
-	cancelledTask := createTask("Cancelled run task")
+	cancelledTask := createTask("Canceled run task")
 	cancelledQueued := enqueueRun(cancelledTask.ID, "enqueue-cancel")
 	_ = claimRun(cancelledQueued.ID, "claim-cancel")
 	cancelRunResult, err := env.call(t, "ext-runs", "tasks/runs/cancel", map[string]any{
@@ -2407,9 +2434,9 @@ func TestHostAPIHandlerTaskRunLifecycleOperationsAndFiltering(t *testing.T) {
 		t.Fatalf("Handle(tasks/runs/cancel) error = %v", err)
 	}
 
-	var cancelled apicontract.TaskRunPayload
-	decodeResult(t, cancelRunResult, &cancelled)
-	if got, want := cancelled.Status, taskpkg.TaskRunStatusCancelled; got != want {
+	var canceled apicontract.TaskRunPayload
+	decodeResult(t, cancelRunResult, &canceled)
+	if got, want := canceled.Status, taskpkg.TaskRunStatusCanceled; got != want {
 		t.Fatalf("tasks/runs/cancel status = %q, want %q", got, want)
 	}
 
@@ -2470,7 +2497,6 @@ func TestHostAPIHandlerTaskMethodsValidateInputsAndConfiguration(t *testing.T) {
 		}
 
 		for _, tt := range tests {
-			tt := tt
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 
@@ -2560,7 +2586,6 @@ func TestHostAPIHandlerTaskMethodsValidateInputsAndConfiguration(t *testing.T) {
 		}
 
 		for _, tt := range tests {
-			tt := tt
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 
@@ -2600,19 +2625,63 @@ func TestHostAPIHandlerTaskMethodsRequireIdentifiers(t *testing.T) {
 		wantText string
 	}{
 		{name: "ShouldRequireTaskIDForGet", method: "tasks/get", params: map[string]any{}, wantText: "id is required"},
-		{name: "ShouldRequireTaskIDForUpdate", method: "tasks/update", params: map[string]any{"title": "rename"}, wantText: "id is required"},
-		{name: "ShouldRequireTaskIDForCancel", method: "tasks/cancel", params: map[string]any{"reason": "stop"}, wantText: "id is required"},
-		{name: "ShouldRequireTaskIDForRunsList", method: "tasks/runs", params: map[string]any{}, wantText: "id is required"},
-		{name: "ShouldRequireTaskIDForRunEnqueue", method: "tasks/runs/enqueue", params: map[string]any{"idempotency_key": "idem"}, wantText: "task_id is required"},
-		{name: "ShouldRequireTaskIDForRunClaim", method: "tasks/runs/claim", params: map[string]any{"idempotency_key": "idem"}, wantText: "id is required"},
-		{name: "ShouldRequireTaskIDForRunStart", method: "tasks/runs/start", params: map[string]any{"idempotency_key": "idem"}, wantText: "id is required"},
-		{name: "ShouldRequireTaskIDForRunComplete", method: "tasks/runs/complete", params: map[string]any{"result": map[string]any{"ok": true}}, wantText: "id is required"},
-		{name: "ShouldRequireTaskIDForRunFail", method: "tasks/runs/fail", params: map[string]any{"error": "boom"}, wantText: "id is required"},
-		{name: "ShouldRequireTaskIDForRunCancel", method: "tasks/runs/cancel", params: map[string]any{"reason": "cancel"}, wantText: "id is required"},
+		{
+			name:     "ShouldRequireTaskIDForUpdate",
+			method:   "tasks/update",
+			params:   map[string]any{"title": "rename"},
+			wantText: "id is required",
+		},
+		{
+			name:     "ShouldRequireTaskIDForCancel",
+			method:   "tasks/cancel",
+			params:   map[string]any{"reason": "stop"},
+			wantText: "id is required",
+		},
+		{
+			name:     "ShouldRequireTaskIDForRunsList",
+			method:   "tasks/runs",
+			params:   map[string]any{},
+			wantText: "id is required",
+		},
+		{
+			name:     "ShouldRequireTaskIDForRunEnqueue",
+			method:   "tasks/runs/enqueue",
+			params:   map[string]any{"idempotency_key": "idem"},
+			wantText: "task_id is required",
+		},
+		{
+			name:     "ShouldRequireTaskIDForRunClaim",
+			method:   "tasks/runs/claim",
+			params:   map[string]any{"idempotency_key": "idem"},
+			wantText: "id is required",
+		},
+		{
+			name:     "ShouldRequireTaskIDForRunStart",
+			method:   "tasks/runs/start",
+			params:   map[string]any{"idempotency_key": "idem"},
+			wantText: "id is required",
+		},
+		{
+			name:     "ShouldRequireTaskIDForRunComplete",
+			method:   "tasks/runs/complete",
+			params:   map[string]any{"result": map[string]any{"ok": true}},
+			wantText: "id is required",
+		},
+		{
+			name:     "ShouldRequireTaskIDForRunFail",
+			method:   "tasks/runs/fail",
+			params:   map[string]any{"error": "boom"},
+			wantText: "id is required",
+		},
+		{
+			name:     "ShouldRequireTaskIDForRunCancel",
+			method:   "tasks/runs/cancel",
+			params:   map[string]any{"reason": "cancel"},
+			wantText: "id is required",
+		},
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -2650,20 +2719,69 @@ func TestHostAPIHandlerTaskMethodsReturnNotFoundForMissingRecords(t *testing.T) 
 		params   map[string]any
 		wantText string
 	}{
-		{name: "ShouldReturnTaskNotFoundForGet", method: "tasks/get", params: map[string]any{"id": "task-missing"}, wantText: "task not found"},
-		{name: "ShouldReturnTaskNotFoundForUpdate", method: "tasks/update", params: map[string]any{"id": "task-missing", "title": "rename"}, wantText: "task not found"},
-		{name: "ShouldReturnTaskNotFoundForCancel", method: "tasks/cancel", params: map[string]any{"id": "task-missing"}, wantText: "task not found"},
-		{name: "ShouldReturnTaskNotFoundForListRuns", method: "tasks/runs", params: map[string]any{"id": "task-missing"}, wantText: "task not found"},
-		{name: "ShouldReturnRunNotFoundForClaim", method: "tasks/runs/claim", params: map[string]any{"id": "run-missing", "idempotency_key": "idem"}, wantText: "task run not found"},
-		{name: "ShouldReturnRunNotFoundForStart", method: "tasks/runs/start", params: map[string]any{"id": "run-missing", "idempotency_key": "idem"}, wantText: "task run not found"},
-		{name: "ShouldReturnRunNotFoundForAttach", method: "tasks/runs/attach_session", params: map[string]any{"id": "run-missing", "session_id": "sess-missing"}, wantText: "task run not found"},
-		{name: "ShouldReturnRunNotFoundForComplete", method: "tasks/runs/complete", params: map[string]any{"id": "run-missing", "result": map[string]any{"ok": true}}, wantText: "task run not found"},
-		{name: "ShouldReturnRunNotFoundForFail", method: "tasks/runs/fail", params: map[string]any{"id": "run-missing", "error": "boom"}, wantText: "task run not found"},
-		{name: "ShouldReturnRunNotFoundForCancel", method: "tasks/runs/cancel", params: map[string]any{"id": "run-missing"}, wantText: "task run not found"},
+		{
+			name:     "ShouldReturnTaskNotFoundForGet",
+			method:   "tasks/get",
+			params:   map[string]any{"id": "task-missing"},
+			wantText: "task not found",
+		},
+		{
+			name:     "ShouldReturnTaskNotFoundForUpdate",
+			method:   "tasks/update",
+			params:   map[string]any{"id": "task-missing", "title": "rename"},
+			wantText: "task not found",
+		},
+		{
+			name:     "ShouldReturnTaskNotFoundForCancel",
+			method:   "tasks/cancel",
+			params:   map[string]any{"id": "task-missing"},
+			wantText: "task not found",
+		},
+		{
+			name:     "ShouldReturnTaskNotFoundForListRuns",
+			method:   "tasks/runs",
+			params:   map[string]any{"id": "task-missing"},
+			wantText: "task not found",
+		},
+		{
+			name:     "ShouldReturnRunNotFoundForClaim",
+			method:   "tasks/runs/claim",
+			params:   map[string]any{"id": "run-missing", "idempotency_key": "idem"},
+			wantText: "task run not found",
+		},
+		{
+			name:     "ShouldReturnRunNotFoundForStart",
+			method:   "tasks/runs/start",
+			params:   map[string]any{"id": "run-missing", "idempotency_key": "idem"},
+			wantText: "task run not found",
+		},
+		{
+			name:     "ShouldReturnRunNotFoundForAttach",
+			method:   "tasks/runs/attach_session",
+			params:   map[string]any{"id": "run-missing", "session_id": "sess-missing"},
+			wantText: "task run not found",
+		},
+		{
+			name:     "ShouldReturnRunNotFoundForComplete",
+			method:   "tasks/runs/complete",
+			params:   map[string]any{"id": "run-missing", "result": map[string]any{"ok": true}},
+			wantText: "task run not found",
+		},
+		{
+			name:     "ShouldReturnRunNotFoundForFail",
+			method:   "tasks/runs/fail",
+			params:   map[string]any{"id": "run-missing", "error": "boom"},
+			wantText: "task run not found",
+		},
+		{
+			name:     "ShouldReturnRunNotFoundForCancel",
+			method:   "tasks/runs/cancel",
+			params:   map[string]any{"id": "run-missing"},
+			wantText: "task run not found",
+		},
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -2688,21 +2806,68 @@ func TestMapTaskRPCErrorTranslatesKnownErrors(t *testing.T) {
 		wantSame bool
 	}{
 		{name: "ShouldReturnNilForNilError", err: nil, wantNil: true},
-		{name: "ShouldMapWorkspaceNotFound", resource: "workspace", id: "ws-1", err: workspacepkg.ErrWorkspaceNotFound, wantCode: HostAPINotFoundCode, wantText: "workspace not found"},
-		{name: "ShouldMapTaskNotFound", resource: "task", id: "task-1", err: taskpkg.ErrTaskNotFound, wantCode: HostAPINotFoundCode, wantText: "task not found"},
-		{name: "ShouldMapRunNotFound", resource: "task_run", id: "run-1", err: taskpkg.ErrTaskRunNotFound, wantCode: HostAPINotFoundCode, wantText: "task run not found"},
-		{name: "ShouldMapDependencyNotFound", resource: "task_dependency", id: "dep-1", err: taskpkg.ErrTaskDependencyNotFound, wantCode: HostAPINotFoundCode, wantText: "task dependency not found"},
-		{name: "ShouldMapPermissionDenied", resource: "task", id: "task-1", err: taskpkg.ErrPermissionDenied, wantCode: HostAPIInvalidParamsCode, wantText: "permission denied"},
-		{name: "ShouldMapStaleNetworkChannel", resource: "task_run", id: "run-1", err: taskpkg.ErrStaleNetworkChannel, wantCode: HostAPIInvalidParamsCode, wantText: "stale network channel"},
-		{name: "ShouldPassThroughUnknownErrors", resource: "task", id: "task-1", err: errors.New("boom"), wantSame: true},
+		{
+			name:     "ShouldMapWorkspaceNotFound",
+			resource: "workspace",
+			id:       "ws-1",
+			err:      workspacepkg.ErrWorkspaceNotFound,
+			wantCode: HostAPINotFoundCode,
+			wantText: "workspace not found",
+		},
+		{
+			name:     "ShouldMapTaskNotFound",
+			resource: "task",
+			id:       "task-1",
+			err:      taskpkg.ErrTaskNotFound,
+			wantCode: HostAPINotFoundCode,
+			wantText: "task not found",
+		},
+		{
+			name:     "ShouldMapRunNotFound",
+			resource: "task_run",
+			id:       "run-1",
+			err:      taskpkg.ErrTaskRunNotFound,
+			wantCode: HostAPINotFoundCode,
+			wantText: "task run not found",
+		},
+		{
+			name:     "ShouldMapDependencyNotFound",
+			resource: "task_dependency",
+			id:       "dep-1",
+			err:      taskpkg.ErrTaskDependencyNotFound,
+			wantCode: HostAPINotFoundCode,
+			wantText: "task dependency not found",
+		},
+		{
+			name:     "ShouldMapPermissionDenied",
+			resource: "task",
+			id:       "task-1",
+			err:      taskpkg.ErrPermissionDenied,
+			wantCode: HostAPIInvalidParamsCode,
+			wantText: "permission denied",
+		},
+		{
+			name:     "ShouldMapStaleNetworkChannel",
+			resource: "task_run",
+			id:       "run-1",
+			err:      taskpkg.ErrStaleNetworkChannel,
+			wantCode: HostAPIInvalidParamsCode,
+			wantText: "stale network channel",
+		},
+		{
+			name:     "ShouldPassThroughUnknownErrors",
+			resource: "task",
+			id:       "task-1",
+			err:      errors.New("boom"),
+			wantSame: true,
+		},
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			mapped := mapTaskRPCError(tt.resource, tt.id, tt.err)
+			mapped := mapTaskRPCError(tt.id, tt.err)
 			if tt.wantNil {
 				if mapped != nil {
 					t.Fatalf("mapTaskRPCError() = %v, want nil", mapped)
@@ -2760,11 +2925,11 @@ func TestHostAPITaskHelpersHandleZeroAndUnavailableCases(t *testing.T) {
 		t.Fatalf("taskDetailPayloadFromView(nil).Task.ID = %q, want empty", zeroDetail.Task.ID)
 	}
 
-	filtered := filterTaskRuns([]taskpkg.TaskRun{
+	filtered := filterTaskRuns([]taskpkg.Run{
 		{ID: "run-1", Status: taskpkg.TaskRunStatusRunning, SessionID: "sess-1"},
 		{ID: "run-2", Status: taskpkg.TaskRunStatusCompleted, SessionID: "sess-2"},
 		{ID: "run-3", Status: taskpkg.TaskRunStatusCompleted, SessionID: "sess-1"},
-	}, taskpkg.TaskRunQuery{
+	}, taskpkg.RunQuery{
 		Status:    taskpkg.TaskRunStatusCompleted,
 		SessionID: "sess-1",
 		Limit:     1,
@@ -2897,9 +3062,15 @@ func mustExtensionTaskActorContext(t testing.TB, extensionName string) taskpkg.A
 	return actor
 }
 
-func (e *hostAPITestTaskSessionExecutor) StartTaskSession(ctx context.Context, spec taskpkg.StartTaskSession) (*taskpkg.SessionRef, error) {
+func (e *hostAPITestTaskSessionExecutor) StartTaskSession(
+	ctx context.Context,
+	spec *taskpkg.StartTaskSession,
+) (*taskpkg.SessionRef, error) {
 	if ctx == nil {
 		return nil, errors.New("extension: host api test task start context is required")
+	}
+	if spec == nil {
+		return nil, fmt.Errorf("%w: start task session spec is required", taskpkg.ErrValidation)
 	}
 
 	opts := session.CreateOpts{
@@ -2932,7 +3103,11 @@ func (e *hostAPITestTaskSessionExecutor) StartTaskSession(ctx context.Context, s
 	}, nil
 }
 
-func (e *hostAPITestTaskSessionExecutor) AttachTaskSession(ctx context.Context, _ string, sessionID string) (*taskpkg.SessionRef, error) {
+func (e *hostAPITestTaskSessionExecutor) AttachTaskSession(
+	ctx context.Context,
+	_ string,
+	sessionID string,
+) (*taskpkg.SessionRef, error) {
 	if ctx == nil {
 		return nil, errors.New("extension: host api test task attach context is required")
 	}
@@ -2942,7 +3117,11 @@ func (e *hostAPITestTaskSessionExecutor) AttachTaskSession(ctx context.Context, 
 		return nil, fmt.Errorf("attach task session: read session status: %w", err)
 	}
 	if info == nil || info.State != session.StateActive {
-		return nil, fmt.Errorf("%w: session %q is not active", taskpkg.ErrSessionAttachNotAllowed, strings.TrimSpace(sessionID))
+		return nil, fmt.Errorf(
+			"%w: session %q is not active",
+			taskpkg.ErrSessionAttachNotAllowed,
+			strings.TrimSpace(sessionID),
+		)
 	}
 	return &taskpkg.SessionRef{
 		SessionID:   info.ID,
@@ -2951,21 +3130,39 @@ func (e *hostAPITestTaskSessionExecutor) AttachTaskSession(ctx context.Context, 
 	}, nil
 }
 
-func (e *hostAPITestTaskSessionExecutor) RequestTaskStop(ctx context.Context, sessionID string, _ taskpkg.StopReason) error {
+func (e *hostAPITestTaskSessionExecutor) RequestTaskStop(
+	ctx context.Context,
+	sessionID string,
+	_ taskpkg.StopReason,
+) error {
 	if ctx == nil {
 		return errors.New("extension: host api test task request stop context is required")
 	}
-	if err := e.sessions.RequestStopWithCause(ctx, strings.TrimSpace(sessionID), session.CauseUserRequested, "task cancellation"); err != nil {
+	if err := e.sessions.RequestStopWithCause(
+		ctx,
+		strings.TrimSpace(sessionID),
+		session.CauseUserRequested,
+		"task cancellation",
+	); err != nil {
 		return fmt.Errorf("request task stop: %w", err)
 	}
 	return nil
 }
 
-func (e *hostAPITestTaskSessionExecutor) ForceTaskStop(ctx context.Context, sessionID string, _ taskpkg.StopReason) error {
+func (e *hostAPITestTaskSessionExecutor) ForceTaskStop(
+	ctx context.Context,
+	sessionID string,
+	_ taskpkg.StopReason,
+) error {
 	if ctx == nil {
 		return errors.New("extension: host api test task force stop context is required")
 	}
-	if err := e.sessions.StopWithCause(ctx, strings.TrimSpace(sessionID), session.CauseUserRequested, "task cancellation"); err != nil {
+	if err := e.sessions.StopWithCause(
+		ctx,
+		strings.TrimSpace(sessionID),
+		session.CauseUserRequested,
+		"task cancellation",
+	); err != nil {
 		return fmt.Errorf("force task stop: %w", err)
 	}
 	return nil
@@ -3032,7 +3229,7 @@ Review the workspace changes carefully.
 		ResolvedAt: baseNow,
 	}
 
-	workspaces := newHostAPIFakeWorkspaceResolver(resolvedWorkspace)
+	workspaces := newHostAPIFakeWorkspaceResolver(&resolvedWorkspace)
 	driver := newHostAPIFakeDriver(baseNow)
 	source := &hostAPISessionSource{}
 	registry, err := globaldb.OpenGlobalDB(testutil.Context(t), homePaths.DatabaseFile)
@@ -3067,9 +3264,7 @@ Review the workspace changes carefully.
 		session.WithDriver(driver),
 		session.WithNotifier(observer),
 		session.WithWorkspaceResolver(workspaces),
-		session.WithStore(func(ctx context.Context, sessionID string, path string) (session.EventRecorder, error) {
-			return storeSessionDB(ctx, sessionID, path)
-		}),
+		session.WithStore(storeSessionDB),
 		session.WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
 		session.WithNow(func() time.Time { return env.currentTime() }),
 		session.WithSessionIDGenerator(sequentialSessionIDGenerator("sess")),
@@ -3085,7 +3280,10 @@ Review the workspace changes carefully.
 		t.Fatalf("memory.EnsureDirs() error = %v", err)
 	}
 
-	skillsRegistry := skillspkg.NewRegistry(skillspkg.RegistryConfig{}, skillspkg.WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))))
+	skillsRegistry := skillspkg.NewRegistry(
+		skillspkg.RegistryConfig{},
+		skillspkg.WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
+	)
 	checker := &CapabilityChecker{}
 	automationOpts := []automationpkg.Option{
 		automationpkg.WithStore(registry),
@@ -3190,7 +3388,13 @@ func (e *hostAPITestEnv) call(t testing.TB, extName string, method string, param
 	return e.handler.Handle(testutil.Context(t), extName, method, eRaw)
 }
 
-func (e *hostAPITestEnv) callWithContext(t testing.TB, ctx context.Context, extName string, method string, params any) (any, error) {
+func (e *hostAPITestEnv) callWithContext(
+	ctx context.Context,
+	t testing.TB,
+	extName string,
+	method string,
+	params any,
+) (any, error) {
 	t.Helper()
 
 	eRaw, err := marshalParams(params)
@@ -3206,7 +3410,10 @@ func (e *hostAPITestEnv) bridgeContext(t testing.TB, instance *bridgepkg.BridgeI
 	return e.bridgeContextForInstances(t, instance)
 }
 
-func (e *hostAPITestEnv) bridgeContextForInstances(t testing.TB, instances ...*bridgepkg.BridgeInstance) context.Context {
+func (e *hostAPITestEnv) bridgeContextForInstances(
+	t testing.TB,
+	instances ...*bridgepkg.BridgeInstance,
+) context.Context {
 	t.Helper()
 
 	if len(instances) == 0 {
@@ -3231,7 +3438,12 @@ func (e *hostAPITestEnv) bridgeContextForInstances(t testing.TB, instances ...*b
 	})
 }
 
-func (e *hostAPITestEnv) submitPrompt(t testing.TB, extName string, sessionID string, message string) (hostAPISessionPromptResult, error) {
+func (e *hostAPITestEnv) submitPrompt(
+	t testing.TB,
+	extName string,
+	sessionID string,
+	message string,
+) (hostAPISessionPromptResult, error) {
 	t.Helper()
 
 	result, err := e.call(t, extName, "sessions/prompt", map[string]string{
@@ -3263,7 +3475,10 @@ func (e *hostAPITestEnv) createSession(t *testing.T) *session.Session {
 	return sess
 }
 
-func (e *hostAPITestEnv) createBridgeInstance(t *testing.T, req bridgepkg.CreateInstanceRequest) *bridgepkg.BridgeInstance {
+func (e *hostAPITestEnv) createBridgeInstance(
+	t *testing.T,
+	req bridgepkg.CreateInstanceRequest,
+) *bridgepkg.BridgeInstance {
 	t.Helper()
 
 	if req.Scope == "" {
@@ -3302,9 +3517,7 @@ func (e *hostAPITestEnv) useSessionsWithoutObserver(t *testing.T) {
 		session.WithHomePaths(e.homePaths),
 		session.WithDriver(e.driver),
 		session.WithWorkspaceResolver(e.workspaces),
-		session.WithStore(func(ctx context.Context, sessionID string, path string) (session.EventRecorder, error) {
-			return storeSessionDB(ctx, sessionID, path)
-		}),
+		session.WithStore(storeSessionDB),
 		session.WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
 		session.WithNow(func() time.Time { return e.currentTime() }),
 		session.WithSessionIDGenerator(sequentialSessionIDGenerator("sess")),
@@ -3348,7 +3561,7 @@ type hostAPISessionSource struct {
 	manager *session.Manager
 }
 
-func (s *hostAPISessionSource) List() []*session.SessionInfo {
+func (s *hostAPISessionSource) List() []*session.Info {
 	if s == nil || s.manager == nil {
 		return nil
 	}
@@ -3426,7 +3639,7 @@ func (b *recordingPromptDeliveryBroker) snapshotProjectedEvents() []bridgepkg.De
 	return out
 }
 
-func newHostAPIFakeWorkspaceResolver(workspace workspacepkg.ResolvedWorkspace) *hostAPIFakeWorkspaceResolver {
+func newHostAPIFakeWorkspaceResolver(workspace *workspacepkg.ResolvedWorkspace) *hostAPIFakeWorkspaceResolver {
 	resolver := &hostAPIFakeWorkspaceResolver{
 		resolved: make(map[string]workspacepkg.ResolvedWorkspace),
 	}
@@ -3434,7 +3647,10 @@ func newHostAPIFakeWorkspaceResolver(workspace workspacepkg.ResolvedWorkspace) *
 	return resolver
 }
 
-func (r *hostAPIFakeWorkspaceResolver) Resolve(ctx context.Context, idOrPath string) (workspacepkg.ResolvedWorkspace, error) {
+func (r *hostAPIFakeWorkspaceResolver) Resolve(
+	ctx context.Context,
+	idOrPath string,
+) (workspacepkg.ResolvedWorkspace, error) {
 	if err := ctx.Err(); err != nil {
 		return workspacepkg.ResolvedWorkspace{}, err
 	}
@@ -3442,19 +3658,25 @@ func (r *hostAPIFakeWorkspaceResolver) Resolve(ctx context.Context, idOrPath str
 	defer r.mu.Unlock()
 
 	if resolved, ok := r.resolved[strings.TrimSpace(idOrPath)]; ok {
-		return cloneResolvedWorkspaceForHostAPITests(resolved), nil
+		return cloneResolvedWorkspaceForHostAPITests(&resolved), nil
 	}
 	if resolved, ok := r.resolved[normalizeHostAPIPath(idOrPath)]; ok {
-		return cloneResolvedWorkspaceForHostAPITests(resolved), nil
+		return cloneResolvedWorkspaceForHostAPITests(&resolved), nil
 	}
 	return workspacepkg.ResolvedWorkspace{}, workspacepkg.ErrWorkspaceNotFound
 }
 
-func (r *hostAPIFakeWorkspaceResolver) ResolveOrRegister(ctx context.Context, path string) (workspacepkg.ResolvedWorkspace, error) {
+func (r *hostAPIFakeWorkspaceResolver) ResolveOrRegister(
+	ctx context.Context,
+	path string,
+) (workspacepkg.ResolvedWorkspace, error) {
 	return r.Resolve(ctx, path)
 }
 
-func (r *hostAPIFakeWorkspaceResolver) upsert(workspace workspacepkg.ResolvedWorkspace) {
+func (r *hostAPIFakeWorkspaceResolver) upsert(workspace *workspacepkg.ResolvedWorkspace) {
+	if workspace == nil {
+		return
+	}
 	cloned := cloneResolvedWorkspaceForHostAPITests(workspace)
 	r.resolved[cloned.ID] = cloned
 	if name := strings.TrimSpace(cloned.Name); name != "" {
@@ -3465,8 +3687,12 @@ func (r *hostAPIFakeWorkspaceResolver) upsert(workspace workspacepkg.ResolvedWor
 	}
 }
 
-func cloneResolvedWorkspaceForHostAPITests(src workspacepkg.ResolvedWorkspace) workspacepkg.ResolvedWorkspace {
-	dst := src
+func cloneResolvedWorkspaceForHostAPITests(src *workspacepkg.ResolvedWorkspace) workspacepkg.ResolvedWorkspace {
+	if src == nil {
+		return workspacepkg.ResolvedWorkspace{}
+	}
+
+	dst := *src
 	dst.AdditionalDirs = append([]string(nil), src.AdditionalDirs...)
 	dst.Agents = append([]aghconfig.AgentDef(nil), src.Agents...)
 	dst.Skills = append([]workspacepkg.SkillPath(nil), src.Skills...)
@@ -3529,7 +3755,11 @@ func (d *hostAPIFakeDriver) Start(_ context.Context, opts acp.StartOpts) (*sessi
 	return proc, nil
 }
 
-func (d *hostAPIFakeDriver) Prompt(_ context.Context, _ *session.AgentProcess, req acp.PromptRequest) (<-chan acp.AgentEvent, error) {
+func (d *hostAPIFakeDriver) Prompt(
+	_ context.Context,
+	_ *session.AgentProcess,
+	req acp.PromptRequest,
+) (<-chan acp.AgentEvent, error) {
 	d.mu.Lock()
 	d.promptLog = append(d.promptLog, req)
 	d.mu.Unlock()

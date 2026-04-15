@@ -32,7 +32,10 @@ func (r envBridgeSecretResolver) ValidateBridgeSecretBinding(binding bridgepkg.B
 	return nil
 }
 
-func (r envBridgeSecretResolver) ResolveBridgeSecret(ctx context.Context, binding bridgepkg.BridgeSecretBinding) (string, error) {
+func (r envBridgeSecretResolver) ResolveBridgeSecret(
+	ctx context.Context,
+	binding bridgepkg.BridgeSecretBinding,
+) (string, error) {
 	if ctx == nil {
 		return "", errors.New("daemon: resolve bridge secret context is required")
 	}
@@ -50,7 +53,11 @@ func (r envBridgeSecretResolver) ResolveBridgeSecret(ctx context.Context, bindin
 
 	value := strings.TrimSpace(r.getenv(envName))
 	if value == "" {
-		return "", fmt.Errorf("%w: bridge secret env %q is not set or empty", bridgepkg.ErrInvalidBridgeSecretBinding, envName)
+		return "", fmt.Errorf(
+			"%w: bridge secret env %q is not set or empty",
+			bridgepkg.ErrInvalidBridgeSecretBinding,
+			envName,
+		)
 	}
 
 	return value, nil

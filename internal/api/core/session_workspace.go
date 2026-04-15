@@ -49,13 +49,13 @@ func lookupWorkspaceID(ctx context.Context, prefix string, workspaces WorkspaceG
 }
 
 // FilterSessionInfosByWorkspaceID filters the session info list by workspace ID.
-func filterSessionInfosByWorkspaceIDInternal(infos []*session.SessionInfo, workspaceID string) []*session.SessionInfo {
+func filterSessionInfosByWorkspaceIDInternal(infos []*session.Info, workspaceID string) []*session.Info {
 	trimmedID := strings.TrimSpace(workspaceID)
 	if trimmedID == "" {
 		return infos
 	}
 
-	filtered := make([]*session.SessionInfo, 0, len(infos))
+	filtered := make([]*session.Info, 0, len(infos))
 	for _, info := range infos {
 		if info == nil || strings.TrimSpace(info.WorkspaceID) != trimmedID {
 			continue

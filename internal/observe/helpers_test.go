@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/pedronauck/agh/internal/testutil"
 	"io"
 	"log/slog"
 	"os"
@@ -12,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/pedronauck/agh/internal/testutil"
 
 	"github.com/pedronauck/agh/internal/acp"
 	aghconfig "github.com/pedronauck/agh/internal/config"
@@ -121,7 +122,7 @@ You write reliable code locally.
 		t.Fatalf("LoadAgentDefFile(workspace agent) error = %v", err)
 	}
 
-	resolver := defaultPermissionModeResolver(home, fakeObserveWorkspaceResolver{
+	resolver := defaultPermissionModeResolver(home, &fakeObserveWorkspaceResolver{
 		expectedRef: "ws-observe",
 		resolved: workspacepkg.ResolvedWorkspace{
 			Workspace: workspacepkg.Workspace{
@@ -160,7 +161,7 @@ command = "codex"
 		t.Fatalf("WriteFile(global config) error = %v", err)
 	}
 
-	resolver := defaultPermissionModeResolver(home, fakeObserveWorkspaceResolver{
+	resolver := defaultPermissionModeResolver(home, &fakeObserveWorkspaceResolver{
 		expectedRef: "ws-observe",
 		resolved: workspacepkg.ResolvedWorkspace{
 			Workspace: workspacepkg.Workspace{
@@ -228,7 +229,7 @@ Workspace agent.
 		t.Fatalf("LoadAgentDefFile(workspace agent) error = %v", err)
 	}
 
-	resolver := defaultPermissionModeResolver(home, fakeObserveWorkspaceResolver{
+	resolver := defaultPermissionModeResolver(home, &fakeObserveWorkspaceResolver{
 		expectedRef: "ws-observe",
 		resolved: workspacepkg.ResolvedWorkspace{
 			Workspace: workspacepkg.Workspace{
@@ -452,7 +453,7 @@ type fakeObserveWorkspaceResolver struct {
 	err         error
 }
 
-func (r fakeObserveWorkspaceResolver) Resolve(_ context.Context, ref string) (workspacepkg.ResolvedWorkspace, error) {
+func (r *fakeObserveWorkspaceResolver) Resolve(_ context.Context, ref string) (workspacepkg.ResolvedWorkspace, error) {
 	if r.err != nil {
 		return workspacepkg.ResolvedWorkspace{}, r.err
 	}
@@ -462,7 +463,10 @@ func (r fakeObserveWorkspaceResolver) Resolve(_ context.Context, ref string) (wo
 	return r.resolved, nil
 }
 
-func (r fakeObserveWorkspaceResolver) ResolveOrRegister(_ context.Context, ref string) (workspacepkg.ResolvedWorkspace, error) {
+func (r *fakeObserveWorkspaceResolver) ResolveOrRegister(
+	_ context.Context,
+	ref string,
+) (workspacepkg.ResolvedWorkspace, error) {
 	if r.err != nil {
 		return workspacepkg.ResolvedWorkspace{}, r.err
 	}

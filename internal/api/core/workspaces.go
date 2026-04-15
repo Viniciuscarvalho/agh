@@ -16,7 +16,11 @@ import (
 func (h *BaseHandlers) CreateWorkspace(c *gin.Context) {
 	var req contract.CreateWorkspaceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.respondError(c, http.StatusBadRequest, fmt.Errorf("%s: decode create workspace request: %w", h.transportName(), err))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			fmt.Errorf("%s: decode create workspace request: %w", h.transportName(), err),
+		)
 		return
 	}
 
@@ -96,7 +100,11 @@ func (h *BaseHandlers) UpdateWorkspace(c *gin.Context) {
 
 	var req contract.UpdateWorkspaceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.respondError(c, http.StatusBadRequest, fmt.Errorf("%s: decode update workspace request: %w", h.transportName(), err))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			fmt.Errorf("%s: decode update workspace request: %w", h.transportName(), err),
+		)
 		return
 	}
 
@@ -158,7 +166,11 @@ func (h *BaseHandlers) DeleteWorkspace(c *gin.Context) {
 func (h *BaseHandlers) ResolveWorkspace(c *gin.Context) {
 	var req contract.ResolveWorkspaceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.respondError(c, http.StatusBadRequest, fmt.Errorf("%s: decode resolve workspace request: %w", h.transportName(), err))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			fmt.Errorf("%s: decode resolve workspace request: %w", h.transportName(), err),
+		)
 		return
 	}
 
@@ -188,6 +200,6 @@ func (h *BaseHandlers) lookupWorkspaceID(ctx context.Context, ref string) (strin
 }
 
 // SessionPayloadsForWorkspace filters and converts sessions for one workspace.
-func SessionPayloadsForWorkspace(infos []*session.SessionInfo, workspaceID string) []contract.SessionPayload {
+func SessionPayloadsForWorkspace(infos []*session.Info, workspaceID string) []contract.SessionPayload {
 	return SessionPayloadsFromInfos(filterSessionInfosByWorkspaceIDInternal(infos, workspaceID))
 }

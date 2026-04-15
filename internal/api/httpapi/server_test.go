@@ -20,7 +20,7 @@ func TestNewHonorsOptionsAndDefaults(t *testing.T) {
 	engine := gin.New()
 	startedAt := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	now := func() time.Time { return startedAt.Add(time.Second) }
-	customLoader := func(name string, homePaths aghconfig.HomePaths) (aghconfig.AgentDef, error) {
+	customLoader := func(name string, _ aghconfig.HomePaths) (aghconfig.AgentDef, error) {
 		return aghconfig.AgentDef{Name: name, Provider: "fake", Prompt: "hello"}, nil
 	}
 	store := memory.NewStore(filepath.Join(t.TempDir(), "memory"))
@@ -31,7 +31,7 @@ func TestNewHonorsOptionsAndDefaults(t *testing.T) {
 
 	server, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithHost(cfg.HTTP.Host),
 		WithPort(cfg.HTTP.Port),
 		WithLogger(discardLogger()),
@@ -92,10 +92,19 @@ func TestNewRequiresSessionManagerTaskServiceObserverAndWorkspaceResolver(t *tes
 	if _, err := New(WithHomePaths(homePaths), WithSessionManager(stubSessionManager{})); err == nil {
 		t.Fatal("New() without task service error = nil, want non-nil")
 	}
-	if _, err := New(WithHomePaths(homePaths), WithSessionManager(stubSessionManager{}), WithTaskService(stubTaskManager{})); err == nil {
+	if _, err := New(
+		WithHomePaths(homePaths),
+		WithSessionManager(stubSessionManager{}),
+		WithTaskService(stubTaskManager{}),
+	); err == nil {
 		t.Fatal("New() without observer error = nil, want non-nil")
 	}
-	if _, err := New(WithHomePaths(homePaths), WithSessionManager(stubSessionManager{}), WithTaskService(stubTaskManager{}), WithObserver(stubObserver{})); err == nil {
+	if _, err := New(
+		WithHomePaths(homePaths),
+		WithSessionManager(stubSessionManager{}),
+		WithTaskService(stubTaskManager{}),
+		WithObserver(stubObserver{}),
+	); err == nil {
 		t.Fatal("New() without workspace resolver error = nil, want non-nil")
 	}
 }
@@ -108,12 +117,12 @@ func TestServerStartAndShutdownServeRequests(t *testing.T) {
 
 	server, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithHost(cfg.HTTP.Host),
 		WithPort(cfg.HTTP.Port),
 		WithLogger(discardLogger()),
 		WithSessionManager(stubSessionManager{
-			ListAllFn: func(context.Context) ([]*session.SessionInfo, error) { return nil, nil },
+			ListAllFn: func(context.Context) ([]*session.Info, error) { return nil, nil },
 		}),
 		WithTaskService(stubTaskManager{}),
 		WithObserver(stubObserver{
@@ -129,11 +138,28 @@ func TestServerStartAndShutdownServeRequests(t *testing.T) {
 		t.Fatalf("Start() error = %v", err)
 	}
 
-	resp, err := http.Get(mustURL(cfg.HTTP.Host, server.Port(), "/api/daemon/status"))
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		mustURL(cfg.HTTP.Host, server.Port(), "/api/daemon/status"),
+		http.NoBody,
+	)
 	if err != nil {
-		t.Fatalf("http.Get() error = %v", err)
+		t.Fatalf("http.NewRequestWithContext() error = %v", err)
 	}
-	_ = resp.Body.Close()
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		t.Fatalf("http.DefaultClient.Do() error = %v", err)
+	}
+	body := resp.Body
+	defer func() {
+		if body != nil {
+			_ = body.Close()
+		}
+	}()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
@@ -144,7 +170,19 @@ func TestServerStartAndShutdownServeRequests(t *testing.T) {
 		t.Fatalf("Shutdown() error = %v", err)
 	}
 
-	_, err = http.Get(mustURL(cfg.HTTP.Host, server.Port(), "/api/daemon/status"))
+	req, err = http.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		mustURL(cfg.HTTP.Host, server.Port(), "/api/daemon/status"),
+		http.NoBody,
+	)
+	if err != nil {
+		t.Fatalf("http.NewRequestWithContext() error = %v", err)
+	}
+	respAfterShutdown, err := http.DefaultClient.Do(req)
+	if respAfterShutdown != nil {
+		_ = respAfterShutdown.Body.Close()
+	}
 	if err == nil {
 		t.Fatal("expected request after shutdown to fail")
 	}
@@ -158,7 +196,7 @@ func TestServerStartRejectsNilContextAndDuplicateStart(t *testing.T) {
 
 	server, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithHost(cfg.HTTP.Host),
 		WithPort(cfg.HTTP.Port),
 		WithLogger(discardLogger()),
@@ -204,7 +242,7 @@ func TestServerStartReportsListenFailure(t *testing.T) {
 
 	first, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithHost(cfg.HTTP.Host),
 		WithPort(cfg.HTTP.Port),
 		WithLogger(discardLogger()),
@@ -225,7 +263,7 @@ func TestServerStartReportsListenFailure(t *testing.T) {
 
 	second, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithHost(cfg.HTTP.Host),
 		WithPort(cfg.HTTP.Port),
 		WithLogger(discardLogger()),

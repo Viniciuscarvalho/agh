@@ -197,7 +197,11 @@ func TestClientDownloadSelectsRequestedAsset(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	result, err := client.Download(context.Background(), "acme/demo", registry.DownloadOpts{Asset: "demo-darwin.tar.gz"})
+	result, err := client.Download(
+		context.Background(),
+		"acme/demo",
+		registry.DownloadOpts{Asset: "demo-darwin.tar.gz"},
+	)
 	if err != nil {
 		t.Fatalf("Download() error = %v", err)
 	}
@@ -372,7 +376,7 @@ func TestClientDownloadSurfacesHTTPFailuresBeforeContentTypeValidation(t *testin
 func TestClientRateLimitExceeded(t *testing.T) {
 	t.Parallel()
 
-	server := newGitHubServer(t, func(writer http.ResponseWriter, request *http.Request) {
+	server := newGitHubServer(t, func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("X-RateLimit-Remaining", "0")
 		http.Error(writer, `{"message":"API rate limit exceeded"}`, http.StatusForbidden)
 	})
@@ -391,7 +395,7 @@ func TestClientRateLimitExceeded(t *testing.T) {
 func TestClientPrivateRepositoryRequiresToken(t *testing.T) {
 	t.Parallel()
 
-	server := newGitHubServer(t, func(writer http.ResponseWriter, request *http.Request) {
+	server := newGitHubServer(t, func(writer http.ResponseWriter, _ *http.Request) {
 		http.Error(writer, `{"message":"Requires authentication"}`, http.StatusUnauthorized)
 	})
 	defer server.Close()
@@ -450,7 +454,10 @@ func TestClientFallsBackToFirstPublishedReleaseWhenLatestEndpointIsMissing(t *te
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	release, err := client.fetchLatestRelease(context.Background(), repoSlug{owner: "acme", name: "demo", full: "acme/demo"})
+	release, err := client.fetchLatestRelease(
+		context.Background(),
+		repoSlug{owner: "acme", name: "demo", full: "acme/demo"},
+	)
 	if err != nil {
 		t.Fatalf("fetchLatestRelease() error = %v", err)
 	}
@@ -465,7 +472,10 @@ func TestClientUsesGitHubToken(t *testing.T) {
 		if got := request.Header.Get("Authorization"); got != "Bearer secret-token" {
 			t.Fatalf("Authorization = %q, want bearer token", got)
 		}
-		writeJSON(writer, `{"tag_name":"v1.2.3","draft":false,"prerelease":false,"tarball_url":"`+serverURLPlaceholder+`/downloads/source.tar.gz","assets":[]}`)
+		writeJSON(
+			writer,
+			`{"tag_name":"v1.2.3","draft":false,"prerelease":false,"tarball_url":"`+serverURLPlaceholder+`/downloads/source.tar.gz","assets":[]}`,
+		)
 	})
 	defer server.Close()
 
@@ -490,7 +500,10 @@ func TestClientRetriesHTTP500(t *testing.T) {
 			http.Error(writer, `{"message":"temporary failure"}`, http.StatusInternalServerError)
 			return
 		}
-		writeJSON(writer, `{"tag_name":"v1.2.3","draft":false,"prerelease":false,"tarball_url":"`+serverURLPlaceholder+`/downloads/source.tar.gz","assets":[]}`)
+		writeJSON(
+			writer,
+			`{"tag_name":"v1.2.3","draft":false,"prerelease":false,"tarball_url":"`+serverURLPlaceholder+`/downloads/source.tar.gz","assets":[]}`,
+		)
 	})
 	defer server.Close()
 
@@ -573,7 +586,14 @@ func TestClientRetriesHTTP500LogsCloseErrorBeforeRetry(t *testing.T) {
 func TestNewClientDefaults(t *testing.T) {
 	t.Parallel()
 
-	client := NewClient("", WithHTTPClient(nil), WithSleep(nil), WithRetryPolicy(0, 0, -1), WithLogger(nil), WithToken(" "))
+	client := NewClient(
+		"",
+		WithHTTPClient(nil),
+		WithSleep(nil),
+		WithRetryPolicy(0, 0, -1),
+		WithLogger(nil),
+		WithToken(" "),
+	)
 	if client.baseURL != defaultBaseURL {
 		t.Fatalf("baseURL = %q, want %q", client.baseURL, defaultBaseURL)
 	}
@@ -620,7 +640,10 @@ func TestClientFetchRequestedReleaseByTag(t *testing.T) {
 	server := newGitHubServer(t, func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/repos/acme/demo/releases/tags/v1.2.3":
-			writeJSON(writer, `{"tag_name":"v1.2.3","draft":false,"prerelease":false,"tarball_url":"`+serverURLPlaceholder+`/downloads/source.tar.gz","assets":[]}`)
+			writeJSON(
+				writer,
+				`{"tag_name":"v1.2.3","draft":false,"prerelease":false,"tarball_url":"`+serverURLPlaceholder+`/downloads/source.tar.gz","assets":[]}`,
+			)
 		default:
 			http.NotFound(writer, request)
 		}
@@ -628,7 +651,11 @@ func TestClientFetchRequestedReleaseByTag(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	release, err := client.fetchRequestedRelease(context.Background(), repoSlug{owner: "acme", name: "demo", full: "acme/demo"}, "v1.2.3")
+	release, err := client.fetchRequestedRelease(
+		context.Background(),
+		repoSlug{owner: "acme", name: "demo", full: "acme/demo"},
+		"v1.2.3",
+	)
 	if err != nil {
 		t.Fatalf("fetchRequestedRelease() error = %v", err)
 	}
@@ -646,7 +673,11 @@ func TestClientFetchRequestedReleaseNotFound(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	_, err := client.fetchRequestedRelease(context.Background(), repoSlug{owner: "acme", name: "demo", full: "acme/demo"}, "v9.9.9")
+	_, err := client.fetchRequestedRelease(
+		context.Background(),
+		repoSlug{owner: "acme", name: "demo", full: "acme/demo"},
+		"v9.9.9",
+	)
 	if err == nil {
 		t.Fatal("fetchRequestedRelease() error = nil, want not found")
 	}
@@ -658,13 +689,20 @@ func TestClientFetchRequestedReleaseNotFound(t *testing.T) {
 func TestClientFetchRequestedReleaseRejectsPrerelease(t *testing.T) {
 	t.Parallel()
 
-	server := newGitHubServer(t, func(writer http.ResponseWriter, request *http.Request) {
-		writeJSON(writer, `{"tag_name":"v1.2.3-rc1","draft":false,"prerelease":true,"tarball_url":"`+serverURLPlaceholder+`/downloads/source.tar.gz","assets":[]}`)
+	server := newGitHubServer(t, func(writer http.ResponseWriter, _ *http.Request) {
+		writeJSON(
+			writer,
+			`{"tag_name":"v1.2.3-rc1","draft":false,"prerelease":true,"tarball_url":"`+serverURLPlaceholder+`/downloads/source.tar.gz","assets":[]}`,
+		)
 	})
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	_, err := client.fetchRequestedRelease(context.Background(), repoSlug{owner: "acme", name: "demo", full: "acme/demo"}, "v1.2.3-rc1")
+	_, err := client.fetchRequestedRelease(
+		context.Background(),
+		repoSlug{owner: "acme", name: "demo", full: "acme/demo"},
+		"v1.2.3-rc1",
+	)
 	if err == nil {
 		t.Fatal("fetchRequestedRelease() error = nil, want prerelease failure")
 	}
@@ -685,7 +723,10 @@ func TestClientFetchReleasePageErrors(t *testing.T) {
 		defer server.Close()
 
 		client := NewClient(server.URL)
-		_, err := client.fetchReleasePage(context.Background(), repoSlug{owner: "acme", name: "missing", full: "acme/missing"})
+		_, err := client.fetchReleasePage(
+			context.Background(),
+			repoSlug{owner: "acme", name: "missing", full: "acme/missing"},
+		)
 		if err == nil {
 			t.Fatal("fetchReleasePage() error = nil, want not found")
 		}
@@ -697,13 +738,16 @@ func TestClientFetchReleasePageErrors(t *testing.T) {
 	t.Run("unauthorized", func(t *testing.T) {
 		t.Parallel()
 
-		server := newGitHubServer(t, func(writer http.ResponseWriter, request *http.Request) {
+		server := newGitHubServer(t, func(writer http.ResponseWriter, _ *http.Request) {
 			http.Error(writer, `{"message":"Requires authentication"}`, http.StatusUnauthorized)
 		})
 		defer server.Close()
 
 		client := NewClient(server.URL)
-		_, err := client.fetchReleasePage(context.Background(), repoSlug{owner: "acme", name: "private", full: "acme/private"})
+		_, err := client.fetchReleasePage(
+			context.Background(),
+			repoSlug{owner: "acme", name: "private", full: "acme/private"},
+		)
 		if err == nil {
 			t.Fatal("fetchReleasePage() error = nil, want unauthorized")
 		}
@@ -716,13 +760,16 @@ func TestClientFetchReleasePageErrors(t *testing.T) {
 func TestClientFetchLatestReleaseUnauthorized(t *testing.T) {
 	t.Parallel()
 
-	server := newGitHubServer(t, func(writer http.ResponseWriter, request *http.Request) {
+	server := newGitHubServer(t, func(writer http.ResponseWriter, _ *http.Request) {
 		http.Error(writer, `{"message":"Requires authentication"}`, http.StatusUnauthorized)
 	})
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	_, err := client.fetchLatestRelease(context.Background(), repoSlug{owner: "acme", name: "private", full: "acme/private"})
+	_, err := client.fetchLatestRelease(
+		context.Background(),
+		repoSlug{owner: "acme", name: "private", full: "acme/private"},
+	)
 	if err == nil {
 		t.Fatal("fetchLatestRelease() error = nil, want unauthorized")
 	}
@@ -734,12 +781,18 @@ func TestClientFetchLatestReleaseUnauthorized(t *testing.T) {
 func TestResponseErrorUsesJSONAndPlainTextMessages(t *testing.T) {
 	t.Parallel()
 
-	jsonError := responseError(newHTTPResponse(http.StatusInternalServerError, `{"message":"boom"}`), "latest release", "acme/demo")
+	jsonError := responseErrorForTest(
+		t,
+		http.StatusInternalServerError,
+		`{"message":"boom"}`,
+		"latest release",
+		"acme/demo",
+	)
 	if !strings.Contains(jsonError.Error(), "boom") {
 		t.Fatalf("responseError(json) = %v, want message", jsonError)
 	}
 
-	textError := responseError(newHTTPResponse(http.StatusBadGateway, "gateway"), "latest release", "acme/demo")
+	textError := responseErrorForTest(t, http.StatusBadGateway, "gateway", "latest release", "acme/demo")
 	if !strings.Contains(textError.Error(), "gateway") {
 		t.Fatalf("responseError(text) = %v, want body", textError)
 	}
@@ -766,7 +819,7 @@ func TestSleepContextReturnsOnCancelAndZeroWait(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := sleepContext(ctx, time.Second); !errors.Is(err, context.Canceled) {
-		t.Fatalf("sleepContext(cancelled) error = %v, want context canceled", err)
+		t.Fatalf("sleepContext(canceled) error = %v, want context canceled", err)
 	}
 }
 
@@ -812,7 +865,7 @@ func TestDoRequestRejectsEmptyURL(t *testing.T) {
 	t.Parallel()
 
 	client := NewClient("")
-	_, err := client.doRequest(context.Background(), http.MethodGet, "", acceptJSON, false)
+	err := doRequestErrorForTest(context.Background(), client, "", acceptJSON)
 	if err == nil {
 		t.Fatal("doRequest() error = nil, want empty URL failure")
 	}
@@ -822,7 +875,7 @@ func TestDoRequestRejectsInvalidURL(t *testing.T) {
 	t.Parallel()
 
 	client := NewClient("")
-	_, err := client.doRequest(context.Background(), http.MethodGet, "://bad", acceptJSON, false)
+	err := doRequestErrorForTest(context.Background(), client, "://bad", acceptJSON)
 	if err == nil {
 		t.Fatal("doRequest() error = nil, want invalid URL failure")
 	}
@@ -832,6 +885,9 @@ func TestCheckRateLimitErrorsWhenRemainingZero(t *testing.T) {
 	t.Parallel()
 
 	response := newHTTPResponse(http.StatusForbidden, `{"message":"rate limit"}`)
+	defer func() {
+		_ = response.Body.Close()
+	}()
 	response.Header.Set("X-RateLimit-Remaining", "0")
 
 	client := NewClient("")
@@ -845,9 +901,15 @@ func TestCheckRateLimitAllowsSuccessfulResponsesThatConsumeFinalQuota(t *testing
 
 	var logBuffer bytes.Buffer
 	response := newHTTPResponse(http.StatusOK, `{"ok":true}`)
+	defer func() {
+		_ = response.Body.Close()
+	}()
 	response.Header.Set("X-RateLimit-Remaining", "0")
 
-	client := NewClient("", WithLogger(slog.New(slog.NewTextHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelWarn}))))
+	client := NewClient(
+		"",
+		WithLogger(slog.New(slog.NewTextHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelWarn}))),
+	)
 	if err := client.checkRateLimit(response); err != nil {
 		t.Fatalf("checkRateLimit() error = %v, want nil", err)
 	}
@@ -861,9 +923,15 @@ func TestCheckRateLimitLogsInvalidRemainingHeader(t *testing.T) {
 
 	var logBuffer bytes.Buffer
 	response := newHTTPResponse(http.StatusOK, "")
+	defer func() {
+		_ = response.Body.Close()
+	}()
 	response.Header.Set("X-RateLimit-Remaining", "bogus")
 
-	client := NewClient("", WithLogger(slog.New(slog.NewTextHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelDebug}))))
+	client := NewClient(
+		"",
+		WithLogger(slog.New(slog.NewTextHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelDebug}))),
+	)
 	if err := client.checkRateLimit(response); err != nil {
 		t.Fatalf("checkRateLimit() error = %v, want nil", err)
 	}
@@ -907,6 +975,9 @@ func TestCheckRateLimitWarnsWithoutFailing(t *testing.T) {
 	t.Parallel()
 
 	response := newHTTPResponse(http.StatusOK, "")
+	defer func() {
+		_ = response.Body.Close()
+	}()
 	response.Header.Set("X-RateLimit-Remaining", "5")
 
 	client := NewClient("", WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))))
@@ -1022,6 +1093,23 @@ func newHTTPResponse(statusCode int, body string) *http.Response {
 		Header:     make(http.Header),
 		Request:    &http.Request{URL: mustParseURL("https://api.github.com/repos/acme/demo/releases/latest")},
 	}
+}
+
+func responseErrorForTest(t *testing.T, statusCode int, body string, operation string, slug string) error {
+	t.Helper()
+	response := newHTTPResponse(statusCode, body)
+	defer func() {
+		_ = response.Body.Close()
+	}()
+	return responseError(response, operation, slug)
+}
+
+func doRequestErrorForTest(ctx context.Context, client *Client, rawURL string, accept string) error {
+	response, err := client.doRequest(ctx, rawURL, accept)
+	if response != nil {
+		_ = response.Body.Close()
+	}
+	return err
 }
 
 func mustParseURL(raw string) *url.URL {

@@ -10,7 +10,8 @@ import (
 )
 
 const (
-	networkTaskWriteCapability = "task.write"
+	networkTaskWriteCapability       = "task.write"
+	taskIngressReasonChannelMismatch = "channel_mismatch"
 
 	networkTaskActionCreate  = "task.create"
 	networkTaskActionUpdate  = "task.update"
@@ -38,11 +39,21 @@ var (
 
 // TaskService is the narrowed task-domain surface consumed by network ingress.
 type TaskService interface {
-	GetTask(ctx context.Context, id string, actor taskpkg.ActorContext) (*taskpkg.TaskView, error)
+	GetTask(ctx context.Context, id string, actor taskpkg.ActorContext) (*taskpkg.View, error)
 	CreateTask(ctx context.Context, spec taskpkg.CreateTask, actor taskpkg.ActorContext) (*taskpkg.Task, error)
-	UpdateTask(ctx context.Context, id string, patch taskpkg.TaskPatch, actor taskpkg.ActorContext) (*taskpkg.Task, error)
-	CancelTask(ctx context.Context, id string, req taskpkg.CancelTask, actor taskpkg.ActorContext) (*taskpkg.Task, error)
-	EnqueueRun(ctx context.Context, spec taskpkg.EnqueueRun, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error)
+	UpdateTask(
+		ctx context.Context,
+		id string,
+		patch taskpkg.Patch,
+		actor taskpkg.ActorContext,
+	) (*taskpkg.Task, error)
+	CancelTask(
+		ctx context.Context,
+		id string,
+		req taskpkg.CancelTask,
+		actor taskpkg.ActorContext,
+	) (*taskpkg.Task, error)
+	EnqueueRun(ctx context.Context, spec taskpkg.EnqueueRun, actor taskpkg.ActorContext) (*taskpkg.Run, error)
 }
 
 // TaskIngressContext captures the trusted peer identity and delivery metadata
@@ -90,8 +101,12 @@ type resolvedTaskPeerContext struct {
 
 // CreateTaskFromPeer creates one task on behalf of an authenticated network
 // peer after channel and capability validation succeed.
-func (m *Manager) CreateTaskFromPeer(ctx context.Context, ingress TaskIngressContext, spec taskpkg.CreateTask) (*taskpkg.Task, error) {
-	peerCtx, err := m.resolveTaskPeerContext(ctx, ingress, networkTaskActionCreate, networkTaskWriteCapability)
+func (m *Manager) CreateTaskFromPeer(
+	ctx context.Context,
+	ingress TaskIngressContext,
+	spec taskpkg.CreateTask,
+) (*taskpkg.Task, error) {
+	peerCtx, err := m.resolveTaskPeerContext(ctx, ingress, networkTaskActionCreate)
 	if err != nil {
 		return nil, err
 	}
@@ -116,8 +131,13 @@ func (m *Manager) CreateTaskFromPeer(ctx context.Context, ingress TaskIngressCon
 
 // UpdateTaskFromPeer applies one mutable task patch through the task manager
 // after enforcing channel-bound ingress rules.
-func (m *Manager) UpdateTaskFromPeer(ctx context.Context, ingress TaskIngressContext, taskID string, patch taskpkg.TaskPatch) (*taskpkg.Task, error) {
-	peerCtx, err := m.resolveTaskPeerContext(ctx, ingress, networkTaskActionUpdate, networkTaskWriteCapability)
+func (m *Manager) UpdateTaskFromPeer(
+	ctx context.Context,
+	ingress TaskIngressContext,
+	taskID string,
+	patch taskpkg.Patch,
+) (*taskpkg.Task, error) {
+	peerCtx, err := m.resolveTaskPeerContext(ctx, ingress, networkTaskActionUpdate)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +145,12 @@ func (m *Manager) UpdateTaskFromPeer(ctx context.Context, ingress TaskIngressCon
 	if err != nil {
 		return nil, m.rejectTaskIngress(ctx, peerCtx.ingress, networkTaskActionUpdate, err, nil)
 	}
-	if err := enforceBoundTaskChannel(view.Task.ID, view.Task.NetworkChannel, peerCtx.ingress.Channel, &patch); err != nil {
+	if err := enforceBoundTaskChannel(
+		view.Task.ID,
+		view.Task.NetworkChannel,
+		peerCtx.ingress.Channel,
+		&patch,
+	); err != nil {
 		return nil, m.rejectTaskIngress(ctx, peerCtx.ingress, networkTaskActionUpdate, err, map[string]any{
 			"task_id":         view.Task.ID,
 			"network_channel": strings.TrimSpace(view.Task.NetworkChannel),
@@ -155,8 +180,13 @@ func (m *Manager) UpdateTaskFromPeer(ctx context.Context, ingress TaskIngressCon
 
 // CancelTaskFromPeer requests manager-owned task cancellation after validating
 // the authenticated peer context and task channel binding.
-func (m *Manager) CancelTaskFromPeer(ctx context.Context, ingress TaskIngressContext, taskID string, req taskpkg.CancelTask) (*taskpkg.Task, error) {
-	peerCtx, err := m.resolveTaskPeerContext(ctx, ingress, networkTaskActionCancel, networkTaskWriteCapability)
+func (m *Manager) CancelTaskFromPeer(
+	ctx context.Context,
+	ingress TaskIngressContext,
+	taskID string,
+	req taskpkg.CancelTask,
+) (*taskpkg.Task, error) {
+	peerCtx, err := m.resolveTaskPeerContext(ctx, ingress, networkTaskActionCancel)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +194,12 @@ func (m *Manager) CancelTaskFromPeer(ctx context.Context, ingress TaskIngressCon
 	if err != nil {
 		return nil, m.rejectTaskIngress(ctx, peerCtx.ingress, networkTaskActionCancel, err, nil)
 	}
-	if err := enforceBoundTaskChannel(view.Task.ID, view.Task.NetworkChannel, peerCtx.ingress.Channel, nil); err != nil {
+	if err := enforceBoundTaskChannel(
+		view.Task.ID,
+		view.Task.NetworkChannel,
+		peerCtx.ingress.Channel,
+		nil,
+	); err != nil {
 		return nil, m.rejectTaskIngress(ctx, peerCtx.ingress, networkTaskActionCancel, err, map[string]any{
 			"task_id":         view.Task.ID,
 			"network_channel": strings.TrimSpace(view.Task.NetworkChannel),
@@ -185,8 +220,12 @@ func (m *Manager) CancelTaskFromPeer(ctx context.Context, ingress TaskIngressCon
 
 // EnqueueRunFromPeer enqueues one task run from an authenticated network peer
 // while preserving origin-scoped idempotency inside the task manager.
-func (m *Manager) EnqueueRunFromPeer(ctx context.Context, ingress TaskIngressContext, spec taskpkg.EnqueueRun) (*taskpkg.TaskRun, error) {
-	peerCtx, err := m.resolveTaskPeerContext(ctx, ingress, networkTaskActionEnqueue, networkTaskWriteCapability)
+func (m *Manager) EnqueueRunFromPeer(
+	ctx context.Context,
+	ingress TaskIngressContext,
+	spec taskpkg.EnqueueRun,
+) (*taskpkg.Run, error) {
+	peerCtx, err := m.resolveTaskPeerContext(ctx, ingress, networkTaskActionEnqueue)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +233,12 @@ func (m *Manager) EnqueueRunFromPeer(ctx context.Context, ingress TaskIngressCon
 	if err != nil {
 		return nil, m.rejectTaskIngress(ctx, peerCtx.ingress, networkTaskActionEnqueue, err, nil)
 	}
-	if err := enforceBoundTaskChannel(view.Task.ID, view.Task.NetworkChannel, peerCtx.ingress.Channel, nil); err != nil {
+	if err := enforceBoundTaskChannel(
+		view.Task.ID,
+		view.Task.NetworkChannel,
+		peerCtx.ingress.Channel,
+		nil,
+	); err != nil {
 		return nil, m.rejectTaskIngress(ctx, peerCtx.ingress, networkTaskActionEnqueue, err, map[string]any{
 			"task_id":         view.Task.ID,
 			"network_channel": strings.TrimSpace(view.Task.NetworkChannel),
@@ -223,7 +267,11 @@ func (m *Manager) EnqueueRunFromPeer(ctx context.Context, ingress TaskIngressCon
 	return run, nil
 }
 
-func (m *Manager) resolveTaskPeerContext(ctx context.Context, ingress TaskIngressContext, action string, capability string) (resolvedTaskPeerContext, error) {
+func (m *Manager) resolveTaskPeerContext(
+	ctx context.Context,
+	ingress TaskIngressContext,
+	action string,
+) (resolvedTaskPeerContext, error) {
 	if ctx == nil {
 		return resolvedTaskPeerContext{}, errors.New("network: task ingress context is required")
 	}
@@ -244,11 +292,14 @@ func (m *Manager) resolveTaskPeerContext(ctx context.Context, ingress TaskIngres
 	if !ok {
 		return resolvedTaskPeerContext{}, m.rejectTaskIngress(ctx, ingress, action, ErrTaskIngressPeerNotFound, nil)
 	}
-	if !containsString(peer.PeerCard.Capabilities, capability) {
+	if !containsString(peer.PeerCard.Capabilities, networkTaskWriteCapability) {
 		return resolvedTaskPeerContext{}, m.rejectTaskIngress(ctx, ingress, action, ErrTaskIngressCapabilityDenied, nil)
 	}
 
-	actor, err := taskpkg.DeriveNetworkPeerActorContext(strings.TrimSpace(ingress.PeerID), networkTaskOriginRef(ingress))
+	actor, err := taskpkg.DeriveNetworkPeerActorContext(
+		strings.TrimSpace(ingress.PeerID),
+		networkTaskOriginRef(ingress),
+	)
 	if err != nil {
 		return resolvedTaskPeerContext{}, m.rejectTaskIngress(ctx, ingress, action, err, nil)
 	}
@@ -259,7 +310,13 @@ func (m *Manager) resolveTaskPeerContext(ctx context.Context, ingress TaskIngres
 	}, nil
 }
 
-func (m *Manager) rejectTaskIngress(ctx context.Context, ingress TaskIngressContext, action string, err error, payload any) error {
+func (m *Manager) rejectTaskIngress(
+	ctx context.Context,
+	ingress TaskIngressContext,
+	action string,
+	err error,
+	payload any,
+) error {
 	if err == nil {
 		return nil
 	}
@@ -267,7 +324,14 @@ func (m *Manager) rejectTaskIngress(ctx context.Context, ingress TaskIngressCont
 	return err
 }
 
-func (m *Manager) recordTaskIngress(ctx context.Context, ingress TaskIngressContext, action string, direction string, reason string, payload any) {
+func (m *Manager) recordTaskIngress(
+	ctx context.Context,
+	ingress TaskIngressContext,
+	action string,
+	direction string,
+	reason string,
+	payload any,
+) {
 	if m == nil || m.auditor == nil {
 		return
 	}
@@ -284,7 +348,17 @@ func (m *Manager) recordTaskIngress(ctx context.Context, ingress TaskIngressCont
 		Reason:    strings.TrimSpace(reason),
 		Payload:   payload,
 	}); err != nil {
-		m.logger.Warn("network.audit.record_task_ingress_failed", "action", action, "peer_id", ingress.PeerID, "request_id", ingress.RequestID, "error", err)
+		m.logger.Warn(
+			"network.audit.record_task_ingress_failed",
+			"action",
+			action,
+			"peer_id",
+			ingress.PeerID,
+			"request_id",
+			ingress.RequestID,
+			"error",
+			err,
+		)
 	}
 }
 
@@ -297,12 +371,22 @@ func validateRequestedTaskChannel(ingressChannel string, requestedChannel string
 		return err
 	}
 	if trimmed != strings.TrimSpace(ingressChannel) {
-		return fmt.Errorf("%w: requested channel %q does not match ingress channel %q", ErrTaskChannelMismatch, trimmed, strings.TrimSpace(ingressChannel))
+		return fmt.Errorf(
+			"%w: requested channel %q does not match ingress channel %q",
+			ErrTaskChannelMismatch,
+			trimmed,
+			strings.TrimSpace(ingressChannel),
+		)
 	}
 	return nil
 }
 
-func enforceBoundTaskChannel(taskID string, boundChannel string, ingressChannel string, patch *taskpkg.TaskPatch) error {
+func enforceBoundTaskChannel(
+	taskID string,
+	boundChannel string,
+	ingressChannel string,
+	patch *taskpkg.Patch,
+) error {
 	trimmedBound := strings.TrimSpace(boundChannel)
 	if trimmedBound == "" {
 		return nil
@@ -311,15 +395,26 @@ func enforceBoundTaskChannel(taskID string, boundChannel string, ingressChannel 
 		if patch != nil && patchAllowsStaleChannelRepair(strings.TrimSpace(ingressChannel), *patch) {
 			return nil
 		}
-		return fmt.Errorf("%w: task %q channel %q no longer validates", ErrTaskChannelStale, strings.TrimSpace(taskID), trimmedBound)
+		return fmt.Errorf(
+			"%w: task %q channel %q no longer validates",
+			ErrTaskChannelStale,
+			strings.TrimSpace(taskID),
+			trimmedBound,
+		)
 	}
 	if trimmedBound != strings.TrimSpace(ingressChannel) {
-		return fmt.Errorf("%w: task %q channel %q does not match ingress channel %q", ErrTaskChannelMismatch, strings.TrimSpace(taskID), trimmedBound, strings.TrimSpace(ingressChannel))
+		return fmt.Errorf(
+			"%w: task %q channel %q does not match ingress channel %q",
+			ErrTaskChannelMismatch,
+			strings.TrimSpace(taskID),
+			trimmedBound,
+			strings.TrimSpace(ingressChannel),
+		)
 	}
 	return nil
 }
 
-func patchAllowsStaleChannelRepair(ingressChannel string, patch taskpkg.TaskPatch) bool {
+func patchAllowsStaleChannelRepair(ingressChannel string, patch taskpkg.Patch) bool {
 	if patch.NetworkChannel == nil {
 		return false
 	}
@@ -339,7 +434,7 @@ func taskIngressReason(err error) string {
 	case err == nil:
 		return ""
 	case errors.Is(err, ErrTaskChannelMismatch):
-		return "channel_mismatch"
+		return taskIngressReasonChannelMismatch
 	case errors.Is(err, ErrTaskChannelStale):
 		return "stale_channel"
 	case errors.Is(err, ErrTaskIngressCapabilityDenied):

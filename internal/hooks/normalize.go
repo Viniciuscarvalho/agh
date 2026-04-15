@@ -3,6 +3,7 @@ package hooks
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 )
 
@@ -70,7 +71,11 @@ func normalizeHookDecl(decl HookDecl, resolve ExecutorResolver, bindExecutor boo
 
 	if bindExecutor {
 		if resolve == nil {
-			return ResolvedHook{}, fmt.Errorf("hooks: normalize hook %q: %w", normalized.Name, ErrExecutorResolverRequired)
+			return ResolvedHook{}, fmt.Errorf(
+				"hooks: normalize hook %q: %w",
+				normalized.Name,
+				ErrExecutorResolverRequired,
+			)
 		}
 
 		executor, err := resolve(normalized)
@@ -81,7 +86,12 @@ func normalizeHookDecl(decl HookDecl, resolve ExecutorResolver, bindExecutor boo
 			return ResolvedHook{}, fmt.Errorf("hooks: resolve executor for hook %q: nil executor", normalized.Name)
 		}
 		if executor.Kind() != normalized.ExecutorKind {
-			return ResolvedHook{}, fmt.Errorf("hooks: resolve executor for hook %q returned kind %q, want %q", normalized.Name, executor.Kind(), normalized.ExecutorKind)
+			return ResolvedHook{}, fmt.Errorf(
+				"hooks: resolve executor for hook %q returned kind %q, want %q",
+				normalized.Name,
+				executor.Kind(),
+				normalized.ExecutorKind,
+			)
 		}
 		registered.Executor = executor
 	}
@@ -136,7 +146,10 @@ func sanitizedHookDecl(decl HookDecl) (HookDecl, error) {
 		return HookDecl{}, err
 	}
 	if normalized.Source != HookSourceSkill && normalized.SkillSource != "" {
-		return HookDecl{}, fmt.Errorf("hooks: hook %q skill source is only valid for skill declarations", normalized.Name)
+		return HookDecl{}, fmt.Errorf(
+			"hooks: hook %q skill source is only valid for skill declarations",
+			normalized.Name,
+		)
 	}
 
 	if normalized.Mode == "" {
@@ -149,7 +162,11 @@ func sanitizedHookDecl(decl HookDecl) (HookDecl, error) {
 		return HookDecl{}, fmt.Errorf("hooks: hook %q cannot be required in async mode", normalized.Name)
 	}
 	if normalized.Mode == HookModeSync && !normalized.Event.SyncEligible() {
-		return HookDecl{}, fmt.Errorf("hooks: hook %q cannot use sync mode for async-only event %q", normalized.Name, normalized.Event)
+		return HookDecl{}, fmt.Errorf(
+			"hooks: hook %q cannot use sync mode for async-only event %q",
+			normalized.Name,
+			normalized.Event,
+		)
 	}
 	if normalized.Timeout < 0 {
 		return HookDecl{}, fmt.Errorf("hooks: hook %q timeout must be non-negative", normalized.Name)
@@ -222,8 +239,6 @@ func cloneStringMap(src map[string]string) map[string]string {
 	}
 
 	dst := make(map[string]string, len(src))
-	for key, value := range src {
-		dst[key] = value
-	}
+	maps.Copy(dst, src)
 	return dst
 }

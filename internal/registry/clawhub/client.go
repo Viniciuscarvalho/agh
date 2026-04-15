@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -40,7 +41,7 @@ type Client struct {
 	closeOnce      sync.Once
 }
 
-var _ registry.RegistrySource = (*Client)(nil)
+var _ registry.Source = (*Client)(nil)
 
 // NewClient constructs a ClawHub registry client.
 func NewClient(baseURL string, opts ...Option) *Client {
@@ -101,10 +102,10 @@ func WithSleep(sleep func(context.Context, time.Duration) error) Option {
 }
 
 // WithRetryPolicy overrides the retry policy used for retryable responses.
-func WithRetryPolicy(initial, max time.Duration, retries int) Option {
+func WithRetryPolicy(initial, maxDelay time.Duration, retries int) Option {
 	return func(client *Client) {
 		client.initialBackoff = initial
-		client.maxBackoff = max
+		client.maxBackoff = maxDelay
 		client.maxRetries = retries
 	}
 }
@@ -138,7 +139,7 @@ func (c *Client) Search(ctx context.Context, query string, opts registry.SearchO
 		values.Set("offset", fmt.Sprintf("%d", opts.Offset))
 	}
 
-	response, err := c.doRequest(ctx, http.MethodGet, "/skills", values, "search", "")
+	response, err := c.doRequest(ctx, "/skills", values, "search", "")
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +172,7 @@ func (c *Client) Info(ctx context.Context, slug string) (*registry.Detail, error
 		return nil, errors.New("clawhub: skill slug is required")
 	}
 
-	response, err := c.doRequest(ctx, http.MethodGet, "/skills/"+url.PathEscape(trimmedSlug), nil, "info", trimmedSlug)
+	response, err := c.doRequest(ctx, "/skills/"+url.PathEscape(trimmedSlug), nil, "info", trimmedSlug)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +198,11 @@ func (c *Client) Info(ctx context.Context, slug string) (*registry.Detail, error
 }
 
 // Download fetches the archived skill package stream for one skill slug.
-func (c *Client) Download(ctx context.Context, slug string, opts registry.DownloadOpts) (*registry.DownloadResult, error) {
+func (c *Client) Download(
+	ctx context.Context,
+	slug string,
+	opts registry.DownloadOpts,
+) (*registry.DownloadResult, error) {
 	trimmedSlug := strings.TrimSpace(slug)
 	if trimmedSlug == "" {
 		return nil, errors.New("clawhub: skill slug is required")
@@ -208,16 +213,27 @@ func (c *Client) Download(ctx context.Context, slug string, opts registry.Downlo
 		requestPath = "/skills/" + url.PathEscape(trimmedSlug) + "/versions/" + url.PathEscape(version) + "/archive"
 	}
 
-	response, err := c.doRequest(ctx, http.MethodGet, requestPath, nil, "download", trimmedSlug)
+	response, err := c.doRequest(ctx, requestPath, nil, "download", trimmedSlug)
 	if err != nil {
 		return nil, err
 	}
+	downloadReader, downloadSize, spoolErr := spoolDownloadResponse(response.Body, trimmedSlug)
+	closeErr := response.Body.Close()
+	if spoolErr != nil {
+		return nil, joinErrors(
+			fmt.Errorf("clawhub: spool download for %q: %w", trimmedSlug, spoolErr),
+			wrapCloseError(trimmedSlug, closeErr),
+		)
+	}
+	if closeErr != nil {
+		return nil, fmt.Errorf("clawhub: close download response for %q: %w", trimmedSlug, closeErr)
+	}
 
 	return &registry.DownloadResult{
-		Reader:      response.Body,
+		Reader:      downloadReader,
 		Slug:        trimmedSlug,
 		Version:     strings.TrimSpace(response.Header.Get("X-Skill-Version")),
-		ContentSize: contentSize(response.ContentLength),
+		ContentSize: contentSize(firstPositiveInt64(response.ContentLength, downloadSize)),
 		ContentType: strings.TrimSpace(response.Header.Get("Content-Type")),
 	}, nil
 }
@@ -232,7 +248,6 @@ func (c *Client) Close() error {
 
 func (c *Client) doRequest(
 	ctx context.Context,
-	method string,
 	requestPath string,
 	query url.Values,
 	operation string,
@@ -251,7 +266,7 @@ func (c *Client) doRequest(
 	var lastErr error
 
 	for attempt := 0; attempt <= c.maxRetries; attempt++ {
-		request, err := http.NewRequestWithContext(ctx, method, requestURL, nil)
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, http.NoBody)
 		if err != nil {
 			return nil, fmt.Errorf("clawhub: create %s request: %w", operation, err)
 		}
@@ -431,19 +446,82 @@ func sleepContext(ctx context.Context, wait time.Duration) error {
 	}
 }
 
-func nextBackoff(current time.Duration, max time.Duration) time.Duration {
+func nextBackoff(current time.Duration, maxDelay time.Duration) time.Duration {
 	if current <= 0 {
 		return defaultInitialBackoff
 	}
-	if max <= 0 {
-		max = defaultMaxBackoff
+	if maxDelay <= 0 {
+		maxDelay = defaultMaxBackoff
 	}
 
 	next := current * 2
-	if next > max {
-		return max
+	if next > maxDelay {
+		return maxDelay
 	}
 	return next
+}
+
+func spoolDownloadResponse(body io.Reader, slug string) (_ io.ReadCloser, size int64, err error) {
+	file, err := os.CreateTemp("", "agh-clawhub-download-*")
+	if err != nil {
+		return nil, 0, fmt.Errorf("create temp download file for %q: %w", slug, err)
+	}
+	defer func() {
+		if err != nil {
+			_ = os.Remove(file.Name())
+		}
+	}()
+
+	written, err := io.Copy(file, body)
+	if err != nil {
+		closeErr := file.Close()
+		return nil, 0, joinErrors(
+			fmt.Errorf("write temp download file for %q: %w", slug, err),
+			closeErr,
+		)
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		closeErr := file.Close()
+		return nil, 0, joinErrors(
+			fmt.Errorf("rewind temp download file for %q: %w", slug, err),
+			closeErr,
+		)
+	}
+
+	return &tempFileReadCloser{File: file, path: file.Name()}, written, nil
+}
+
+func wrapCloseError(slug string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("clawhub: close download response for %q: %w", slug, err)
+}
+
+func firstPositiveInt64(values ...int64) int64 {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return -1
+}
+
+type tempFileReadCloser struct {
+	*os.File
+	path string
+}
+
+func (r *tempFileReadCloser) Close() error {
+	if r == nil {
+		return nil
+	}
+	closeErr := r.File.Close()
+	removeErr := os.Remove(r.path)
+	if removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+		return errors.Join(closeErr, fmt.Errorf("remove temp download file %q: %w", r.path, removeErr))
+	}
+	return closeErr
 }
 
 func closeIdleConnections(httpClient *http.Client) {
@@ -466,6 +544,19 @@ func contentSize(length int64) int64 {
 		return length
 	}
 	return -1
+}
+
+func joinErrors(errs ...error) error {
+	var compact []error
+	for _, err := range errs {
+		if err != nil {
+			compact = append(compact, err)
+		}
+	}
+	if len(compact) == 0 {
+		return nil
+	}
+	return errors.Join(compact...)
 }
 
 func firstNonEmpty(values ...string) string {

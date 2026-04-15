@@ -25,7 +25,7 @@ func TestAgentListAndInfoCommands(t *testing.T) {
 		}},
 	}
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		listAgentsFn: func(context.Context) ([]AgentRecord, error) {
 			return []AgentRecord{agent}, nil
 		},
@@ -54,7 +54,8 @@ func TestAgentListAndInfoCommands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("agent info human error = %v", err)
 	}
-	if !strings.Contains(human, "Agent") || !strings.Contains(human, agent.Name) || !strings.Contains(human, "MCP Servers") {
+	if !strings.Contains(human, "Agent") || !strings.Contains(human, agent.Name) ||
+		!strings.Contains(human, "MCP Servers") {
 		t.Fatalf("agent info human output = %q, want agent details", human)
 	}
 
@@ -62,7 +63,8 @@ func TestAgentListAndInfoCommands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("agent info toon error = %v", err)
 	}
-	if !strings.Contains(toon, "agent{name,provider,command,model,tools,permissions,prompt}:") || !strings.Contains(toon, agent.Name) {
+	if !strings.Contains(toon, "agent{name,provider,command,model,tools,permissions,prompt}:") ||
+		!strings.Contains(toon, agent.Name) {
 		t.Fatalf("agent info toon output = %q, want TOON agent object", toon)
 	}
 }

@@ -12,6 +12,29 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type taskCreateInput struct {
+	ID           string
+	Identifier   string
+	ScopeRaw     string
+	WorkspaceRef string
+	NetworkRaw   string
+	Title        string
+	Description  string
+	OwnerKindRaw string
+	OwnerRef     string
+	MetadataRaw  string
+}
+
+type taskUpdateInput struct {
+	Title        string
+	Description  string
+	MetadataRaw  string
+	NetworkRaw   string
+	OwnerKindRaw string
+	OwnerRef     string
+	ClearOwner   bool
+}
+
 func newTaskCommand(deps commandDeps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "task",
@@ -49,12 +72,21 @@ func newTaskListCommand(deps commandDeps) *cobra.Command {
 		Short: "List tasks",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
 
-			query, err := parseTaskListFilters(scopeRaw, workspaceRef, statusRaw, ownerKindRaw, ownerRef, parentTaskID, networkRaw, last)
+			query, err := parseTaskListFilters(
+				scopeRaw,
+				workspaceRef,
+				statusRaw,
+				ownerKindRaw,
+				ownerRef,
+				parentTaskID,
+				networkRaw,
+				last,
+			)
 			if err != nil {
 				return err
 			}
@@ -96,48 +128,25 @@ func newTaskCreateCommand(deps commandDeps) *cobra.Command {
 		Short: "Create a task",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
 
-			scope, workspace, err := resolveTaskScopeWorkspace(scopeRaw, workspaceRef, true)
+			request, err := buildTaskCreateRequest(cmd, taskCreateInput{
+				ID:           id,
+				Identifier:   identifier,
+				ScopeRaw:     scopeRaw,
+				WorkspaceRef: workspaceRef,
+				NetworkRaw:   networkRaw,
+				Title:        title,
+				Description:  description,
+				OwnerKindRaw: ownerKindRaw,
+				OwnerRef:     ownerRef,
+				MetadataRaw:  metadataRaw,
+			})
 			if err != nil {
 				return err
-			}
-			if err := validateTaskChannelFlag("channel", networkRaw); err != nil {
-				return err
-			}
-
-			var owner *taskpkg.Ownership
-			if cmd.Flags().Changed("owner-kind") || cmd.Flags().Changed("owner-ref") {
-				owner, err = parseRequiredTaskOwnership(ownerKindRaw, ownerRef)
-				if err != nil {
-					return err
-				}
-			}
-
-			var metadata json.RawMessage
-			if cmd.Flags().Changed("metadata") {
-				metadata, err = parseJSONFlag("metadata", metadataRaw)
-				if err != nil {
-					return err
-				}
-			}
-
-			request := CreateTaskRequest{
-				ID:             strings.TrimSpace(id),
-				Identifier:     strings.TrimSpace(identifier),
-				Scope:          scope,
-				Workspace:      workspace,
-				NetworkChannel: strings.TrimSpace(networkRaw),
-				Title:          strings.TrimSpace(title),
-				Description:    strings.TrimSpace(description),
-				Owner:          owner,
-				Metadata:       metadata,
-			}
-			if request.Title == "" {
-				return errors.New("cli: --title is required")
 			}
 
 			created, err := client.CreateTask(cmd.Context(), request)
@@ -150,7 +159,8 @@ func newTaskCreateCommand(deps commandDeps) *cobra.Command {
 	cmd.Flags().StringVar(&id, "id", "", "Explicit task ID")
 	cmd.Flags().StringVar(&identifier, "identifier", "", "Human-friendly task identifier")
 	cmd.Flags().StringVar(&scopeRaw, "scope", "", "Task scope: global or workspace")
-	cmd.Flags().StringVar(&workspaceRef, "workspace", "", "Workspace path, name, or ID (required when --scope=workspace)")
+	cmd.Flags().
+		StringVar(&workspaceRef, "workspace", "", "Workspace path, name, or ID (required when --scope=workspace)")
 	cmd.Flags().StringVar(&networkRaw, "channel", "", "Optional network channel binding")
 	cmd.Flags().StringVar(&title, "title", "", "Task title")
 	cmd.Flags().StringVar(&description, "description", "", "Task description")
@@ -168,7 +178,7 @@ func newTaskGetCommand(deps commandDeps) *cobra.Command {
 		Short: "Show one task with related detail",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -198,49 +208,22 @@ func newTaskUpdateCommand(deps commandDeps) *cobra.Command {
 		Short: "Update mutable task fields",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
 
-			request := UpdateTaskRequest{}
-			if cmd.Flags().Changed("title") {
-				trimmed := strings.TrimSpace(title)
-				if trimmed == "" {
-					return errors.New("cli: --title cannot be blank")
-				}
-				request.Title = stringPointer(trimmed)
-			}
-			if cmd.Flags().Changed("description") {
-				request.Description = stringPointer(strings.TrimSpace(description))
-			}
-			if cmd.Flags().Changed("metadata") {
-				metadata, err := parseJSONFlag("metadata", metadataRaw)
-				if err != nil {
-					return err
-				}
-				request.Metadata = &metadata
-			}
-			if cmd.Flags().Changed("channel") {
-				if err := validateTaskChannelFlag("channel", networkRaw); err != nil {
-					return err
-				}
-				request.NetworkChannel = stringPointer(strings.TrimSpace(networkRaw))
-			}
-
-			ownerChanged := cmd.Flags().Changed("owner-kind") || cmd.Flags().Changed("owner-ref")
-			if clearOwner && ownerChanged {
-				return errors.New("cli: --clear-owner cannot be combined with --owner-kind or --owner-ref")
-			}
-			if ownerChanged {
-				owner, err := parseRequiredTaskOwnership(ownerKindRaw, ownerRef)
-				if err != nil {
-					return err
-				}
-				request.Owner = owner
-			}
-			if clearOwner {
-				request.ClearOwner = true
+			request, err := buildTaskUpdateRequest(cmd, taskUpdateInput{
+				Title:        title,
+				Description:  description,
+				MetadataRaw:  metadataRaw,
+				NetworkRaw:   networkRaw,
+				OwnerKindRaw: ownerKindRaw,
+				OwnerRef:     ownerRef,
+				ClearOwner:   clearOwner,
+			})
+			if err != nil {
+				return err
 			}
 			if !request.HasChanges() {
 				return errors.New("cli: task update requires at least one change flag")
@@ -256,11 +239,57 @@ func newTaskUpdateCommand(deps commandDeps) *cobra.Command {
 	cmd.Flags().StringVar(&title, "title", "", "Update the task title")
 	cmd.Flags().StringVar(&description, "description", "", "Update the task description")
 	cmd.Flags().StringVar(&metadataRaw, "metadata", "", "Update metadata JSON")
-	cmd.Flags().StringVar(&networkRaw, "channel", "", "Update the network channel; pass an empty value to clear it")
+	cmd.Flags().
+		StringVar(&networkRaw, "channel", "", "Update the network channel; pass an empty value to clear it")
 	cmd.Flags().StringVar(&ownerKindRaw, "owner-kind", "", "Update the owner kind")
 	cmd.Flags().StringVar(&ownerRef, "owner-ref", "", "Update the owner reference")
 	cmd.Flags().BoolVar(&clearOwner, "clear-owner", false, "Remove the current owner")
 	return cmd
+}
+
+func buildTaskUpdateRequest(cmd *cobra.Command, input taskUpdateInput) (UpdateTaskRequest, error) {
+	request := UpdateTaskRequest{}
+	if cmd.Flags().Changed("title") {
+		trimmed := strings.TrimSpace(input.Title)
+		if trimmed == "" {
+			return UpdateTaskRequest{}, errors.New("cli: --title cannot be blank")
+		}
+		request.Title = stringPointer(trimmed)
+	}
+	if cmd.Flags().Changed("description") {
+		request.Description = stringPointer(strings.TrimSpace(input.Description))
+	}
+	if cmd.Flags().Changed("metadata") {
+		metadata, err := parseJSONFlag("metadata", input.MetadataRaw)
+		if err != nil {
+			return UpdateTaskRequest{}, err
+		}
+		request.Metadata = &metadata
+	}
+	if cmd.Flags().Changed("channel") {
+		if err := validateTaskChannelFlag(input.NetworkRaw); err != nil {
+			return UpdateTaskRequest{}, err
+		}
+		request.NetworkChannel = stringPointer(strings.TrimSpace(input.NetworkRaw))
+	}
+
+	ownerChanged := cmd.Flags().Changed("owner-kind") || cmd.Flags().Changed("owner-ref")
+	if input.ClearOwner && ownerChanged {
+		return UpdateTaskRequest{}, errors.New(
+			"cli: --clear-owner cannot be combined with --owner-kind or --owner-ref",
+		)
+	}
+	if ownerChanged {
+		owner, err := parseRequiredTaskOwnership(input.OwnerKindRaw, input.OwnerRef)
+		if err != nil {
+			return UpdateTaskRequest{}, err
+		}
+		request.Owner = owner
+	}
+	if input.ClearOwner {
+		request.ClearOwner = true
+	}
+	return request, nil
 }
 
 func newTaskCancelCommand(deps commandDeps) *cobra.Command {
@@ -274,7 +303,7 @@ func newTaskCancelCommand(deps commandDeps) *cobra.Command {
 		Short: "Cancel a task tree",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -287,11 +316,11 @@ func newTaskCancelCommand(deps commandDeps) *cobra.Command {
 				}
 			}
 
-			cancelled, err := client.CancelTask(cmd.Context(), args[0], request)
+			canceled, err := client.CancelTask(cmd.Context(), args[0], request)
 			if err != nil {
 				return err
 			}
-			return writeCommandOutput(cmd, taskBundle(cancelled))
+			return writeCommandOutput(cmd, taskBundle(canceled))
 		},
 	}
 	cmd.Flags().StringVar(&reason, "reason", "", "Optional cancellation reason")
@@ -330,49 +359,27 @@ func newTaskChildCreateCommand(deps commandDeps) *cobra.Command {
 		Short: "Create a child task beneath a parent",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
 
-			scope, workspace, err := resolveTaskScopeWorkspace(scopeRaw, workspaceRef, true)
+			baseRequest, err := buildTaskCreateRequest(cmd, taskCreateInput{
+				ID:           id,
+				Identifier:   identifier,
+				ScopeRaw:     scopeRaw,
+				WorkspaceRef: workspaceRef,
+				NetworkRaw:   networkRaw,
+				Title:        title,
+				Description:  description,
+				OwnerKindRaw: ownerKindRaw,
+				OwnerRef:     ownerRef,
+				MetadataRaw:  metadataRaw,
+			})
 			if err != nil {
 				return err
 			}
-			if err := validateTaskChannelFlag("channel", networkRaw); err != nil {
-				return err
-			}
-
-			var owner *taskpkg.Ownership
-			if cmd.Flags().Changed("owner-kind") || cmd.Flags().Changed("owner-ref") {
-				owner, err = parseRequiredTaskOwnership(ownerKindRaw, ownerRef)
-				if err != nil {
-					return err
-				}
-			}
-
-			var metadata json.RawMessage
-			if cmd.Flags().Changed("metadata") {
-				metadata, err = parseJSONFlag("metadata", metadataRaw)
-				if err != nil {
-					return err
-				}
-			}
-
-			request := CreateTaskChildRequest{
-				ID:             strings.TrimSpace(id),
-				Identifier:     strings.TrimSpace(identifier),
-				Scope:          scope,
-				Workspace:      workspace,
-				NetworkChannel: strings.TrimSpace(networkRaw),
-				Title:          strings.TrimSpace(title),
-				Description:    strings.TrimSpace(description),
-				Owner:          owner,
-				Metadata:       metadata,
-			}
-			if request.Title == "" {
-				return errors.New("cli: --title is required")
-			}
+			request := CreateTaskChildRequest(baseRequest)
 
 			created, err := client.CreateChildTask(cmd.Context(), args[0], request)
 			if err != nil {
@@ -384,7 +391,8 @@ func newTaskChildCreateCommand(deps commandDeps) *cobra.Command {
 	cmd.Flags().StringVar(&id, "id", "", "Explicit child task ID")
 	cmd.Flags().StringVar(&identifier, "identifier", "", "Human-friendly child task identifier")
 	cmd.Flags().StringVar(&scopeRaw, "scope", "", "Child task scope: global or workspace")
-	cmd.Flags().StringVar(&workspaceRef, "workspace", "", "Workspace path, name, or ID (required when --scope=workspace)")
+	cmd.Flags().
+		StringVar(&workspaceRef, "workspace", "", "Workspace path, name, or ID (required when --scope=workspace)")
 	cmd.Flags().StringVar(&networkRaw, "channel", "", "Optional network channel binding")
 	cmd.Flags().StringVar(&title, "title", "", "Child task title")
 	cmd.Flags().StringVar(&description, "description", "", "Child task description")
@@ -420,7 +428,7 @@ func newTaskDependencyAddCommand(deps commandDeps) *cobra.Command {
 		Short: "Add a dependency edge to a task",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -456,7 +464,7 @@ func newTaskDependencyRemoveCommand(deps commandDeps) *cobra.Command {
 		Short: "Remove a dependency edge from a task",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -501,7 +509,7 @@ func newTaskRunListCommand(deps commandDeps) *cobra.Command {
 		Short: "List runs for a task",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -535,11 +543,11 @@ func newTaskRunEnqueueCommand(deps commandDeps) *cobra.Command {
 		Short: "Enqueue a task run",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
-			if err := validateTaskChannelFlag("channel", networkRaw); err != nil {
+			if err := validateTaskChannelFlag(networkRaw); err != nil {
 				return err
 			}
 
@@ -566,7 +574,7 @@ func newTaskRunClaimCommand(deps commandDeps) *cobra.Command {
 		Short: "Claim a queued task run",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -592,7 +600,7 @@ func newTaskRunStartCommand(deps commandDeps) *cobra.Command {
 		Short: "Start a claimed task run",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -618,7 +626,7 @@ func newTaskRunAttachSessionCommand(deps commandDeps) *cobra.Command {
 		Short: "Attach an existing session to a claimed or starting run",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -626,9 +634,13 @@ func newTaskRunAttachSessionCommand(deps commandDeps) *cobra.Command {
 				return errors.New("cli: --session is required")
 			}
 
-			run, err := client.AttachTaskRunSession(cmd.Context(), args[0], AttachTaskRunSessionRequest{
-				SessionID: strings.TrimSpace(sessionID),
-			})
+			run, err := client.AttachTaskRunSession(
+				cmd.Context(),
+				args[0],
+				AttachTaskRunSessionRequest{
+					SessionID: strings.TrimSpace(sessionID),
+				},
+			)
 			if err != nil {
 				return err
 			}
@@ -648,7 +660,7 @@ func newTaskRunCompleteCommand(deps commandDeps) *cobra.Command {
 		Short: "Complete a running task run",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -683,7 +695,7 @@ func newTaskRunFailCommand(deps commandDeps) *cobra.Command {
 		Short: "Fail a task run",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -723,7 +735,7 @@ func newTaskRunCancelCommand(deps commandDeps) *cobra.Command {
 		Short: "Cancel a task run",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -748,7 +760,16 @@ func newTaskRunCancelCommand(deps commandDeps) *cobra.Command {
 	return cmd
 }
 
-func parseTaskListFilters(scopeRaw string, workspaceRef string, statusRaw string, ownerKindRaw string, ownerRef string, parentTaskID string, channelRaw string, last int) (TaskListQuery, error) {
+func parseTaskListFilters(
+	scopeRaw string,
+	workspaceRef string,
+	statusRaw string,
+	ownerKindRaw string,
+	ownerRef string,
+	parentTaskID string,
+	channelRaw string,
+	last int,
+) (TaskListQuery, error) {
 	scope, workspace, err := resolveTaskScopeWorkspace(scopeRaw, workspaceRef, false)
 	if err != nil {
 		return TaskListQuery{}, err
@@ -763,9 +784,11 @@ func parseTaskListFilters(scopeRaw string, workspaceRef string, statusRaw string
 	}
 	trimmedOwnerRef := strings.TrimSpace(ownerRef)
 	if (ownerKind != "" && trimmedOwnerRef == "") || (ownerKind == "" && trimmedOwnerRef != "") {
-		return TaskListQuery{}, errors.New("cli: --owner-kind and --owner-ref must be provided together")
+		return TaskListQuery{}, errors.New(
+			"cli: --owner-kind and --owner-ref must be provided together",
+		)
 	}
-	if err := validateTaskChannelFlag("channel", channelRaw); err != nil {
+	if err := validateTaskChannelFlag(channelRaw); err != nil {
 		return TaskListQuery{}, err
 	}
 	if err := validateTaskLast(last); err != nil {
@@ -784,7 +807,11 @@ func parseTaskListFilters(scopeRaw string, workspaceRef string, statusRaw string
 	}, nil
 }
 
-func parseTaskRunListFilters(statusRaw string, sessionID string, last int) (TaskRunListQuery, error) {
+func parseTaskRunListFilters(
+	statusRaw string,
+	sessionID string,
+	last int,
+) (TaskRunListQuery, error) {
 	status, err := parseOptionalTaskRunStatus(statusRaw)
 	if err != nil {
 		return TaskRunListQuery{}, err
@@ -799,7 +826,11 @@ func parseTaskRunListFilters(statusRaw string, sessionID string, last int) (Task
 	}, nil
 }
 
-func resolveTaskScopeWorkspace(rawScope string, workspaceRef string, scopeRequired bool) (taskpkg.Scope, string, error) {
+func resolveTaskScopeWorkspace(
+	rawScope string,
+	workspaceRef string,
+	scopeRequired bool,
+) (taskpkg.Scope, string, error) {
 	scope, err := parseOptionalTaskScope(rawScope)
 	if err != nil {
 		return "", "", err
@@ -834,24 +865,24 @@ func parseOptionalTaskScope(raw string) (taskpkg.Scope, error) {
 	return scope, nil
 }
 
-func parseOptionalTaskStatus(raw string) (taskpkg.TaskStatus, error) {
+func parseOptionalTaskStatus(raw string) (taskpkg.Status, error) {
 	trimmed := strings.ToLower(strings.TrimSpace(raw))
 	if trimmed == "" {
 		return "", nil
 	}
-	status := taskpkg.TaskStatus(trimmed)
+	status := taskpkg.Status(trimmed)
 	if err := status.Validate("status"); err != nil {
 		return "", fmt.Errorf("cli: %w", err)
 	}
 	return status, nil
 }
 
-func parseOptionalTaskRunStatus(raw string) (taskpkg.TaskRunStatus, error) {
+func parseOptionalTaskRunStatus(raw string) (taskpkg.RunStatus, error) {
 	trimmed := strings.ToLower(strings.TrimSpace(raw))
 	if trimmed == "" {
 		return "", nil
 	}
-	status := taskpkg.TaskRunStatus(trimmed)
+	status := taskpkg.RunStatus(trimmed)
 	if err := status.Validate("status"); err != nil {
 		return "", fmt.Errorf("cli: %w", err)
 	}
@@ -911,13 +942,66 @@ func parseJSONFlag(flagName string, raw string) (json.RawMessage, error) {
 	return json.RawMessage(trimmed), nil
 }
 
-func validateTaskChannelFlag(flagName string, channel string) error {
+func buildTaskCreateRequest(cmd *cobra.Command, input taskCreateInput) (CreateTaskRequest, error) {
+	scope, workspace, err := resolveTaskScopeWorkspace(input.ScopeRaw, input.WorkspaceRef, true)
+	if err != nil {
+		return CreateTaskRequest{}, err
+	}
+	if err := validateTaskChannelFlag(input.NetworkRaw); err != nil {
+		return CreateTaskRequest{}, err
+	}
+
+	owner, err := parseOptionalTaskOwnership(cmd, input.OwnerKindRaw, input.OwnerRef)
+	if err != nil {
+		return CreateTaskRequest{}, err
+	}
+	metadata, err := parseOptionalTaskMetadata(cmd, input.MetadataRaw)
+	if err != nil {
+		return CreateTaskRequest{}, err
+	}
+
+	request := CreateTaskRequest{
+		ID:             strings.TrimSpace(input.ID),
+		Identifier:     strings.TrimSpace(input.Identifier),
+		Scope:          scope,
+		Workspace:      workspace,
+		NetworkChannel: strings.TrimSpace(input.NetworkRaw),
+		Title:          strings.TrimSpace(input.Title),
+		Description:    strings.TrimSpace(input.Description),
+		Owner:          owner,
+		Metadata:       metadata,
+	}
+	if request.Title == "" {
+		return CreateTaskRequest{}, errors.New("cli: --title is required")
+	}
+	return request, nil
+}
+
+func parseOptionalTaskOwnership(
+	cmd *cobra.Command,
+	ownerKindRaw string,
+	ownerRef string,
+) (*taskpkg.Ownership, error) {
+	if !cmd.Flags().Changed("owner-kind") && !cmd.Flags().Changed("owner-ref") {
+		return nil, nil
+	}
+	return parseRequiredTaskOwnership(ownerKindRaw, ownerRef)
+}
+
+func parseOptionalTaskMetadata(cmd *cobra.Command, metadataRaw string) (json.RawMessage, error) {
+	if !cmd.Flags().Changed("metadata") {
+		return nil, nil
+	}
+	return parseJSONFlag("metadata", metadataRaw)
+}
+
+func validateTaskChannelFlag(channel string) error {
 	trimmed := strings.TrimSpace(channel)
 	if trimmed == "" {
 		return nil
 	}
 	if err := network.ValidateChannel(trimmed); err != nil {
-		return fmt.Errorf("cli: invalid --%s value %q: %w", flagName, trimmed, err)
+		return fmt.Errorf("cli: invalid --channel value %q: %w", trimmed, err)
 	}
 	return nil
 }
@@ -954,7 +1038,22 @@ func taskBundle(item TaskRecord) outputBundle {
 		},
 		toon: func() (string, error) {
 			return renderToonObject("task", []string{
-				"id", "identifier", "scope", "workspace_id", "parent_task_id", "title", "description", "status", "owner", "created_by", "origin", "network_channel", "created_at", "updated_at", "closed_at", "metadata",
+				"id",
+				"identifier",
+				"scope",
+				"workspace_id",
+				"parent_task_id",
+				"title",
+				"description",
+				"status",
+				"owner",
+				"created_by",
+				"origin",
+				"network_channel",
+				"created_at",
+				"updated_at",
+				"closed_at",
+				"metadata",
 			}, []string{
 				item.ID,
 				item.Identifier,
@@ -982,9 +1081,29 @@ func taskSummaryListBundle(items []TaskSummaryRecord) outputBundle {
 		items,
 		items,
 		"Tasks",
-		[]string{"ID", "Identifier", "Scope", "Workspace", "Parent", "Status", "Owner", "Channel", "Title"},
+		[]string{
+			"ID",
+			"Identifier",
+			"Scope",
+			"Workspace",
+			"Parent",
+			"Status",
+			"Owner",
+			"Channel",
+			"Title",
+		},
 		"tasks",
-		[]string{"id", "identifier", "scope", "workspace_id", "parent_task_id", "status", "owner", "network_channel", "title"},
+		[]string{
+			"id",
+			"identifier",
+			"scope",
+			"workspace_id",
+			"parent_task_id",
+			"status",
+			"owner",
+			"network_channel",
+			"title",
+		},
 		func(item TaskSummaryRecord) []string {
 			return []string{
 				stringOrDash(item.ID),
@@ -1017,33 +1136,91 @@ func taskSummaryListBundle(items []TaskSummaryRecord) outputBundle {
 func taskDetailBundle(detail TaskDetailRecord) outputBundle {
 	return outputBundle{
 		jsonValue: detail,
-		human: func() (string, error) {
-			taskBlock, err := taskBundle(detail.Task).human()
-			if err != nil {
-				return "", err
-			}
-			return renderHumanBlocks(
-				taskBlock,
-				renderHumanTable("Child Tasks", []string{"ID", "Identifier", "Scope", "Workspace", "Status", "Owner", "Title"}, taskChildRows(detail.Children)),
-				renderHumanTable("Dependencies", []string{"Task", "Depends On", "Kind", "Created"}, taskDependencyRows(detail.Dependencies)),
-				renderHumanTable("Task Runs", []string{"ID", "Status", "Attempt", "Session", "Claimed By", "Channel", "Queued", "Started", "Ended", "Error"}, taskRunRows(detail.Runs)),
-				renderHumanTable("Task Events", []string{"ID", "Type", "Run", "Actor", "Origin", "Time"}, taskEventRows(detail.Events)),
-			), nil
-		},
-		toon: func() (string, error) {
-			taskBlock, err := taskBundle(detail.Task).toon()
-			if err != nil {
-				return "", err
-			}
-			return renderHumanBlocks(
-				taskBlock,
-				renderToonArray("task_children", []string{"id", "identifier", "scope", "workspace_id", "status", "owner", "title"}, taskChildToonRows(detail.Children)),
-				renderToonArray("task_dependencies", []string{"task_id", "depends_on_task_id", "kind", "created_at"}, taskDependencyToonRows(detail.Dependencies)),
-				renderToonArray("task_runs", []string{"id", "status", "attempt", "session_id", "claimed_by", "network_channel", "queued_at", "started_at", "ended_at", "error"}, taskRunToonRows(detail.Runs)),
-				renderToonArray("task_events", []string{"id", "event_type", "run_id", "actor", "origin", "timestamp"}, taskEventToonRows(detail.Events)),
-			), nil
-		},
+		human:     func() (string, error) { return renderTaskDetailHuman(detail) },
+		toon:      func() (string, error) { return renderTaskDetailToon(detail) },
 	}
+}
+
+func renderTaskDetailHuman(detail TaskDetailRecord) (string, error) {
+	taskBlock, err := taskBundle(detail.Task).human()
+	if err != nil {
+		return "", err
+	}
+	return renderHumanBlocks(
+		taskBlock,
+		renderHumanTable(
+			"Child Tasks",
+			[]string{"ID", "Identifier", "Scope", "Workspace", "Status", "Owner", "Title"},
+			taskChildRows(detail.Children),
+		),
+		renderHumanTable(
+			"Dependencies",
+			[]string{"Task", "Depends On", "Kind", "Created"},
+			taskDependencyRows(detail.Dependencies),
+		),
+		renderHumanTable(
+			"Task Runs",
+			[]string{
+				"ID",
+				"Status",
+				"Attempt",
+				"Session",
+				"Claimed By",
+				"Channel",
+				"Queued",
+				"Started",
+				"Ended",
+				"Error",
+			},
+			taskRunRows(detail.Runs),
+		),
+		renderHumanTable(
+			"Task Events",
+			[]string{"ID", "Type", "Run", "Actor", "Origin", "Time"},
+			taskEventRows(detail.Events),
+		),
+	), nil
+}
+
+func renderTaskDetailToon(detail TaskDetailRecord) (string, error) {
+	taskBlock, err := taskBundle(detail.Task).toon()
+	if err != nil {
+		return "", err
+	}
+	return renderHumanBlocks(
+		taskBlock,
+		renderToonArray(
+			"task_children",
+			[]string{"id", "identifier", "scope", "workspace_id", "status", "owner", "title"},
+			taskChildToonRows(detail.Children),
+		),
+		renderToonArray(
+			"task_dependencies",
+			[]string{"task_id", "depends_on_task_id", "kind", "created_at"},
+			taskDependencyToonRows(detail.Dependencies),
+		),
+		renderToonArray(
+			"task_runs",
+			[]string{
+				"id",
+				"status",
+				"attempt",
+				"session_id",
+				"claimed_by",
+				"network_channel",
+				"queued_at",
+				"started_at",
+				"ended_at",
+				"error",
+			},
+			taskRunToonRows(detail.Runs),
+		),
+		renderToonArray(
+			"task_events",
+			[]string{"id", "event_type", "run_id", "actor", "origin", "timestamp"},
+			taskEventToonRows(detail.Events),
+		),
+	), nil
 }
 
 func taskRunBundle(item TaskRunRecord) outputBundle {
@@ -1070,7 +1247,21 @@ func taskRunBundle(item TaskRunRecord) outputBundle {
 		},
 		toon: func() (string, error) {
 			return renderToonObject("task_run", []string{
-				"id", "task_id", "status", "attempt", "claimed_by", "session_id", "origin", "idempotency_key", "network_channel", "queued_at", "claimed_at", "started_at", "ended_at", "error", "result",
+				"id",
+				"task_id",
+				"status",
+				"attempt",
+				"claimed_by",
+				"session_id",
+				"origin",
+				"idempotency_key",
+				"network_channel",
+				"queued_at",
+				"claimed_at",
+				"started_at",
+				"ended_at",
+				"error",
+				"result",
 			}, []string{
 				item.ID,
 				item.TaskID,
@@ -1097,9 +1288,31 @@ func taskRunListBundle(items []TaskRunRecord) outputBundle {
 		items,
 		items,
 		"Task Runs",
-		[]string{"ID", "Status", "Attempt", "Session", "Claimed By", "Channel", "Queued", "Started", "Ended", "Error"},
+		[]string{
+			"ID",
+			"Status",
+			"Attempt",
+			"Session",
+			"Claimed By",
+			"Channel",
+			"Queued",
+			"Started",
+			"Ended",
+			"Error",
+		},
 		"task_runs",
-		[]string{"id", "status", "attempt", "session_id", "claimed_by", "network_channel", "queued_at", "started_at", "ended_at", "error"},
+		[]string{
+			"id",
+			"status",
+			"attempt",
+			"session_id",
+			"claimed_by",
+			"network_channel",
+			"queued_at",
+			"started_at",
+			"ended_at",
+			"error",
+		},
 		func(item TaskRunRecord) []string {
 			return []string{
 				stringOrDash(item.ID),
@@ -1261,11 +1474,17 @@ func formatTaskOwnership(owner *taskpkg.Ownership) string {
 	if owner == nil {
 		return ""
 	}
-	return firstNonEmpty(string(owner.Kind)+":"+strings.TrimSpace(owner.Ref), strings.TrimSpace(owner.Ref))
+	return firstNonEmpty(
+		string(owner.Kind)+":"+strings.TrimSpace(owner.Ref),
+		strings.TrimSpace(owner.Ref),
+	)
 }
 
 func formatTaskActor(actor taskpkg.ActorIdentity) string {
-	return firstNonEmpty(string(actor.Kind)+":"+strings.TrimSpace(actor.Ref), strings.TrimSpace(actor.Ref))
+	return firstNonEmpty(
+		string(actor.Kind)+":"+strings.TrimSpace(actor.Ref),
+		strings.TrimSpace(actor.Ref),
+	)
 }
 
 func formatTaskActorPtr(actor *taskpkg.ActorIdentity) string {
@@ -1276,5 +1495,8 @@ func formatTaskActorPtr(actor *taskpkg.ActorIdentity) string {
 }
 
 func formatTaskOrigin(origin taskpkg.Origin) string {
-	return firstNonEmpty(string(origin.Kind)+":"+strings.TrimSpace(origin.Ref), strings.TrimSpace(origin.Ref))
+	return firstNonEmpty(
+		string(origin.Kind)+":"+strings.TrimSpace(origin.Ref),
+		strings.TrimSpace(origin.Ref),
+	)
 }

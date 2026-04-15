@@ -84,7 +84,6 @@ func TestStatusForBridgeError(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			if got := StatusForBridgeError(tt.err); got != tt.want {
@@ -123,7 +122,6 @@ func TestTaskErrorHelpers(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			if got := StatusForTaskError(tt.err); got != tt.want {
@@ -174,7 +172,6 @@ func TestAutomationAndNetworkErrorHelpers(t *testing.T) {
 		{name: "default", err: errors.New("boom"), want: http.StatusInternalServerError},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			if got := StatusForNetworkError(tt.err); got != tt.want {
@@ -198,11 +195,17 @@ func TestRespondErrorFallbackBranches(t *testing.T) {
 		wantStatus int
 	}{
 		{name: "unknown error fallback", status: 0, err: nil, mask: false, wantErr: "unknown error", wantStatus: 200},
-		{name: "masked internal fallback", status: 599, err: nil, mask: true, wantErr: "internal server error", wantStatus: 599},
+		{
+			name:       "masked internal fallback",
+			status:     599,
+			err:        nil,
+			mask:       true,
+			wantErr:    "internal server error",
+			wantStatus: 599,
+		},
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 

@@ -94,7 +94,7 @@ export type HookEvent =
 
 export interface AgentCrashedPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -103,8 +103,8 @@ export interface AgentCrashedPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   command?: string;
   args?: string[];
   cwd?: string;
@@ -120,7 +120,7 @@ export interface AgentLifecyclePatch {
 
 export interface AgentLifecyclePayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -129,8 +129,8 @@ export interface AgentLifecyclePayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   command?: string;
   args?: string[];
   cwd?: string;
@@ -142,7 +142,7 @@ export interface AgentLifecyclePayload {
 
 export interface AgentPreStartPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -151,8 +151,8 @@ export interface AgentPreStartPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   command?: string;
   args?: string[];
   cwd?: string;
@@ -166,7 +166,7 @@ export interface AgentSpawnedPatch {
 
 export interface AgentSpawnedPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -175,8 +175,8 @@ export interface AgentSpawnedPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   command?: string;
   args?: string[];
   cwd?: string;
@@ -200,7 +200,7 @@ export interface AgentStoppedPatch {
 
 export interface AgentStoppedPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -209,8 +209,8 @@ export interface AgentStoppedPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   command?: string;
   args?: string[];
   cwd?: string;
@@ -225,7 +225,7 @@ export interface AutomationFirePatch {
   cancel?: boolean;
 }
 
-export type AutomationScope = string;
+export type Scope = string;
 
 export type ScheduleMode = string;
 
@@ -264,7 +264,7 @@ export interface FireLimitConfig {
 }
 
 export interface AutomationJobCreateParams {
-  scope: AutomationScope;
+  scope: Scope;
   name: string;
   agent_name: string;
   workspace_id?: string;
@@ -329,7 +329,7 @@ export interface AutomationJobUpdateParams {
 }
 
 export interface AutomationJobsParams {
-  scope?: AutomationScope;
+  scope?: Scope;
   workspace_id?: string;
   enabled?: boolean;
 }
@@ -371,7 +371,7 @@ export interface AutomationTargetParams {
 }
 
 export interface AutomationTriggerCreateParams {
-  scope: AutomationScope;
+  scope: Scope;
   name: string;
   agent_name: string;
   workspace_id?: string;
@@ -388,7 +388,7 @@ export interface AutomationTriggerCreateParams {
 
 export interface AutomationTriggerFireParams {
   event: string;
-  scope: AutomationScope;
+  scope: Scope;
   workspace_id?: string;
   payload?: Record<string, JSONValue>;
 }
@@ -437,7 +437,7 @@ export interface AutomationTriggerUpdateParams {
 }
 
 export interface AutomationTriggersParams {
-  scope?: AutomationScope;
+  scope?: Scope;
   workspace_id?: string;
   event?: string;
   enabled?: boolean;
@@ -517,7 +517,7 @@ export interface ContextBlock {
 
 export interface ContextCompactPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -526,8 +526,8 @@ export interface ContextCompactPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   turn_id?: string;
   reason?: string;
   strategy?: string;
@@ -553,7 +553,7 @@ export interface ContextPostCompactPatch {
 
 export interface ContextPostCompactPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -562,8 +562,8 @@ export interface ContextPostCompactPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   turn_id?: string;
   reason?: string;
   strategy?: string;
@@ -581,7 +581,7 @@ export interface ContextPreCompactPatch {
 
 export interface ContextPreCompactPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -590,8 +590,8 @@ export interface ContextPreCompactPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   turn_id?: string;
   reason?: string;
   strategy?: string;
@@ -665,7 +665,7 @@ export interface DeliverySnapshot {
   delivery_target: DeliveryTarget;
   latest_seq: number;
   latest_event_type: string;
-  current_content?: MessageContent;
+  current_content: MessageContent;
   operation?: DeliveryOperation;
   reference?: DeliveryMessageReference;
   provider_metadata?: JSONValue;
@@ -691,7 +691,7 @@ export interface EventPostRecordPatch {
 
 export interface EventPostRecordPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -700,8 +700,8 @@ export interface EventPostRecordPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   turn_id?: string;
   record_type?: string;
   sequence?: number;
@@ -714,7 +714,7 @@ export interface EventPreRecordPatch {
 
 export interface EventPreRecordPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -723,8 +723,8 @@ export interface EventPreRecordPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   turn_id?: string;
   record_type?: string;
   sequence?: number;
@@ -737,7 +737,7 @@ export interface EventRecordPatch {
 
 export interface EventRecordPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -746,8 +746,8 @@ export interface EventRecordPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   turn_id?: string;
   record_type?: string;
   sequence?: number;
@@ -787,7 +787,7 @@ export interface HookDecl {
   required?: boolean;
   priority?: number;
   timeout?: number;
-  matcher?: HookMatcher;
+  matcher: HookMatcher;
   executor_kind?: HookExecutorKind;
   command?: string;
   args?: string[];
@@ -949,7 +949,7 @@ export interface InputPreSubmitPatch {
 
 export interface InputPreSubmitPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -958,8 +958,8 @@ export interface InputPreSubmitPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   turn_id?: string;
   input_class?: string;
   message?: string;
@@ -970,7 +970,7 @@ export type JobSource = string;
 
 export interface Job {
   id: string;
-  scope: AutomationScope;
+  scope: Scope;
   name: string;
   agent_name: string;
   workspace_id?: string;
@@ -1024,7 +1024,7 @@ export interface MessageDeltaPatch {
 
 export interface MessageDeltaPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -1033,8 +1033,8 @@ export interface MessageDeltaPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   turn_id?: string;
   message_id?: string;
   role?: string;
@@ -1053,7 +1053,7 @@ export interface MessageEndPatch {
 
 export interface MessageEndPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -1062,8 +1062,8 @@ export interface MessageEndPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   turn_id?: string;
   message_id?: string;
   role?: string;
@@ -1082,7 +1082,7 @@ export interface MessagePatch {
 
 export interface MessagePayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -1091,8 +1091,8 @@ export interface MessagePayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   turn_id?: string;
   message_id?: string;
   role?: string;
@@ -1111,7 +1111,7 @@ export interface MessageStartPatch {
 
 export interface MessageStartPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -1120,8 +1120,8 @@ export interface MessageStartPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   turn_id?: string;
   message_id?: string;
   role?: string;
@@ -1134,7 +1134,7 @@ export interface ObserveEventsParams {
   session_id?: string;
   agent_name?: string;
   type?: string;
-  since?: ISODateTime;
+  since: ISODateTime;
   limit?: number;
 }
 
@@ -1160,37 +1160,33 @@ export interface BridgeAggregateHealth {
 export interface TaskQueueDepth {
   network_channel?: string;
   count: number;
-  oldest_queued_at?: ISODateTime;
+  oldest_queued_at: ISODateTime;
   oldest_queue_age_ms: number;
 }
-
-export type TaskRunStatus = string;
 
 export type OriginKind = string;
 
 export interface StuckTaskRun {
   task_id: string;
   run_id: string;
-  status: TaskRunStatus;
+  status: RunStatus;
   origin_kind: OriginKind;
   network_channel?: string;
   session_id?: string;
   age_ms: number;
 }
 
-export type Scope = string;
-
-export type TaskStatus = string;
+export type Status = string;
 
 export interface TaskStatusTotal {
   scope: Scope;
-  status: TaskStatus;
+  status: Status;
   network_channel?: string;
   count: number;
 }
 
 export interface TaskRunTotal {
-  status: TaskRunStatus;
+  status: RunStatus;
   origin_kind: OriginKind;
   network_channel?: string;
   count: number;
@@ -1211,7 +1207,7 @@ export interface TaskRecoveryTotals {
 export interface TaskHealth {
   status: string;
   queue_depth_total: number;
-  oldest_queued_at?: ISODateTime;
+  oldest_queued_at: ISODateTime;
   oldest_queue_age_ms: number;
   queue_depth?: TaskQueueDepth[];
   stuck_runs?: StuckTaskRun[];
@@ -1239,7 +1235,7 @@ export interface ObserveHealth {
 
 export interface PayloadBase {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
 }
 
 export type PermissionDeniedPatch = Record<string, never>;
@@ -1260,7 +1256,7 @@ export interface PermissionToolCall {
 
 export interface PermissionDeniedPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -1269,8 +1265,8 @@ export interface PermissionDeniedPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   turn_id?: string;
   request_id?: string;
   action?: string;
@@ -1278,7 +1274,7 @@ export interface PermissionDeniedPayload {
   decision?: string;
   decision_class?: string;
   tool_input?: JSONValue;
-  tool_call?: PermissionToolCall;
+  tool_call: PermissionToolCall;
 }
 
 export interface PermissionOption {
@@ -1298,7 +1294,7 @@ export interface PermissionRequestPatch {
 
 export interface PermissionRequestPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -1307,8 +1303,8 @@ export interface PermissionRequestPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   turn_id?: string;
   request_id?: string;
   action?: string;
@@ -1316,13 +1312,13 @@ export interface PermissionRequestPayload {
   decision?: string;
   decision_class?: string;
   tool_input?: JSONValue;
-  tool_call?: PermissionToolCall;
+  tool_call: PermissionToolCall;
   options?: PermissionOption[];
 }
 
 export interface PermissionResolutionPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -1331,8 +1327,8 @@ export interface PermissionResolutionPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   turn_id?: string;
   request_id?: string;
   action?: string;
@@ -1340,14 +1336,14 @@ export interface PermissionResolutionPayload {
   decision?: string;
   decision_class?: string;
   tool_input?: JSONValue;
-  tool_call?: PermissionToolCall;
+  tool_call: PermissionToolCall;
 }
 
 export type PermissionResolvedPatch = Record<string, never>;
 
 export interface PermissionResolvedPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -1356,8 +1352,8 @@ export interface PermissionResolvedPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   turn_id?: string;
   request_id?: string;
   action?: string;
@@ -1365,7 +1361,7 @@ export interface PermissionResolvedPayload {
   decision?: string;
   decision_class?: string;
   tool_input?: JSONValue;
-  tool_call?: PermissionToolCall;
+  tool_call: PermissionToolCall;
 }
 
 export interface PromptPatch {
@@ -1377,7 +1373,7 @@ export interface PromptPatch {
 
 export interface PromptPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -1386,8 +1382,8 @@ export interface PromptPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   turn_id?: string;
   input_class?: string;
   prompt?: string;
@@ -1417,8 +1413,8 @@ export interface SessionContext {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
 }
 
 export interface SessionCreatePatch {
@@ -1448,12 +1444,12 @@ export interface SessionEventsParams {
   turn_id?: string;
   limit?: number;
   offset?: number;
-  since?: ISODateTime;
+  since: ISODateTime;
 }
 
 export interface SessionLifecyclePayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -1462,8 +1458,8 @@ export interface SessionLifecyclePayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
 }
 
 export interface SessionPostCreatePatch {
@@ -1478,7 +1474,7 @@ export interface SessionPostCreatePatch {
 
 export interface SessionPostCreatePayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -1487,8 +1483,8 @@ export interface SessionPostCreatePayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
 }
 
 export interface SessionPostResumePatch {
@@ -1503,7 +1499,7 @@ export interface SessionPostResumePatch {
 
 export interface SessionPostResumePayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -1512,8 +1508,8 @@ export interface SessionPostResumePayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
 }
 
 export interface SessionPostStopPatch {
@@ -1528,7 +1524,7 @@ export interface SessionPostStopPatch {
 
 export interface SessionPostStopPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -1537,13 +1533,13 @@ export interface SessionPostStopPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
 }
 
 export interface SessionPreCreatePayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -1552,8 +1548,8 @@ export interface SessionPreCreatePayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
 }
 
 export interface SessionPreResumePatch {
@@ -1568,7 +1564,7 @@ export interface SessionPreResumePatch {
 
 export interface SessionPreResumePayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -1577,8 +1573,8 @@ export interface SessionPreResumePayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
 }
 
 export interface SessionPreStopPatch {
@@ -1593,7 +1589,7 @@ export interface SessionPreStopPatch {
 
 export interface SessionPreStopPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -1602,15 +1598,15 @@ export interface SessionPreStopPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
 }
 
 export interface SessionPromptResult {
   turn_id: string;
 }
 
-export type SessionState = "starting" | "active" | "stopping" | "stopped";
+export type State = "starting" | "active" | "stopping" | "stopped";
 
 export type StopReason =
   | "completed"
@@ -1630,7 +1626,7 @@ export interface SessionStatus {
   agent: string;
   workspace_id?: string;
   workspace?: string;
-  state: SessionState;
+  state: State;
   stop_reason?: StopReason;
   stop_detail?: string;
   acp_session_id?: string;
@@ -1643,7 +1639,7 @@ export interface SessionSummary {
   name?: string;
   agent: string;
   workspace?: string;
-  state: SessionState;
+  state: State;
   created_at: ISODateTime;
 }
 
@@ -1706,7 +1702,7 @@ export interface Task {
   network_channel?: string;
   title: string;
   description?: string;
-  status: TaskStatus;
+  status: Status;
   owner?: Ownership;
   created_by: ActorIdentity;
   origin: Origin;
@@ -1742,7 +1738,7 @@ export interface TaskSummary {
   parent_task_id?: string;
   network_channel?: string;
   title: string;
-  status: TaskStatus;
+  status: Status;
   owner?: Ownership;
   created_by: ActorIdentity;
   origin: Origin;
@@ -1763,7 +1759,7 @@ export interface TaskDependencyPayload {
 export interface TaskRun {
   id: string;
   task_id: string;
-  status: TaskRunStatus;
+  status: RunStatus;
   attempt: number;
   claimed_by?: ActorIdentity;
   session_id?: string;
@@ -1837,7 +1833,7 @@ export interface TaskRunStartParams {
 
 export interface TaskRunsParams {
   id: string;
-  status?: TaskRunStatus;
+  status?: RunStatus;
   session_id?: string;
   limit?: number;
 }
@@ -1859,7 +1855,7 @@ export interface TaskUpdateParams {
 export interface TasksParams {
   scope?: Scope;
   workspace?: string;
-  status?: TaskStatus;
+  status?: Status;
   owner_kind?: OwnerKind;
   owner_ref?: string;
   parent_task_id?: string;
@@ -1895,7 +1891,7 @@ export interface ToolCallRef {
 
 export interface ToolPostCallPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -1904,8 +1900,8 @@ export interface ToolPostCallPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   turn_id?: string;
   tool_call_id?: string;
   tool_name?: string;
@@ -1926,7 +1922,7 @@ export interface ToolPostErrorPatch {
 
 export interface ToolPostErrorPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -1935,8 +1931,8 @@ export interface ToolPostErrorPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   turn_id?: string;
   tool_call_id?: string;
   tool_name?: string;
@@ -1949,7 +1945,7 @@ export interface ToolPostErrorPayload {
 
 export interface ToolPreCallPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -1958,8 +1954,8 @@ export interface ToolPreCallPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   turn_id?: string;
   tool_call_id?: string;
   tool_name?: string;
@@ -1978,7 +1974,7 @@ export interface ToolResultPatch {
 
 export interface Trigger {
   id: string;
-  scope: AutomationScope;
+  scope: Scope;
   name: string;
   agent_name: string;
   workspace_id?: string;
@@ -2012,7 +2008,7 @@ export interface TurnEndPatch {
 
 export interface TurnEndPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -2021,8 +2017,8 @@ export interface TurnEndPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   turn_id?: string;
   input_class?: string;
   user_message?: string;
@@ -2036,7 +2032,7 @@ export interface TurnPatch {
 
 export interface TurnPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -2045,8 +2041,8 @@ export interface TurnPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   turn_id?: string;
   input_class?: string;
   user_message?: string;
@@ -2060,7 +2056,7 @@ export interface TurnStartPatch {
 
 export interface TurnStartPayload {
   event: HookEvent;
-  timestamp?: ISODateTime;
+  timestamp: ISODateTime;
   session_id?: string;
   session_name?: string;
   session_type?: string;
@@ -2069,8 +2065,8 @@ export interface TurnStartPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
-  created_at?: ISODateTime;
-  updated_at?: ISODateTime;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
   turn_id?: string;
   input_class?: string;
   user_message?: string;

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -36,7 +37,11 @@ func TestClientSearchParsesListingsAndLimit(t *testing.T) {
 		}
 
 		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"skills":[{"slug":"@agh/review","name":"Review","description":"Review code","author":"agh","version":"1.2.0","downloads":42}]}`))
+		_, _ = writer.Write(
+			[]byte(
+				`{"skills":[{"slug":"@agh/review","name":"Review","description":"Review code","author":"agh","version":"1.2.0","downloads":42}]}`,
+			),
+		)
 	}))
 	defer server.Close()
 
@@ -51,7 +56,8 @@ func TestClientSearchParsesListingsAndLimit(t *testing.T) {
 	}
 
 	got := listings[0]
-	if got.Slug != "@agh/review" || got.Name != "Review" || got.Author != "agh" || got.Version != "1.2.0" || got.Downloads != 42 {
+	if got.Slug != "@agh/review" || got.Name != "Review" || got.Author != "agh" || got.Version != "1.2.0" ||
+		got.Downloads != 42 {
 		t.Fatalf("Search() listing = %#v", got)
 	}
 	if got.Source != "clawhub" {
@@ -117,7 +123,9 @@ func TestClientInfoParsesSkillDetail(t *testing.T) {
 	if detail == nil {
 		t.Fatal("Info() = nil, want detail")
 	}
-	if detail.Slug != "@agh/review" || detail.Readme != "# Review" || !slices.Equal(detail.MCPServers, []string{"github"}) || !slices.Equal(detail.Tags, []string{"quality", "code"}) {
+	if detail.Slug != "@agh/review" || detail.Readme != "# Review" ||
+		!slices.Equal(detail.MCPServers, []string{"github"}) ||
+		!slices.Equal(detail.Tags, []string{"quality", "code"}) {
 		t.Fatalf("Info() detail = %#v", detail)
 	}
 	if detail.Source != "clawhub" {
@@ -176,7 +184,11 @@ func TestClientDownloadUsesVersionedEndpointWhenVersionSpecified(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/api/v1/skills/@agh%2Freview/versions/1.2.3/archive" {
-			t.Fatalf("request.URL.Path = %q, want %q", request.URL.Path, "/api/v1/skills/@agh%2Freview/versions/1.2.3/archive")
+			t.Fatalf(
+				"request.URL.Path = %q, want %q",
+				request.URL.Path,
+				"/api/v1/skills/@agh%2Freview/versions/1.2.3/archive",
+			)
 		}
 
 		writer.Header().Set("Content-Type", "application/gzip")
@@ -218,7 +230,11 @@ func TestClientSearchReturnsEmptyForExtensionFilter(t *testing.T) {
 
 	client := NewClient("")
 
-	listings, err := client.Search(context.Background(), "review", registry.SearchOpts{Type: registry.PackageTypeExtension})
+	listings, err := client.Search(
+		context.Background(),
+		"review",
+		registry.SearchOpts{Type: registry.PackageTypeExtension},
+	)
 	if err != nil {
 		t.Fatalf("Search() error = %v", err)
 	}
@@ -241,7 +257,11 @@ func TestClientRetriesHTTP500WithBackoff(t *testing.T) {
 		}
 
 		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"skills":[{"slug":"@agh/review","name":"Review","description":"Review code","author":"agh","version":"1.2.0","downloads":42}]}`))
+		_, _ = writer.Write(
+			[]byte(
+				`{"skills":[{"slug":"@agh/review","name":"Review","description":"Review code","author":"agh","version":"1.2.0","downloads":42}]}`,
+			),
+		)
 	}))
 	defer server.Close()
 
@@ -294,15 +314,25 @@ func TestNewClientDefaults(t *testing.T) {
 	if client.sleep == nil {
 		t.Fatal("sleep = nil, want default sleeper")
 	}
-	if client.initialBackoff != defaultInitialBackoff || client.maxBackoff != defaultMaxBackoff || client.maxRetries != 0 {
-		t.Fatalf("retry config = (%s, %s, %d), want defaults with zero retries", client.initialBackoff, client.maxBackoff, client.maxRetries)
+	if client.initialBackoff != defaultInitialBackoff || client.maxBackoff != defaultMaxBackoff ||
+		client.maxRetries != 0 {
+		t.Fatalf(
+			"retry config = (%s, %s, %d), want defaults with zero retries",
+			client.initialBackoff,
+			client.maxBackoff,
+			client.maxRetries,
+		)
 	}
 }
 
 func TestDecodeListingsSupportsDirectArray(t *testing.T) {
 	t.Parallel()
 
-	listings, err := decodeListings(strings.NewReader(`[{"slug":"@agh/review","name":"Review","description":"Review code","author":"agh","version":"1.0.0","downloads":1}]`))
+	listings, err := decodeListings(
+		strings.NewReader(
+			`[{"slug":"@agh/review","name":"Review","description":"Review code","author":"agh","version":"1.0.0","downloads":1}]`,
+		),
+	)
 	if err != nil {
 		t.Fatalf("decodeListings() error = %v", err)
 	}
@@ -353,7 +383,7 @@ func TestClientContextCancellationAbortsPromptly(t *testing.T) {
 
 	started := make(chan struct{})
 
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
 		close(started)
 		<-request.Context().Done()
 	}))
@@ -439,17 +469,17 @@ func TestDecodeListingsRejectsInvalidJSON(t *testing.T) {
 func TestResponseErrorUsesJSONAndPlainTextMessages(t *testing.T) {
 	t.Parallel()
 
-	notFound := responseError(newHTTPResponse(http.StatusNotFound, `{"error":"missing skill"}`), "info", "@agh/missing")
+	notFound := responseErrorForTest(http.StatusNotFound, `{"error":"missing skill"}`, "info", "@agh/missing")
 	if !strings.Contains(notFound.Error(), "skill not found") || !strings.Contains(notFound.Error(), "missing skill") {
 		t.Fatalf("responseError(notFound) = %v, want not-found message", notFound)
 	}
 
-	internal := responseError(newHTTPResponse(http.StatusInternalServerError, "boom"), "search", "")
+	internal := responseErrorForTest(http.StatusInternalServerError, "boom", "search", "")
 	if !strings.Contains(internal.Error(), "boom") {
 		t.Fatalf("responseError(internal) = %v, want body text", internal)
 	}
 
-	empty := responseError(newHTTPResponse(http.StatusBadGateway, ""), "search", "")
+	empty := responseErrorForTest(http.StatusBadGateway, "", "search", "")
 	if !strings.Contains(empty.Error(), "Bad Gateway") {
 		t.Fatalf("responseError(empty) = %v, want status text", empty)
 	}
@@ -477,7 +507,7 @@ func TestSleepContextReturnsOnCancelAndZeroWait(t *testing.T) {
 	cancel()
 
 	if err := sleepContext(ctx, time.Second); !errors.Is(err, context.Canceled) {
-		t.Fatalf("sleepContext(cancelled) error = %v, want context canceled", err)
+		t.Fatalf("sleepContext(canceled) error = %v, want context canceled", err)
 	}
 }
 
@@ -499,7 +529,7 @@ func TestDoRequestRejectsCanceledContextBeforeHTTP(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := client.doRequest(ctx, http.MethodGet, "/skills", nil, "search", "")
+	err := doRequestErrorForTest(ctx, client, "/skills", nil, "search", "")
 	if err == nil {
 		t.Fatal("doRequest() error = nil, want canceled context")
 	}
@@ -513,7 +543,7 @@ func TestDoRequestRejectsInvalidBaseURL(t *testing.T) {
 
 	client := NewClient("://bad url")
 
-	_, err := client.doRequest(context.Background(), http.MethodGet, "/skills", nil, "search", "")
+	err := doRequestErrorForTest(context.Background(), client, "/skills", nil, "search", "")
 	if err == nil {
 		t.Fatal("doRequest() error = nil, want invalid base url")
 	}
@@ -584,6 +614,29 @@ func newHTTPResponse(statusCode int, body string) *http.Response {
 		Body:       io.NopCloser(strings.NewReader(body)),
 		Header:     make(http.Header),
 	}
+}
+
+func responseErrorForTest(statusCode int, body string, operation string, slug string) error {
+	response := newHTTPResponse(statusCode, body)
+	defer func() {
+		_ = response.Body.Close()
+	}()
+	return responseError(response, operation, slug)
+}
+
+func doRequestErrorForTest(
+	ctx context.Context,
+	client *Client,
+	requestPath string,
+	query url.Values,
+	operation string,
+	slug string,
+) error {
+	response, err := client.doRequest(ctx, requestPath, query, operation, slug)
+	if response != nil {
+		_ = response.Body.Close()
+	}
+	return err
 }
 
 func readTarGz(t *testing.T, reader io.Reader) map[string]string {

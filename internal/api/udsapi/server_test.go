@@ -22,7 +22,7 @@ func TestNewHonorsOptionsAndDefaults(t *testing.T) {
 	engine := gin.New()
 	startedAt := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	now := func() time.Time { return startedAt.Add(time.Second) }
-	customLoader := func(name string, homePaths aghconfig.HomePaths) (aghconfig.AgentDef, error) {
+	customLoader := func(name string, _ aghconfig.HomePaths) (aghconfig.AgentDef, error) {
 		return aghconfig.AgentDef{Name: name, Provider: "fake", Prompt: "hello"}, nil
 	}
 	store := memory.NewStore(filepath.Join(t.TempDir(), "memory"))
@@ -34,7 +34,7 @@ func TestNewHonorsOptionsAndDefaults(t *testing.T) {
 
 	server, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithSocketPath(socketPath),
 		WithLogger(discardLogger()),
 		WithStartedAt(startedAt),
@@ -149,7 +149,6 @@ func TestNewRequiresSessionManagerTaskServiceObserverAndWorkspaceResolver(t *tes
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -182,11 +181,11 @@ func TestServerStartAndShutdownCreatesAndRemovesSocket(t *testing.T) {
 
 	server, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithSocketPath(socketPath),
 		WithLogger(discardLogger()),
 		WithSessionManager(stubSessionManager{
-			ListAllFn: func(context.Context) ([]*session.SessionInfo, error) { return nil, nil },
+			ListAllFn: func(context.Context) ([]*session.Info, error) { return nil, nil },
 		}),
 		WithTaskService(stubTaskManager{}),
 		WithObserver(stubObserver{
@@ -212,9 +211,14 @@ func TestServerStartAndShutdownCreatesAndRemovesSocket(t *testing.T) {
 	}
 
 	client := newUnixClient(t, socketPath)
-	req, err := http.NewRequest(http.MethodGet, "http://unix/api/daemon/status", nil)
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://unix/api/daemon/status",
+		http.NoBody,
+	)
 	if err != nil {
-		t.Fatalf("http.NewRequest() error = %v", err)
+		t.Fatalf("http.NewRequestWithContext() error = %v", err)
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -243,7 +247,7 @@ func TestServerStartRejectsNilContextAndDuplicateStart(t *testing.T) {
 
 	server, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithSocketPath(socketPath),
 		WithLogger(discardLogger()),
 		WithSessionManager(stubSessionManager{}),
@@ -277,7 +281,7 @@ func TestServerStartRejectsRegularFileAtSocketPath(t *testing.T) {
 
 	server, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithSocketPath(socketPath),
 		WithLogger(discardLogger()),
 		WithSessionManager(stubSessionManager{}),

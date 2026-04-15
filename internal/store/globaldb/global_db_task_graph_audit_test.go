@@ -28,7 +28,7 @@ func TestGlobalDBTaskDependencyRoundTripAndDelete(t *testing.T) {
 
 	rootDependsOnMiddle := taskDependencyForTest(rootTask.ID, middleTask.ID)
 	middleDependsOnLeaf := taskDependencyForTest(middleTask.ID, leafTask.ID)
-	for _, dependency := range []taskpkg.TaskDependency{rootDependsOnMiddle, middleDependsOnLeaf} {
+	for _, dependency := range []taskpkg.Dependency{rootDependsOnMiddle, middleDependsOnLeaf} {
 		if err := globalDB.CreateDependency(testutil.Context(t), dependency); err != nil {
 			t.Fatalf("CreateDependency(%q -> %q) error = %v", dependency.TaskID, dependency.DependsOnTaskID, err)
 		}
@@ -126,7 +126,7 @@ func TestGlobalDBCreateDependencyRejectsInvalidEdges(t *testing.T) {
 			t.Fatalf("CreateTask(limit root) error = %v", err)
 		}
 
-		for idx := 0; idx < taskpkg.MaxDependencyCount; idx++ {
+		for idx := range taskpkg.MaxDependencyCount {
 			dependencyTask := taskRecordForTest("task-dependency-limit-" + strconv.Itoa(idx))
 			dependencyTask.ID = "task-dependency-limit-" + strconv.Itoa(idx)
 			dependencyTask.Identifier = "identifier-task-dependency-limit-" + strconv.Itoa(idx)
@@ -134,7 +134,10 @@ func TestGlobalDBCreateDependencyRejectsInvalidEdges(t *testing.T) {
 			if err := globalDB.CreateTask(testutil.Context(t), dependencyTask); err != nil {
 				t.Fatalf("CreateTask(limit target %d) error = %v", idx, err)
 			}
-			if err := globalDB.CreateDependency(testutil.Context(t), taskDependencyForTest(limitRoot.ID, dependencyTask.ID)); err != nil {
+			if err := globalDB.CreateDependency(
+				testutil.Context(t),
+				taskDependencyForTest(limitRoot.ID, dependencyTask.ID),
+			); err != nil {
 				t.Fatalf("CreateDependency(limit %d) error = %v", idx, err)
 			}
 		}
@@ -175,7 +178,7 @@ func TestGlobalDBTaskEventRoundTripRejectsOversizePayloadAndPreservesOrigin(t *t
 		t.Fatalf("CreateTaskEvent() error = %v", err)
 	}
 
-	events, err := globalDB.ListTaskEvents(testutil.Context(t), taskpkg.TaskEventQuery{TaskID: taskRecord.ID})
+	events, err := globalDB.ListTaskEvents(testutil.Context(t), taskpkg.EventQuery{TaskID: taskRecord.ID})
 	if err != nil {
 		t.Fatalf("ListTaskEvents() error = %v", err)
 	}
@@ -232,7 +235,7 @@ func TestGlobalDBTaskRunIdempotencyLookupUsesOriginScope(t *testing.T) {
 	runB.QueuedAt = runB.QueuedAt.Add(time.Minute)
 	runB.Origin = taskpkg.Origin{Kind: taskpkg.OriginKindNetwork, Ref: "peer:finance"}
 	runB.IdempotencyKey = "idem-shared"
-	for _, run := range []taskpkg.TaskRun{runA, runB} {
+	for _, run := range []taskpkg.Run{runA, runB} {
 		if err := globalDB.CreateTaskRun(testutil.Context(t), run); err != nil {
 			t.Fatalf("CreateTaskRun(%q) error = %v", run.ID, err)
 		}
@@ -287,7 +290,11 @@ func TestGlobalDBTaskRunIdempotencyRejectsOriginMismatch(t *testing.T) {
 		t.Fatalf("CreateTaskRun() error = %v", err)
 	}
 
-	record := taskRunIdempotencyForTest("idem-mismatch", run.ID, taskpkg.Origin{Kind: taskpkg.OriginKindNetwork, Ref: "peer:other"})
+	record := taskRunIdempotencyForTest(
+		"idem-mismatch",
+		run.ID,
+		taskpkg.Origin{Kind: taskpkg.OriginKindNetwork, Ref: "peer:other"},
+	)
 	err := globalDB.SaveTaskRunIdempotency(testutil.Context(t), record)
 	if !errors.Is(err, taskpkg.ErrValidation) {
 		t.Fatalf("SaveTaskRunIdempotency(origin mismatch) error = %v, want ErrValidation", err)
@@ -343,15 +350,19 @@ func TestGlobalDBTaskRunIdempotencyErrorPaths(t *testing.T) {
 		t.Fatalf("GetTaskRunByIdempotencyKey(invalid origin) error = %v, want ErrValidation", err)
 	}
 
-	record := taskRunIdempotencyForTest("idem-missing-run", "missing-run", taskpkg.Origin{Kind: taskpkg.OriginKindAutomation, Ref: "rule:nightly"})
+	record := taskRunIdempotencyForTest(
+		"idem-missing-run",
+		"missing-run",
+		taskpkg.Origin{Kind: taskpkg.OriginKindAutomation, Ref: "rule:nightly"},
+	)
 	err := globalDB.SaveTaskRunIdempotency(testutil.Context(t), record)
 	if !errors.Is(err, taskpkg.ErrTaskRunNotFound) {
 		t.Fatalf("SaveTaskRunIdempotency(missing run) error = %v, want ErrTaskRunNotFound", err)
 	}
 }
 
-func taskDependencyForTest(taskID string, dependsOnTaskID string) taskpkg.TaskDependency {
-	return taskpkg.TaskDependency{
+func taskDependencyForTest(taskID string, dependsOnTaskID string) taskpkg.Dependency {
+	return taskpkg.Dependency{
 		TaskID:          taskID,
 		DependsOnTaskID: dependsOnTaskID,
 		Kind:            taskpkg.DependencyKindBlocks,
@@ -359,8 +370,8 @@ func taskDependencyForTest(taskID string, dependsOnTaskID string) taskpkg.TaskDe
 	}
 }
 
-func taskEventForTest(id string, taskID string, runID string) taskpkg.TaskEvent {
-	return taskpkg.TaskEvent{
+func taskEventForTest(id string, taskID string, runID string) taskpkg.Event {
+	return taskpkg.Event{
 		ID:        id,
 		TaskID:    taskID,
 		RunID:     runID,
@@ -378,8 +389,8 @@ func taskEventForTest(id string, taskID string, runID string) taskpkg.TaskEvent 
 	}
 }
 
-func taskRunIdempotencyForTest(key string, runID string, origin taskpkg.Origin) taskpkg.TaskRunIdempotency {
-	return taskpkg.TaskRunIdempotency{
+func taskRunIdempotencyForTest(key string, runID string, origin taskpkg.Origin) taskpkg.RunIdempotency {
+	return taskpkg.RunIdempotency{
 		IdempotencyKey: key,
 		RunID:          runID,
 		Origin:         origin,
@@ -394,7 +405,7 @@ func taskJSONBlob(targetSize int) json.RawMessage {
 	return json.RawMessage(`"` + strings.Repeat("a", targetSize-2) + `"`)
 }
 
-func assertTaskDependencyEqual(t *testing.T, got taskpkg.TaskDependency, want taskpkg.TaskDependency) {
+func assertTaskDependencyEqual(t *testing.T, got taskpkg.Dependency, want taskpkg.Dependency) {
 	t.Helper()
 
 	if got.TaskID != want.TaskID ||
@@ -405,7 +416,7 @@ func assertTaskDependencyEqual(t *testing.T, got taskpkg.TaskDependency, want ta
 	}
 }
 
-func assertTaskEventEqual(t *testing.T, got taskpkg.TaskEvent, want taskpkg.TaskEvent) {
+func assertTaskEventEqual(t *testing.T, got taskpkg.Event, want taskpkg.Event) {
 	t.Helper()
 
 	if got.ID != want.ID ||

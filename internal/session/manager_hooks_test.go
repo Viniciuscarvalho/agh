@@ -27,14 +27,16 @@ func TestCreateFailsWhenSessionPreCreateDenied(t *testing.T) {
 			ExecutorKind: hookspkg.HookExecutorNative,
 		}},
 		map[string]hookspkg.Executor{
-			"deny-create": hookspkg.NewTypedNativeExecutor(func(_ context.Context, _ hookspkg.RegisteredHook, _ hookspkg.SessionPreCreatePayload) (hookspkg.SessionCreatePatch, error) {
-				return hookspkg.SessionCreatePatch{
-					ControlPatch: hookspkg.ControlPatch{
-						Deny:       true,
-						DenyReason: "blocked",
-					},
-				}, nil
-			}),
+			"deny-create": hookspkg.NewTypedNativeExecutor(
+				func(_ context.Context, _ hookspkg.RegisteredHook, _ hookspkg.SessionPreCreatePayload) (hookspkg.SessionCreatePatch, error) {
+					return hookspkg.SessionCreatePatch{
+						ControlPatch: hookspkg.ControlPatch{
+							Deny:       true,
+							DenyReason: "blocked",
+						},
+					}, nil
+				},
+			),
 		},
 	)
 
@@ -67,13 +69,15 @@ func TestCreateUsesPatchedSessionPreCreatePayload(t *testing.T) {
 			ExecutorKind: hookspkg.HookExecutorNative,
 		}},
 		map[string]hookspkg.Executor{
-			"patch-create": hookspkg.NewTypedNativeExecutor(func(_ context.Context, _ hookspkg.RegisteredHook, _ hookspkg.SessionPreCreatePayload) (hookspkg.SessionCreatePatch, error) {
-				sessionType := string(SessionTypeDream)
-				return hookspkg.SessionCreatePatch{
-					SessionName: &sessionName,
-					SessionType: &sessionType,
-				}, nil
-			}),
+			"patch-create": hookspkg.NewTypedNativeExecutor(
+				func(_ context.Context, _ hookspkg.RegisteredHook, _ hookspkg.SessionPreCreatePayload) (hookspkg.SessionCreatePatch, error) {
+					sessionType := string(SessionTypeDream)
+					return hookspkg.SessionCreatePatch{
+						SessionName: &sessionName,
+						SessionType: &sessionType,
+					}, nil
+				},
+			),
 		},
 	)
 
@@ -114,10 +118,12 @@ func TestPostCreateHookFiresAfterSessionActive(t *testing.T) {
 			ExecutorKind: hookspkg.HookExecutorNative,
 		}},
 		map[string]hookspkg.Executor{
-			"observe-post-create": hookspkg.NewTypedNativeExecutor(func(_ context.Context, _ hookspkg.RegisteredHook, payload hookspkg.SessionPostCreatePayload) (hookspkg.SessionPostCreatePatch, error) {
-				payloadCh <- payload
-				return hookspkg.SessionPostCreatePatch{}, nil
-			}),
+			"observe-post-create": hookspkg.NewTypedNativeExecutor(
+				func(_ context.Context, _ hookspkg.RegisteredHook, payload hookspkg.SessionPostCreatePayload) (hookspkg.SessionPostCreatePatch, error) {
+					payloadCh <- payload
+					return hookspkg.SessionPostCreatePatch{}, nil
+				},
+			),
 		},
 	)
 
@@ -202,10 +208,12 @@ func TestPromptUsesPatchedInputMessage(t *testing.T) {
 			ExecutorKind: hookspkg.HookExecutorNative,
 		}},
 		map[string]hookspkg.Executor{
-			"patch-input": hookspkg.NewTypedNativeExecutor(func(_ context.Context, _ hookspkg.RegisteredHook, _ hookspkg.InputPreSubmitPayload) (hookspkg.InputPreSubmitPatch, error) {
-				message := "patched message"
-				return hookspkg.InputPreSubmitPatch{Message: &message}, nil
-			}),
+			"patch-input": hookspkg.NewTypedNativeExecutor(
+				func(_ context.Context, _ hookspkg.RegisteredHook, _ hookspkg.InputPreSubmitPayload) (hookspkg.InputPreSubmitPatch, error) {
+					message := "patched message"
+					return hookspkg.InputPreSubmitPatch{Message: &message}, nil
+				},
+			),
 		},
 	)
 
@@ -265,7 +273,11 @@ func TestPromptNetworkUsesNetworkInputClass(t *testing.T) {
 		_ = collectEvents(t, eventsCh)
 
 		if inputPayload.InputClass != hookInputClassNetworkMessage {
-			t.Fatalf("input.pre_submit input class = %q, want %q", inputPayload.InputClass, hookInputClassNetworkMessage)
+			t.Fatalf(
+				"input.pre_submit input class = %q, want %q",
+				inputPayload.InputClass,
+				hookInputClassNetworkMessage,
+			)
 		}
 		if turnStartPayload.InputClass != hookInputClassNetworkMessage {
 			t.Fatalf("turn.start input class = %q, want %q", turnStartPayload.InputClass, hookInputClassNetworkMessage)
@@ -360,7 +372,6 @@ func TestSessionNetworkLifecycleHandling(t *testing.T) {
 			leaveErr: context.DeadlineExceeded,
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -485,10 +496,12 @@ func TestCreateUsesPatchedPrompt(t *testing.T) {
 			ExecutorKind: hookspkg.HookExecutorNative,
 		}},
 		map[string]hookspkg.Executor{
-			"patch-prompt": hookspkg.NewTypedNativeExecutor(func(_ context.Context, _ hookspkg.RegisteredHook, _ hookspkg.PromptPayload) (hookspkg.PromptPatch, error) {
-				prompt := "patched system prompt"
-				return hookspkg.PromptPatch{Prompt: &prompt}, nil
-			}),
+			"patch-prompt": hookspkg.NewTypedNativeExecutor(
+				func(_ context.Context, _ hookspkg.RegisteredHook, _ hookspkg.PromptPayload) (hookspkg.PromptPatch, error) {
+					prompt := "patched system prompt"
+					return hookspkg.PromptPatch{Prompt: &prompt}, nil
+				},
+			),
 		},
 	)
 
@@ -515,10 +528,12 @@ func TestAgentCrashedHookFiresOnProcessCrash(t *testing.T) {
 			ExecutorKind: hookspkg.HookExecutorNative,
 		}},
 		map[string]hookspkg.Executor{
-			"observe-agent-crash": hookspkg.NewTypedNativeExecutor(func(_ context.Context, _ hookspkg.RegisteredHook, payload hookspkg.AgentCrashedPayload) (hookspkg.AgentCrashedPatch, error) {
-				payloadCh <- payload
-				return hookspkg.AgentCrashedPatch{}, nil
-			}),
+			"observe-agent-crash": hookspkg.NewTypedNativeExecutor(
+				func(_ context.Context, _ hookspkg.RegisteredHook, payload hookspkg.AgentCrashedPayload) (hookspkg.AgentCrashedPatch, error) {
+					payloadCh <- payload
+					return hookspkg.AgentCrashedPatch{}, nil
+				},
+			),
 		},
 	)
 
@@ -704,9 +719,11 @@ func TestMessageStartPatchUpdatesFirstAssistantChunk(t *testing.T) {
 			ExecutorKind: hookspkg.HookExecutorNative,
 		}},
 		map[string]hookspkg.Executor{
-			"patch-message-start": hookspkg.NewTypedNativeExecutor(func(_ context.Context, _ hookspkg.RegisteredHook, _ hookspkg.MessageStartPayload) (hookspkg.MessageStartPatch, error) {
-				return hookspkg.MessageStartPatch{Text: &patched}, nil
-			}),
+			"patch-message-start": hookspkg.NewTypedNativeExecutor(
+				func(_ context.Context, _ hookspkg.RegisteredHook, _ hookspkg.MessageStartPayload) (hookspkg.MessageStartPatch, error) {
+					return hookspkg.MessageStartPatch{Text: &patched}, nil
+				},
+			),
 		},
 	)
 
@@ -760,14 +777,16 @@ func TestMessageDeltaAsyncHooksDoNotBlockPromptStreaming(t *testing.T) {
 			if strings.TrimSpace(decl.Name) != "observe-message-delta" {
 				return nil, errors.New("unexpected hook name")
 			}
-			return hookspkg.NewTypedNativeExecutor(func(_ context.Context, _ hookspkg.RegisteredHook, _ hookspkg.MessageDeltaPayload) (hookspkg.MessageDeltaPatch, error) {
-				select {
-				case started <- struct{}{}:
-				default:
-				}
-				<-release
-				return hookspkg.MessageDeltaPatch{}, nil
-			}), nil
+			return hookspkg.NewTypedNativeExecutor(
+				func(_ context.Context, _ hookspkg.RegisteredHook, _ hookspkg.MessageDeltaPayload) (hookspkg.MessageDeltaPatch, error) {
+					select {
+					case started <- struct{}{}:
+					default:
+					}
+					<-release
+					return hookspkg.MessageDeltaPatch{}, nil
+				},
+			), nil
 		}),
 	)
 	if err := hooks.Rebuild(testutil.Context(t)); err != nil {
@@ -902,7 +921,11 @@ func TestContextCompactionDispatchesHooksAndUsesPatchedParams(t *testing.T) {
 	}
 }
 
-func newNativeHookDispatcher(t *testing.T, decls []hookspkg.HookDecl, executors map[string]hookspkg.Executor) *hookspkg.Hooks {
+func newNativeHookDispatcher(
+	t *testing.T,
+	decls []hookspkg.HookDecl,
+	executors map[string]hookspkg.Executor,
+) *hookspkg.Hooks {
 	t.Helper()
 
 	hooks := hookspkg.NewHooks(
@@ -924,7 +947,7 @@ func newNativeHookDispatcher(t *testing.T, decls []hookspkg.HookDecl, executors 
 }
 
 func fullHookSet(runtime interface {
-	SessionLifecycleHooks
+	LifecycleHooks
 	PromptHooks
 	EventHooks
 	AgentHooks
@@ -965,147 +988,210 @@ type spyHookDispatcher struct {
 	dispatchContextPostCompactFn func(context.Context, hookspkg.ContextPostCompactPayload) (hookspkg.ContextPostCompactPayload, error)
 }
 
-func (s *spyHookDispatcher) DispatchSessionPreCreate(ctx context.Context, payload hookspkg.SessionPreCreatePayload) (hookspkg.SessionPreCreatePayload, error) {
+func (s *spyHookDispatcher) DispatchSessionPreCreate(
+	ctx context.Context,
+	payload hookspkg.SessionPreCreatePayload,
+) (hookspkg.SessionPreCreatePayload, error) {
 	if s.dispatchSessionPreCreateFn != nil {
 		return s.dispatchSessionPreCreateFn(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (s *spyHookDispatcher) DispatchSessionPostCreate(ctx context.Context, payload hookspkg.SessionPostCreatePayload) (hookspkg.SessionPostCreatePayload, error) {
+func (s *spyHookDispatcher) DispatchSessionPostCreate(
+	ctx context.Context,
+	payload hookspkg.SessionPostCreatePayload,
+) (hookspkg.SessionPostCreatePayload, error) {
 	if s.dispatchSessionPostCreateFn != nil {
 		return s.dispatchSessionPostCreateFn(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (s *spyHookDispatcher) DispatchSessionPreResume(ctx context.Context, payload hookspkg.SessionPreResumePayload) (hookspkg.SessionPreResumePayload, error) {
+func (s *spyHookDispatcher) DispatchSessionPreResume(
+	ctx context.Context,
+	payload hookspkg.SessionPreResumePayload,
+) (hookspkg.SessionPreResumePayload, error) {
 	if s.dispatchSessionPreResumeFn != nil {
 		return s.dispatchSessionPreResumeFn(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (s *spyHookDispatcher) DispatchSessionPostResume(ctx context.Context, payload hookspkg.SessionPostResumePayload) (hookspkg.SessionPostResumePayload, error) {
+func (s *spyHookDispatcher) DispatchSessionPostResume(
+	ctx context.Context,
+	payload hookspkg.SessionPostResumePayload,
+) (hookspkg.SessionPostResumePayload, error) {
 	if s.dispatchSessionPostResumeFn != nil {
 		return s.dispatchSessionPostResumeFn(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (s *spyHookDispatcher) DispatchSessionPreStop(ctx context.Context, payload hookspkg.SessionPreStopPayload) (hookspkg.SessionPreStopPayload, error) {
+func (s *spyHookDispatcher) DispatchSessionPreStop(
+	ctx context.Context,
+	payload hookspkg.SessionPreStopPayload,
+) (hookspkg.SessionPreStopPayload, error) {
 	if s.dispatchSessionPreStopFn != nil {
 		return s.dispatchSessionPreStopFn(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (s *spyHookDispatcher) DispatchSessionPostStop(ctx context.Context, payload hookspkg.SessionPostStopPayload) (hookspkg.SessionPostStopPayload, error) {
+func (s *spyHookDispatcher) DispatchSessionPostStop(
+	ctx context.Context,
+	payload hookspkg.SessionPostStopPayload,
+) (hookspkg.SessionPostStopPayload, error) {
 	if s.dispatchSessionPostStopFn != nil {
 		return s.dispatchSessionPostStopFn(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (s *spyHookDispatcher) DispatchInputPreSubmit(ctx context.Context, payload hookspkg.InputPreSubmitPayload) (hookspkg.InputPreSubmitPayload, error) {
+func (s *spyHookDispatcher) DispatchInputPreSubmit(
+	ctx context.Context,
+	payload hookspkg.InputPreSubmitPayload,
+) (hookspkg.InputPreSubmitPayload, error) {
 	if s.dispatchInputPreSubmitFn != nil {
 		return s.dispatchInputPreSubmitFn(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (s *spyHookDispatcher) DispatchPromptPostAssemble(ctx context.Context, payload hookspkg.PromptPayload) (hookspkg.PromptPayload, error) {
+func (s *spyHookDispatcher) DispatchPromptPostAssemble(
+	ctx context.Context,
+	payload hookspkg.PromptPayload,
+) (hookspkg.PromptPayload, error) {
 	if s.dispatchPromptPostAssembleFn != nil {
 		return s.dispatchPromptPostAssembleFn(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (s *spyHookDispatcher) DispatchEventPreRecord(ctx context.Context, payload hookspkg.EventPreRecordPayload) (hookspkg.EventPreRecordPayload, error) {
+func (s *spyHookDispatcher) DispatchEventPreRecord(
+	ctx context.Context,
+	payload hookspkg.EventPreRecordPayload,
+) (hookspkg.EventPreRecordPayload, error) {
 	if s.dispatchEventPreRecordFn != nil {
 		return s.dispatchEventPreRecordFn(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (s *spyHookDispatcher) DispatchEventPostRecord(ctx context.Context, payload hookspkg.EventPostRecordPayload) (hookspkg.EventPostRecordPayload, error) {
+func (s *spyHookDispatcher) DispatchEventPostRecord(
+	ctx context.Context,
+	payload hookspkg.EventPostRecordPayload,
+) (hookspkg.EventPostRecordPayload, error) {
 	if s.dispatchEventPostRecordFn != nil {
 		return s.dispatchEventPostRecordFn(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (s *spyHookDispatcher) DispatchAgentPreStart(ctx context.Context, payload hookspkg.AgentPreStartPayload) (hookspkg.AgentPreStartPayload, error) {
+func (s *spyHookDispatcher) DispatchAgentPreStart(
+	ctx context.Context,
+	payload hookspkg.AgentPreStartPayload,
+) (hookspkg.AgentPreStartPayload, error) {
 	if s.dispatchAgentPreStartFn != nil {
 		return s.dispatchAgentPreStartFn(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (s *spyHookDispatcher) DispatchAgentSpawned(ctx context.Context, payload hookspkg.AgentSpawnedPayload) (hookspkg.AgentSpawnedPayload, error) {
+func (s *spyHookDispatcher) DispatchAgentSpawned(
+	ctx context.Context,
+	payload hookspkg.AgentSpawnedPayload,
+) (hookspkg.AgentSpawnedPayload, error) {
 	if s.dispatchAgentSpawnedFn != nil {
 		return s.dispatchAgentSpawnedFn(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (s *spyHookDispatcher) DispatchAgentCrashed(ctx context.Context, payload hookspkg.AgentCrashedPayload) (hookspkg.AgentCrashedPayload, error) {
+func (s *spyHookDispatcher) DispatchAgentCrashed(
+	ctx context.Context,
+	payload hookspkg.AgentCrashedPayload,
+) (hookspkg.AgentCrashedPayload, error) {
 	if s.dispatchAgentCrashedFn != nil {
 		return s.dispatchAgentCrashedFn(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (s *spyHookDispatcher) DispatchAgentStopped(ctx context.Context, payload hookspkg.AgentStoppedPayload) (hookspkg.AgentStoppedPayload, error) {
+func (s *spyHookDispatcher) DispatchAgentStopped(
+	ctx context.Context,
+	payload hookspkg.AgentStoppedPayload,
+) (hookspkg.AgentStoppedPayload, error) {
 	if s.dispatchAgentStoppedFn != nil {
 		return s.dispatchAgentStoppedFn(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (s *spyHookDispatcher) DispatchTurnStart(ctx context.Context, payload hookspkg.TurnStartPayload) (hookspkg.TurnStartPayload, error) {
+func (s *spyHookDispatcher) DispatchTurnStart(
+	ctx context.Context,
+	payload hookspkg.TurnStartPayload,
+) (hookspkg.TurnStartPayload, error) {
 	if s.dispatchTurnStartFn != nil {
 		return s.dispatchTurnStartFn(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (s *spyHookDispatcher) DispatchTurnEnd(ctx context.Context, payload hookspkg.TurnEndPayload) (hookspkg.TurnEndPayload, error) {
+func (s *spyHookDispatcher) DispatchTurnEnd(
+	ctx context.Context,
+	payload hookspkg.TurnEndPayload,
+) (hookspkg.TurnEndPayload, error) {
 	if s.dispatchTurnEndFn != nil {
 		return s.dispatchTurnEndFn(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (s *spyHookDispatcher) DispatchMessageStart(ctx context.Context, payload hookspkg.MessageStartPayload) (hookspkg.MessageStartPayload, error) {
+func (s *spyHookDispatcher) DispatchMessageStart(
+	ctx context.Context,
+	payload hookspkg.MessageStartPayload,
+) (hookspkg.MessageStartPayload, error) {
 	if s.dispatchMessageStartFn != nil {
 		return s.dispatchMessageStartFn(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (s *spyHookDispatcher) DispatchMessageDelta(ctx context.Context, payload hookspkg.MessageDeltaPayload) (hookspkg.MessageDeltaPayload, error) {
+func (s *spyHookDispatcher) DispatchMessageDelta(
+	ctx context.Context,
+	payload hookspkg.MessageDeltaPayload,
+) (hookspkg.MessageDeltaPayload, error) {
 	if s.dispatchMessageDeltaFn != nil {
 		return s.dispatchMessageDeltaFn(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (s *spyHookDispatcher) DispatchMessageEnd(ctx context.Context, payload hookspkg.MessageEndPayload) (hookspkg.MessageEndPayload, error) {
+func (s *spyHookDispatcher) DispatchMessageEnd(
+	ctx context.Context,
+	payload hookspkg.MessageEndPayload,
+) (hookspkg.MessageEndPayload, error) {
 	if s.dispatchMessageEndFn != nil {
 		return s.dispatchMessageEndFn(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (s *spyHookDispatcher) DispatchContextPreCompact(ctx context.Context, payload hookspkg.ContextPreCompactPayload) (hookspkg.ContextPreCompactPayload, error) {
+func (s *spyHookDispatcher) DispatchContextPreCompact(
+	ctx context.Context,
+	payload hookspkg.ContextPreCompactPayload,
+) (hookspkg.ContextPreCompactPayload, error) {
 	if s.dispatchContextPreCompactFn != nil {
 		return s.dispatchContextPreCompactFn(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (s *spyHookDispatcher) DispatchContextPostCompact(ctx context.Context, payload hookspkg.ContextPostCompactPayload) (hookspkg.ContextPostCompactPayload, error) {
+func (s *spyHookDispatcher) DispatchContextPostCompact(
+	ctx context.Context,
+	payload hookspkg.ContextPostCompactPayload,
+) (hookspkg.ContextPostCompactPayload, error) {
 	if s.dispatchContextPostCompactFn != nil {
 		return s.dispatchContextPostCompactFn(ctx, payload)
 	}
@@ -1130,7 +1216,12 @@ type networkJoinCall struct {
 	channel   string
 }
 
-func (r *recordingNetworkPeerLifecycle) JoinChannel(_ context.Context, sessionID string, peerID string, channel string) error {
+func (r *recordingNetworkPeerLifecycle) JoinChannel(
+	_ context.Context,
+	sessionID string,
+	peerID string,
+	channel string,
+) error {
 	r.joins = append(r.joins, networkJoinCall{
 		sessionID: sessionID,
 		peerID:    peerID,

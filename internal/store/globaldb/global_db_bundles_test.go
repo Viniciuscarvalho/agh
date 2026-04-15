@@ -139,7 +139,12 @@ func TestGlobalDBBundleActivationRoundTripWithSpecHashAndInventory(t *testing.T)
 		t.Fatalf("insert extension row error = %v", err)
 	}
 
-	workspaceID := registerWorkspaceForGlobalTests(t, globalDB, "bundle-workspace", filepath.Join(t.TempDir(), "bundle-workspace"))
+	workspaceID := registerWorkspaceForGlobalTests(
+		t,
+		globalDB,
+		"bundle-workspace",
+		filepath.Join(t.TempDir(), "bundle-workspace"),
+	)
 	activation := bundlemodel.Activation{
 		ID:                          "act_marketing",
 		ExtensionName:               "marketing-team",

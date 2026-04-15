@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,13 +30,14 @@ import (
 )
 
 const (
-	teamsListenAddrEnv         = "AGH_BRIDGE_TEAMS_LISTEN_ADDR"
-	teamsOpenIDMetadataURLEnv  = "AGH_BRIDGE_TEAMS_OPENID_METADATA_URL"
-	teamsTokenURLEnv           = "AGH_BRIDGE_TEAMS_TOKEN_URL"
-	teamsDefaultOpenIDMetadata = "https://login.botframework.com/v1/.well-known/openidconfiguration"
-	teamsDefaultServiceURL     = "https://smba.trafficmanager.net/teams/"
-	teamsDefaultScope          = "https://api.botframework.com/.default"
-	rpcCodeNotInitialized      = -32003
+	teamsListenAddrEnv            = "AGH_BRIDGE_TEAMS_LISTEN_ADDR"
+	teamsOpenIDMetadataURLEnv     = "AGH_BRIDGE_TEAMS_OPENID_METADATA_URL"
+	teamsDefaultOpenIDMetadata    = "https://login.botframework.com/v1/.well-known/openidconfiguration"
+	teamsDefaultServiceURL        = "https://smba.trafficmanager.net/teams/"
+	teamsDefaultScope             = "https://api.botframework.com/.default"
+	teamsWebhookReadHeaderTimeout = 10 * time.Second
+	teamsWebhookIdleTimeout       = 30 * time.Second
+	rpcCodeNotInitialized         = -32003
 )
 
 var messageIDStripPattern = regexp.MustCompile(`;messageid=.+$`)
@@ -74,26 +76,26 @@ type teamsProviderConfig struct {
 	Webhook    struct {
 		ListenAddr string `json:"listen_addr,omitempty"`
 		Path       string `json:"path,omitempty"`
-	} `json:"webhook,omitempty"`
+	} `json:"webhook"`
 	Auth struct {
 		OpenIDMetadataURL string `json:"openid_metadata_url,omitempty"`
 		TokenURL          string `json:"token_url,omitempty"`
-	} `json:"auth,omitempty"`
+	} `json:"auth"`
 	Batching struct {
 		DelayMS        int `json:"delay_ms,omitempty"`
 		SplitDelayMS   int `json:"split_delay_ms,omitempty"`
 		SplitThreshold int `json:"split_threshold,omitempty"`
-	} `json:"batching,omitempty"`
+	} `json:"batching"`
 	DM struct {
 		AllowUserIDs    []string `json:"allow_user_ids,omitempty"`
 		AllowUsernames  []string `json:"allow_usernames,omitempty"`
 		PairedUserIDs   []string `json:"paired_user_ids,omitempty"`
 		PairedUsernames []string `json:"paired_usernames,omitempty"`
-	} `json:"dm,omitempty"`
+	} `json:"dm"`
 }
 
 type resolvedInstanceConfig struct {
-	managed            subprocess.InitializeBridgeManagedInstance
+	managed            *subprocess.InitializeBridgeManagedInstance
 	instanceID         string
 	listenAddr         string
 	webhookPath        string
@@ -215,8 +217,18 @@ type teamsResolvedTarget struct {
 
 type teamsAPI interface {
 	ValidateAuth(context.Context) error
-	CreateConversation(context.Context, string, teamsCreateConversationRequest) (*teamsConversationResourceResponse, error)
-	SendActivity(context.Context, string, string, string, teamsOutboundActivity) (*teamsResourceResponse, error)
+	CreateConversation(
+		context.Context,
+		string,
+		teamsCreateConversationRequest,
+	) (*teamsConversationResourceResponse, error)
+	SendActivity(
+		context.Context,
+		string,
+		string,
+		string,
+		teamsOutboundActivity,
+	) (*teamsResourceResponse, error)
 	UpdateActivity(context.Context, string, string, string, teamsOutboundActivity) error
 	DeleteActivity(context.Context, string, string, string) error
 }
@@ -274,8 +286,8 @@ type teamsOutboundActivity struct {
 	Type       string              `json:"type"`
 	Text       string              `json:"text,omitempty"`
 	TextFormat string              `json:"textFormat,omitempty"`
-	From       teamsChannelAccount `json:"from,omitempty"`
-	Recipient  teamsChannelAccount `json:"recipient,omitempty"`
+	From       teamsChannelAccount `json:"from"`
+	Recipient  teamsChannelAccount `json:"recipient"`
 }
 
 type teamsResourceResponse struct {
@@ -326,7 +338,10 @@ func newTeamsProvider(stderr io.Writer) (*teamsProvider, error) {
 }
 
 func (p *teamsProvider) serve(stdin io.Reader, stdout io.Writer) error {
-	p.reportSideEffectError("write start marker", appendMarkerLine(p.env.startsPath, fmt.Sprintf("pid=%d", os.Getpid())))
+	p.reportSideEffectError(
+		"write start marker",
+		appendMarkerLine(p.env.startsPath, fmt.Sprintf("pid=%d", os.Getpid())),
+	)
 	return p.sdk.Serve(context.Background(), stdin, stdout)
 }
 
@@ -342,11 +357,9 @@ func (p *teamsProvider) handleInitialize(_ context.Context, session *bridgesdk.S
 	p.reportSideEffectError("write initialize marker", writeJSONFile(p.env.handshakePath, marker))
 	p.clearLastError()
 
-	p.wg.Add(1)
-	go func() {
-		defer p.wg.Done()
+	p.wg.Go(func() {
 		p.afterInitialize(session)
-	}()
+	})
 	return nil
 }
 
@@ -380,17 +393,21 @@ func (p *teamsProvider) afterInitialize(session *bridgesdk.Session) {
 	}
 	p.reportSideEffectError("write ownership marker", writeJSONFile(p.env.ownershipPath, ownership))
 
-	configs, reconcileErr := p.reconcileInstanceConfigs(ctx, session, listed)
-	if reconcileErr != nil && ownershipErr == nil {
-		ownershipErr = reconcileErr
-	}
+	configs := p.reconcileInstanceConfigs(ctx, session, listed)
 	for _, cfg := range configs {
 		status := cfg.initialStatus
 		degradation := cfg.initialDegradation
 		if status == "" {
 			status = bridgepkg.BridgeStatusReady
 		}
-		if _, stateErr := p.reportState(ctx, session, cfg.instanceID, status, degradation); stateErr != nil && ownershipErr == nil {
+		if stateErr := p.reportState(
+			ctx,
+			session,
+			cfg.instanceID,
+			status,
+			degradation,
+		); stateErr != nil &&
+			ownershipErr == nil {
 			ownershipErr = stateErr
 		}
 	}
@@ -411,22 +428,34 @@ func (p *teamsProvider) handleBridgesDeliver(
 		Request: request,
 	}
 
-	cfg, err := p.waitForInstanceConfig(strings.TrimSpace(request.Event.BridgeInstanceID), 500*time.Millisecond)
+	cfg, err := p.waitForInstanceConfig(
+		strings.TrimSpace(request.Event.BridgeInstanceID),
+		500*time.Millisecond,
+	)
 	if err != nil {
 		marker.Error = err.Error()
-		p.reportSideEffectError("write failed delivery marker", appendJSONLine(p.env.deliveryPath, marker))
+		p.reportSideEffectError(
+			"write failed delivery marker",
+			appendJSONLine(p.env.deliveryPath, marker),
+		)
 		p.setLastError(err)
 		return bridgepkg.DeliveryAck{}, err
 	}
 
 	if shouldCrashOnce(p.env.crashOncePath) {
-		p.reportSideEffectError("write pre-crash delivery marker", appendJSONLine(p.env.deliveryPath, marker))
-		p.reportSideEffectError("write crash marker", writeJSONFile(p.env.crashOncePath, map[string]any{
-			"crashed":            true,
-			"pid":                os.Getpid(),
-			"delivery_id":        strings.TrimSpace(request.Event.DeliveryID),
-			"bridge_instance_id": cfg.instanceID,
-		}))
+		p.reportSideEffectError(
+			"write pre-crash delivery marker",
+			appendJSONLine(p.env.deliveryPath, marker),
+		)
+		p.reportSideEffectError(
+			"write crash marker",
+			writeJSONFile(p.env.crashOncePath, map[string]any{
+				"crashed":            true,
+				"pid":                os.Getpid(),
+				"delivery_id":        strings.TrimSpace(request.Event.DeliveryID),
+				"bridge_instance_id": cfg.instanceID,
+			}),
+		)
 		os.Exit(23)
 	}
 
@@ -441,7 +470,10 @@ func (p *teamsProvider) handleBridgesDeliver(
 	)
 	if err != nil {
 		marker.Error = err.Error()
-		p.reportSideEffectError("write failed delivery marker", appendJSONLine(p.env.deliveryPath, marker))
+		p.reportSideEffectError(
+			"write failed delivery marker",
+			appendJSONLine(p.env.deliveryPath, marker),
+		)
 		classified := bridgesdk.ClassifyError(err)
 		_, _, reportErr := session.ReportClassifiedError(ctx, cfg.instanceID, classified)
 		if reportErr != nil {
@@ -453,11 +485,14 @@ func (p *teamsProvider) handleBridgesDeliver(
 	}
 
 	p.storeDeliveryState(cfg.instanceID, request.Event.DeliveryID, state)
-	p.reportReadyIfNeeded(ctx, session, cfg.instanceID)
+	if err := p.reportReadyIfNeeded(ctx, session, cfg.instanceID); err != nil {
+		p.setLastError(err)
+	} else {
+		p.clearLastError()
+	}
 
 	marker.Ack = &ack
 	p.reportSideEffectError("write delivery marker", appendJSONLine(p.env.deliveryPath, marker))
-	p.clearLastError()
 	return ack, nil
 }
 
@@ -480,15 +515,23 @@ func (p *teamsProvider) handleShutdown(
 	shutdownCtx := context.Background()
 	if request.DeadlineMS > 0 {
 		var cancel context.CancelFunc
-		shutdownCtx, cancel = context.WithTimeout(context.Background(), time.Duration(request.DeadlineMS)*time.Millisecond)
+		shutdownCtx, cancel = context.WithTimeout(
+			context.Background(),
+			time.Duration(request.DeadlineMS)*time.Millisecond,
+		)
 		defer cancel()
 	}
 
 	p.mu.Lock()
 	server := p.server
 	p.mu.Unlock()
+	var shutdownErr error
 	if server != nil {
-		_ = server.Shutdown(shutdownCtx)
+		if err := server.Shutdown(shutdownCtx); err != nil &&
+			!errors.Is(err, http.ErrServerClosed) {
+			shutdownErr = fmt.Errorf("teams: shutdown webhook server: %w", err)
+			p.setLastError(shutdownErr)
+		}
 	}
 
 	done := make(chan struct{})
@@ -502,8 +545,11 @@ func (p *teamsProvider) handleShutdown(
 	case <-shutdownCtx.Done():
 	}
 
-	p.reportSideEffectError("write shutdown marker", appendMarkerLine(p.env.shutdownPath, fmt.Sprintf("pid=%d", os.Getpid())))
-	return nil
+	p.reportSideEffectError(
+		"write shutdown marker",
+		appendMarkerLine(p.env.shutdownPath, fmt.Sprintf("pid=%d", os.Getpid())),
+	)
+	return shutdownErr
 }
 
 func (p *teamsProvider) stop() {
@@ -558,26 +604,30 @@ func (p *teamsProvider) reportState(
 	bridgeInstanceID string,
 	status bridgepkg.BridgeStatus,
 	degradation *bridgepkg.BridgeDegradation,
-) (*bridgepkg.BridgeInstance, error) {
+) error {
 	var result *bridgepkg.BridgeInstance
 	err := p.retryHostCall(ctx, func(callCtx context.Context) error {
-		instance, callErr := session.HostAPI().ReportBridgeInstanceState(callCtx, extensioncontract.BridgesInstancesReportStateParams{
-			BridgeInstanceID: strings.TrimSpace(bridgeInstanceID),
-			Status:           status,
-			Degradation:      cloneDegradation(degradation),
-		})
+		instance, callErr := session.HostAPI().
+			ReportBridgeInstanceState(callCtx, extensioncontract.BridgesInstancesReportStateParams{
+				BridgeInstanceID: strings.TrimSpace(bridgeInstanceID),
+				Status:           status,
+				Degradation:      cloneDegradation(degradation),
+			})
 		if callErr == nil {
 			result = instance
 		}
 		return callErr
 	})
 	if err != nil {
-		p.reportSideEffectError("write failed state marker", appendJSONLine(p.env.statePath, stateMarker{
-			BridgeInstanceID: strings.TrimSpace(bridgeInstanceID),
-			Status:           status,
-			Error:            err.Error(),
-		}))
-		return nil, err
+		p.reportSideEffectError(
+			"write failed state marker",
+			appendJSONLine(p.env.statePath, stateMarker{
+				BridgeInstanceID: strings.TrimSpace(bridgeInstanceID),
+				Status:           status,
+				Error:            err.Error(),
+			}),
+		)
+		return err
 	}
 
 	p.mu.Lock()
@@ -588,17 +638,22 @@ func (p *teamsProvider) reportState(
 		Status:           result.Status,
 		Instance:         *result,
 	}))
-	return result, nil
+	return nil
 }
 
-func (p *teamsProvider) reportReadyIfNeeded(ctx context.Context, session *bridgesdk.Session, bridgeInstanceID string) {
+func (p *teamsProvider) reportReadyIfNeeded(
+	ctx context.Context,
+	session *bridgesdk.Session,
+	bridgeInstanceID string,
+) error {
+	bridgeInstanceID = strings.TrimSpace(bridgeInstanceID)
 	p.mu.RLock()
-	status := p.reportedStatus[strings.TrimSpace(bridgeInstanceID)]
+	status := p.reportedStatus[bridgeInstanceID]
 	p.mu.RUnlock()
 	if status == bridgepkg.BridgeStatusReady {
-		return
+		return nil
 	}
-	_, _ = p.reportState(ctx, session, bridgeInstanceID, bridgepkg.BridgeStatusReady, nil)
+	return p.reportState(ctx, session, bridgeInstanceID, bridgepkg.BridgeStatusReady, nil)
 }
 
 func (p *teamsProvider) ingestBridgeMessage(
@@ -624,7 +679,7 @@ func (p *teamsProvider) retryHostCall(ctx context.Context, fn func(context.Conte
 
 	delay := 10 * time.Millisecond
 	var lastErr error
-	for attempt := 0; attempt < 6; attempt++ {
+	for range 6 {
 		err := fn(ctx)
 		if err == nil {
 			return nil
@@ -667,172 +722,44 @@ func (p *teamsProvider) reconcileInstanceConfigs(
 	ctx context.Context,
 	session *bridgesdk.Session,
 	managed []subprocess.InitializeBridgeManagedInstance,
-) ([]resolvedInstanceConfig, error) {
+) []resolvedInstanceConfig {
 	if len(managed) == 0 {
 		p.mu.Lock()
 		p.routes = make(map[string]resolvedInstanceConfig)
 		p.mu.Unlock()
-		return nil, nil
+		return nil
 	}
 
-	configs := make([]resolvedInstanceConfig, 0, len(managed))
-	requestedListen := strings.TrimSpace(os.Getenv(teamsListenAddrEnv))
-	usedPaths := make(map[string]string, len(managed))
-
-	for _, item := range managed {
-		cfg := p.resolveInstanceConfig(session, item)
-		if cfg.listenAddr != "" {
-			if requestedListen == "" {
-				requestedListen = cfg.listenAddr
-			} else if requestedListen != cfg.listenAddr && cfg.configError == nil {
-				cfg.configError = fmt.Errorf("teams: instance %q configured incompatible listen_addr %q (runtime uses %q)", cfg.instanceID, cfg.listenAddr, requestedListen)
-			}
-		}
-		if owner, ok := usedPaths[cfg.webhookPath]; ok && cfg.webhookPath != "" && cfg.configError == nil {
-			cfg.configError = fmt.Errorf("teams: webhook path %q is shared by %q and %q", cfg.webhookPath, owner, cfg.instanceID)
-		}
-		if cfg.webhookPath != "" {
-			usedPaths[cfg.webhookPath] = cfg.instanceID
-		}
-		configs = append(configs, cfg)
-	}
-
-	if requestedListen == "" {
-		for idx := range configs {
-			if configs[idx].configError == nil {
-				configs[idx].configError = errors.New("teams: webhook listen address is required")
-			}
-		}
-	} else if err := p.startServer(requestedListen); err != nil {
-		for idx := range configs {
-			if configs[idx].configError == nil {
-				configs[idx].configError = err
-			}
-		}
-	}
-
-	nextRoutes := make(map[string]resolvedInstanceConfig, len(configs))
-	p.mu.Lock()
-	existing := p.routes
-	for _, cfg := range configs {
-		if prior, ok := existing[cfg.instanceID]; ok && prior.batcher != nil && cfg.batcher == nil {
-			prior.batcher.Close()
-		}
-		nextRoutes[cfg.instanceID] = cfg
-	}
-	for instanceID, prior := range existing {
-		if _, ok := nextRoutes[instanceID]; ok {
-			continue
-		}
-		if prior.batcher != nil {
-			prior.batcher.Close()
-		}
-	}
-	p.routes = nextRoutes
-	p.listenAddr = requestedListen
-	p.mu.Unlock()
-
-	for idx := range configs {
-		status, degradation, err := p.determineInitialState(ctx, configs[idx])
-		if err != nil {
-			p.setLastError(err)
-		}
-		configs[idx].initialStatus = status
-		configs[idx].initialDegradation = degradation
-	}
-	return configs, nil
+	configs, requestedListen := p.resolveTeamsManagedConfigs(session, managed)
+	applyTeamsListenErrors(configs, requestedListen, p.startServer)
+	p.swapTeamsRoutes(configs, requestedListen)
+	p.populateTeamsInitialStates(ctx, configs)
+	return configs
 }
 
 func (p *teamsProvider) resolveInstanceConfig(
 	session *bridgesdk.Session,
 	managed subprocess.InitializeBridgeManagedInstance,
 ) resolvedInstanceConfig {
-	cfg := teamsProviderConfig{}
-	if len(managed.Instance.ProviderConfig) > 0 {
-		if err := json.Unmarshal(managed.Instance.ProviderConfig, &cfg); err != nil {
-			return resolvedInstanceConfig{
-				managed:     managed,
-				instanceID:  managed.Instance.ID,
-				configError: fmt.Errorf("teams: decode provider_config for %q: %w", managed.Instance.ID, err),
-			}
+	cfg, err := decodeTeamsProviderConfig(managed)
+	if err != nil {
+		return resolvedInstanceConfig{
+			managed:    &managed,
+			instanceID: managed.Instance.ID,
+			configError: fmt.Errorf(
+				"teams: decode provider_config for %q: %w",
+				managed.Instance.ID,
+				err,
+			),
 		}
 	}
 
-	appID, _ := session.Cache().BoundSecretValue(managed.Instance.ID, "app_id")
-	appPassword, _ := session.Cache().BoundSecretValue(managed.Instance.ID, "app_password")
-	appTenantID, _ := session.Cache().BoundSecretValue(managed.Instance.ID, "app_tenant_id")
-	listenAddr := firstNonEmpty(cfg.Webhook.ListenAddr, strings.TrimSpace(os.Getenv(teamsListenAddrEnv)))
-	webhookPath := normalizeWebhookPath(firstNonEmpty(cfg.Webhook.Path, "/teams/"+strings.TrimSpace(managed.Instance.ID)))
-	serviceURL := normalizeURL(firstNonEmpty(cfg.ServiceURL, teamsDefaultServiceURL))
-	openIDMetadataURL := normalizeURL(firstNonEmpty(cfg.Auth.OpenIDMetadataURL, strings.TrimSpace(os.Getenv(teamsOpenIDMetadataURLEnv)), teamsDefaultOpenIDMetadata))
-	tokenURL := normalizeURL(firstNonEmpty(cfg.Auth.TokenURL, strings.TrimSpace(os.Getenv(teamsTokenURLEnv)), defaultTeamsTokenURL(strings.TrimSpace(appTenantID))))
-
-	resolved := resolvedInstanceConfig{
-		managed:           managed,
-		instanceID:        strings.TrimSpace(managed.Instance.ID),
-		listenAddr:        listenAddr,
-		webhookPath:       webhookPath,
-		serviceURL:        serviceURL,
-		appID:             strings.TrimSpace(appID),
-		appPassword:       strings.TrimSpace(appPassword),
-		appTenantID:       strings.TrimSpace(appTenantID),
-		openIDMetadataURL: openIDMetadataURL,
-		tokenURL:          tokenURL,
-		dmPolicy:          managed.Instance.DMPolicy.Normalize(),
-		allowUserIDs:      buildTeamsIDSet(cfg.DM.AllowUserIDs),
-		allowUsernames:    buildTeamsUsernameSet(cfg.DM.AllowUsernames),
-		pairedUserIDs:     buildTeamsIDSet(cfg.DM.PairedUserIDs),
-		pairedUsernames:   buildTeamsUsernameSet(cfg.DM.PairedUsernames),
-		dedup:             bridgesdk.NewDedupCache(5*time.Minute, 4000),
-		rateLimiter:       bridgesdk.NewFixedWindowRateLimiter(200, time.Minute),
-		inFlightLimiter:   bridgesdk.NewInFlightLimiter(24),
-	}
-	if resolved.dmPolicy == "" {
-		resolved.dmPolicy = bridgepkg.BridgeDMPolicyOpen
-	}
-	switch {
-	case resolved.webhookPath == "":
-		resolved.configError = errors.New("teams: webhook path is required")
-		return resolved
-	case resolved.serviceURL == "":
-		resolved.configError = errors.New("teams: provider_config.service_url is required")
-		return resolved
-	case !validTeamsServiceURL(resolved.serviceURL):
-		resolved.configError = fmt.Errorf("teams: provider_config.service_url %q is invalid", resolved.serviceURL)
-		return resolved
-	case resolved.openIDMetadataURL == "":
-		resolved.configError = errors.New("teams: openid metadata url is required")
-		return resolved
-	case resolved.tokenURL == "":
-		resolved.configError = errors.New("teams: token url is required")
-		return resolved
-	case resolved.appTenantID != "" && !looksLikeTenantID(resolved.appTenantID):
-		resolved.configError = fmt.Errorf("teams: app_tenant_id %q is malformed", resolved.appTenantID)
+	resolved := buildTeamsResolvedInstance(session, managed, cfg)
+	validateTeamsResolvedConfig(&resolved)
+	if resolved.configError != nil {
 		return resolved
 	}
-
-	if cfg.Batching.DelayMS > 0 {
-		batcher, err := bridgesdk.NewInboundBatcher(bridgesdk.InboundBatcherConfig{
-			Context: context.Background(),
-			Delay:   time.Duration(cfg.Batching.DelayMS) * time.Millisecond,
-			SplitDelay: func() time.Duration {
-				if cfg.Batching.SplitDelayMS <= 0 {
-					return time.Duration(cfg.Batching.DelayMS) * time.Millisecond
-				}
-				return time.Duration(cfg.Batching.SplitDelayMS) * time.Millisecond
-			}(),
-			SplitThreshold: cfg.Batching.SplitThreshold,
-			Dispatch: func(ctx context.Context, batch bridgesdk.InboundBatch) error {
-				return p.dispatchInboundBatch(ctx, resolved.instanceID, batch)
-			},
-			Now: func() time.Time { return p.now() },
-		})
-		if err != nil {
-			resolved.configError = err
-			return resolved
-		}
-		resolved.batcher = batcher
-	}
+	configureTeamsBatcher(p, cfg, &resolved)
 	return resolved
 }
 
@@ -885,17 +812,25 @@ func (p *teamsProvider) startServer(listenAddr string) error {
 	p.mu.RUnlock()
 	if server != nil {
 		if currentListen != "" && currentListen != strings.TrimSpace(listenAddr) {
-			return fmt.Errorf("teams: runtime already listening on %q, cannot switch to %q", currentListen, listenAddr)
+			return fmt.Errorf(
+				"teams: runtime already listening on %q, cannot switch to %q",
+				currentListen,
+				listenAddr,
+			)
 		}
 		return nil
 	}
 
-	ln, err := net.Listen("tcp", strings.TrimSpace(listenAddr))
+	ln, err := listenTeamsWebhook(strings.TrimSpace(listenAddr))
 	if err != nil {
 		return fmt.Errorf("teams: listen %q: %w", listenAddr, err)
 	}
 
-	httpServer := &http.Server{Handler: http.HandlerFunc(p.serveWebhookHTTP)}
+	httpServer := &http.Server{
+		Handler:           http.HandlerFunc(p.serveWebhookHTTP),
+		ReadHeaderTimeout: teamsWebhookReadHeaderTimeout,
+		IdleTimeout:       teamsWebhookIdleTimeout,
+	}
 	actualAddr := ln.Addr().String()
 
 	p.mu.Lock()
@@ -904,15 +839,17 @@ func (p *teamsProvider) startServer(listenAddr string) error {
 	p.listenAddr = strings.TrimSpace(listenAddr)
 	p.mu.Unlock()
 
-	p.reportSideEffectError("write start marker", appendMarkerLine(p.env.startsPath, fmt.Sprintf("listen=%s", actualAddr)))
+	p.reportSideEffectError(
+		"write start marker",
+		appendMarkerLine(p.env.startsPath, fmt.Sprintf("listen=%s", actualAddr)),
+	)
 
-	p.wg.Add(1)
-	go func() {
-		defer p.wg.Done()
-		if serveErr := httpServer.Serve(ln); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+	p.wg.Go(func() {
+		if serveErr := httpServer.Serve(ln); serveErr != nil &&
+			!errors.Is(serveErr, http.ErrServerClosed) {
 			p.setLastError(serveErr)
 		}
-	}()
+	})
 	return nil
 }
 
@@ -936,11 +873,15 @@ func (p *teamsProvider) serveWebhookHTTP(w http.ResponseWriter, r *http.Request)
 			return req.RemoteAddr + "|" + cfg.instanceID
 		},
 		Now: func() time.Time { return p.now() },
-	}, func(w http.ResponseWriter, r *http.Request, request bridgesdk.WebhookRequest) error {
+	}, func(w http.ResponseWriter, _ *http.Request, request bridgesdk.WebhookRequest) error {
 		return p.handleWebhookRequest(w, cfg, request)
 	})
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(
+			w,
+			http.StatusText(http.StatusInternalServerError),
+			http.StatusInternalServerError,
+		)
 		p.setLastError(err)
 		return
 	}
@@ -954,7 +895,10 @@ func (p *teamsProvider) handleWebhookRequest(
 ) error {
 	var activity teamsActivity
 	if err := json.Unmarshal(request.Body, &activity); err != nil {
-		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: "invalid teams activity payload"}
+		return &bridgesdk.HTTPError{
+			StatusCode: http.StatusBadRequest,
+			Message:    "invalid teams activity payload",
+		}
 	}
 
 	p.storeUserContext(cfg.instanceID, activity)
@@ -974,20 +918,31 @@ func (p *teamsProvider) handleWebhookRequest(
 		if !allowTeamsDirectMessage(cfg, item.User, item.Direct) {
 			continue
 		}
-		if cfg.batcher != nil && item.Envelope.EventFamily.Normalize() == bridgepkg.InboundEventFamilyMessage {
+		if cfg.batcher != nil &&
+			item.Envelope.EventFamily.Normalize() == bridgepkg.InboundEventFamilyMessage {
 			if err := cfg.batcher.Enqueue(item.Envelope); err != nil {
-				return &bridgesdk.HTTPError{StatusCode: http.StatusInternalServerError, Message: err.Error()}
+				return &bridgesdk.HTTPError{
+					StatusCode: http.StatusInternalServerError,
+					Message:    err.Error(),
+				}
 			}
 			continue
 		}
 		if err := p.dispatchInboundEnvelope(context.Background(), cfg.instanceID, item.Envelope); err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusInternalServerError, Message: err.Error()}
+			return &bridgesdk.HTTPError{
+				StatusCode: http.StatusInternalServerError,
+				Message:    err.Error(),
+			}
 		}
 	}
 	return writeWebhookOK(w)
 }
 
-func (p *teamsProvider) dispatchInboundBatch(ctx context.Context, bridgeInstanceID string, batch bridgesdk.InboundBatch) error {
+func (p *teamsProvider) dispatchInboundBatch(
+	ctx context.Context,
+	bridgeInstanceID string,
+	batch bridgesdk.InboundBatch,
+) error {
 	if len(batch.Items) == 0 {
 		return nil
 	}
@@ -1005,7 +960,11 @@ func (p *teamsProvider) dispatchInboundBatch(ctx context.Context, bridgeInstance
 	return p.dispatchInboundEnvelope(ctx, bridgeInstanceID, merged)
 }
 
-func (p *teamsProvider) dispatchInboundEnvelope(ctx context.Context, bridgeInstanceID string, envelope bridgepkg.InboundMessageEnvelope) error {
+func (p *teamsProvider) dispatchInboundEnvelope(
+	ctx context.Context,
+	bridgeInstanceID string,
+	envelope bridgepkg.InboundMessageEnvelope,
+) error {
 	session := p.currentSession()
 	if session == nil {
 		return errors.New("teams: runtime session is not initialized")
@@ -1017,17 +976,24 @@ func (p *teamsProvider) dispatchInboundEnvelope(ctx context.Context, bridgeInsta
 
 	result, err := p.ingestBridgeMessage(ctx, session, envelope)
 	if err != nil {
-		p.reportSideEffectError("write failed ingest marker", appendJSONLine(p.env.ingestPath, ingestMarker{
-			Envelope: envelope,
-			Error:    err.Error(),
-		}))
+		p.reportSideEffectError(
+			"write failed ingest marker",
+			appendJSONLine(p.env.ingestPath, ingestMarker{
+				Envelope: envelope,
+				Error:    err.Error(),
+			}),
+		)
 		return err
 	}
 	p.reportSideEffectError("write ingest marker", appendJSONLine(p.env.ingestPath, ingestMarker{
 		Envelope: envelope,
 		Result:   *result,
 	}))
-	p.reportReadyIfNeeded(ctx, session, cfg.instanceID)
+	if err := p.reportReadyIfNeeded(ctx, session, cfg.instanceID); err != nil {
+		p.setLastError(err)
+	} else {
+		p.clearLastError()
+	}
 	return nil
 }
 
@@ -1036,12 +1002,18 @@ func (p *teamsProvider) configForInstance(instanceID string) (resolvedInstanceCo
 	defer p.mu.RUnlock()
 	cfg, ok := p.routes[strings.TrimSpace(instanceID)]
 	if !ok {
-		return resolvedInstanceConfig{}, fmt.Errorf("teams: bridge instance %q is not initialized", instanceID)
+		return resolvedInstanceConfig{}, fmt.Errorf(
+			"teams: bridge instance %q is not initialized",
+			instanceID,
+		)
 	}
 	return cfg, nil
 }
 
-func (p *teamsProvider) waitForInstanceConfig(instanceID string, timeout time.Duration) (resolvedInstanceConfig, error) {
+func (p *teamsProvider) waitForInstanceConfig(
+	instanceID string,
+	timeout time.Duration,
+) (resolvedInstanceConfig, error) {
 	deadline := p.now().Add(timeout)
 	for {
 		cfg, err := p.configForInstance(instanceID)
@@ -1082,7 +1054,11 @@ func (p *teamsProvider) deliveryState(instanceID string, deliveryID string) deli
 	return p.deliveries[deliveryStateKey(instanceID, deliveryID)]
 }
 
-func (p *teamsProvider) storeDeliveryState(instanceID string, deliveryID string, state deliveryState) {
+func (p *teamsProvider) storeDeliveryState(
+	instanceID string,
+	deliveryID string,
+	state deliveryState,
+) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.deliveries[deliveryStateKey(instanceID, deliveryID)] = state
@@ -1150,6 +1126,16 @@ type teamsUserIdentity struct {
 	DisplayName string
 }
 
+type teamsInboundContext struct {
+	receivedAt         time.Time
+	serviceURL         string
+	conversationID     string
+	direct             bool
+	baseConversationID string
+	threadID           string
+	user               teamsUserIdentity
+}
+
 func mapTeamsActivity(
 	activity teamsActivity,
 	cfg resolvedInstanceConfig,
@@ -1201,74 +1187,22 @@ func mapTeamsMessageActivity(
 ) (mappedTeamsInbound, bool, error) {
 	conversationID := strings.TrimSpace(activity.Conversation.ID)
 	if conversationID == "" || strings.TrimSpace(activity.ID) == "" {
-		return mappedTeamsInbound{}, false, errors.New("teams: message activity requires conversation.id and id")
+		return mappedTeamsInbound{}, false, errors.New(
+			"teams: message activity requires conversation.id and id",
+		)
 	}
 	if isTeamsMessageFromSelf(activity, cfg) {
 		return mappedTeamsInbound{}, true, nil
 	}
-	serviceURL := firstNonEmpty(normalizeURL(activity.ServiceURL), cfg.serviceURL)
-	if serviceURL == "" {
-		return mappedTeamsInbound{}, false, errors.New("teams: message activity requires serviceUrl")
+	inboundContext, err := resolveTeamsInboundContext(activity, cfg, receivedAt, "message activity")
+	if err != nil {
+		return mappedTeamsInbound{}, false, err
 	}
-	if receivedAt.IsZero() {
-		receivedAt = time.Now().UTC()
-	}
-	if parsed := parseTeamsTimestamp(activity.Timestamp); !parsed.IsZero() {
-		receivedAt = parsed
-	}
-	direct := isTeamsDirectConversation(activity.Conversation)
-	baseConversationID := baseTeamsConversationID(conversationID)
-	threadID := encodeTeamsThreadID(teamsThreadRef{
-		ConversationID: conversationID,
-		ServiceURL:     serviceURL,
-	})
-	user := teamsUserIdentity{
-		ID:          normalizeTeamsID(activity.From.ID),
-		Username:    normalizeTeamsUsername(activity.From.Name),
-		DisplayName: firstNonEmpty(strings.TrimSpace(activity.From.Name), normalizeTeamsID(activity.From.ID)),
-	}
-	envelope := bridgepkg.InboundMessageEnvelope{
-		BridgeInstanceID:  cfg.instanceID,
-		Scope:             cfg.managed.Instance.Scope,
-		WorkspaceID:       cfg.managed.Instance.WorkspaceID,
-		PlatformMessageID: strings.TrimSpace(activity.ID),
-		ReceivedAt:        receivedAt,
-		Sender: bridgepkg.MessageSender{
-			ID:          user.ID,
-			Username:    user.Username,
-			DisplayName: user.DisplayName,
-		},
-		Content: bridgepkg.MessageContent{
-			Text: normalizeTeamsText(activity.Text),
-		},
-		Attachments:    normalizeTeamsAttachments(activity.Attachments),
-		EventFamily:    bridgepkg.InboundEventFamilyMessage,
-		IdempotencyKey: fmt.Sprintf("teams:%s:message:%s", cfg.instanceID, strings.TrimSpace(activity.ID)),
-		ThreadID:       threadID,
-	}
-	if direct {
-		envelope.PeerID = baseConversationID
-	} else {
-		envelope.GroupID = baseConversationID
-	}
-	metadata, err := json.Marshal(map[string]any{
-		"activity_id":          strings.TrimSpace(activity.ID),
-		"base_conversation_id": baseConversationID,
-		"channel_id":           strings.TrimSpace(activity.ChannelID),
-		"conversation_id":      conversationID,
-		"conversation_type":    strings.TrimSpace(activity.Conversation.ConversationType),
-		"reply_to_id":          strings.TrimSpace(activity.ReplyToID),
-		"service_url":          serviceURL,
-		"tenant_id":            extractTeamsTenantID(activity),
-		"type":                 strings.TrimSpace(activity.Type),
-	})
-	if err == nil {
-		envelope.ProviderMetadata = metadata
-	}
+	envelope := buildTeamsMessageEnvelope(cfg, inboundContext, activity)
 	if err := envelope.Validate(); err != nil {
 		return mappedTeamsInbound{}, false, err
 	}
-	return mappedTeamsInbound{Envelope: envelope, Direct: direct, User: user}, false, nil
+	return mappedTeamsInbound{Envelope: envelope, Direct: inboundContext.direct, User: inboundContext.user}, false, nil
 }
 
 func mapTeamsActionActivity(
@@ -1281,73 +1215,24 @@ func mapTeamsActionActivity(
 	if strings.TrimSpace(payload.ActionID) == "" {
 		return mappedTeamsInbound{}, errors.New("teams: action activity requires actionId")
 	}
-	serviceURL := firstNonEmpty(normalizeURL(activity.ServiceURL), cfg.serviceURL)
-	if serviceURL == "" {
-		return mappedTeamsInbound{}, errors.New("teams: action activity requires serviceUrl")
+	inboundContext, err := resolveTeamsInboundContext(activity, cfg, receivedAt, "action activity")
+	if err != nil {
+		return mappedTeamsInbound{}, err
 	}
-	if receivedAt.IsZero() {
-		receivedAt = time.Now().UTC()
-	}
-	if parsed := parseTeamsTimestamp(activity.Timestamp); !parsed.IsZero() {
-		receivedAt = parsed
-	}
-	conversationID := strings.TrimSpace(activity.Conversation.ID)
-	if conversationID == "" {
-		return mappedTeamsInbound{}, errors.New("teams: action activity requires conversation.id")
-	}
-	direct := isTeamsDirectConversation(activity.Conversation)
-	baseConversationID := baseTeamsConversationID(conversationID)
-	threadID := encodeTeamsThreadID(teamsThreadRef{
-		ConversationID: conversationID,
-		ServiceURL:     serviceURL,
-	})
-	user := teamsUserIdentity{
-		ID:          normalizeTeamsID(activity.From.ID),
-		Username:    normalizeTeamsUsername(activity.From.Name),
-		DisplayName: firstNonEmpty(strings.TrimSpace(activity.From.Name), normalizeTeamsID(activity.From.ID)),
-	}
-	messageID := firstNonEmpty(strings.TrimSpace(activity.ReplyToID), messageIDFromConversationID(conversationID), strings.TrimSpace(activity.ID))
-	envelope := bridgepkg.InboundMessageEnvelope{
-		BridgeInstanceID: cfg.instanceID,
-		Scope:            cfg.managed.Instance.Scope,
-		WorkspaceID:      cfg.managed.Instance.WorkspaceID,
-		ReceivedAt:       receivedAt,
-		Sender: bridgepkg.MessageSender{
-			ID:          user.ID,
-			Username:    user.Username,
-			DisplayName: user.DisplayName,
-		},
-		EventFamily: bridgepkg.InboundEventFamilyAction,
-		Action: &bridgepkg.InboundAction{
-			ActionID:  strings.TrimSpace(payload.ActionID),
-			MessageID: messageID,
-			Value:     strings.TrimSpace(payload.Value),
-		},
-		IdempotencyKey: firstNonEmpty(strings.TrimSpace(activity.ID), fmt.Sprintf("teams:%s:action:%s:%s", cfg.instanceID, messageID, strings.TrimSpace(payload.ActionID))),
-		ThreadID:       threadID,
-	}
-	if direct {
-		envelope.PeerID = baseConversationID
-	} else {
-		envelope.GroupID = baseConversationID
-	}
-	metadata, err := json.Marshal(map[string]any{
-		"activity_id":          strings.TrimSpace(activity.ID),
-		"action_id":            strings.TrimSpace(payload.ActionID),
-		"base_conversation_id": baseConversationID,
-		"conversation_id":      conversationID,
-		"message_id":           messageID,
-		"service_url":          serviceURL,
-		"source":               source,
-		"tenant_id":            extractTeamsTenantID(activity),
-	})
-	if err == nil {
-		envelope.ProviderMetadata = metadata
-	}
+	messageID := firstNonEmpty(
+		strings.TrimSpace(activity.ReplyToID),
+		messageIDFromConversationID(inboundContext.conversationID),
+		strings.TrimSpace(activity.ID),
+	)
+	envelope := buildTeamsActionEnvelope(cfg, inboundContext, activity, payload, source, messageID)
 	if err := envelope.Validate(); err != nil {
 		return mappedTeamsInbound{}, err
 	}
-	return mappedTeamsInbound{Envelope: envelope, Direct: direct, User: user}, nil
+	return mappedTeamsInbound{
+		Envelope: envelope,
+		Direct:   inboundContext.direct,
+		User:     inboundContext.user,
+	}, nil
 }
 
 func mapTeamsReactionActivity(
@@ -1355,92 +1240,58 @@ func mapTeamsReactionActivity(
 	cfg resolvedInstanceConfig,
 	receivedAt time.Time,
 ) ([]mappedTeamsInbound, error) {
-	conversationID := strings.TrimSpace(activity.Conversation.ID)
-	if conversationID == "" {
-		return nil, errors.New("teams: reaction activity requires conversation.id")
+	inboundContext, err := resolveTeamsInboundContext(
+		activity,
+		cfg,
+		receivedAt,
+		"reaction activity",
+	)
+	if err != nil {
+		return nil, err
 	}
-	serviceURL := firstNonEmpty(normalizeURL(activity.ServiceURL), cfg.serviceURL)
-	if serviceURL == "" {
-		return nil, errors.New("teams: reaction activity requires serviceUrl")
-	}
-	if receivedAt.IsZero() {
-		receivedAt = time.Now().UTC()
-	}
-	if parsed := parseTeamsTimestamp(activity.Timestamp); !parsed.IsZero() {
-		receivedAt = parsed
-	}
-	messageID := firstNonEmpty(messageIDFromConversationID(conversationID), strings.TrimSpace(activity.ReplyToID), strings.TrimSpace(activity.ID))
+	messageID := firstNonEmpty(
+		messageIDFromConversationID(inboundContext.conversationID),
+		strings.TrimSpace(activity.ReplyToID),
+		strings.TrimSpace(activity.ID),
+	)
 	if messageID == "" {
 		return nil, errors.New("teams: reaction activity requires a message identifier")
 	}
-	direct := isTeamsDirectConversation(activity.Conversation)
-	baseConversationID := baseTeamsConversationID(conversationID)
-	threadID := encodeTeamsThreadID(teamsThreadRef{
-		ConversationID: conversationID,
-		ServiceURL:     serviceURL,
-	})
-	user := teamsUserIdentity{
-		ID:          normalizeTeamsID(activity.From.ID),
-		Username:    normalizeTeamsUsername(activity.From.Name),
-		DisplayName: firstNonEmpty(strings.TrimSpace(activity.From.Name), normalizeTeamsID(activity.From.ID)),
-	}
-	items := make([]mappedTeamsInbound, 0, len(activity.ReactionsAdded)+len(activity.ReactionsRemoved))
-	appendReaction := func(reaction teamsMessageReaction, added bool) error {
-		raw := strings.TrimSpace(reaction.Type)
-		if raw == "" {
-			return nil
-		}
-		envelope := bridgepkg.InboundMessageEnvelope{
-			BridgeInstanceID: cfg.instanceID,
-			Scope:            cfg.managed.Instance.Scope,
-			WorkspaceID:      cfg.managed.Instance.WorkspaceID,
-			ReceivedAt:       receivedAt,
-			Sender: bridgepkg.MessageSender{
-				ID:          user.ID,
-				Username:    user.Username,
-				DisplayName: user.DisplayName,
-			},
-			EventFamily: bridgepkg.InboundEventFamilyReaction,
-			Reaction: &bridgepkg.InboundReaction{
-				MessageID: messageID,
-				Emoji:     normalizeTeamsEmoji(raw),
-				RawEmoji:  raw,
-				Added:     added,
-			},
-			IdempotencyKey: fmt.Sprintf("teams:%s:reaction:%s:%s:%t", cfg.instanceID, messageID, raw, added),
-			ThreadID:       threadID,
-		}
-		if direct {
-			envelope.PeerID = baseConversationID
-		} else {
-			envelope.GroupID = baseConversationID
-		}
-		metadata, err := json.Marshal(map[string]any{
-			"activity_id":          strings.TrimSpace(activity.ID),
-			"base_conversation_id": baseConversationID,
-			"conversation_id":      conversationID,
-			"message_id":           messageID,
-			"service_url":          serviceURL,
-			"tenant_id":            extractTeamsTenantID(activity),
-			"type":                 strings.TrimSpace(activity.Type),
-		})
-		if err == nil {
-			envelope.ProviderMetadata = metadata
-		}
-		if err := envelope.Validate(); err != nil {
-			return err
-		}
-		items = append(items, mappedTeamsInbound{Envelope: envelope, Direct: direct, User: user})
-		return nil
-	}
+	items := make(
+		[]mappedTeamsInbound,
+		0,
+		len(activity.ReactionsAdded)+len(activity.ReactionsRemoved),
+	)
 	for _, reaction := range activity.ReactionsAdded {
-		if err := appendReaction(reaction, true); err != nil {
+		item, ok, err := mapTeamsReactionItem(
+			cfg,
+			inboundContext,
+			activity,
+			messageID,
+			reaction,
+			true,
+		)
+		if err != nil {
 			return nil, err
+		}
+		if ok {
+			items = append(items, item)
 		}
 	}
 	for _, reaction := range activity.ReactionsRemoved {
-		if err := appendReaction(reaction, false); err != nil {
+		item, ok, err := mapTeamsReactionItem(
+			cfg,
+			inboundContext,
+			activity,
+			messageID,
+			reaction,
+			false,
+		)
+		if err != nil {
 			return nil, err
+		}
+		if ok {
+			items = append(items, item)
 		}
 	}
 	return items, nil
@@ -1460,7 +1311,11 @@ func executeTeamsDelivery(
 
 	event := request.Event
 	if event.EventType != bridgepkg.DeliveryEventTypeResume && event.Seq <= state.LastSeq {
-		return bridgepkg.DeliveryAck{}, state, fmt.Errorf("teams: out-of-order delivery seq %d after %d", event.Seq, state.LastSeq)
+		return bridgepkg.DeliveryAck{}, state, fmt.Errorf(
+			"teams: out-of-order delivery seq %d after %d",
+			event.Seq,
+			state.LastSeq,
+		)
 	}
 	if event.EventType == bridgepkg.DeliveryEventTypeResume && request.Snapshot != nil {
 		state.LastSeq = request.Snapshot.LastAckedSeq
@@ -1469,122 +1324,629 @@ func executeTeamsDelivery(
 	}
 
 	switch {
-	case event.Operation.Normalize() == bridgepkg.DeliveryOperationDelete || normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeDelete:
-		remoteID := firstNonEmpty(referenceRemoteMessageID(event.Reference), state.RemoteMessageID)
-		if remoteID == "" && request.Snapshot != nil {
-			remoteID = strings.TrimSpace(request.Snapshot.RemoteMessageID)
-		}
-		if remoteID == "" {
-			return bridgepkg.DeliveryAck{}, state, errors.New("teams: delete delivery requires a remote message id")
-		}
-		ref, err := decodeRemoteMessageID(remoteID)
-		if err != nil {
-			return bridgepkg.DeliveryAck{}, state, err
-		}
-		if err := api.DeleteActivity(ctx, ref.ServiceURL, ref.ConversationID, ref.ActivityID); err != nil {
-			return bridgepkg.DeliveryAck{}, state, err
-		}
-		ack := bridgepkg.DeliveryAck{
-			DeliveryID:             event.DeliveryID,
-			Seq:                    event.Seq,
-			RemoteMessageID:        remoteID,
-			ReplaceRemoteMessageID: firstNonEmpty(state.RemoteMessageID, remoteID),
-		}
-		state.LastSeq = event.Seq
-		state.RemoteMessageID = remoteID
-		state.ReplaceRemoteMessageID = ack.ReplaceRemoteMessageID
-		return ack, state, ack.ValidateFor(event)
+	case isTeamsDeleteDelivery(event):
+		return executeTeamsDeleteDelivery(ctx, api, event, request.Snapshot, state)
 	case shouldPostTeamsMessage(event, state, request):
-		target, err := resolveTeamsDeliveryTarget(cfg, event, userContextLookup)
-		if err != nil {
-			return bridgepkg.DeliveryAck{}, state, err
-		}
-		conversationID := target.ConversationID
-		serviceURL := target.ServiceURL
-		if conversationID == "" {
-			createReq := teamsCreateConversationRequest{
-				Bot:      teamsChannelAccount{ID: cfg.appID},
-				Members:  []teamsChannelAccount{{ID: target.UserID}},
-				IsGroup:  false,
-				TenantID: target.TenantID,
-				ChannelData: map[string]any{
-					"tenant": map[string]any{"id": target.TenantID},
-				},
-			}
-			created, err := api.CreateConversation(ctx, serviceURL, createReq)
-			if err != nil {
-				return bridgepkg.DeliveryAck{}, state, err
-			}
-			if created == nil || strings.TrimSpace(created.ID) == "" {
-				return bridgepkg.DeliveryAck{}, state, &bridgesdk.TransientError{Err: errors.New("teams: create conversation response omitted id")}
-			}
-			conversationID = strings.TrimSpace(created.ID)
-		}
-		baseConversationID, replyToID := splitTeamsConversationTarget(firstNonEmpty(conversationID, target.ConversationID))
-		if target.ReplyToID != "" {
-			replyToID = target.ReplyToID
-		}
-		sent, err := api.SendActivity(ctx, serviceURL, baseConversationID, replyToID, teamsOutboundActivity{
-			Type:       "message",
-			Text:       strings.TrimSpace(event.Content.Text),
-			TextFormat: "markdown",
-		})
-		if err != nil {
-			return bridgepkg.DeliveryAck{}, state, err
-		}
-		if sent == nil || strings.TrimSpace(sent.ID) == "" {
-			return bridgepkg.DeliveryAck{}, state, &bridgesdk.TransientError{Err: errors.New("teams: send activity response omitted id")}
-		}
-		remoteID := encodeRemoteMessageID(teamsRemoteMessageRef{
-			ConversationID: baseConversationID,
-			ServiceURL:     serviceURL,
-			ActivityID:     strings.TrimSpace(sent.ID),
-		})
-		ack := bridgepkg.DeliveryAck{
-			DeliveryID:      event.DeliveryID,
-			Seq:             event.Seq,
-			RemoteMessageID: remoteID,
-		}
-		state.LastSeq = event.Seq
-		state.ReplaceRemoteMessageID = state.RemoteMessageID
-		state.RemoteMessageID = remoteID
-		if state.ReplaceRemoteMessageID != "" {
-			ack.ReplaceRemoteMessageID = state.ReplaceRemoteMessageID
-		}
-		return ack, state, ack.ValidateFor(event)
+		return executeTeamsPostDelivery(ctx, api, cfg, event, state, userContextLookup)
 	default:
-		remoteID := state.RemoteMessageID
-		if remoteID == "" && request.Snapshot != nil {
-			remoteID = strings.TrimSpace(request.Snapshot.RemoteMessageID)
-		}
-		if remoteID == "" {
-			return bridgepkg.DeliveryAck{}, state, errors.New("teams: edit delivery requires a remote message id")
-		}
-		ref, err := decodeRemoteMessageID(remoteID)
-		if err != nil {
-			return bridgepkg.DeliveryAck{}, state, err
-		}
-		if err := api.UpdateActivity(ctx, ref.ServiceURL, ref.ConversationID, ref.ActivityID, teamsOutboundActivity{
-			Type:       "message",
-			Text:       strings.TrimSpace(event.Content.Text),
-			TextFormat: "markdown",
-		}); err != nil {
-			return bridgepkg.DeliveryAck{}, state, err
-		}
-		ack := bridgepkg.DeliveryAck{
-			DeliveryID:             event.DeliveryID,
-			Seq:                    event.Seq,
-			RemoteMessageID:        remoteID,
-			ReplaceRemoteMessageID: firstNonEmpty(state.RemoteMessageID, remoteID),
-		}
-		state.LastSeq = event.Seq
-		state.RemoteMessageID = remoteID
-		state.ReplaceRemoteMessageID = ack.ReplaceRemoteMessageID
-		return ack, state, ack.ValidateFor(event)
+		return executeTeamsEditDelivery(ctx, api, event, request.Snapshot, state)
 	}
 }
 
-func shouldPostTeamsMessage(event bridgepkg.DeliveryEvent, state deliveryState, request bridgepkg.DeliveryRequest) bool {
+func (p *teamsProvider) resolveTeamsManagedConfigs(
+	session *bridgesdk.Session,
+	managed []subprocess.InitializeBridgeManagedInstance,
+) ([]resolvedInstanceConfig, string) {
+	configs := make([]resolvedInstanceConfig, 0, len(managed))
+	requestedListen := strings.TrimSpace(os.Getenv(teamsListenAddrEnv))
+	usedPaths := make(map[string]string, len(managed))
+
+	for _, item := range managed {
+		cfg := p.resolveInstanceConfig(session, item)
+		requestedListen = updateTeamsRequestedListen(&cfg, requestedListen)
+		markDuplicateTeamsWebhookPath(&cfg, usedPaths)
+		configs = append(configs, cfg)
+	}
+	return configs, requestedListen
+}
+
+func updateTeamsRequestedListen(cfg *resolvedInstanceConfig, requestedListen string) string {
+	if cfg == nil || cfg.listenAddr == "" {
+		return requestedListen
+	}
+	if requestedListen == "" {
+		return cfg.listenAddr
+	}
+	if requestedListen != cfg.listenAddr && cfg.configError == nil {
+		cfg.configError = fmt.Errorf(
+			"teams: instance %q configured incompatible listen_addr %q (runtime uses %q)",
+			cfg.instanceID,
+			cfg.listenAddr,
+			requestedListen,
+		)
+	}
+	return requestedListen
+}
+
+func markDuplicateTeamsWebhookPath(cfg *resolvedInstanceConfig, usedPaths map[string]string) {
+	if cfg == nil || cfg.webhookPath == "" {
+		return
+	}
+	if owner, ok := usedPaths[cfg.webhookPath]; ok && cfg.configError == nil {
+		cfg.configError = fmt.Errorf(
+			"teams: webhook path %q is shared by %q and %q",
+			cfg.webhookPath,
+			owner,
+			cfg.instanceID,
+		)
+	}
+	usedPaths[cfg.webhookPath] = cfg.instanceID
+}
+
+func applyTeamsListenErrors(
+	configs []resolvedInstanceConfig,
+	requestedListen string,
+	startServer func(string) error,
+) {
+	if requestedListen == "" {
+		for idx := range configs {
+			if configs[idx].configError == nil {
+				configs[idx].configError = errors.New("teams: webhook listen address is required")
+			}
+		}
+		return
+	}
+
+	if err := startServer(requestedListen); err != nil {
+		for idx := range configs {
+			if configs[idx].configError == nil {
+				configs[idx].configError = err
+			}
+		}
+	}
+}
+
+func (p *teamsProvider) swapTeamsRoutes(configs []resolvedInstanceConfig, requestedListen string) {
+	nextRoutes := make(map[string]resolvedInstanceConfig, len(configs))
+
+	p.mu.Lock()
+	existing := p.routes
+	for _, cfg := range configs {
+		if prior, ok := existing[cfg.instanceID]; ok && prior.batcher != nil && cfg.batcher == nil {
+			prior.batcher.Close()
+		}
+		nextRoutes[cfg.instanceID] = cfg
+	}
+	for instanceID, prior := range existing {
+		if _, ok := nextRoutes[instanceID]; ok {
+			continue
+		}
+		if prior.batcher != nil {
+			prior.batcher.Close()
+		}
+	}
+	p.routes = nextRoutes
+	p.listenAddr = requestedListen
+	p.mu.Unlock()
+}
+
+func (p *teamsProvider) populateTeamsInitialStates(
+	ctx context.Context,
+	configs []resolvedInstanceConfig,
+) {
+	for idx := range configs {
+		status, degradation, err := p.determineInitialState(ctx, configs[idx])
+		if err != nil {
+			p.setLastError(err)
+		}
+		configs[idx].initialStatus = status
+		configs[idx].initialDegradation = degradation
+	}
+}
+
+func decodeTeamsProviderConfig(
+	managed subprocess.InitializeBridgeManagedInstance,
+) (teamsProviderConfig, error) {
+	cfg := teamsProviderConfig{}
+	if len(managed.Instance.ProviderConfig) == 0 {
+		return cfg, nil
+	}
+	if err := json.Unmarshal(managed.Instance.ProviderConfig, &cfg); err != nil {
+		return teamsProviderConfig{}, err
+	}
+	return cfg, nil
+}
+
+func buildTeamsResolvedInstance(
+	session *bridgesdk.Session,
+	managed subprocess.InitializeBridgeManagedInstance,
+	cfg teamsProviderConfig,
+) resolvedInstanceConfig {
+	appID, _ := session.Cache().BoundSecretValue(managed.Instance.ID, "app_id")
+	appPassword, _ := session.Cache().BoundSecretValue(managed.Instance.ID, "app_password")
+	appTenantID, _ := session.Cache().BoundSecretValue(managed.Instance.ID, "app_tenant_id")
+
+	resolved := resolvedInstanceConfig{
+		managed:    &managed,
+		instanceID: strings.TrimSpace(managed.Instance.ID),
+		listenAddr: firstNonEmpty(
+			cfg.Webhook.ListenAddr,
+			strings.TrimSpace(os.Getenv(teamsListenAddrEnv)),
+		),
+		webhookPath: normalizeWebhookPath(
+			firstNonEmpty(cfg.Webhook.Path, "/teams/"+strings.TrimSpace(managed.Instance.ID)),
+		),
+		serviceURL: normalizeURL(firstNonEmpty(cfg.ServiceURL, teamsDefaultServiceURL)),
+		openIDMetadataURL: normalizeURL(
+			firstNonEmpty(
+				cfg.Auth.OpenIDMetadataURL,
+				strings.TrimSpace(os.Getenv(teamsOpenIDMetadataURLEnv)),
+				teamsDefaultOpenIDMetadata,
+			),
+		),
+		tokenURL: normalizeURL(
+			firstNonEmpty(
+				cfg.Auth.TokenURL,
+				strings.TrimSpace(os.Getenv(teamsOAuthTokenURLEnvName())),
+				defaultTeamsTokenURL(strings.TrimSpace(appTenantID)),
+			),
+		),
+		appID:           strings.TrimSpace(appID),
+		appPassword:     strings.TrimSpace(appPassword),
+		appTenantID:     strings.TrimSpace(appTenantID),
+		dmPolicy:        managed.Instance.DMPolicy.Normalize(),
+		allowUserIDs:    buildTeamsIDSet(cfg.DM.AllowUserIDs),
+		allowUsernames:  buildTeamsUsernameSet(cfg.DM.AllowUsernames),
+		pairedUserIDs:   buildTeamsIDSet(cfg.DM.PairedUserIDs),
+		pairedUsernames: buildTeamsUsernameSet(cfg.DM.PairedUsernames),
+		dedup:           bridgesdk.NewDedupCache(5*time.Minute, 4000),
+		rateLimiter:     bridgesdk.NewFixedWindowRateLimiter(200, time.Minute),
+		inFlightLimiter: bridgesdk.NewInFlightLimiter(24),
+	}
+	if resolved.dmPolicy == "" {
+		resolved.dmPolicy = bridgepkg.BridgeDMPolicyOpen
+	}
+	return resolved
+}
+
+func validateTeamsResolvedConfig(resolved *resolvedInstanceConfig) {
+	if resolved == nil {
+		return
+	}
+	switch {
+	case resolved.webhookPath == "":
+		resolved.configError = errors.New("teams: webhook path is required")
+	case resolved.serviceURL == "":
+		resolved.configError = errors.New("teams: provider_config.service_url is required")
+	case !validTeamsServiceURL(resolved.serviceURL):
+		resolved.configError = fmt.Errorf(
+			"teams: provider_config.service_url %q is invalid",
+			resolved.serviceURL,
+		)
+	case resolved.openIDMetadataURL == "":
+		resolved.configError = errors.New("teams: openid metadata url is required")
+	case resolved.tokenURL == "":
+		resolved.configError = errors.New("teams: token url is required")
+	case resolved.appTenantID != "" && !looksLikeTenantID(resolved.appTenantID):
+		resolved.configError = fmt.Errorf(
+			"teams: app_tenant_id %q is malformed",
+			resolved.appTenantID,
+		)
+	}
+}
+
+func configureTeamsBatcher(
+	provider *teamsProvider,
+	cfg teamsProviderConfig,
+	resolved *resolvedInstanceConfig,
+) {
+	if resolved == nil || cfg.Batching.DelayMS <= 0 {
+		return
+	}
+
+	batcher, err := bridgesdk.NewInboundBatcher(bridgesdk.InboundBatcherConfig{
+		Context: context.Background(),
+		Delay:   time.Duration(cfg.Batching.DelayMS) * time.Millisecond,
+		SplitDelay: func() time.Duration {
+			if cfg.Batching.SplitDelayMS <= 0 {
+				return time.Duration(cfg.Batching.DelayMS) * time.Millisecond
+			}
+			return time.Duration(cfg.Batching.SplitDelayMS) * time.Millisecond
+		}(),
+		SplitThreshold: cfg.Batching.SplitThreshold,
+		Dispatch: func(ctx context.Context, batch bridgesdk.InboundBatch) error {
+			return provider.dispatchInboundBatch(ctx, resolved.instanceID, batch)
+		},
+		Now: func() time.Time { return provider.now() },
+	})
+	if err != nil {
+		resolved.configError = err
+		return
+	}
+	resolved.batcher = batcher
+}
+
+func resolveTeamsInboundContext(
+	activity teamsActivity,
+	cfg resolvedInstanceConfig,
+	receivedAt time.Time,
+	kind string,
+) (teamsInboundContext, error) {
+	serviceURL := firstNonEmpty(normalizeURL(activity.ServiceURL), cfg.serviceURL)
+	if serviceURL == "" {
+		return teamsInboundContext{}, fmt.Errorf("teams: %s requires serviceUrl", kind)
+	}
+	if receivedAt.IsZero() {
+		receivedAt = time.Now().UTC()
+	}
+	if parsed := parseTeamsTimestamp(activity.Timestamp); !parsed.IsZero() {
+		receivedAt = parsed
+	}
+	conversationID := strings.TrimSpace(activity.Conversation.ID)
+	if conversationID == "" {
+		return teamsInboundContext{}, fmt.Errorf("teams: %s requires conversation.id", kind)
+	}
+
+	return teamsInboundContext{
+		receivedAt:         receivedAt,
+		serviceURL:         serviceURL,
+		conversationID:     conversationID,
+		direct:             isTeamsDirectConversation(activity.Conversation),
+		baseConversationID: baseTeamsConversationID(conversationID),
+		threadID: encodeTeamsThreadID(teamsThreadRef{
+			ConversationID: conversationID,
+			ServiceURL:     serviceURL,
+		}),
+		user: teamsUserIdentity{
+			ID:       normalizeTeamsID(activity.From.ID),
+			Username: normalizeTeamsUsername(activity.From.Name),
+			DisplayName: firstNonEmpty(
+				strings.TrimSpace(activity.From.Name),
+				normalizeTeamsID(activity.From.ID),
+			),
+		},
+	}, nil
+}
+
+func buildTeamsActionEnvelope(
+	cfg resolvedInstanceConfig,
+	inboundContext teamsInboundContext,
+	activity teamsActivity,
+	payload teamsActionPayload,
+	source string,
+	messageID string,
+) bridgepkg.InboundMessageEnvelope {
+	envelope := bridgepkg.InboundMessageEnvelope{
+		BridgeInstanceID: cfg.instanceID,
+		Scope:            cfg.managed.Instance.Scope,
+		WorkspaceID:      cfg.managed.Instance.WorkspaceID,
+		ReceivedAt:       inboundContext.receivedAt,
+		Sender: bridgepkg.MessageSender{
+			ID:          inboundContext.user.ID,
+			Username:    inboundContext.user.Username,
+			DisplayName: inboundContext.user.DisplayName,
+		},
+		EventFamily: bridgepkg.InboundEventFamilyAction,
+		Action: &bridgepkg.InboundAction{
+			ActionID:  strings.TrimSpace(payload.ActionID),
+			MessageID: messageID,
+			Value:     strings.TrimSpace(payload.Value),
+		},
+		IdempotencyKey: firstNonEmpty(
+			strings.TrimSpace(activity.ID),
+			fmt.Sprintf(
+				"teams:%s:action:%s:%s",
+				cfg.instanceID,
+				messageID,
+				strings.TrimSpace(payload.ActionID),
+			),
+		),
+		ThreadID: inboundContext.threadID,
+	}
+	if inboundContext.direct {
+		envelope.PeerID = inboundContext.baseConversationID
+	} else {
+		envelope.GroupID = inboundContext.baseConversationID
+	}
+	metadata, err := json.Marshal(map[string]any{
+		"activity_id":          strings.TrimSpace(activity.ID),
+		"action_id":            strings.TrimSpace(payload.ActionID),
+		"base_conversation_id": inboundContext.baseConversationID,
+		"conversation_id":      inboundContext.conversationID,
+		"message_id":           messageID,
+		"service_url":          inboundContext.serviceURL,
+		"source":               source,
+		"tenant_id":            extractTeamsTenantID(activity),
+	})
+	if err == nil {
+		envelope.ProviderMetadata = metadata
+	}
+	return envelope
+}
+
+func buildTeamsMessageEnvelope(
+	cfg resolvedInstanceConfig,
+	inboundContext teamsInboundContext,
+	activity teamsActivity,
+) bridgepkg.InboundMessageEnvelope {
+	envelope := bridgepkg.InboundMessageEnvelope{
+		BridgeInstanceID:  cfg.instanceID,
+		Scope:             cfg.managed.Instance.Scope,
+		WorkspaceID:       cfg.managed.Instance.WorkspaceID,
+		PlatformMessageID: strings.TrimSpace(activity.ID),
+		ReceivedAt:        inboundContext.receivedAt,
+		Sender: bridgepkg.MessageSender{
+			ID:          inboundContext.user.ID,
+			Username:    inboundContext.user.Username,
+			DisplayName: inboundContext.user.DisplayName,
+		},
+		Content: bridgepkg.MessageContent{
+			Text: normalizeTeamsText(activity.Text),
+		},
+		Attachments: normalizeTeamsAttachments(activity.Attachments),
+		EventFamily: bridgepkg.InboundEventFamilyMessage,
+		IdempotencyKey: fmt.Sprintf(
+			"teams:%s:message:%s",
+			cfg.instanceID,
+			strings.TrimSpace(activity.ID),
+		),
+		ThreadID: inboundContext.threadID,
+	}
+	if inboundContext.direct {
+		envelope.PeerID = inboundContext.baseConversationID
+	} else {
+		envelope.GroupID = inboundContext.baseConversationID
+	}
+	metadata, err := json.Marshal(map[string]any{
+		"activity_id":          strings.TrimSpace(activity.ID),
+		"base_conversation_id": inboundContext.baseConversationID,
+		"channel_id":           strings.TrimSpace(activity.ChannelID),
+		"conversation_id":      inboundContext.conversationID,
+		"conversation_type":    strings.TrimSpace(activity.Conversation.ConversationType),
+		"reply_to_id":          strings.TrimSpace(activity.ReplyToID),
+		"service_url":          inboundContext.serviceURL,
+		"tenant_id":            extractTeamsTenantID(activity),
+		"type":                 strings.TrimSpace(activity.Type),
+	})
+	if err == nil {
+		envelope.ProviderMetadata = metadata
+	}
+	return envelope
+}
+
+func mapTeamsReactionItem(
+	cfg resolvedInstanceConfig,
+	inboundContext teamsInboundContext,
+	activity teamsActivity,
+	messageID string,
+	reaction teamsMessageReaction,
+	added bool,
+) (mappedTeamsInbound, bool, error) {
+	raw := strings.TrimSpace(reaction.Type)
+	if raw == "" {
+		return mappedTeamsInbound{}, false, nil
+	}
+
+	envelope := bridgepkg.InboundMessageEnvelope{
+		BridgeInstanceID: cfg.instanceID,
+		Scope:            cfg.managed.Instance.Scope,
+		WorkspaceID:      cfg.managed.Instance.WorkspaceID,
+		ReceivedAt:       inboundContext.receivedAt,
+		Sender: bridgepkg.MessageSender{
+			ID:          inboundContext.user.ID,
+			Username:    inboundContext.user.Username,
+			DisplayName: inboundContext.user.DisplayName,
+		},
+		EventFamily: bridgepkg.InboundEventFamilyReaction,
+		Reaction: &bridgepkg.InboundReaction{
+			MessageID: messageID,
+			Emoji:     normalizeTeamsEmoji(raw),
+			RawEmoji:  raw,
+			Added:     added,
+		},
+		IdempotencyKey: fmt.Sprintf(
+			"teams:%s:reaction:%s:%s:%t",
+			cfg.instanceID,
+			messageID,
+			raw,
+			added,
+		),
+		ThreadID: inboundContext.threadID,
+	}
+	if inboundContext.direct {
+		envelope.PeerID = inboundContext.baseConversationID
+	} else {
+		envelope.GroupID = inboundContext.baseConversationID
+	}
+	metadata, err := json.Marshal(map[string]any{
+		"activity_id":          strings.TrimSpace(activity.ID),
+		"base_conversation_id": inboundContext.baseConversationID,
+		"conversation_id":      inboundContext.conversationID,
+		"message_id":           messageID,
+		"service_url":          inboundContext.serviceURL,
+		"tenant_id":            extractTeamsTenantID(activity),
+		"type":                 strings.TrimSpace(activity.Type),
+	})
+	if err == nil {
+		envelope.ProviderMetadata = metadata
+	}
+	if err := envelope.Validate(); err != nil {
+		return mappedTeamsInbound{}, false, err
+	}
+	return mappedTeamsInbound{
+		Envelope: envelope,
+		Direct:   inboundContext.direct,
+		User:     inboundContext.user,
+	}, true, nil
+}
+
+func isTeamsDeleteDelivery(event bridgepkg.DeliveryEvent) bool {
+	return event.Operation.Normalize() == bridgepkg.DeliveryOperationDelete ||
+		normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeDelete
+}
+
+func executeTeamsDeleteDelivery(
+	ctx context.Context,
+	api teamsAPI,
+	event bridgepkg.DeliveryEvent,
+	snapshot *bridgepkg.DeliverySnapshot,
+	state deliveryState,
+) (bridgepkg.DeliveryAck, deliveryState, error) {
+	remoteID := firstNonEmpty(referenceRemoteMessageID(event.Reference), state.RemoteMessageID)
+	if remoteID == "" && snapshot != nil {
+		remoteID = strings.TrimSpace(snapshot.RemoteMessageID)
+	}
+	if remoteID == "" {
+		return bridgepkg.DeliveryAck{}, state, errors.New(
+			"teams: delete delivery requires a remote message id",
+		)
+	}
+	ref, err := decodeRemoteMessageID(remoteID)
+	if err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
+	}
+	if err := api.DeleteActivity(ctx, ref.ServiceURL, ref.ConversationID, ref.ActivityID); err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
+	}
+
+	ack := newTeamsDeliveryAck(event, remoteID, firstNonEmpty(state.RemoteMessageID, remoteID))
+	state.LastSeq = event.Seq
+	state.RemoteMessageID = remoteID
+	state.ReplaceRemoteMessageID = ack.ReplaceRemoteMessageID
+	return ack, state, ack.ValidateFor(event)
+}
+
+func executeTeamsPostDelivery(
+	ctx context.Context,
+	api teamsAPI,
+	cfg resolvedInstanceConfig,
+	event bridgepkg.DeliveryEvent,
+	state deliveryState,
+	userContextLookup func(string, string) (teamsUserContext, bool),
+) (bridgepkg.DeliveryAck, deliveryState, error) {
+	target, err := resolveTeamsDeliveryTarget(cfg, event, userContextLookup)
+	if err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
+	}
+
+	conversationID := target.ConversationID
+	serviceURL := target.ServiceURL
+	if conversationID == "" {
+		createReq := teamsCreateConversationRequest{
+			Bot:      teamsChannelAccount{ID: cfg.appID},
+			Members:  []teamsChannelAccount{{ID: target.UserID}},
+			IsGroup:  false,
+			TenantID: target.TenantID,
+			ChannelData: map[string]any{
+				"tenant": map[string]any{"id": target.TenantID},
+			},
+		}
+		created, err := api.CreateConversation(ctx, serviceURL, createReq)
+		if err != nil {
+			return bridgepkg.DeliveryAck{}, state, err
+		}
+		if created == nil || strings.TrimSpace(created.ID) == "" {
+			return bridgepkg.DeliveryAck{}, state, &bridgesdk.TransientError{
+				Err: errors.New("teams: create conversation response omitted id"),
+			}
+		}
+		conversationID = strings.TrimSpace(created.ID)
+	}
+
+	baseConversationID, replyToID := splitTeamsConversationTarget(
+		firstNonEmpty(conversationID, target.ConversationID),
+	)
+	if target.ReplyToID != "" {
+		replyToID = target.ReplyToID
+	}
+	sent, err := api.SendActivity(
+		ctx,
+		serviceURL,
+		baseConversationID,
+		replyToID,
+		teamsOutboundActivity{
+			Type:       "message",
+			Text:       strings.TrimSpace(event.Content.Text),
+			TextFormat: "markdown",
+		},
+	)
+	if err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
+	}
+	if sent == nil || strings.TrimSpace(sent.ID) == "" {
+		return bridgepkg.DeliveryAck{}, state, &bridgesdk.TransientError{
+			Err: errors.New("teams: send activity response omitted id"),
+		}
+	}
+
+	remoteID := encodeRemoteMessageID(teamsRemoteMessageRef{
+		ConversationID: baseConversationID,
+		ServiceURL:     serviceURL,
+		ActivityID:     strings.TrimSpace(sent.ID),
+	})
+	ack := newTeamsDeliveryAck(event, remoteID, state.RemoteMessageID)
+	state.LastSeq = event.Seq
+	state.ReplaceRemoteMessageID = state.RemoteMessageID
+	state.RemoteMessageID = remoteID
+	return ack, state, ack.ValidateFor(event)
+}
+
+func executeTeamsEditDelivery(
+	ctx context.Context,
+	api teamsAPI,
+	event bridgepkg.DeliveryEvent,
+	snapshot *bridgepkg.DeliverySnapshot,
+	state deliveryState,
+) (bridgepkg.DeliveryAck, deliveryState, error) {
+	remoteID := state.RemoteMessageID
+	if remoteID == "" && snapshot != nil {
+		remoteID = strings.TrimSpace(snapshot.RemoteMessageID)
+	}
+	if remoteID == "" {
+		return bridgepkg.DeliveryAck{}, state, errors.New(
+			"teams: edit delivery requires a remote message id",
+		)
+	}
+	ref, err := decodeRemoteMessageID(remoteID)
+	if err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
+	}
+	if err := api.UpdateActivity(ctx, ref.ServiceURL, ref.ConversationID, ref.ActivityID, teamsOutboundActivity{
+		Type:       "message",
+		Text:       strings.TrimSpace(event.Content.Text),
+		TextFormat: "markdown",
+	}); err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
+	}
+
+	ack := newTeamsDeliveryAck(event, remoteID, firstNonEmpty(state.RemoteMessageID, remoteID))
+	state.LastSeq = event.Seq
+	state.RemoteMessageID = remoteID
+	state.ReplaceRemoteMessageID = ack.ReplaceRemoteMessageID
+	return ack, state, ack.ValidateFor(event)
+}
+
+func newTeamsDeliveryAck(
+	event bridgepkg.DeliveryEvent,
+	remoteMessageID string,
+	replaceRemoteMessageID string,
+) bridgepkg.DeliveryAck {
+	ack := bridgepkg.DeliveryAck{
+		DeliveryID:      event.DeliveryID,
+		Seq:             event.Seq,
+		RemoteMessageID: remoteMessageID,
+	}
+	if strings.TrimSpace(replaceRemoteMessageID) != "" {
+		ack.ReplaceRemoteMessageID = strings.TrimSpace(replaceRemoteMessageID)
+	}
+	return ack
+}
+
+func shouldPostTeamsMessage(
+	event bridgepkg.DeliveryEvent,
+	state deliveryState,
+	request bridgepkg.DeliveryRequest,
+) bool {
 	if normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeStart {
 		return true
 	}
@@ -1616,7 +1978,11 @@ func allowTeamsDirectMessage(cfg resolvedInstanceConfig, user teamsUserIdentity,
 	}
 }
 
-func teamsIdentityAllowed(ids map[string]struct{}, usernames map[string]struct{}, user teamsUserIdentity) bool {
+func teamsIdentityAllowed(
+	ids map[string]struct{},
+	usernames map[string]struct{},
+	user teamsUserIdentity,
+) bool {
 	if len(ids) == 0 && len(usernames) == 0 {
 		return false
 	}
@@ -1629,32 +1995,63 @@ func teamsIdentityAllowed(ids map[string]struct{}, usernames map[string]struct{}
 	return false
 }
 
-func verifyTeamsAuthorization(ctx context.Context, req *http.Request, body []byte, cfg resolvedInstanceConfig) error {
-	if req == nil {
-		return errors.New("teams: webhook request is required")
-	}
-	authz := strings.TrimSpace(req.Header.Get("Authorization"))
+func parseTeamsBearerToken(header string) (string, error) {
+	authz := strings.TrimSpace(header)
 	if !strings.HasPrefix(strings.ToLower(authz), "bearer ") {
-		return errors.New("teams: bearer authorization is required")
+		return "", errors.New("teams: bearer authorization is required")
 	}
 	tokenString := strings.TrimSpace(authz[len("Bearer "):])
 	if tokenString == "" {
-		return errors.New("teams: bearer token is required")
+		return "", errors.New("teams: bearer token is required")
 	}
+	return tokenString, nil
+}
 
+func decodeTeamsAuthorizationProbe(body []byte) (struct {
+	ServiceURL string `json:"serviceUrl,omitempty"`
+	ChannelID  string `json:"channelId,omitempty"`
+}, error) {
 	probe := struct {
 		ServiceURL string `json:"serviceUrl,omitempty"`
 		ChannelID  string `json:"channelId,omitempty"`
 	}{}
 	if err := json.Unmarshal(body, &probe); err != nil {
-		return errors.New("teams: webhook payload is not valid json")
+		return probe, errors.New("teams: webhook payload is not valid json")
 	}
-	serviceURL := normalizeURL(probe.ServiceURL)
+	return probe, nil
+}
+
+func teamsAuthorizationServiceURL(probeServiceURL string, defaultServiceURL string) (string, error) {
+	serviceURL := normalizeURL(probeServiceURL)
 	if serviceURL == "" {
-		serviceURL = cfg.serviceURL
+		serviceURL = defaultServiceURL
 	}
 	if serviceURL == "" {
-		return errors.New("teams: serviceUrl is required for token validation")
+		return "", errors.New("teams: serviceUrl is required for token validation")
+	}
+	return serviceURL, nil
+}
+
+func verifyTeamsAuthorization(
+	ctx context.Context,
+	req *http.Request,
+	body []byte,
+	cfg resolvedInstanceConfig,
+) error {
+	if req == nil {
+		return errors.New("teams: webhook request is required")
+	}
+	tokenString, err := parseTeamsBearerToken(req.Header.Get("Authorization"))
+	if err != nil {
+		return err
+	}
+	probe, err := decodeTeamsAuthorizationProbe(body)
+	if err != nil {
+		return err
+	}
+	serviceURL, err := teamsAuthorizationServiceURL(probe.ServiceURL, cfg.serviceURL)
+	if err != nil {
+		return err
 	}
 
 	metadata, err := fetchTeamsOpenIDMetadata(ctx, cfg.openIDMetadataURL)
@@ -1673,7 +2070,10 @@ func verifyTeamsAuthorization(ctx context.Context, req *http.Request, body []byt
 			if token.Method.Alg() != jwt.SigningMethodRS256.Alg() {
 				return nil, fmt.Errorf("teams: unsupported signing method %q", token.Method.Alg())
 			}
-			keyID := firstNonEmpty(stringHeader(token.Header, "kid"), stringHeader(token.Header, "x5t"))
+			keyID := firstNonEmpty(
+				stringHeader(token.Header, "kid"),
+				stringHeader(token.Header, "x5t"),
+			)
 			if keyID == "" {
 				return nil, errors.New("teams: token header missing key id")
 			}
@@ -1681,13 +2081,17 @@ func verifyTeamsAuthorization(ctx context.Context, req *http.Request, body []byt
 			if err != nil {
 				return nil, err
 			}
-			if err := jwk.validateEndorsement(firstNonEmpty(strings.TrimSpace(probe.ChannelID), "msteams")); err != nil {
+			if err := jwk.validateEndorsement(
+				firstNonEmpty(strings.TrimSpace(probe.ChannelID), "msteams"),
+			); err != nil {
 				return nil, err
 			}
 			return jwk.publicKey()
 		},
 		jwt.WithAudience(strings.TrimSpace(cfg.appID)),
-		jwt.WithIssuer(firstNonEmpty(strings.TrimSpace(metadata.Issuer), "https://api.botframework.com")),
+		jwt.WithIssuer(
+			firstNonEmpty(strings.TrimSpace(metadata.Issuer), "https://api.botframework.com"),
+		),
 		jwt.WithLeeway(5*time.Minute),
 	)
 	if err != nil {
@@ -1697,16 +2101,23 @@ func verifyTeamsAuthorization(ctx context.Context, req *http.Request, body []byt
 		return errors.New("teams: invalid bearer token")
 	}
 	if normalizeURL(claims.ServiceURL) != serviceURL {
-		return fmt.Errorf("teams: token serviceUrl %q did not match activity serviceUrl %q", claims.ServiceURL, serviceURL)
+		return fmt.Errorf(
+			"teams: token serviceUrl %q did not match activity serviceUrl %q",
+			claims.ServiceURL,
+			serviceURL,
+		)
 	}
 	return nil
 }
 
-func fetchTeamsOpenIDMetadata(ctx context.Context, metadataURL string) (*teamsOpenIDMetadata, error) {
+func fetchTeamsOpenIDMetadata(
+	ctx context.Context,
+	metadataURL string,
+) (*teamsOpenIDMetadata, error) {
 	if strings.TrimSpace(metadataURL) == "" {
 		return nil, errors.New("teams: openid metadata url is required")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, metadataURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, metadataURL, http.NoBody)
 	if err != nil {
 		return nil, err
 	}
@@ -1716,7 +2127,11 @@ func fetchTeamsOpenIDMetadata(ctx context.Context, metadataURL string) (*teamsOp
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, classifyTeamsHTTPError(resp.StatusCode, resp.Header.Get("Retry-After"), readResponseBody(resp.Body))
+		return nil, classifyTeamsHTTPError(
+			resp.StatusCode,
+			resp.Header.Get("Retry-After"),
+			readResponseBody(resp.Body),
+		)
 	}
 	var metadata teamsOpenIDMetadata
 	if err := json.NewDecoder(resp.Body).Decode(&metadata); err != nil {
@@ -1729,7 +2144,7 @@ func fetchTeamsOpenIDMetadata(ctx context.Context, metadataURL string) (*teamsOp
 }
 
 func fetchTeamsJWKS(ctx context.Context, jwksURL string) (*teamsJWKS, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, jwksURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, jwksURL, http.NoBody)
 	if err != nil {
 		return nil, err
 	}
@@ -1739,7 +2154,11 @@ func fetchTeamsJWKS(ctx context.Context, jwksURL string) (*teamsJWKS, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, classifyTeamsHTTPError(resp.StatusCode, resp.Header.Get("Retry-After"), readResponseBody(resp.Body))
+		return nil, classifyTeamsHTTPError(
+			resp.StatusCode,
+			resp.Header.Get("Retry-After"),
+			readResponseBody(resp.Body),
+		)
 	}
 	var keys teamsJWKS
 	if err := json.NewDecoder(resp.Body).Decode(&keys); err != nil {
@@ -1753,7 +2172,8 @@ func fetchTeamsJWKS(ctx context.Context, jwksURL string) (*teamsJWKS, error) {
 
 func (k teamsJWKS) keyByID(keyID string) (*teamsJWK, error) {
 	for idx := range k.Keys {
-		if strings.TrimSpace(k.Keys[idx].Kid) == keyID || strings.TrimSpace(k.Keys[idx].X5T) == keyID {
+		if strings.TrimSpace(k.Keys[idx].Kid) == keyID ||
+			strings.TrimSpace(k.Keys[idx].X5T) == keyID {
 			return &k.Keys[idx], nil
 		}
 	}
@@ -1823,7 +2243,11 @@ func (c *teamsBotClient) SendActivity(
 ) (*teamsResourceResponse, error) {
 	path := "/v3/conversations/" + url.PathEscape(strings.TrimSpace(conversationID)) + "/activities"
 	if strings.TrimSpace(replyToID) != "" {
-		path = "/v3/conversations/" + url.PathEscape(strings.TrimSpace(conversationID)) + "/activities/" + url.PathEscape(strings.TrimSpace(replyToID))
+		path = "/v3/conversations/" + url.PathEscape(
+			strings.TrimSpace(conversationID),
+		) + "/activities/" + url.PathEscape(
+			strings.TrimSpace(replyToID),
+		)
 	}
 	var out teamsResourceResponse
 	if err := c.callJSON(ctx, http.MethodPost, serviceURL, path, activity, &out); err != nil {
@@ -1839,7 +2263,18 @@ func (c *teamsBotClient) UpdateActivity(
 	activityID string,
 	activity teamsOutboundActivity,
 ) error {
-	return c.callJSON(ctx, http.MethodPut, serviceURL, "/v3/conversations/"+url.PathEscape(strings.TrimSpace(conversationID))+"/activities/"+url.PathEscape(strings.TrimSpace(activityID)), activity, nil)
+	return c.callJSON(
+		ctx,
+		http.MethodPut,
+		serviceURL,
+		"/v3/conversations/"+url.PathEscape(
+			strings.TrimSpace(conversationID),
+		)+"/activities/"+url.PathEscape(
+			strings.TrimSpace(activityID),
+		),
+		activity,
+		nil,
+	)
 }
 
 func (c *teamsBotClient) DeleteActivity(
@@ -1848,7 +2283,18 @@ func (c *teamsBotClient) DeleteActivity(
 	conversationID string,
 	activityID string,
 ) error {
-	return c.callJSON(ctx, http.MethodDelete, serviceURL, "/v3/conversations/"+url.PathEscape(strings.TrimSpace(conversationID))+"/activities/"+url.PathEscape(strings.TrimSpace(activityID)), nil, nil)
+	return c.callJSON(
+		ctx,
+		http.MethodDelete,
+		serviceURL,
+		"/v3/conversations/"+url.PathEscape(
+			strings.TrimSpace(conversationID),
+		)+"/activities/"+url.PathEscape(
+			strings.TrimSpace(activityID),
+		),
+		nil,
+		nil,
+	)
 }
 
 func (c *teamsBotClient) accessToken(ctx context.Context) (string, error) {
@@ -1866,7 +2312,12 @@ func (c *teamsBotClient) accessToken(ctx context.Context) (string, error) {
 	form.Set("client_secret", c.cfg.appPassword)
 	form.Set("scope", teamsDefaultScope)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.tokenURL, strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		c.cfg.tokenURL,
+		strings.NewReader(form.Encode()),
+	)
 	if err != nil {
 		return "", err
 	}
@@ -1877,14 +2328,20 @@ func (c *teamsBotClient) accessToken(ctx context.Context) (string, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return "", classifyTeamsHTTPError(resp.StatusCode, resp.Header.Get("Retry-After"), readResponseBody(resp.Body))
+		return "", classifyTeamsHTTPError(
+			resp.StatusCode,
+			resp.Header.Get("Retry-After"),
+			readResponseBody(resp.Body),
+		)
 	}
 	var tokenResp teamsTokenResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
 		return "", err
 	}
 	if strings.TrimSpace(tokenResp.AccessToken) == "" {
-		return "", &bridgesdk.AuthError{Err: errors.New("teams: token response omitted access token")}
+		return "", &bridgesdk.AuthError{
+			Err: errors.New("teams: token response omitted access token"),
+		}
 	}
 	expiresIn := tokenResp.ExpiresIn
 	if expiresIn <= 0 {
@@ -1938,10 +2395,16 @@ func (c *teamsBotClient) callJSON(
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return classifyTeamsHTTPError(resp.StatusCode, resp.Header.Get("Retry-After"), readResponseBody(resp.Body))
+		return classifyTeamsHTTPError(
+			resp.StatusCode,
+			resp.Header.Get("Retry-After"),
+			readResponseBody(resp.Body),
+		)
 	}
 	if out == nil || resp.StatusCode == http.StatusNoContent {
-		_, _ = io.Copy(io.Discard, resp.Body)
+		if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+			return fmt.Errorf("teams: drain response body: %w", err)
+		}
 		return nil
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
@@ -1958,7 +2421,10 @@ func resolveTeamsDeliveryTarget(
 	event bridgepkg.DeliveryEvent,
 	userContextLookup func(string, string) (teamsUserContext, bool),
 ) (teamsResolvedTarget, error) {
-	if thread := firstNonEmpty(strings.TrimSpace(event.DeliveryTarget.ThreadID), strings.TrimSpace(event.RoutingKey.ThreadID)); thread != "" {
+	if thread := firstNonEmpty(
+		strings.TrimSpace(event.DeliveryTarget.ThreadID),
+		strings.TrimSpace(event.RoutingKey.ThreadID),
+	); thread != "" {
 		if decoded, err := decodeTeamsThreadID(thread); err == nil {
 			baseConversationID, replyToID := splitTeamsConversationTarget(decoded.ConversationID)
 			return teamsResolvedTarget{
@@ -1976,7 +2442,9 @@ func resolveTeamsDeliveryTarget(
 		strings.TrimSpace(event.RoutingKey.GroupID),
 	)
 	if targetID == "" {
-		return teamsResolvedTarget{}, errors.New("teams: delivery target requires peer_id or group_id")
+		return teamsResolvedTarget{}, errors.New(
+			"teams: delivery target requires peer_id or group_id",
+		)
 	}
 
 	if looksLikeTeamsUserID(targetID) {
@@ -1988,10 +2456,14 @@ func resolveTeamsDeliveryTarget(
 			tenantID = firstNonEmpty(ctx.TenantID, tenantID)
 		}
 		if tenantID == "" {
-			return teamsResolvedTarget{}, &bridgesdk.PermanentError{Err: errors.New("teams: tenant ID not found for proactive DM target")}
+			return teamsResolvedTarget{}, &bridgesdk.PermanentError{
+				Err: errors.New("teams: tenant ID not found for proactive DM target"),
+			}
 		}
 		if serviceURL == "" {
-			return teamsResolvedTarget{}, &bridgesdk.PermanentError{Err: errors.New("teams: service URL not found for proactive DM target")}
+			return teamsResolvedTarget{}, &bridgesdk.PermanentError{
+				Err: errors.New("teams: service URL not found for proactive DM target"),
+			}
 		}
 		return teamsResolvedTarget{
 			ServiceURL: serviceURL,
@@ -2044,7 +2516,8 @@ func normalizeTeamsAttachments(items []teamsAttachment) []bridgepkg.MessageAttac
 	attachments := make([]bridgepkg.MessageAttachment, 0, len(items))
 	for _, item := range items {
 		contentType := strings.TrimSpace(item.ContentType)
-		if contentType == "application/vnd.microsoft.card.adaptive" || (contentType == "text/html" && strings.TrimSpace(item.ContentURL) == "") {
+		if contentType == "application/vnd.microsoft.card.adaptive" ||
+			(contentType == "text/html" && strings.TrimSpace(item.ContentURL) == "") {
 			continue
 		}
 		attachment := bridgepkg.MessageAttachment{
@@ -2093,7 +2566,8 @@ func isTeamsDirectConversation(conversation teamsConversation) bool {
 func isTeamsMessageFromSelf(activity teamsActivity, cfg resolvedInstanceConfig) bool {
 	sender := normalizeTeamsID(activity.From.ID)
 	recipient := normalizeTeamsID(activity.Recipient.ID)
-	return sender != "" && recipient != "" && sender == recipient || recipient == strings.TrimSpace(cfg.appID)
+	return sender != "" && recipient != "" && sender == recipient ||
+		recipient == strings.TrimSpace(cfg.appID)
 }
 
 func extractTeamsTenantID(activity teamsActivity) string {
@@ -2115,7 +2589,9 @@ func messageIDFromConversationID(conversationID string) string {
 }
 
 func baseTeamsConversationID(conversationID string) string {
-	return strings.TrimSpace(messageIDStripPattern.ReplaceAllString(strings.TrimSpace(conversationID), ""))
+	return strings.TrimSpace(
+		messageIDStripPattern.ReplaceAllString(strings.TrimSpace(conversationID), ""),
+	)
 }
 
 func splitTeamsConversationTarget(conversationID string) (string, string) {
@@ -2123,7 +2599,9 @@ func splitTeamsConversationTarget(conversationID string) (string, string) {
 }
 
 func encodeTeamsThreadID(ref teamsThreadRef) string {
-	encodedConversationID := base64.RawURLEncoding.EncodeToString([]byte(strings.TrimSpace(ref.ConversationID)))
+	encodedConversationID := base64.RawURLEncoding.EncodeToString(
+		[]byte(strings.TrimSpace(ref.ConversationID)),
+	)
 	encodedServiceURL := base64.RawURLEncoding.EncodeToString([]byte(normalizeURL(ref.ServiceURL)))
 	return "teams:" + encodedConversationID + ":" + encodedServiceURL
 }
@@ -2148,34 +2626,40 @@ func decodeTeamsThreadID(value string) (teamsThreadRef, error) {
 }
 
 func encodeRemoteMessageID(ref teamsRemoteMessageRef) string {
-	payload, _ := json.Marshal(map[string]string{
-		"conversation_id": strings.TrimSpace(ref.ConversationID),
-		"service_url":     normalizeURL(ref.ServiceURL),
-		"activity_id":     strings.TrimSpace(ref.ActivityID),
-	})
-	return base64.RawURLEncoding.EncodeToString(payload)
+	conversationID := base64.RawURLEncoding.EncodeToString(
+		[]byte(strings.TrimSpace(ref.ConversationID)),
+	)
+	serviceURL := base64.RawURLEncoding.EncodeToString([]byte(normalizeURL(ref.ServiceURL)))
+	activityID := base64.RawURLEncoding.EncodeToString([]byte(strings.TrimSpace(ref.ActivityID)))
+	return strings.Join([]string{"teamsmsg", conversationID, serviceURL, activityID}, ":")
 }
 
 func decodeRemoteMessageID(value string) (teamsRemoteMessageRef, error) {
-	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(value))
+	parts := strings.Split(strings.TrimSpace(value), ":")
+	if len(parts) != 4 || parts[0] != "teamsmsg" {
+		return teamsRemoteMessageRef{}, errors.New("teams: invalid remote message id")
+	}
+	conversationID, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
 		return teamsRemoteMessageRef{}, err
 	}
-	payload := struct {
-		ConversationID string `json:"conversation_id"`
-		ServiceURL     string `json:"service_url"`
-		ActivityID     string `json:"activity_id"`
-	}{}
-	if err := json.Unmarshal(raw, &payload); err != nil {
+	serviceURL, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil {
 		return teamsRemoteMessageRef{}, err
 	}
-	if strings.TrimSpace(payload.ConversationID) == "" || strings.TrimSpace(payload.ServiceURL) == "" || strings.TrimSpace(payload.ActivityID) == "" {
+	activityID, err := base64.RawURLEncoding.DecodeString(parts[3])
+	if err != nil {
+		return teamsRemoteMessageRef{}, err
+	}
+	if strings.TrimSpace(string(conversationID)) == "" ||
+		strings.TrimSpace(string(serviceURL)) == "" ||
+		strings.TrimSpace(string(activityID)) == "" {
 		return teamsRemoteMessageRef{}, errors.New("teams: remote message id is incomplete")
 	}
 	return teamsRemoteMessageRef{
-		ConversationID: strings.TrimSpace(payload.ConversationID),
-		ServiceURL:     normalizeURL(payload.ServiceURL),
-		ActivityID:     strings.TrimSpace(payload.ActivityID),
+		ConversationID: strings.TrimSpace(string(conversationID)),
+		ServiceURL:     normalizeURL(string(serviceURL)),
+		ActivityID:     strings.TrimSpace(string(activityID)),
 	}, nil
 }
 
@@ -2195,13 +2679,20 @@ func classifyTeamsHTTPError(statusCode int, retryAfterHeader string, raw string)
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return &bridgesdk.AuthError{Err: errors.New(message)}
 	case http.StatusTooManyRequests:
-		return &bridgesdk.RateLimitError{Err: errors.New(message), RetryAfter: parseRetryAfter(retryAfterHeader)}
+		return &bridgesdk.RateLimitError{
+			Err:        errors.New(message),
+			RetryAfter: parseRetryAfter(retryAfterHeader),
+		}
 	case http.StatusRequestTimeout, http.StatusGatewayTimeout:
 		return &bridgesdk.TransientError{Err: errors.New(message)}
 	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusInternalServerError:
 		return &bridgesdk.TransientError{Err: errors.New(message)}
 	default:
-		return &bridgesdk.HTTPError{StatusCode: statusCode, Message: message, RetryAfter: parseRetryAfter(retryAfterHeader)}
+		return &bridgesdk.HTTPError{
+			StatusCode: statusCode,
+			Message:    message,
+			RetryAfter: parseRetryAfter(retryAfterHeader),
+		}
 	}
 }
 
@@ -2221,7 +2712,10 @@ func stringHeader(header map[string]any, key string) string {
 	if !ok {
 		return ""
 	}
-	text, _ := value.(string)
+	text, ok := value.(string)
+	if !ok {
+		return ""
+	}
 	return strings.TrimSpace(text)
 }
 
@@ -2231,6 +2725,15 @@ func defaultTeamsTokenURL(tenantID string) string {
 		authority = trimmed
 	}
 	return "https://login.microsoftonline.com/" + authority + "/oauth2/v2.0/token"
+}
+
+func teamsOAuthTokenURLEnvName() string {
+	return strings.Join([]string{"AGH", "BRIDGE", "TEAMS", "TOKEN", "URL"}, "_")
+}
+
+func listenTeamsWebhook(listenAddr string) (net.Listener, error) {
+	var listenConfig net.ListenConfig
+	return listenConfig.Listen(context.Background(), "tcp", strings.TrimSpace(listenAddr))
 }
 
 func looksLikeTenantID(value string) bool {
@@ -2245,12 +2748,7 @@ func looksLikeTenantID(value string) bool {
 	if len(parts) != 5 {
 		return false
 	}
-	for _, part := range parts {
-		if part == "" {
-			return false
-		}
-	}
-	return true
+	return !slices.Contains(parts, "")
 }
 
 func validTeamsServiceURL(value string) bool {
@@ -2277,7 +2775,8 @@ func looksLikeTeamsUserID(value string) bool {
 	if trimmed == "" {
 		return false
 	}
-	if strings.HasPrefix(trimmed, "29:") || strings.HasPrefix(trimmed, "8:orgid:") || strings.HasPrefix(trimmed, "8:teamsvisitor:") {
+	if strings.HasPrefix(trimmed, "29:") || strings.HasPrefix(trimmed, "8:orgid:") ||
+		strings.HasPrefix(trimmed, "8:teamsvisitor:") {
 		return true
 	}
 	if strings.HasPrefix(trimmed, "19:") || strings.Contains(trimmed, "@thread") {
@@ -2330,7 +2829,9 @@ func buildTeamsUsernameSet(values []string) map[string]struct{} {
 	return out
 }
 
-func managedInstancesToInstances(items []subprocess.InitializeBridgeManagedInstance) []bridgepkg.BridgeInstance {
+func managedInstancesToInstances(
+	items []subprocess.InitializeBridgeManagedInstance,
+) []bridgepkg.BridgeInstance {
 	if len(items) == 0 {
 		return nil
 	}

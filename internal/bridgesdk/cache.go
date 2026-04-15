@@ -132,7 +132,10 @@ func (c *InstanceCache) BoundSecretValue(instanceID string, bindingName string) 
 
 // Sync refreshes the provider-owned instance state from the Host API while preserving
 // launch-time bound secrets for instances that were already hydrated at initialize time.
-func (c *InstanceCache) Sync(ctx context.Context, host *HostAPIClient) ([]subprocess.InitializeBridgeManagedInstance, error) {
+func (c *InstanceCache) Sync(
+	ctx context.Context,
+	host *HostAPIClient,
+) ([]subprocess.InitializeBridgeManagedInstance, error) {
 	if c == nil {
 		return nil, errors.New("bridgesdk: instance cache is required")
 	}

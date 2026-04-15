@@ -1,4 +1,4 @@
-package extension
+package extensionpkg
 
 import (
 	"encoding/json"
@@ -57,20 +57,8 @@ func InstallLocalManaged(
 	checksum string,
 	opts ...InstallOption,
 ) error {
-	if registry == nil {
-		return errors.New("extension: registry is required")
-	}
-	if manifest == nil {
-		return errors.New("extension: manifest is required")
-	}
-	normalizedChecksum := strings.ToLower(strings.TrimSpace(checksum))
-	if normalizedChecksum == "" {
-		return errors.New("extension: checksum is required")
-	}
-
-	if _, err := registry.Get(manifest.Name); err == nil {
-		return &ExtensionExistsError{Name: manifest.Name}
-	} else if !errors.Is(err, ErrExtensionNotFound) {
+	normalizedChecksum, err := validateManagedInstallInput(registry, manifest, checksum)
+	if err != nil {
 		return err
 	}
 
@@ -109,24 +97,61 @@ func InstallLocalManaged(
 
 	installedChecksum, err := ComputeDirectoryChecksum(finalDir)
 	if err != nil {
-		checksumErr := fmt.Errorf("extension: compute installed checksum %q: %w", finalDir, err)
-		removeErr := os.RemoveAll(finalDir)
-		if removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
-			return errors.Join(checksumErr, fmt.Errorf("extension: remove failed local install %q after checksum error: %w", finalDir, removeErr))
-		}
-		return checksumErr
+		return removeManagedInstallOnError(
+			finalDir,
+			fmt.Errorf("extension: compute installed checksum %q: %w", finalDir, err),
+			"after checksum error",
+		)
 	}
 
 	if err := registry.Install(manifest, finalDir, installedChecksum, opts...); err != nil {
-		installErr := fmt.Errorf("extension: persist managed extension %q: %w", manifest.Name, err)
-		removeErr := os.RemoveAll(finalDir)
-		if removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
-			return errors.Join(installErr, fmt.Errorf("extension: remove failed local install %q: %w", finalDir, removeErr))
-		}
-		return installErr
+		return removeManagedInstallOnError(
+			finalDir,
+			fmt.Errorf("extension: persist managed extension %q: %w", manifest.Name, err),
+			"",
+		)
 	}
 
 	return nil
+}
+
+func validateManagedInstallInput(
+	registry managedInstallRegistry,
+	manifest *Manifest,
+	checksum string,
+) (string, error) {
+	if registry == nil {
+		return "", errors.New("extension: registry is required")
+	}
+	if manifest == nil {
+		return "", errors.New("extension: manifest is required")
+	}
+
+	normalizedChecksum := strings.ToLower(strings.TrimSpace(checksum))
+	if normalizedChecksum == "" {
+		return "", errors.New("extension: checksum is required")
+	}
+
+	if _, err := registry.Get(manifest.Name); err == nil {
+		return "", &ExtensionExistsError{Name: manifest.Name}
+	} else if !errors.Is(err, ErrExtensionNotFound) {
+		return "", err
+	}
+
+	return normalizedChecksum, nil
+}
+
+func removeManagedInstallOnError(finalDir string, baseErr error, contextSuffix string) error {
+	removeErr := os.RemoveAll(finalDir)
+	if removeErr == nil || errors.Is(removeErr, os.ErrNotExist) {
+		return baseErr
+	}
+
+	message := fmt.Sprintf("extension: remove failed local install %q", finalDir)
+	if strings.TrimSpace(contextSuffix) != "" {
+		message += " " + strings.TrimSpace(contextSuffix)
+	}
+	return errors.Join(baseErr, fmt.Errorf("%s: %w", message, removeErr))
 }
 
 func copyInstallTree(sourceDir string, targetDir string) error {
@@ -167,7 +192,12 @@ func copyInstallTree(sourceDir string, targetDir string) error {
 	})
 }
 
-func copyInstallDirectoryContents(sourceRoot string, sourceDir string, targetDir string, activeDirs map[string]struct{}) error {
+func copyInstallDirectoryContents(
+	sourceRoot string,
+	sourceDir string,
+	targetDir string,
+	activeDirs map[string]struct{},
+) error {
 	runtimeDeps, hasPackageManifest, err := loadInstallRuntimeDependencies(sourceDir)
 	if err != nil {
 		return err
@@ -235,7 +265,12 @@ func loadInstallRuntimeDependencies(sourceDir string) (map[string]struct{}, bool
 	return runtimeDeps, true, nil
 }
 
-func copyInstallNodeModules(sourceDir string, targetDir string, activeDirs map[string]struct{}, runtimeDeps map[string]struct{}) error {
+func copyInstallNodeModules(
+	sourceDir string,
+	targetDir string,
+	activeDirs map[string]struct{},
+	runtimeDeps map[string]struct{},
+) error {
 	if len(runtimeDeps) == 0 {
 		return nil
 	}
@@ -294,9 +329,11 @@ func installNodeModulePath(nodeModulesDir string, packageName string) (string, e
 
 func validInstallPackageSegment(segment string, scoped bool) bool {
 	if scoped {
-		return len(segment) > 1 && segment != "." && segment != ".." && !strings.Contains(segment, "/") && !strings.Contains(segment, "\\")
+		return len(segment) > 1 && segment != "." && segment != ".." && !strings.Contains(segment, "/") &&
+			!strings.Contains(segment, "\\")
 	}
-	return segment != "" && segment != "." && segment != ".." && !strings.Contains(segment, "/") && !strings.Contains(segment, "\\")
+	return segment != "" && segment != "." && segment != ".." && !strings.Contains(segment, "/") &&
+		!strings.Contains(segment, "\\")
 }
 
 func copyInstallRuntimeDependency(sourcePath string, targetPath string, activeDirs map[string]struct{}) error {
@@ -332,7 +369,12 @@ func copyInstallRuntimeDependency(sourcePath string, targetPath string, activeDi
 	}
 }
 
-func copyInstallPackageRoot(sourcePath string, sourceDir string, targetDir string, activeDirs map[string]struct{}) error {
+func copyInstallPackageRoot(
+	sourcePath string,
+	sourceDir string,
+	targetDir string,
+	activeDirs map[string]struct{},
+) error {
 	absSourceDir, err := filepath.Abs(strings.TrimSpace(sourceDir))
 	if err != nil {
 		return fmt.Errorf("extension: resolve package root %q: %w", sourceDir, err)
@@ -449,10 +491,20 @@ func copyInstallSymlink(sourceRoot string, sourcePath string, targetPath string,
 			return err
 		}
 		if err := os.MkdirAll(targetPath, info.Mode().Perm()); err != nil {
-			return fmt.Errorf("extension: create target directory %q for symlinked source %q: %w", targetPath, sourcePath, err)
+			return fmt.Errorf(
+				"extension: create target directory %q for symlinked source %q: %w",
+				targetPath,
+				sourcePath,
+				err,
+			)
 		}
 		if err := os.Chmod(targetPath, info.Mode().Perm()); err != nil {
-			return fmt.Errorf("extension: set target directory mode %q for symlinked source %q: %w", targetPath, sourcePath, err)
+			return fmt.Errorf(
+				"extension: set target directory mode %q for symlinked source %q: %w",
+				targetPath,
+				sourcePath,
+				err,
+			)
 		}
 		return copyInstallDirectoryContents(sourceRoot, resolvedPath, targetPath, nextActiveDirs)
 	case info.Mode().IsRegular():
@@ -462,7 +514,11 @@ func copyInstallSymlink(sourceRoot string, sourcePath string, targetPath string,
 	}
 }
 
-func pushInstallCopyDir(activeDirs map[string]struct{}, resolvedPath string, sourcePath string) (map[string]struct{}, error) {
+func pushInstallCopyDir(
+	activeDirs map[string]struct{},
+	resolvedPath string,
+	sourcePath string,
+) (map[string]struct{}, error) {
 	canonicalPath, err := canonicalizeInstallPath(resolvedPath)
 	if err != nil {
 		return nil, fmt.Errorf("extension: resolve directory %q: %w", resolvedPath, err)

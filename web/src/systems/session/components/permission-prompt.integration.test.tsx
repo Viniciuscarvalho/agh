@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import type { UIMessage, PermissionRequest } from "../types";
-import { useSessionStore } from "../stores/session-store";
+import { useSessionStore } from "../hooks/use-session-store";
 
 // Mock dependencies for ChatView
 vi.mock("@tanstack/react-virtual", () => ({

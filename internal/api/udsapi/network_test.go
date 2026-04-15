@@ -53,7 +53,7 @@ func TestNetworkHandlersPreserveWorkflowMetadata(t *testing.T) {
 			seenRequest = req
 			return "msg-1", nil
 		},
-		InboxFn: func(_ context.Context, sessionID string) ([]network.Envelope, error) {
+		InboxFn: func(_ context.Context, _ string) ([]network.Envelope, error) {
 			return []network.Envelope{{
 				Protocol: network.ProtocolV0,
 				ID:       "msg-inbox",
@@ -71,7 +71,15 @@ func TestNetworkHandlersPreserveWorkflowMetadata(t *testing.T) {
 	}
 	engine := newTestRouter(t, handlers)
 
-	sendResp := performRequest(t, engine, http.MethodPost, "/api/network/send", []byte(`{"session_id":"sess-a","channel":"builders","kind":"say","body":{"text":"hello"},"ext":{"agh.workflow_id":"wf-1","agh.handoff_version":3}}`))
+	sendResp := performRequest(
+		t,
+		engine,
+		http.MethodPost,
+		"/api/network/send",
+		[]byte(
+			`{"session_id":"sess-a","channel":"builders","kind":"say","body":{"text":"hello"},"ext":{"agh.workflow_id":"wf-1","agh.handoff_version":3}}`,
+		),
+	)
 	if sendResp.Code != http.StatusOK {
 		t.Fatalf("send status = %d, want %d; body=%s", sendResp.Code, http.StatusOK, sendResp.Body.String())
 	}

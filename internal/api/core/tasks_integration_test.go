@@ -19,7 +19,7 @@ func TestTaskHandlersCreateTaskAndListFiltersReachManagerIntegration(t *testing.
 
 	var capturedCreate taskpkg.CreateTask
 	var capturedCreateActor taskpkg.ActorContext
-	var capturedList taskpkg.TaskQuery
+	var capturedList taskpkg.Query
 	var capturedListActor taskpkg.ActorContext
 
 	tasks := testutil.StubTaskManager{
@@ -43,10 +43,10 @@ func TestTaskHandlersCreateTaskAndListFiltersReachManagerIntegration(t *testing.
 				Metadata:       spec.Metadata,
 			}, nil
 		},
-		ListTasksFn: func(_ context.Context, query taskpkg.TaskQuery, actor taskpkg.ActorContext) ([]taskpkg.TaskSummary, error) {
+		ListTasksFn: func(_ context.Context, query taskpkg.Query, actor taskpkg.ActorContext) ([]taskpkg.Summary, error) {
 			capturedList = query
 			capturedListActor = actor
-			return []taskpkg.TaskSummary{{
+			return []taskpkg.Summary{{
 				ID:        "task-1",
 				Scope:     query.Scope,
 				Title:     "Review task API",
@@ -113,9 +113,9 @@ func TestTaskRunHandlersDelegateLifecycleSequenceIntegration(t *testing.T) {
 	now := time.Date(2026, 4, 14, 12, 0, 0, 0, time.UTC)
 
 	tasks := testutil.StubTaskManager{
-		EnqueueRunFn: func(_ context.Context, spec taskpkg.EnqueueRun, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
+		EnqueueRunFn: func(_ context.Context, spec taskpkg.EnqueueRun, actor taskpkg.ActorContext) (*taskpkg.Run, error) {
 			calls = append(calls, "enqueue")
-			return &taskpkg.TaskRun{
+			return &taskpkg.Run{
 				ID:             "run-1",
 				TaskID:         spec.TaskID,
 				Status:         taskpkg.TaskRunStatusQueued,
@@ -126,9 +126,9 @@ func TestTaskRunHandlersDelegateLifecycleSequenceIntegration(t *testing.T) {
 				QueuedAt:       now,
 			}, nil
 		},
-		ClaimRunFn: func(_ context.Context, runID string, claim taskpkg.ClaimRun, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
+		ClaimRunFn: func(_ context.Context, runID string, claim taskpkg.ClaimRun, actor taskpkg.ActorContext) (*taskpkg.Run, error) {
 			calls = append(calls, "claim")
-			return &taskpkg.TaskRun{
+			return &taskpkg.Run{
 				ID:        runID,
 				TaskID:    "task-1",
 				Status:    taskpkg.TaskRunStatusClaimed,
@@ -139,9 +139,9 @@ func TestTaskRunHandlersDelegateLifecycleSequenceIntegration(t *testing.T) {
 				ClaimedAt: now.Add(time.Minute),
 			}, nil
 		},
-		StartRunFn: func(_ context.Context, runID string, _ taskpkg.StartRun, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
+		StartRunFn: func(_ context.Context, runID string, _ taskpkg.StartRun, actor taskpkg.ActorContext) (*taskpkg.Run, error) {
 			calls = append(calls, "start")
-			return &taskpkg.TaskRun{
+			return &taskpkg.Run{
 				ID:        runID,
 				TaskID:    "task-1",
 				Status:    taskpkg.TaskRunStatusRunning,
@@ -152,9 +152,9 @@ func TestTaskRunHandlersDelegateLifecycleSequenceIntegration(t *testing.T) {
 				StartedAt: now.Add(2 * time.Minute),
 			}, nil
 		},
-		CompleteRunFn: func(_ context.Context, runID string, result taskpkg.RunResult, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
+		CompleteRunFn: func(_ context.Context, runID string, result taskpkg.RunResult, actor taskpkg.ActorContext) (*taskpkg.Run, error) {
 			calls = append(calls, "complete")
-			return &taskpkg.TaskRun{
+			return &taskpkg.Run{
 				ID:       runID,
 				TaskID:   "task-1",
 				Status:   taskpkg.TaskRunStatusCompleted,

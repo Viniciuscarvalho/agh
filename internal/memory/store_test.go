@@ -16,10 +16,10 @@ import (
 )
 
 type testMemoryMeta struct {
-	Name        string     `yaml:"name"`
-	Description string     `yaml:"description,omitempty"`
-	Type        MemoryType `yaml:"type"`
-	AgentName   string     `yaml:"agent_name,omitempty"`
+	Name        string `yaml:"name"`
+	Description string `yaml:"description,omitempty"`
+	Type        Type   `yaml:"type"`
+	AgentName   string `yaml:"agent_name,omitempty"`
 }
 
 func TestStoreWriteReadRoundTrip(t *testing.T) {
@@ -65,7 +65,6 @@ func TestStoreWriteReadRoundTrip(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -80,7 +79,7 @@ func TestStoreWriteReadRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Store.Read() error = %v", err)
 			}
-			if string(got) != string(payload) {
+			if !bytes.Equal(got, payload) {
 				t.Fatalf("Store.Read() = %q, want %q", string(got), string(payload))
 			}
 
@@ -135,7 +134,6 @@ Body
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -174,7 +172,6 @@ func TestStoreWriteRejectsInvalidFilename(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -226,7 +223,11 @@ func TestStoreDeleteRemovesFileAndIndexEntry(t *testing.T) {
 		"- [Other](other.md) - Another note",
 		"",
 	}, "\n")
-	if err := os.WriteFile(filepath.Join(env.store.globalDir, indexFilename), []byte(indexContent), filePerm); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(env.store.globalDir, indexFilename),
+		[]byte(indexContent),
+		filePerm,
+	); err != nil {
 		t.Fatalf("write index file: %v", err)
 	}
 
@@ -334,7 +335,7 @@ func TestStoreScanCapsAtTwoHundredFiles(t *testing.T) {
 	env := newTestStoreEnv(t)
 	base := time.Now().Add(-205 * time.Minute)
 
-	for idx := 0; idx < 205; idx++ {
+	for idx := range 205 {
 		filename := fmt.Sprintf("%03d.md", idx)
 		payload := mustMemoryContent(t, testMemoryMeta{
 			Name:        fmt.Sprintf("Memory %03d", idx),
@@ -386,7 +387,11 @@ func TestStoreScanSkipsMalformedFilesAndLogsWarning(t *testing.T) {
 		t.Fatalf("Store.Write(valid) error = %v", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(env.store.globalDir, "broken.md"), []byte("not frontmatter\n"), filePerm); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(env.store.globalDir, "broken.md"),
+		[]byte("not frontmatter\n"),
+		filePerm,
+	); err != nil {
 		t.Fatalf("write malformed file: %v", err)
 	}
 
@@ -414,7 +419,11 @@ func TestStoreLoadIndex(t *testing.T) {
 			"- [Reference](reference_api.md) - API docs",
 			"",
 		}, "\n")
-		if err := os.WriteFile(filepath.Join(env.store.workspaceDir, indexFilename), []byte(want), filePerm); err != nil {
+		if err := os.WriteFile(
+			filepath.Join(env.store.workspaceDir, indexFilename),
+			[]byte(want),
+			filePerm,
+		); err != nil {
 			t.Fatalf("write index: %v", err)
 		}
 
@@ -436,7 +445,7 @@ func TestStoreLoadIndex(t *testing.T) {
 		env := newTestStoreEnv(t)
 
 		lines := make([]string, 0, 205)
-		for idx := 0; idx < 205; idx++ {
+		for idx := range 205 {
 			lines = append(lines, fmt.Sprintf("- [Line %03d](line-%03d.md) - Description", idx, idx))
 		}
 		index := strings.Join(lines, "\n") + "\n"
@@ -607,7 +616,6 @@ Body
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -736,7 +744,6 @@ func TestStalenessHelpers(t *testing.T) {
 	}
 
 	for _, tt := range testCases {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			tt.run(t)
 		})

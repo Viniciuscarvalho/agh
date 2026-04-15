@@ -153,7 +153,13 @@ func TestGlobalDBNetworkAuditGuardClauses(t *testing.T) {
 	if err := globalDB.Close(testutil.Context(t)); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
-	if err := globalDB.WriteNetworkAudit(testutil.Context(t), store.NetworkAuditEntry{}); !errors.Is(err, store.ErrClosed) {
+	if err := globalDB.WriteNetworkAudit(
+		testutil.Context(t),
+		store.NetworkAuditEntry{},
+	); !errors.Is(
+		err,
+		store.ErrClosed,
+	) {
 		t.Fatalf("WriteNetworkAudit(after close) error = %v, want ErrClosed", err)
 	}
 }

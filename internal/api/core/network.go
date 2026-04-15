@@ -60,12 +60,12 @@ func (h *BaseHandlers) NetworkPeers(c *gin.Context) {
 func (h *BaseHandlers) networkPeerSessionInfoMap(
 	ctx context.Context,
 	peers []network.PeerInfo,
-) map[string]*session.SessionInfo {
+) map[string]*session.Info {
 	if h == nil || h.Sessions == nil || len(peers) == 0 {
 		return nil
 	}
 
-	sessionByID := make(map[string]*session.SessionInfo, len(peers))
+	sessionByID := make(map[string]*session.Info, len(peers))
 	for _, peer := range peers {
 		if peer.SessionID == nil {
 			continue
@@ -130,7 +130,11 @@ func (h *BaseHandlers) NetworkSend(c *gin.Context) {
 
 	var req contract.NetworkSendRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.respondError(c, http.StatusBadRequest, fmt.Errorf("%s: decode network send request: %w", h.transportName(), err))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			fmt.Errorf("%s: decode network send request: %w", h.transportName(), err),
+		)
 		return
 	}
 
@@ -174,7 +178,7 @@ func (h *BaseHandlers) NetworkInbox(c *gin.Context) {
 }
 
 // NetworkStatusPayloadFromStatus converts the runtime network status snapshot into the shared payload.
-func NetworkStatusPayloadFromStatus(status *network.NetworkStatus) *contract.NetworkStatusPayload {
+func NetworkStatusPayloadFromStatus(status *network.Status) *contract.NetworkStatusPayload {
 	if status == nil {
 		return nil
 	}
@@ -260,7 +264,8 @@ func NetworkSendRequestFromPayload(req contract.NetworkSendRequest) (network.Sen
 	return sendReq, nil
 }
 
-// NetworkSendPayloadFromRequest builds the shared send response payload from the original request plus the assigned message id.
+// NetworkSendPayloadFromRequest builds the shared send response payload
+// from the original request plus the assigned message id.
 func NetworkSendPayloadFromRequest(id string, req contract.NetworkSendRequest) contract.NetworkSendPayload {
 	return contract.NetworkSendPayload{
 		ID:            strings.TrimSpace(id),

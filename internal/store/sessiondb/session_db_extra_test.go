@@ -56,7 +56,10 @@ func TestSessionDBGuardClauses(t *testing.T) {
 	}
 
 	sessionDB := openTestSessionDB(t, "sess-guards")
-	if err := sessionDB.Record(nilSessionContext(), SessionEvent{TurnID: "turn-1", Type: "agent_message", AgentName: "coder"}); err == nil {
+	if err := sessionDB.Record(
+		nilSessionContext(),
+		SessionEvent{TurnID: "turn-1", Type: "agent_message", AgentName: "coder"},
+	); err == nil {
 		t.Fatal("Record(nil ctx) error = nil, want non-nil")
 	}
 	if err := sessionDB.Record(testutil.Context(t), SessionEvent{
@@ -88,7 +91,9 @@ func TestSessionDBInternalWriteHelpers(t *testing.T) {
 	if err := sessionDB.executeWrite(sessionWriteRequest{ctx: canceledCtx, kind: sessionWriteEvent}); err == nil {
 		t.Fatal("executeWrite(canceled) error = nil, want non-nil")
 	}
-	if err := sessionDB.executeWrite(sessionWriteRequest{ctx: testutil.Context(t), kind: sessionWriteKind(99)}); err == nil {
+	if err := sessionDB.executeWrite(
+		sessionWriteRequest{ctx: testutil.Context(t), kind: sessionWriteKind(99)},
+	); err == nil {
 		t.Fatal("executeWrite(unsupported kind) error = nil, want non-nil")
 	}
 
@@ -170,7 +175,8 @@ func TestOpenSessionSQLiteCreatesSchema(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	var count int
-	if err := db.QueryRowContext(testutil.Context(t), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='events'`).Scan(&count); err != nil {
+	if err := db.QueryRowContext(testutil.Context(t), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='events'`).
+		Scan(&count); err != nil {
 		t.Fatalf("QueryRowContext() error = %v", err)
 	}
 	if count != 1 {

@@ -22,7 +22,7 @@ type AutomationConfig struct {
 
 // AutomationJob holds a config-defined scheduled job before workspace resolution.
 type AutomationJob struct {
-	Scope     automationpkg.AutomationScope `toml:"scope"`
+	Scope     automationpkg.Scope           `toml:"scope"`
 	Name      string                        `toml:"name"`
 	AgentName string                        `toml:"agent"`
 	Workspace string                        `toml:"workspace,omitempty"`
@@ -37,7 +37,7 @@ type AutomationJob struct {
 
 // AutomationTrigger holds a config-defined trigger before workspace resolution.
 type AutomationTrigger struct {
-	Scope            automationpkg.AutomationScope `toml:"scope"`
+	Scope            automationpkg.Scope           `toml:"scope"`
 	Name             string                        `toml:"name"`
 	AgentName        string                        `toml:"agent"`
 	Workspace        string                        `toml:"workspace,omitempty"`
@@ -62,7 +62,7 @@ type automationOverlay struct {
 }
 
 type parsedAutomationJob struct {
-	Scope     automationpkg.AutomationScope  `toml:"scope"`
+	Scope     automationpkg.Scope            `toml:"scope"`
 	Name      string                         `toml:"name"`
 	AgentName string                         `toml:"agent"`
 	Workspace string                         `toml:"workspace"`
@@ -75,7 +75,7 @@ type parsedAutomationJob struct {
 }
 
 type parsedAutomationTrigger struct {
-	Scope            automationpkg.AutomationScope  `toml:"scope"`
+	Scope            automationpkg.Scope            `toml:"scope"`
 	Name             string                         `toml:"name"`
 	AgentName        string                         `toml:"agent"`
 	Workspace        string                         `toml:"workspace"`
@@ -149,7 +149,12 @@ func (j AutomationJob) Validate(path string) error {
 			return err
 		}
 		if j.Retry.Strategy != automationpkg.RetryStrategyNone {
-			return fmt.Errorf("%s.strategy must be %q when %s is configured", path+".retry", automationpkg.RetryStrategyNone, path+".task")
+			return fmt.Errorf(
+				"%s.strategy must be %q when %s is configured",
+				path+".retry",
+				automationpkg.RetryStrategyNone,
+				path+".task",
+			)
 		}
 	}
 
@@ -198,7 +203,11 @@ func (t AutomationTrigger) Validate(path string) error {
 		}
 		secret, ok := os.LookupEnv(envName)
 		if !ok || strings.TrimSpace(secret) == "" {
-			return fmt.Errorf("%s.webhook_secret_env must reference a non-empty environment variable: %q", path, envName)
+			return fmt.Errorf(
+				"%s.webhook_secret_env must reference a non-empty environment variable: %q",
+				path,
+				envName,
+			)
 		}
 		return nil
 	}

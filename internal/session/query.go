@@ -13,13 +13,13 @@ import (
 )
 
 // ListAll returns active and stopped sessions discovered from on-disk metadata.
-func (m *Manager) ListAll(ctx context.Context) ([]*SessionInfo, error) {
+func (m *Manager) ListAll(ctx context.Context) ([]*Info, error) {
 	if ctx == nil {
 		return nil, errors.New("session: list context is required")
 	}
 
 	active := m.List()
-	activeByID := make(map[string]*SessionInfo, len(active))
+	activeByID := make(map[string]*Info, len(active))
 	for _, info := range active {
 		if info == nil {
 			continue
@@ -36,7 +36,7 @@ func (m *Manager) ListAll(ctx context.Context) ([]*SessionInfo, error) {
 		return nil, fmt.Errorf("session: read sessions directory %q: %w", m.homePaths.SessionsDir, err)
 	}
 
-	infos := make([]*SessionInfo, 0, len(entries)+len(activeByID))
+	infos := make([]*Info, 0, len(entries)+len(activeByID))
 	seen := make(map[string]struct{}, len(entries))
 	for _, entry := range entries {
 		if err := ctx.Err(); err != nil {
@@ -83,7 +83,7 @@ func (m *Manager) ListAll(ctx context.Context) ([]*SessionInfo, error) {
 }
 
 // Status returns the current session status from memory or on-disk metadata.
-func (m *Manager) Status(ctx context.Context, id string) (*SessionInfo, error) {
+func (m *Manager) Status(ctx context.Context, id string) (*Info, error) {
 	if ctx == nil {
 		return nil, errors.New("session: status context is required")
 	}
@@ -105,16 +105,22 @@ func (m *Manager) Status(ctx context.Context, id string) (*SessionInfo, error) {
 }
 
 // Events returns persisted session events for active or stopped sessions.
-func (m *Manager) Events(ctx context.Context, id string, query store.EventQuery) ([]store.SessionEvent, error) {
+func (m *Manager) Events(
+	ctx context.Context,
+	id string,
+	query store.EventQuery,
+) (events []store.SessionEvent, err error) {
 	recorder, cleanup, err := m.openQueryRecorder(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	defer func() {
-		_ = cleanup()
+		if cleanupErr := cleanup(); cleanupErr != nil && err == nil {
+			err = cleanupErr
+		}
 	}()
 
-	events, err := recorder.Query(ctx, query)
+	events, err = recorder.Query(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("session: query events for %q: %w", strings.TrimSpace(id), err)
 	}
@@ -122,16 +128,22 @@ func (m *Manager) Events(ctx context.Context, id string, query store.EventQuery)
 }
 
 // History returns turn-grouped persisted session events for active or stopped sessions.
-func (m *Manager) History(ctx context.Context, id string, query store.EventQuery) ([]store.TurnHistory, error) {
+func (m *Manager) History(
+	ctx context.Context,
+	id string,
+	query store.EventQuery,
+) (history []store.TurnHistory, err error) {
 	recorder, cleanup, err := m.openQueryRecorder(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	defer func() {
-		_ = cleanup()
+		if cleanupErr := cleanup(); cleanupErr != nil && err == nil {
+			err = cleanupErr
+		}
 	}()
 
-	history, err := recorder.History(ctx, query)
+	history, err = recorder.History(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("session: query history for %q: %w", strings.TrimSpace(id), err)
 	}
@@ -205,26 +217,34 @@ func (m *Manager) readMeta(id string) (store.SessionMeta, error) {
 	return repaired, nil
 }
 
-func (m *Manager) sessionInfoFromMeta(ctx context.Context, meta store.SessionMeta) *SessionInfo {
+func (m *Manager) sessionInfoFromMeta(ctx context.Context, meta store.SessionMeta) *Info {
 	info := sessionInfoFromMeta(meta)
 	workspaceRoot, err := m.resolveWorkspaceRoot(ctx, meta.WorkspaceID)
 	if err != nil {
-		m.logger.Warn("session: resolve workspace root for metadata failed", "session_id", meta.ID, "workspace_id", meta.WorkspaceID, "error", err)
+		m.logger.Warn(
+			"session: resolve workspace root for metadata failed",
+			"session_id",
+			meta.ID,
+			"workspace_id",
+			meta.WorkspaceID,
+			"error",
+			err,
+		)
 		return info
 	}
 	info.Workspace = workspaceRoot
 	return info
 }
 
-func sessionInfoFromMeta(meta store.SessionMeta) *SessionInfo {
-	return &SessionInfo{
+func sessionInfoFromMeta(meta store.SessionMeta) *Info {
+	return &Info{
 		ID:           meta.ID,
 		Name:         meta.Name,
 		AgentName:    meta.AgentName,
 		WorkspaceID:  meta.WorkspaceID,
 		Channel:      meta.Channel,
-		Type:         normalizeSessionType(SessionType(meta.SessionType)),
-		State:        SessionState(meta.State),
+		Type:         normalizeSessionType(Type(meta.SessionType)),
+		State:        State(meta.State),
 		StopReason:   sessionMetaStopReason(meta),
 		StopDetail:   meta.StopDetail,
 		ACPSessionID: stringValue(meta.ACPSessionID),
@@ -233,8 +253,8 @@ func sessionInfoFromMeta(meta store.SessionMeta) *SessionInfo {
 	}
 }
 
-func sortSessionInfos(infos []*SessionInfo) []*SessionInfo {
-	out := make([]*SessionInfo, 0, len(infos))
+func sortSessionInfos(infos []*Info) []*Info {
+	out := make([]*Info, 0, len(infos))
 	for _, info := range infos {
 		if info == nil {
 			continue

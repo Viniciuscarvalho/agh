@@ -541,7 +541,7 @@ func TestHTTPMemoryRoundTripAndDelete(t *testing.T) {
 		_ = listResp.Body.Close()
 		t.Fatalf("list status = %d, want %d; body=%s", listResp.StatusCode, http.StatusOK, string(body))
 	}
-	var headers []memory.MemoryHeader
+	var headers []memory.Header
 	decodeHTTPJSON(t, listResp, &headers)
 	if len(headers) != 1 || headers[0].Filename != "integration.md" {
 		t.Fatalf("headers = %#v, want integration.md", headers)
@@ -842,15 +842,15 @@ func TestHTTPShutdownWaitsForInflightRequests(t *testing.T) {
 	release := make(chan struct{})
 	server, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithHost(cfg.HTTP.Host),
 		WithPort(cfg.HTTP.Port),
 		WithLogger(discardLogger()),
 		WithSessionManager(stubSessionManager{
-			ListAllFn: func(context.Context) ([]*session.SessionInfo, error) {
+			ListAllFn: func(context.Context) ([]*session.Info, error) {
 				entered <- struct{}{}
 				<-release
-				return []*session.SessionInfo{newSessionInfo("sess-1")}, nil
+				return []*session.Info{newSessionInfo("sess-1")}, nil
 			},
 		}),
 		WithTaskService(stubTaskManager{}),
@@ -1158,8 +1158,8 @@ func TestHTTPTaskRunLifecycleRoutesRoundTrip(t *testing.T) {
 		}
 		var cancelled contract.TaskRunResponse
 		decodeHTTPJSON(t, cancelResp, &cancelled)
-		if cancelled.Run.Status != taskpkg.TaskRunStatusCancelled {
-			t.Fatalf("cancelled status = %q, want %q", cancelled.Run.Status, taskpkg.TaskRunStatusCancelled)
+		if cancelled.Run.Status != taskpkg.TaskRunStatusCanceled {
+			t.Fatalf("cancelled status = %q, want %q", cancelled.Run.Status, taskpkg.TaskRunStatusCanceled)
 		}
 
 		finalRunsResp := mustHTTPRequest(t, runtime.client, http.MethodGet, mustURL(runtime.host, runtime.port, "/api/tasks/"+created.ID+"/runs"), nil, nil)
@@ -1170,7 +1170,7 @@ func TestHTTPTaskRunLifecycleRoutesRoundTrip(t *testing.T) {
 		}
 		var finalRuns contract.TaskRunsResponse
 		decodeHTTPJSON(t, finalRunsResp, &finalRuns)
-		if len(finalRuns.Runs) != 1 || finalRuns.Runs[0].Status != taskpkg.TaskRunStatusCancelled {
+		if len(finalRuns.Runs) != 1 || finalRuns.Runs[0].Status != taskpkg.TaskRunStatusCanceled {
 			t.Fatalf("final runs = %#v, want one cancelled run", finalRuns.Runs)
 		}
 	})
@@ -1180,7 +1180,7 @@ type integrationRuntime struct {
 	client    *http.Client
 	server    *Server
 	manager   *session.Manager
-	tasks     *taskpkg.TaskManager
+	tasks     *taskpkg.Service
 	driver    *integrationDriver
 	observer  *observe.Observer
 	registry  *globaldb.GlobalDB
@@ -1197,7 +1197,10 @@ type integrationTaskSessionExecutor struct {
 	started int
 }
 
-func (e *integrationTaskSessionExecutor) StartTaskSession(_ context.Context, _ taskpkg.StartTaskSession) (*taskpkg.SessionRef, error) {
+func (e *integrationTaskSessionExecutor) StartTaskSession(
+	_ context.Context,
+	_ *taskpkg.StartTaskSession,
+) (*taskpkg.SessionRef, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.started++
@@ -1455,7 +1458,7 @@ func (d *integrationDriver) Start(_ context.Context, opts acp.StartOpts) (*sessi
 		Command:   opts.Command,
 		Cwd:       opts.Cwd,
 		SessionID: sessionID,
-		Caps: acp.ACPCaps{
+		Caps: acp.Caps{
 			SupportsLoadSession: true,
 			SupportedModels:     []string{"fake-model"},
 		},
@@ -1757,7 +1760,7 @@ func newIntegrationRuntimeWithPermissionWait(t *testing.T, permissionWait time.D
 
 	server, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithHost(cfg.HTTP.Host),
 		WithPort(cfg.HTTP.Port),
 		WithLogger(discardLogger()),

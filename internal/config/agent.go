@@ -15,26 +15,26 @@ import (
 
 // AgentDef is the parsed representation of an AGENT.md file.
 type AgentDef struct {
-	Name        string              `yaml:"name" toml:"name"`
-	Provider    string              `yaml:"provider" toml:"provider"`
-	Command     string              `yaml:"command,omitempty" toml:"command,omitempty"`
-	Model       string              `yaml:"model,omitempty" toml:"model,omitempty"`
-	Tools       []string            `yaml:"tools,omitempty" toml:"tools,omitempty"`
+	Name        string              `yaml:"name"                  toml:"name"`
+	Provider    string              `yaml:"provider"              toml:"provider"`
+	Command     string              `yaml:"command,omitempty"     toml:"command,omitempty"`
+	Model       string              `yaml:"model,omitempty"       toml:"model,omitempty"`
+	Tools       []string            `yaml:"tools,omitempty"       toml:"tools,omitempty"`
 	Permissions string              `yaml:"permissions,omitempty" toml:"permissions,omitempty"`
 	MCPServers  []MCPServer         `yaml:"mcp_servers,omitempty" toml:"mcp_servers,omitempty"`
-	Hooks       []hookspkg.HookDecl `yaml:"hooks,omitempty" toml:"hooks,omitempty"`
+	Hooks       []hookspkg.HookDecl `yaml:"hooks,omitempty"       toml:"hooks,omitempty"`
 	Prompt      string              `yaml:"-"`
 }
 
 type parsedAgentDef struct {
-	Name        string                  `yaml:"name" toml:"name"`
-	Provider    string                  `yaml:"provider" toml:"provider"`
-	Command     string                  `yaml:"command,omitempty" toml:"command,omitempty"`
-	Model       string                  `yaml:"model,omitempty" toml:"model,omitempty"`
-	Tools       []string                `yaml:"tools,omitempty" toml:"tools,omitempty"`
+	Name        string                  `yaml:"name"                  toml:"name"`
+	Provider    string                  `yaml:"provider"              toml:"provider"`
+	Command     string                  `yaml:"command,omitempty"     toml:"command,omitempty"`
+	Model       string                  `yaml:"model,omitempty"       toml:"model,omitempty"`
+	Tools       []string                `yaml:"tools,omitempty"       toml:"tools,omitempty"`
 	Permissions string                  `yaml:"permissions,omitempty" toml:"permissions,omitempty"`
 	MCPServers  []MCPServer             `yaml:"mcp_servers,omitempty" toml:"mcp_servers,omitempty"`
-	Hooks       []parsedHookDeclaration `yaml:"hooks,omitempty" toml:"hooks,omitempty"`
+	Hooks       []parsedHookDeclaration `yaml:"hooks,omitempty"       toml:"hooks,omitempty"`
 }
 
 // WorkspaceDiscoverySource identifies where a discovery root came from.
@@ -285,20 +285,21 @@ func wrapFrontmatterError(err error) error {
 }
 
 func decodeAgentFrontmatter(data []byte, parsed *parsedAgentDef) error {
-	if err := yaml.UnmarshalWithOptions(data, parsed, yaml.Strict()); err == nil {
-		return nil
-	} else {
-		var parsedTOML parsedAgentDef
-		meta, tomlErr := toml.Decode(string(data), &parsedTOML)
-		if tomlErr != nil {
-			return fmt.Errorf("decode agent frontmatter: yaml: %w; toml: %v", err, tomlErr)
-		}
-		if undecoded := meta.Undecoded(); len(undecoded) > 0 {
-			return fmt.Errorf("decode agent frontmatter: unknown field %q", undecoded[0].String())
-		}
-		*parsed = parsedTOML
+	yamlErr := yaml.UnmarshalWithOptions(data, parsed, yaml.Strict())
+	if yamlErr == nil {
 		return nil
 	}
+
+	var parsedTOML parsedAgentDef
+	meta, tomlErr := toml.Decode(string(data), &parsedTOML)
+	if tomlErr != nil {
+		return fmt.Errorf("decode agent frontmatter: yaml: %w; toml: %v", yamlErr, tomlErr)
+	}
+	if undecoded := meta.Undecoded(); len(undecoded) > 0 {
+		return fmt.Errorf("decode agent frontmatter: unknown field %q", undecoded[0].String())
+	}
+	*parsed = parsedTOML
+	return nil
 }
 
 type mappedFrontmatterError struct {

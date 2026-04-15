@@ -26,7 +26,7 @@ func TestCreateCleansUpOnStartFailure(t *testing.T) {
 
 	h := newHarness(t)
 	recorder := &stubRecorder{}
-	h.driver.startHook = func(opts acp.StartOpts, sequence int) (*fakeProcess, error) {
+	h.driver.startHook = func(_ acp.StartOpts, _ int) (*fakeProcess, error) {
 		return nil, errors.New("start failed")
 	}
 	h.manager = newManagerWithHarness(t, h,
@@ -76,7 +76,7 @@ func TestCreateErrorBranches(t *testing.T) {
 	t.Run("blank agent name without config default", func(t *testing.T) {
 		h := newHarness(t)
 		h.cfg.Defaults.Agent = ""
-		h.resolver.upsert(workspacepkg.ResolvedWorkspace{
+		h.resolver.upsert(&workspacepkg.ResolvedWorkspace{
 			Workspace: workspacepkg.Workspace{
 				ID:      h.workspaceID,
 				RootDir: h.workspace,
@@ -153,7 +153,7 @@ func TestResumeCleansUpOnStartFailure(t *testing.T) {
 	}
 
 	recorder := &stubRecorder{}
-	h.driver.startHook = func(opts acp.StartOpts, sequence int) (*fakeProcess, error) {
+	h.driver.startHook = func(_ acp.StartOpts, _ int) (*fakeProcess, error) {
 		return nil, errors.New("resume failed")
 	}
 	h.manager = newManagerWithHarness(t, h,
@@ -186,7 +186,7 @@ func TestCreatePassesResolvedAdditionalDirsToDriver(t *testing.T) {
 		}
 	}
 
-	h.resolver.upsert(workspacepkg.ResolvedWorkspace{
+	h.resolver.upsert(&workspacepkg.ResolvedWorkspace{
 		Workspace: workspacepkg.Workspace{
 			ID:             h.workspaceID,
 			RootDir:        h.workspace,
@@ -212,7 +212,13 @@ func TestCreatePassesResolvedAdditionalDirsToDriver(t *testing.T) {
 		_ = h.manager.Stop(testutil.Context(t), session.ID)
 	})
 
-	if got, want := h.driver.startCalls[0].AdditionalDirs, []string{additionalOne, additionalTwo}; !slices.Equal(got, want) {
+	if got, want := h.driver.startCalls[0].AdditionalDirs, []string{
+		additionalOne,
+		additionalTwo,
+	}; !slices.Equal(
+		got,
+		want,
+	) {
 		t.Fatalf("start AdditionalDirs = %#v, want %#v", got, want)
 	}
 }
@@ -229,7 +235,7 @@ func TestResumePassesResolvedAdditionalDirsToDriver(t *testing.T) {
 		}
 	}
 
-	h.resolver.upsert(workspacepkg.ResolvedWorkspace{
+	h.resolver.upsert(&workspacepkg.ResolvedWorkspace{
 		Workspace: workspacepkg.Workspace{
 			ID:             h.workspaceID,
 			RootDir:        h.workspace,
@@ -257,7 +263,13 @@ func TestResumePassesResolvedAdditionalDirsToDriver(t *testing.T) {
 		_ = h.manager.Stop(testutil.Context(t), resumed.ID)
 	})
 
-	if got, want := h.driver.startCalls[1].AdditionalDirs, []string{additionalOne, additionalTwo}; !slices.Equal(got, want) {
+	if got, want := h.driver.startCalls[1].AdditionalDirs, []string{
+		additionalOne,
+		additionalTwo,
+	}; !slices.Equal(
+		got,
+		want,
+	) {
 		t.Fatalf("resume start AdditionalDirs = %#v, want %#v", got, want)
 	}
 }
@@ -336,7 +348,7 @@ func TestNewManagerOptionsAndValidation(t *testing.T) {
 
 	now := time.Date(2026, 4, 3, 15, 0, 0, 0, time.UTC)
 	cfg := aghconfig.DefaultWithHome(homePaths)
-	resolver := newFakeWorkspaceResolver(workspacepkg.ResolvedWorkspace{
+	resolver := newFakeWorkspaceResolver(&workspacepkg.ResolvedWorkspace{
 		Workspace: workspacepkg.Workspace{
 			ID:      "ws-options",
 			RootDir: "/tmp/workspace",
@@ -426,7 +438,6 @@ func TestNewManagerOptionsAndValidation(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			if _, err := NewManager(tc.opts...); err == nil {
@@ -446,14 +457,14 @@ func TestHelperFunctionsAndUtilities(t *testing.T) {
 			Prompt:   "hi",
 		}},
 	}
-	got, err := resolveWorkspaceAgent("coder", resolved)
+	got, err := resolveWorkspaceAgent("coder", &resolved)
 	if err != nil {
 		t.Fatalf("resolveWorkspaceAgent(coder) error = %v", err)
 	}
 	if got.Name != "coder" {
 		t.Fatalf("resolveWorkspaceAgent(coder) name = %q, want coder", got.Name)
 	}
-	if _, err := resolveWorkspaceAgent("missing", resolved); !errors.Is(err, workspacepkg.ErrAgentNotAvailable) {
+	if _, err := resolveWorkspaceAgent("missing", &resolved); !errors.Is(err, workspacepkg.ErrAgentNotAvailable) {
 		t.Fatalf("resolveWorkspaceAgent(missing) error = %v, want ErrAgentNotAvailable", err)
 	}
 
@@ -547,7 +558,9 @@ func TestCreateAndResumeRequireWorkspaceResolver(t *testing.T) {
 func TestMarshalAgentEvent(t *testing.T) {
 	t.Parallel()
 
-	rawPayload := json.RawMessage(`{"sessionUpdate":"tool_call_update","status":"completed","rawOutput":"hello","_meta":{"claudeCode":{"toolName":"Bash"}}}`)
+	rawPayload := json.RawMessage(
+		`{"sessionUpdate":"tool_call_update","status":"completed","rawOutput":"hello","_meta":{"claudeCode":{"toolName":"Bash"}}}`,
+	)
 	raw, err := marshalAgentEvent(acp.AgentEvent{Raw: rawPayload})
 	if err != nil {
 		t.Fatalf("marshalAgentEvent(raw) error = %v", err)
@@ -609,7 +622,7 @@ func TestAgentProcessHelpersAndAdapterUtilities(t *testing.T) {
 		Command:   "fake",
 		Cwd:       "/tmp",
 		SessionID: "acp-1",
-		Caps:      acp.ACPCaps{SupportsLoadSession: true},
+		Caps:      acp.Caps{SupportsLoadSession: true},
 		StartedAt: time.Now().UTC(),
 	})
 	if wrapped == nil || wrapped.PID != 99 || wrapped.SessionID != "acp-1" {

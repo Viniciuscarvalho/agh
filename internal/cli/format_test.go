@@ -11,7 +11,7 @@ import (
 func TestHumanOutputProducesStyledTable(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		listAgentsFn: func(_ context.Context) ([]AgentRecord, error) {
 			return []AgentRecord{{
 				Name:        "coder",
@@ -27,7 +27,8 @@ func TestHumanOutputProducesStyledTable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("executeRootCommand() error = %v", err)
 	}
-	if !strings.Contains(stdout, "Agents") || !strings.Contains(stdout, "Provider") || !strings.Contains(stdout, "----") {
+	if !strings.Contains(stdout, "Agents") || !strings.Contains(stdout, "Provider") ||
+		!strings.Contains(stdout, "----") {
 		t.Fatalf("human output = %q, want styled table", stdout)
 	}
 }
@@ -35,7 +36,7 @@ func TestHumanOutputProducesStyledTable(t *testing.T) {
 func TestJSONOutputProducesValidJSON(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		listSessionsFn: func(_ context.Context, _ SessionListQuery) ([]SessionRecord, error) {
 			return []SessionRecord{{
 				ID:            "sess-1",
@@ -67,7 +68,7 @@ func TestJSONOutputProducesValidJSON(t *testing.T) {
 func TestToonOutputProducesToonDocument(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		listAgentsFn: func(_ context.Context) ([]AgentRecord, error) {
 			return []AgentRecord{{Name: "coder", Provider: "codex", Tools: []string{"shell"}}}, nil
 		},

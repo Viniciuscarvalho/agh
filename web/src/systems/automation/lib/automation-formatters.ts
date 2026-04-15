@@ -184,7 +184,7 @@ export function automationStatusTone(
       return "warning";
     case "failed":
       return "danger";
-    case "cancelled":
+    case "canceled":
     case "disabled":
     default:
       return "neutral";

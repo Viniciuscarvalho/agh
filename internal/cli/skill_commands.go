@@ -50,7 +50,12 @@ func newSkillListCommand(deps commandDeps) *cobra.Command {
 			return writeCommandOutput(cmd, skillListBundle(items))
 		},
 	}
-	cmd.Flags().StringVar(&sourceFilter, "source", "", "Filter by source: bundled, marketplace, user, additional (or agents/.agents), or workspace")
+	cmd.Flags().StringVar(
+		&sourceFilter,
+		"source",
+		"",
+		"Filter by source: bundled, marketplace, user, additional (or agents/.agents), or workspace",
+	)
 	return cmd
 }
 
@@ -188,7 +193,7 @@ func newSkillCreateCommand(deps commandDeps) *cobra.Command {
 
 			skillFilePath := filepath.Join(skillDir, skillMarkdownFileName)
 			content := defaultSkillTemplate(skillName)
-			if err := os.WriteFile(skillFilePath, []byte(content), 0o644); err != nil {
+			if err := os.WriteFile(skillFilePath, []byte(content), 0o600); err != nil {
 				return fmt.Errorf("cli: write skill template %q: %w", skillFilePath, err)
 			}
 
@@ -310,7 +315,15 @@ func newSkillUpdateCommand(deps commandDeps) *cobra.Command {
 				err = errors.Join(err, registry.Close())
 			}()
 
-			items, err := updateMarketplaceSkills(cmd.Context(), runtime, registry, args, updateAll, checkOnly, deps.now)
+			items, err := updateMarketplaceSkills(
+				cmd.Context(),
+				runtime,
+				registry,
+				args,
+				updateAll,
+				checkOnly,
+				deps.now,
+			)
 			if err != nil {
 				return err
 			}

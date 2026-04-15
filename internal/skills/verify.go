@@ -19,20 +19,26 @@ type verificationPattern struct {
 
 var verificationPatterns = []verificationPattern{
 	{
-		pattern:  "ignore-previous-instructions",
-		regex:    regexp.MustCompile(`(?i)\bignore\s+(?:\w+\s+)*(?:all|previous|prior|above)\s+(?:\w+\s+)*(?:instructions|rules|guidelines)\b`),
+		pattern: "ignore-previous-instructions",
+		regex: regexp.MustCompile(
+			`(?i)\bignore\s+(?:\w+\s+)*(?:all|previous|prior|above)\s+(?:\w+\s+)*(?:instructions|rules|guidelines)\b`,
+		),
 		severity: SeverityCritical,
 		message:  "content attempts to override existing instructions",
 	},
 	{
-		pattern:  "disregard-existing-rules",
-		regex:    regexp.MustCompile(`(?i)\bdisregard\s+(?:\w+\s+)*(?:all|previous|prior|your)\s+(?:\w+\s+)*(?:instructions|rules|guidelines)\b`),
+		pattern: "disregard-existing-rules",
+		regex: regexp.MustCompile(
+			`(?i)\bdisregard\s+(?:\w+\s+)*(?:all|previous|prior|your)\s+(?:\w+\s+)*(?:instructions|rules|guidelines)\b`,
+		),
 		severity: SeverityCritical,
 		message:  "content attempts to bypass current rules",
 	},
 	{
-		pattern:  "forget-your-instructions",
-		regex:    regexp.MustCompile(`(?i)\bforget\s+(?:\w+\s+)*(?:your|all)\s+(?:\w+\s+)*(?:instructions|rules|guidelines)\b`),
+		pattern: "forget-your-instructions",
+		regex: regexp.MustCompile(
+			`(?i)\bforget\s+(?:\w+\s+)*(?:your|all)\s+(?:\w+\s+)*(?:instructions|rules|guidelines)\b`,
+		),
 		severity: SeverityCritical,
 		message:  "content attempts to erase active instructions",
 	},
@@ -67,20 +73,26 @@ var verificationPatterns = []verificationPattern{
 		message:  "content includes a destructive shell command",
 	},
 	{
-		pattern:  "credential-extraction",
-		regex:    regexp.MustCompile(`(?i)\b(?:print|show|reveal|display|output)\s+(?:the\s+|your\s+)?(?:api\s+key|access\s+token|credentials?|secret(?:s)?|password(?:s)?)\b`),
+		pattern: "credential-extraction",
+		regex: regexp.MustCompile(
+			`(?i)\b(?:print|show|reveal|display|output)\s+(?:the\s+|your\s+)?(?:api\s+key|access\s+token|credentials?|secret(?:s)?|password(?:s)?)\b`,
+		),
 		severity: SeverityCritical,
 		message:  "content attempts to extract credentials",
 	},
 	{
-		pattern:  "sensitive-path-reference",
-		regex:    regexp.MustCompile(`(?i)(?:^|[\s` + "`" + `"'(])(?:/etc/passwd|~/.ssh/|/root/.ssh/|\.ssh/id_(?:rsa|ed25519))\b`),
+		pattern: "sensitive-path-reference",
+		regex: regexp.MustCompile(
+			`(?i)(?:^|[\s` + "`" + `"'(])(?:/etc/passwd|~/.ssh/|/root/.ssh/|\.ssh/id_(?:rsa|ed25519))\b`,
+		),
 		severity: SeverityWarning,
 		message:  "content references a sensitive filesystem path",
 	},
 	{
-		pattern:  "excessive-tool-chaining",
-		regex:    regexp.MustCompile(`(?i)\b(?:curl|wget|bash|sh|python3?|node)\b[^\n]{0,160}(?:\|\s*(?:sh|bash)\b|&&|\|\|)`),
+		pattern: "excessive-tool-chaining",
+		regex: regexp.MustCompile(
+			`(?i)\b(?:curl|wget|bash|sh|python3?|node)\b[^\n]{0,160}(?:\|\s*(?:sh|bash)\b|&&|\|\|)`,
+		),
 		severity: SeverityWarning,
 		message:  "content contains suspicious chained tool execution",
 	},

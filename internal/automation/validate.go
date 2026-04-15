@@ -18,7 +18,7 @@ func DefaultFireLimitConfig() FireLimitConfig {
 }
 
 // ValidateScopeBinding enforces the global/workspace binding invariants shared by jobs, triggers, and envelopes.
-func ValidateScopeBinding(scope AutomationScope, workspaceBinding string, path string, workspaceField string) error {
+func ValidateScopeBinding(scope Scope, workspaceBinding string, path string, workspaceField string) error {
 	return modelpkg.ValidateScopeBinding(scope, workspaceBinding, path, workspaceField)
 }
 

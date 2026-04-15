@@ -42,13 +42,13 @@ func TestWorkspaceAddBuildsRequest(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			deps := newTestDeps(t, stubClient{
+			deps := newTestDeps(t, &stubClient{
 				createWorkspaceFn: func(_ context.Context, request WorkspaceCreateRequest) (WorkspaceRecord, error) {
-					if request.RootDir != tt.request.RootDir || request.Name != tt.request.Name || request.DefaultAgent != tt.request.DefaultAgent {
+					if request.RootDir != tt.request.RootDir || request.Name != tt.request.Name ||
+						request.DefaultAgent != tt.request.DefaultAgent {
 						t.Fatalf("CreateWorkspace() request = %#v, want %#v", request, tt.request)
 					}
 					if strings.Join(request.AddDirs, ",") != strings.Join(tt.request.AddDirs, ",") {
@@ -90,8 +90,8 @@ func TestWorkspaceEditBuildsRequest(t *testing.T) {
 		seenRequest WorkspaceUpdateRequest
 	)
 
-	deps := newTestDeps(t, stubClient{
-		getWorkspaceFn: func(_ context.Context, ref string) (WorkspaceDetailRecord, error) {
+	deps := newTestDeps(t, &stubClient{
+		getWorkspaceFn: func(_ context.Context, _ string) (WorkspaceDetailRecord, error) {
 			return WorkspaceDetailRecord{
 				Workspace: WorkspaceRecord{
 					ID:      "ws_alpha",
@@ -133,7 +133,8 @@ func TestWorkspaceEditBuildsRequest(t *testing.T) {
 	if seenRequest.Name == nil || *seenRequest.Name != "beta" {
 		t.Fatalf("UpdateWorkspace() Name = %#v, want beta", seenRequest.Name)
 	}
-	if seenRequest.AddDirs == nil || strings.Join(*seenRequest.AddDirs, ",") != "/workspace/shared-b,/workspace/shared-c" {
+	if seenRequest.AddDirs == nil ||
+		strings.Join(*seenRequest.AddDirs, ",") != "/workspace/shared-b,/workspace/shared-c" {
 		t.Fatalf("UpdateWorkspace() AddDirs = %#v, want filtered/appended dirs", seenRequest.AddDirs)
 	}
 	if seenRequest.DefaultAgent == nil || *seenRequest.DefaultAgent != "reviewer" {
@@ -152,7 +153,7 @@ func TestWorkspaceEditBuildsRequest(t *testing.T) {
 func TestWorkspaceEditRejectsConflictingDirUpdates(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		getWorkspaceFn: func(_ context.Context, _ string) (WorkspaceDetailRecord, error) {
 			return WorkspaceDetailRecord{
 				Workspace: WorkspaceRecord{ID: "ws_alpha", AddDirs: []string{"/workspace/shared-a"}},
@@ -178,7 +179,7 @@ func TestWorkspaceListInfoAndRemove(t *testing.T) {
 
 	var deletedRef string
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		listWorkspacesFn: func(context.Context) ([]WorkspaceRecord, error) {
 			return []WorkspaceRecord{{
 				ID:        "ws_alpha",
@@ -188,7 +189,7 @@ func TestWorkspaceListInfoAndRemove(t *testing.T) {
 				UpdatedAt: fixedTestNow,
 			}}, nil
 		},
-		getWorkspaceFn: func(_ context.Context, ref string) (WorkspaceDetailRecord, error) {
+		getWorkspaceFn: func(_ context.Context, _ string) (WorkspaceDetailRecord, error) {
 			return WorkspaceDetailRecord{
 				Workspace: WorkspaceRecord{
 					ID:        "ws_alpha",
@@ -244,7 +245,8 @@ func TestWorkspaceListInfoAndRemove(t *testing.T) {
 	if err := json.Unmarshal([]byte(infoOut), &detail); err != nil {
 		t.Fatalf("json.Unmarshal(workspace info) error = %v", err)
 	}
-	if detail.Workspace.ID != "ws_alpha" || len(detail.Sessions) != 1 || len(detail.Agents) != 1 || len(detail.Skills) != 1 {
+	if detail.Workspace.ID != "ws_alpha" || len(detail.Sessions) != 1 || len(detail.Agents) != 1 ||
+		len(detail.Skills) != 1 {
 		t.Fatalf("detail = %#v, want workspace detail payload", detail)
 	}
 
@@ -268,7 +270,7 @@ func TestWorkspaceListInfoAndRemove(t *testing.T) {
 func TestWorkspaceOutputFormats(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		listWorkspacesFn: func(context.Context) ([]WorkspaceRecord, error) {
 			return []WorkspaceRecord{{
 				ID:           "ws_alpha",
@@ -337,7 +339,8 @@ func TestWorkspaceOutputFormats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("executeRootCommand(workspace info human) error = %v", err)
 	}
-	if !strings.Contains(infoHuman, "Workspace") || !strings.Contains(infoHuman, "Sessions") || !strings.Contains(infoHuman, "Skills") {
+	if !strings.Contains(infoHuman, "Workspace") || !strings.Contains(infoHuman, "Sessions") ||
+		!strings.Contains(infoHuman, "Skills") {
 		t.Fatalf("info human output = %q, want workspace detail sections", infoHuman)
 	}
 
@@ -345,7 +348,8 @@ func TestWorkspaceOutputFormats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("executeRootCommand(workspace info toon) error = %v", err)
 	}
-	if !strings.Contains(infoToon, "skills[1]{name,source,dir}:") || !strings.Contains(infoToon, "agents[1]{name,provider,model,permissions}:") {
+	if !strings.Contains(infoToon, "skills[1]{name,source,dir}:") ||
+		!strings.Contains(infoToon, "agents[1]{name,provider,model,permissions}:") {
 		t.Fatalf("info toon output = %q, want TOON detail blocks", infoToon)
 	}
 }
@@ -353,7 +357,7 @@ func TestWorkspaceOutputFormats(t *testing.T) {
 func TestWorkspaceEditRequiresChanges(t *testing.T) {
 	t.Parallel()
 
-	code, _, stderr := executeRootCommandWithExit(t, newTestDeps(t, stubClient{}), "workspace", "edit", "alpha")
+	code, _, stderr := executeRootCommandWithExit(t, newTestDeps(t, &stubClient{}), "workspace", "edit", "alpha")
 	if code != 1 {
 		t.Fatalf("executeRootCommandWithExit() code = %d, want 1", code)
 	}

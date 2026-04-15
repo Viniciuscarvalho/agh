@@ -314,7 +314,10 @@ func TestQueryEventsFilterByTimeRange(t *testing.T) {
 	h.recordEvent(t, sess.ID, "agent_message", oldTs, "old")
 	h.recordEvent(t, sess.ID, "agent_message", newTs, "new")
 
-	events, err := h.observer.QueryEvents(testutil.Context(t), store.EventSummaryQuery{Since: h.now.Add(2 * time.Minute)})
+	events, err := h.observer.QueryEvents(
+		testutil.Context(t),
+		store.EventSummaryQuery{Since: h.now.Add(2 * time.Minute)},
+	)
 	if err != nil {
 		t.Fatalf("QueryEvents() error = %v", err)
 	}
@@ -353,7 +356,7 @@ func TestHealthReturnsCorrectActiveCounts(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.source.sessions = []*session.SessionInfo{
+	h.source.sessions = []*session.Info{
 		{ID: "sess-active-1", AgentName: "coder", State: session.StateActive},
 		{ID: "sess-active-2", AgentName: "coder", State: session.StateStopping},
 		{ID: "sess-stopped", State: session.StateStopped},
@@ -388,7 +391,7 @@ type harness struct {
 const observerWorkspaceID = "ws-observe-workspace"
 
 type stubSessionSource struct {
-	sessions []*session.SessionInfo
+	sessions []*session.Info
 }
 
 type observeBridgeSource struct {
@@ -396,7 +399,7 @@ type observeBridgeSource struct {
 	broker *bridgepkg.Broker
 }
 
-func (s *stubSessionSource) List() []*session.SessionInfo {
+func (s *stubSessionSource) List() []*session.Info {
 	return s.sessions
 }
 
@@ -494,7 +497,7 @@ func (h *harness) recordEvent(t *testing.T, sessionID string, eventType string, 
 	})
 }
 
-func newSession(id string, state session.SessionState, workspace string, now time.Time) *session.Session {
+func newSession(id string, state session.State, workspace string, now time.Time) *session.Session {
 	return &session.Session{
 		ID:           id,
 		Name:         strings.ToUpper(id),

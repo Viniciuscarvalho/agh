@@ -15,44 +15,44 @@ const (
 	ScopeWorkspace Scope = "workspace"
 )
 
-// TaskStatus identifies the canonical lifecycle state of a task.
-type TaskStatus string
+// Status identifies the canonical lifecycle state of a task.
+type Status string
 
 const (
 	// TaskStatusPending reports a task that exists but has not yet been reconciled into ready work.
-	TaskStatusPending TaskStatus = "pending"
+	TaskStatusPending Status = "pending"
 	// TaskStatusBlocked reports a task with unresolved dependencies.
-	TaskStatusBlocked TaskStatus = "blocked"
+	TaskStatusBlocked Status = "blocked"
 	// TaskStatusReady reports a task that may execute because dependencies are satisfied.
-	TaskStatusReady TaskStatus = "ready"
+	TaskStatusReady Status = "ready"
 	// TaskStatusInProgress reports a task with an active starting or running run.
-	TaskStatusInProgress TaskStatus = "in_progress"
+	TaskStatusInProgress Status = "in_progress"
 	// TaskStatusCompleted reports a task that finished successfully.
-	TaskStatusCompleted TaskStatus = "completed"
+	TaskStatusCompleted Status = "completed"
 	// TaskStatusFailed reports a task that ended unsuccessfully.
-	TaskStatusFailed TaskStatus = "failed"
-	// TaskStatusCancelled reports a task that was cancelled before successful completion.
-	TaskStatusCancelled TaskStatus = "cancelled"
+	TaskStatusFailed Status = "failed"
+	// TaskStatusCanceled reports a task that was canceled before successful completion.
+	TaskStatusCanceled Status = "canceled"
 )
 
-// TaskRunStatus identifies the canonical lifecycle state of a task run.
-type TaskRunStatus string
+// RunStatus identifies the canonical lifecycle state of a task run.
+type RunStatus string
 
 const (
 	// TaskRunStatusQueued reports a run that has been accepted but not yet claimed.
-	TaskRunStatusQueued TaskRunStatus = "queued"
+	TaskRunStatusQueued RunStatus = "queued"
 	// TaskRunStatusClaimed reports a run that has been claimed for execution.
-	TaskRunStatusClaimed TaskRunStatus = "claimed"
+	TaskRunStatusClaimed RunStatus = "claimed"
 	// TaskRunStatusStarting reports a run that is starting its execution session.
-	TaskRunStatusStarting TaskRunStatus = "starting"
+	TaskRunStatusStarting RunStatus = "starting"
 	// TaskRunStatusRunning reports a run that is actively executing.
-	TaskRunStatusRunning TaskRunStatus = "running"
+	TaskRunStatusRunning RunStatus = "running"
 	// TaskRunStatusCompleted reports a run that finished successfully.
-	TaskRunStatusCompleted TaskRunStatus = "completed"
+	TaskRunStatusCompleted RunStatus = "completed"
 	// TaskRunStatusFailed reports a run that finished with an error.
-	TaskRunStatusFailed TaskRunStatus = "failed"
-	// TaskRunStatusCancelled reports a run that was cancelled.
-	TaskRunStatusCancelled TaskRunStatus = "cancelled"
+	TaskRunStatusFailed RunStatus = "failed"
+	// TaskRunStatusCanceled reports a run that was canceled.
+	TaskRunStatusCanceled RunStatus = "canceled"
 )
 
 // ActorKind identifies the authenticated principal class behind task writes.
@@ -191,29 +191,29 @@ type Task struct {
 	NetworkChannel string          `json:"network_channel,omitempty"`
 	Title          string          `json:"title"`
 	Description    string          `json:"description,omitempty"`
-	Status         TaskStatus      `json:"status"`
+	Status         Status          `json:"status"`
 	Owner          *Ownership      `json:"owner,omitempty"`
 	CreatedBy      ActorIdentity   `json:"created_by"`
 	Origin         Origin          `json:"origin"`
 	CreatedAt      time.Time       `json:"created_at"`
 	UpdatedAt      time.Time       `json:"updated_at"`
-	ClosedAt       time.Time       `json:"closed_at,omitempty"`
+	ClosedAt       time.Time       `json:"closed_at"`
 	Metadata       json.RawMessage `json:"metadata,omitempty"`
 }
 
-// TaskDependency is the durable edge record connecting one task to a blocking dependency.
-type TaskDependency struct {
+// Dependency is the durable edge record connecting one task to a blocking dependency.
+type Dependency struct {
 	TaskID          string         `json:"task_id"`
 	DependsOnTaskID string         `json:"depends_on_task_id"`
 	Kind            DependencyKind `json:"kind"`
 	CreatedAt       time.Time      `json:"created_at"`
 }
 
-// TaskRun is the durable execution record for one task attempt.
-type TaskRun struct {
+// Run is the durable execution record for one task attempt.
+type Run struct {
 	ID             string          `json:"id"`
 	TaskID         string          `json:"task_id"`
-	Status         TaskRunStatus   `json:"status"`
+	Status         RunStatus       `json:"status"`
 	Attempt        int             `json:"attempt"`
 	ClaimedBy      *ActorIdentity  `json:"claimed_by,omitempty"`
 	SessionID      string          `json:"session_id,omitempty"`
@@ -221,15 +221,15 @@ type TaskRun struct {
 	IdempotencyKey string          `json:"idempotency_key,omitempty"`
 	NetworkChannel string          `json:"network_channel,omitempty"`
 	QueuedAt       time.Time       `json:"queued_at"`
-	ClaimedAt      time.Time       `json:"claimed_at,omitempty"`
-	StartedAt      time.Time       `json:"started_at,omitempty"`
-	EndedAt        time.Time       `json:"ended_at,omitempty"`
+	ClaimedAt      time.Time       `json:"claimed_at"`
+	StartedAt      time.Time       `json:"started_at"`
+	EndedAt        time.Time       `json:"ended_at"`
 	Error          string          `json:"error,omitempty"`
 	Result         json.RawMessage `json:"result,omitempty"`
 }
 
-// TaskEvent is the immutable audit record emitted for task-domain actions.
-type TaskEvent struct {
+// Event is the immutable audit record emitted for task-domain actions.
+type Event struct {
 	ID        string          `json:"id"`
 	TaskID    string          `json:"task_id"`
 	RunID     string          `json:"run_id,omitempty"`
@@ -240,16 +240,16 @@ type TaskEvent struct {
 	Timestamp time.Time       `json:"timestamp"`
 }
 
-// TaskRunIdempotency is the durable deduplication record for non-human run ingress.
-type TaskRunIdempotency struct {
+// RunIdempotency is the durable deduplication record for non-human run ingress.
+type RunIdempotency struct {
 	IdempotencyKey string    `json:"idempotency_key"`
 	RunID          string    `json:"run_id"`
 	Origin         Origin    `json:"origin"`
 	CreatedAt      time.Time `json:"created_at"`
 }
 
-// TaskSummary is the lightweight read model returned from list-oriented task queries.
-type TaskSummary struct {
+// Summary is the lightweight read model returned from list-oriented task queries.
+type Summary struct {
 	ID             string        `json:"id"`
 	Identifier     string        `json:"identifier,omitempty"`
 	Scope          Scope         `json:"scope"`
@@ -257,22 +257,22 @@ type TaskSummary struct {
 	ParentTaskID   string        `json:"parent_task_id,omitempty"`
 	NetworkChannel string        `json:"network_channel,omitempty"`
 	Title          string        `json:"title"`
-	Status         TaskStatus    `json:"status"`
+	Status         Status        `json:"status"`
 	Owner          *Ownership    `json:"owner,omitempty"`
 	CreatedBy      ActorIdentity `json:"created_by"`
 	Origin         Origin        `json:"origin"`
 	CreatedAt      time.Time     `json:"created_at"`
 	UpdatedAt      time.Time     `json:"updated_at"`
-	ClosedAt       time.Time     `json:"closed_at,omitempty"`
+	ClosedAt       time.Time     `json:"closed_at"`
 }
 
-// TaskView is the expanded read model returned from single-task lookups.
-type TaskView struct {
-	Task         Task             `json:"task"`
-	Children     []TaskSummary    `json:"children,omitempty"`
-	Dependencies []TaskDependency `json:"dependencies,omitempty"`
-	Runs         []TaskRun        `json:"runs,omitempty"`
-	Events       []TaskEvent      `json:"events,omitempty"`
+// View is the expanded read model returned from single-task lookups.
+type View struct {
+	Task         Task         `json:"task"`
+	Children     []Summary    `json:"children,omitempty"`
+	Dependencies []Dependency `json:"dependencies,omitempty"`
+	Runs         []Run        `json:"runs,omitempty"`
+	Events       []Event      `json:"events,omitempty"`
 }
 
 // CreateTask captures the mutable inputs accepted when creating a new task.
@@ -289,8 +289,8 @@ type CreateTask struct {
 	Metadata       json.RawMessage `json:"metadata,omitempty"`
 }
 
-// TaskPatch captures the mutable task fields accepted by update operations.
-type TaskPatch struct {
+// Patch captures the mutable task fields accepted by update operations.
+type Patch struct {
 	Title          *string          `json:"title,omitempty"`
 	Description    *string          `json:"description,omitempty"`
 	Metadata       *json.RawMessage `json:"metadata,omitempty"`
@@ -346,28 +346,28 @@ type RunFailure struct {
 	Metadata json.RawMessage `json:"metadata,omitempty"`
 }
 
-// TaskQuery captures the supported list filters for task reads.
-type TaskQuery struct {
-	Scope          Scope      `json:"scope,omitempty"`
-	WorkspaceID    string     `json:"workspace_id,omitempty"`
-	Status         TaskStatus `json:"status,omitempty"`
-	OwnerKind      OwnerKind  `json:"owner_kind,omitempty"`
-	OwnerRef       string     `json:"owner_ref,omitempty"`
-	ParentTaskID   string     `json:"parent_task_id,omitempty"`
-	NetworkChannel string     `json:"network_channel,omitempty"`
-	Limit          int        `json:"limit,omitempty"`
+// Query captures the supported list filters for task reads.
+type Query struct {
+	Scope          Scope     `json:"scope,omitempty"`
+	WorkspaceID    string    `json:"workspace_id,omitempty"`
+	Status         Status    `json:"status,omitempty"`
+	OwnerKind      OwnerKind `json:"owner_kind,omitempty"`
+	OwnerRef       string    `json:"owner_ref,omitempty"`
+	ParentTaskID   string    `json:"parent_task_id,omitempty"`
+	NetworkChannel string    `json:"network_channel,omitempty"`
+	Limit          int       `json:"limit,omitempty"`
 }
 
-// TaskRunQuery captures the supported list filters for task-run reads.
-type TaskRunQuery struct {
-	TaskID    string        `json:"task_id,omitempty"`
-	Status    TaskRunStatus `json:"status,omitempty"`
-	SessionID string        `json:"session_id,omitempty"`
-	Limit     int           `json:"limit,omitempty"`
+// RunQuery captures the supported list filters for task-run reads.
+type RunQuery struct {
+	TaskID    string    `json:"task_id,omitempty"`
+	Status    RunStatus `json:"status,omitempty"`
+	SessionID string    `json:"session_id,omitempty"`
+	Limit     int       `json:"limit,omitempty"`
 }
 
-// TaskEventQuery captures the supported list filters for task-event reads.
-type TaskEventQuery struct {
+// EventQuery captures the supported list filters for task-event reads.
+type EventQuery struct {
 	TaskID    string `json:"task_id,omitempty"`
 	RunID     string `json:"run_id,omitempty"`
 	EventType string `json:"event_type,omitempty"`
@@ -377,7 +377,7 @@ type TaskEventQuery struct {
 // StartTaskSession captures the task and run context needed to allocate a dedicated session.
 type StartTaskSession struct {
 	Task  Task         `json:"task"`
-	Run   TaskRun      `json:"run"`
+	Run   Run          `json:"run"`
 	Actor ActorContext `json:"actor"`
 }
 
@@ -385,7 +385,7 @@ type StartTaskSession struct {
 type SessionRef struct {
 	SessionID   string    `json:"session_id"`
 	WorkspaceID string    `json:"workspace_id,omitempty"`
-	StartedAt   time.Time `json:"started_at,omitempty"`
+	StartedAt   time.Time `json:"started_at"`
 }
 
 // RunBootRecovery captures one daemon-owned recovery decision for an in-flight

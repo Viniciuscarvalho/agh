@@ -57,7 +57,6 @@ func TestCreateBridgeRequestValidation(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			if _, err := tt.req.ToCreateInstanceRequest(); err == nil {
@@ -92,7 +91,8 @@ func TestCreateBridgeRequestPreservesNormalizedFieldsAndDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ToCreateInstanceRequest() error = %v", err)
 	}
-	if mapped.WorkspaceID != "ws-alpha" || mapped.Platform != "telegram" || mapped.ExtensionName != "ext-telegram" || mapped.DisplayName != "Support" {
+	if mapped.WorkspaceID != "ws-alpha" || mapped.Platform != "telegram" || mapped.ExtensionName != "ext-telegram" ||
+		mapped.DisplayName != "Support" {
 		t.Fatalf("mapped request = %#v", mapped)
 	}
 	if mapped.DMPolicy != bridgepkg.BridgeDMPolicyPairing {
@@ -174,14 +174,22 @@ func TestBridgeTestDeliveryRequestPreservesTypedTargetShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ToResolveDeliveryTargetRequest() error = %v", err)
 	}
-	if mapped.BridgeInstanceID != "brg-1" || mapped.PeerID != "peer-1" || mapped.ThreadID != "thread-1" || mapped.GroupID != "group-1" || mapped.Mode != bridgepkg.DeliveryModeReply {
+	if mapped.BridgeInstanceID != "brg-1" || mapped.PeerID != "peer-1" || mapped.ThreadID != "thread-1" ||
+		mapped.GroupID != "group-1" ||
+		mapped.Mode != bridgepkg.DeliveryModeReply {
 		t.Fatalf("mapped target = %#v", mapped)
 	}
 
 	data, err := json.Marshal(contract.BridgeTestDeliveryResponse{
-		Status:         "resolved",
-		Message:        "hello",
-		DeliveryTarget: bridgepkg.DeliveryTarget{BridgeInstanceID: "brg-1", PeerID: "peer-1", ThreadID: "thread-1", GroupID: "group-1", Mode: bridgepkg.DeliveryModeReply},
+		Status:  "resolved",
+		Message: "hello",
+		DeliveryTarget: bridgepkg.DeliveryTarget{
+			BridgeInstanceID: "brg-1",
+			PeerID:           "peer-1",
+			ThreadID:         "thread-1",
+			GroupID:          "group-1",
+			Mode:             bridgepkg.DeliveryModeReply,
+		},
 	})
 	if err != nil {
 		t.Fatalf("json.Marshal(response) error = %v", err)
@@ -195,7 +203,8 @@ func TestBridgeTestDeliveryRequestPreservesTypedTargetShape(t *testing.T) {
 	if !ok {
 		t.Fatalf("delivery_target type = %T, want object", got["delivery_target"])
 	}
-	if target["peer_id"] != "peer-1" || target["thread_id"] != "thread-1" || target["group_id"] != "group-1" || target["mode"] != string(bridgepkg.DeliveryModeReply) {
+	if target["peer_id"] != "peer-1" || target["thread_id"] != "thread-1" || target["group_id"] != "group-1" ||
+		target["mode"] != string(bridgepkg.DeliveryModeReply) {
 		t.Fatalf("delivery_target JSON = %#v", target)
 	}
 }
@@ -230,7 +239,8 @@ func TestBridgeTestDeliveryRequestAcceptsExplicitMatchingInstanceID(t *testing.T
 	if err != nil {
 		t.Fatalf("ToResolveDeliveryTargetRequest() error = %v", err)
 	}
-	if mapped.BridgeInstanceID != "brg-1" || mapped.PeerID != "peer-1" || mapped.Mode != bridgepkg.DeliveryModeDirectSend {
+	if mapped.BridgeInstanceID != "brg-1" || mapped.PeerID != "peer-1" ||
+		mapped.Mode != bridgepkg.DeliveryModeDirectSend {
 		t.Fatalf("mapped target = %#v", mapped)
 	}
 }
@@ -341,7 +351,8 @@ func TestBridgeRequestsKeepProviderConfigDistinctFromDeliveryDefaults(t *testing
 	if updateMapped.ProviderConfig == nil || string(*updateMapped.ProviderConfig) != `{"mode":"comments"}` {
 		t.Fatalf("updateMapped.ProviderConfig = %s", stringValue(updateMapped.ProviderConfig))
 	}
-	if updateMapped.DeliveryDefaults == nil || string(*updateMapped.DeliveryDefaults) != `{"group_id":"ops","mode":"direct-send"}` {
+	if updateMapped.DeliveryDefaults == nil ||
+		string(*updateMapped.DeliveryDefaults) != `{"group_id":"ops","mode":"direct-send"}` {
 		t.Fatalf("updateMapped.DeliveryDefaults = %s", stringValue(updateMapped.DeliveryDefaults))
 	}
 }
@@ -445,7 +456,6 @@ func TestBridgeJSONPayloadsMarshalAndUnmarshal(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -455,7 +465,8 @@ func TestBridgeJSONPayloadsMarshalAndUnmarshal(t *testing.T) {
 				if marshalErr != nil {
 					t.Fatalf("provider MarshalJSON() error = %v", marshalErr)
 				}
-				if tt.name == "provider config object round-trips compactly" || tt.name == "provider config blank marshals to null" {
+				if tt.name == "provider config object round-trips compactly" ||
+					tt.name == "provider config blank marshals to null" {
 					tt.validate(t, encoded)
 				}
 			}
@@ -466,7 +477,8 @@ func TestBridgeJSONPayloadsMarshalAndUnmarshal(t *testing.T) {
 				if marshalErr != nil {
 					t.Fatalf("delivery MarshalJSON() error = %v", marshalErr)
 				}
-				if tt.name == "delivery defaults object round-trips compactly" || tt.name == "delivery defaults null stays null" {
+				if tt.name == "delivery defaults object round-trips compactly" ||
+					tt.name == "delivery defaults null stays null" {
 					tt.validate(t, encoded)
 				}
 			}
@@ -516,19 +528,24 @@ func TestBridgeJSONPayloadsRejectInvalidShapes(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			switch tt.target {
 			case "provider":
 				var payload contract.BridgeProviderConfigPayload
-				if err := payload.UnmarshalJSON([]byte(tt.raw)); err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				if err := payload.UnmarshalJSON(
+					[]byte(tt.raw),
+				); err == nil ||
+					!strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("provider UnmarshalJSON(%s) error = %v, want substring %q", tt.raw, err, tt.wantErr)
 				}
 			case "delivery":
 				var payload contract.BridgeDeliveryDefaultsPayload
-				if err := payload.UnmarshalJSON([]byte(tt.raw)); err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				if err := payload.UnmarshalJSON(
+					[]byte(tt.raw),
+				); err == nil ||
+					!strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("delivery UnmarshalJSON(%s) error = %v, want substring %q", tt.raw, err, tt.wantErr)
 				}
 			default:
@@ -550,7 +567,9 @@ func TestPutBridgeSecretBindingRequestValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ToBridgeSecretBinding() error = %v", err)
 	}
-	if binding.BridgeInstanceID != "brg-1" || binding.BindingName != "bot_token" || binding.VaultRef != "env:TG_TOKEN" || binding.Kind != "env" {
+	if binding.BridgeInstanceID != "brg-1" || binding.BindingName != "bot_token" ||
+		binding.VaultRef != "env:TG_TOKEN" ||
+		binding.Kind != "env" {
 		t.Fatalf("binding = %#v", binding)
 	}
 

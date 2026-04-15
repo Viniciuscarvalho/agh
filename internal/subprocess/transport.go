@@ -291,16 +291,28 @@ func (t *transport) handleRequest(envelope rpcEnvelope) {
 
 	id, err := parseRPCID(envelope.ID)
 	if err != nil {
-		_ = t.sendError(envelope.ID, NewRPCError(codeInvalidRequest, "Invalid request", map[string]string{"reason": err.Error()}))
+		t.sendErrorOrFail(
+			envelope.ID,
+			NewRPCError(codeInvalidRequest, "Invalid request", map[string]string{"reason": err.Error()}),
+			"subprocess: send invalid request error",
+		)
 		return
 	}
 
 	switch t.process.currentState() {
 	case processStateStarting:
-		_ = t.sendError(id.raw, NewRPCError(codeNotInitialized, "Not initialized", nil))
+		t.sendErrorOrFail(
+			id.raw,
+			NewRPCError(codeNotInitialized, "Not initialized", nil),
+			"subprocess: send not initialized error",
+		)
 		return
 	case processStateDraining:
-		_ = t.sendError(id.raw, NewRPCError(codeShutdownProgress, "Shutdown in progress", nil))
+		t.sendErrorOrFail(
+			id.raw,
+			NewRPCError(codeShutdownProgress, "Shutdown in progress", nil),
+			"subprocess: send shutdown-in-progress error",
+		)
 		return
 	case processStateStopped:
 		return
@@ -310,7 +322,11 @@ func (t *transport) handleRequest(envelope rpcEnvelope) {
 	handler, ok := t.handlers[envelope.Method]
 	t.handlersMu.RUnlock()
 	if !ok {
-		_ = t.sendError(id.raw, NewRPCError(codeMethodNotFound, "Method not found", map[string]string{"method": envelope.Method}))
+		t.sendErrorOrFail(
+			id.raw,
+			NewRPCError(codeMethodNotFound, "Method not found", map[string]string{"method": envelope.Method}),
+			"subprocess: send method-not-found error",
+		)
 		return
 	}
 
@@ -319,13 +335,17 @@ func (t *transport) handleRequest(envelope rpcEnvelope) {
 		if callErr != nil {
 			var rpcErr *RPCError
 			if errors.As(callErr, &rpcErr) {
-				_ = t.sendError(id.raw, rpcErr)
+				t.sendErrorOrFail(id.raw, rpcErr, "subprocess: send handler rpc error")
 				return
 			}
-			_ = t.sendError(id.raw, NewRPCError(codeInternalError, "Internal error", map[string]string{"error": callErr.Error()}))
+			t.sendErrorOrFail(
+				id.raw,
+				NewRPCError(codeInternalError, "Internal error", map[string]string{"error": callErr.Error()}),
+				"subprocess: send internal error",
+			)
 			return
 		}
-		_ = t.sendResult(id.raw, result)
+		t.sendResultOrFail(id.raw, result, "subprocess: send result")
 	}()
 }
 
@@ -358,9 +378,22 @@ func (t *transport) closePending(reason error) {
 }
 
 func (t *transport) failTransport(err error) {
-	t.process.recordTransportError(err)
+	if closeErr := t.process.closeInput(); closeErr != nil {
+		err = errors.Join(err, closeErr)
+	}
 	t.closePending(err)
-	_ = t.process.closeInput()
+}
+
+func (t *transport) sendErrorOrFail(id json.RawMessage, rpcErr *RPCError, operation string) {
+	if err := t.sendError(id, rpcErr); err != nil {
+		t.failTransport(fmt.Errorf("%s: %w", operation, err))
+	}
+}
+
+func (t *transport) sendResultOrFail(id json.RawMessage, result any, operation string) {
+	if err := t.sendResult(id, result); err != nil {
+		t.failTransport(fmt.Errorf("%s: %w", operation, err))
+	}
 }
 
 func parseRPCID(raw json.RawMessage) (rpcID, error) {

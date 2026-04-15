@@ -16,7 +16,9 @@ func TestCreateBridgeHandlerReturnsPersistedPayload(t *testing.T) {
 	homePaths := newTestHomePaths(t)
 	bridges := stubBridgeService{
 		CreateInstanceFn: func(_ context.Context, req bridgepkg.CreateInstanceRequest) (*bridgepkg.BridgeInstance, error) {
-			if req.Scope != bridgepkg.ScopeGlobal || req.Platform != "telegram" || req.ExtensionName != "ext-telegram" || req.DisplayName != "Support" {
+			if req.Scope != bridgepkg.ScopeGlobal || req.Platform != "telegram" ||
+				req.ExtensionName != "ext-telegram" ||
+				req.DisplayName != "Support" {
 				t.Fatalf("CreateInstance() req = %#v", req)
 			}
 			if req.DMPolicy != bridgepkg.BridgeDMPolicyPairing {
@@ -46,8 +48,13 @@ func TestCreateBridgeHandlerReturnsPersistedPayload(t *testing.T) {
 		},
 	}
 
-	engine := newTestRouter(t, newTestHandlersWithBridges(t, stubSessionManager{}, stubObserver{}, bridges, stubWorkspaceService{}, homePaths))
-	body := []byte(`{"scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":true,"status":"starting","dm_policy":"pairing","routing_policy":{"include_peer":true},"provider_config":{"mode":"bot","tenant":"acme"},"delivery_defaults":{"peer_id":"peer-default","mode":"reply"}}`)
+	engine := newTestRouter(
+		t,
+		newTestHandlersWithBridges(t, stubSessionManager{}, stubObserver{}, bridges, stubWorkspaceService{}, homePaths),
+	)
+	body := []byte(
+		`{"scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":true,"status":"starting","dm_policy":"pairing","routing_policy":{"include_peer":true},"provider_config":{"mode":"bot","tenant":"acme"},"delivery_defaults":{"peer_id":"peer-default","mode":"reply"}}`,
+	)
 	recorder := performRequest(t, engine, http.MethodPost, "/api/bridges", body)
 	if recorder.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusCreated, recorder.Body.String())
@@ -85,7 +92,10 @@ func TestGetBridgeHandlerReturnsPersistedPayload(t *testing.T) {
 		},
 	}
 
-	engine := newTestRouter(t, newTestHandlersWithBridges(t, stubSessionManager{}, stubObserver{}, bridges, stubWorkspaceService{}, homePaths))
+	engine := newTestRouter(
+		t,
+		newTestHandlersWithBridges(t, stubSessionManager{}, stubObserver{}, bridges, stubWorkspaceService{}, homePaths),
+	)
 	recorder := performRequest(t, engine, http.MethodGet, "/api/bridges/brg-uds", nil)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
@@ -123,7 +133,10 @@ func TestListBridgeRoutesHandlerReturnsRequestedPayload(t *testing.T) {
 		},
 	}
 
-	engine := newTestRouter(t, newTestHandlersWithBridges(t, stubSessionManager{}, stubObserver{}, bridges, stubWorkspaceService{}, homePaths))
+	engine := newTestRouter(
+		t,
+		newTestHandlersWithBridges(t, stubSessionManager{}, stubObserver{}, bridges, stubWorkspaceService{}, homePaths),
+	)
 	recorder := performRequest(t, engine, http.MethodGet, "/api/bridges/brg-uds/routes", nil)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
@@ -149,7 +162,6 @@ func TestListBridgeProvidersHandlerReturnsRequestedPayload(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			homePaths := newTestHomePaths(t)
 			bridges := stubBridgeService{
@@ -175,7 +187,17 @@ func TestListBridgeProvidersHandlerReturnsRequestedPayload(t *testing.T) {
 				},
 			}
 
-			engine := newTestRouter(t, newTestHandlersWithBridges(t, stubSessionManager{}, stubObserver{}, bridges, stubWorkspaceService{}, homePaths))
+			engine := newTestRouter(
+				t,
+				newTestHandlersWithBridges(
+					t,
+					stubSessionManager{},
+					stubObserver{},
+					bridges,
+					stubWorkspaceService{},
+					homePaths,
+				),
+			)
 			recorder := performRequest(t, engine, http.MethodGet, "/api/bridges/providers", nil)
 			if recorder.Code != http.StatusOK {
 				t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
@@ -192,7 +214,8 @@ func TestListBridgeProvidersHandlerReturnsRequestedPayload(t *testing.T) {
 			if len(response.Providers[0].SecretSlots) != 1 || response.Providers[0].SecretSlots[0].Name != "bot_token" {
 				t.Fatalf("provider secret slots = %#v", response.Providers[0].SecretSlots)
 			}
-			if response.Providers[0].ConfigSchema == nil || response.Providers[0].ConfigSchema.Schema != "agh.bridge.telegram" {
+			if response.Providers[0].ConfigSchema == nil ||
+				response.Providers[0].ConfigSchema.Schema != "agh.bridge.telegram" {
 				t.Fatalf("provider config schema = %#v", response.Providers[0].ConfigSchema)
 			}
 		})

@@ -24,7 +24,7 @@ type MemoryLocation struct {
 
 // ListMemory lists memory headers for the requested scope.
 func (h *BaseHandlers) ListMemory(c *gin.Context) {
-	headers, err := h.listMemoryHeaders(c.Request.Context(), c.Query("scope"), c.Query("workspace"))
+	headers, err := h.listMemoryHeaders(c.Query("scope"), c.Query("workspace"))
 	if err != nil {
 		h.respondError(c, StatusForMemoryError(err), err)
 		return
@@ -60,7 +60,11 @@ func (h *BaseHandlers) ReadMemory(c *gin.Context) {
 func (h *BaseHandlers) WriteMemory(c *gin.Context) {
 	var req contract.MemoryWriteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.respondError(c, http.StatusBadRequest, fmt.Errorf("%s: decode memory write request: %w", h.transportName(), err))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			fmt.Errorf("%s: decode memory write request: %w", h.transportName(), err),
+		)
 		return
 	}
 
@@ -110,7 +114,11 @@ func (h *BaseHandlers) DeleteMemory(c *gin.Context) {
 func (h *BaseHandlers) ConsolidateMemory(c *gin.Context) {
 	var req contract.MemoryConsolidateRequest
 	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
-		h.respondError(c, http.StatusBadRequest, fmt.Errorf("%s: decode memory consolidate request: %w", h.transportName(), err))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			fmt.Errorf("%s: decode memory consolidate request: %w", h.transportName(), err),
+		)
 		return
 	}
 
@@ -173,7 +181,7 @@ func (h *BaseHandlers) memoryHealth(c *gin.Context) (contract.MemoryHealthPayloa
 	return payload, nil
 }
 
-func (h *BaseHandlers) listMemoryHeaders(ctx context.Context, rawScope string, rawWorkspace string) ([]memory.MemoryHeader, error) {
+func (h *BaseHandlers) listMemoryHeaders(rawScope string, rawWorkspace string) ([]memory.Header, error) {
 	if h.MemoryStore == nil {
 		return nil, errors.New("memory store is not configured")
 	}
@@ -192,7 +200,7 @@ func (h *BaseHandlers) listMemoryHeaders(ctx context.Context, rawScope string, r
 		scopes = append(scopes, memory.ScopeWorkspace)
 	}
 
-	headers := make([]memory.MemoryHeader, 0, len(scopes))
+	headers := make([]memory.Header, 0, len(scopes))
 	for _, currentScope := range scopes {
 		store, _, err := h.memoryStoreFor(currentScope, workspace)
 		if err != nil {
@@ -216,11 +224,19 @@ func (h *BaseHandlers) listMemoryHeaders(ctx context.Context, rawScope string, r
 }
 
 // ResolveMemoryLocation resolves the storage location for a memory document.
-func (h *BaseHandlers) ResolveMemoryLocation(filename string, rawScope string, rawWorkspace string) (MemoryLocation, error) {
+func (h *BaseHandlers) ResolveMemoryLocation(
+	filename string,
+	rawScope string,
+	rawWorkspace string,
+) (MemoryLocation, error) {
 	return h.resolveMemoryLocation(filename, rawScope, rawWorkspace)
 }
 
-func (h *BaseHandlers) resolveMemoryLocation(filename string, rawScope string, rawWorkspace string) (MemoryLocation, error) {
+func (h *BaseHandlers) resolveMemoryLocation(
+	filename string,
+	rawScope string,
+	rawWorkspace string,
+) (MemoryLocation, error) {
 	filename = strings.TrimSpace(filename)
 	if filename == "" {
 		return MemoryLocation{}, NewMemoryValidationError(errors.New("filename is required"))
@@ -279,7 +295,9 @@ func (h *BaseHandlers) resolveMemoryLocation(filename string, rawScope string, r
 	case 1:
 		return matches[0], nil
 	default:
-		return MemoryLocation{}, NewMemoryValidationError(fmt.Errorf("memory %q exists in multiple scopes; set scope explicitly", filename))
+		return MemoryLocation{}, NewMemoryValidationError(
+			fmt.Errorf("memory %q exists in multiple scopes; set scope explicitly", filename),
+		)
 	}
 }
 

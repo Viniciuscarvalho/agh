@@ -2,6 +2,7 @@ package hooks
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -136,42 +137,42 @@ func (o HookRunOutcome) Validate() error {
 
 // HookMatcher narrows when a hook is eligible to run.
 type HookMatcher struct {
-	AgentName          string `json:"agent_name,omitempty" yaml:"agent_name,omitempty"`
-	AgentType          string `json:"agent_type,omitempty" yaml:"agent_type,omitempty"`
-	WorkspaceID        string `json:"workspace_id,omitempty" yaml:"workspace_id,omitempty"`
-	WorkspaceRoot      string `json:"workspace_root,omitempty" yaml:"workspace_root,omitempty"`
-	SessionType        string `json:"session_type,omitempty" yaml:"session_type,omitempty"`
-	InputClass         string `json:"input_class,omitempty" yaml:"input_class,omitempty"`
-	ACPEventType       string `json:"acp_event_type,omitempty" yaml:"acp_event_type,omitempty"`
-	TurnID             string `json:"turn_id,omitempty" yaml:"turn_id,omitempty"`
-	ToolName           string `json:"tool_name,omitempty" yaml:"tool_name,omitempty"`
-	ToolNamespace      string `json:"tool_namespace,omitempty" yaml:"tool_namespace,omitempty"`
-	ToolReadOnly       *bool  `json:"tool_read_only,omitempty" yaml:"tool_read_only,omitempty"`
-	DecisionClass      string `json:"decision_class,omitempty" yaml:"decision_class,omitempty"`
-	MessageRole        string `json:"message_role,omitempty" yaml:"message_role,omitempty"`
-	MessageDeltaType   string `json:"message_delta_type,omitempty" yaml:"message_delta_type,omitempty"`
-	CompactionReason   string `json:"compaction_reason,omitempty" yaml:"compaction_reason,omitempty"`
+	AgentName          string `json:"agent_name,omitempty"          yaml:"agent_name,omitempty"`
+	AgentType          string `json:"agent_type,omitempty"          yaml:"agent_type,omitempty"`
+	WorkspaceID        string `json:"workspace_id,omitempty"        yaml:"workspace_id,omitempty"`
+	WorkspaceRoot      string `json:"workspace_root,omitempty"      yaml:"workspace_root,omitempty"`
+	SessionType        string `json:"session_type,omitempty"        yaml:"session_type,omitempty"`
+	InputClass         string `json:"input_class,omitempty"         yaml:"input_class,omitempty"`
+	ACPEventType       string `json:"acp_event_type,omitempty"      yaml:"acp_event_type,omitempty"`
+	TurnID             string `json:"turn_id,omitempty"             yaml:"turn_id,omitempty"`
+	ToolName           string `json:"tool_name,omitempty"           yaml:"tool_name,omitempty"`
+	ToolNamespace      string `json:"tool_namespace,omitempty"      yaml:"tool_namespace,omitempty"`
+	ToolReadOnly       *bool  `json:"tool_read_only,omitempty"      yaml:"tool_read_only,omitempty"`
+	DecisionClass      string `json:"decision_class,omitempty"      yaml:"decision_class,omitempty"`
+	MessageRole        string `json:"message_role,omitempty"        yaml:"message_role,omitempty"`
+	MessageDeltaType   string `json:"message_delta_type,omitempty"  yaml:"message_delta_type,omitempty"`
+	CompactionReason   string `json:"compaction_reason,omitempty"   yaml:"compaction_reason,omitempty"`
 	CompactionStrategy string `json:"compaction_strategy,omitempty" yaml:"compaction_strategy,omitempty"`
 }
 
 // HookDecl is the declarative record supplied by config, agent definitions, or skills.
 type HookDecl struct {
-	Name         string            `json:"name" yaml:"name"`
-	Event        HookEvent         `json:"event" yaml:"event"`
-	Source       HookSource        `json:"source" yaml:"source"`
-	Mode         HookMode          `json:"mode,omitempty" yaml:"mode,omitempty"`
-	Required     bool              `json:"required,omitempty" yaml:"required,omitempty"`
-	Priority     int               `json:"priority,omitempty" yaml:"priority,omitempty"`
-	PrioritySet  bool              `json:"-" yaml:"-"`
-	Timeout      time.Duration     `json:"timeout,omitempty" yaml:"timeout,omitempty"`
-	Matcher      HookMatcher       `json:"matcher,omitempty" yaml:"matcher,omitempty"`
+	Name         string            `json:"name"                    yaml:"name"`
+	Event        HookEvent         `json:"event"                   yaml:"event"`
+	Source       HookSource        `json:"source"                  yaml:"source"`
+	Mode         HookMode          `json:"mode,omitempty"          yaml:"mode,omitempty"`
+	Required     bool              `json:"required,omitempty"      yaml:"required,omitempty"`
+	Priority     int               `json:"priority,omitempty"      yaml:"priority,omitempty"`
+	PrioritySet  bool              `json:"-"                       yaml:"-"`
+	Timeout      time.Duration     `json:"timeout,omitempty"       yaml:"timeout,omitempty"`
+	Matcher      HookMatcher       `json:"matcher"                 yaml:"matcher,omitempty"`
 	ExecutorKind HookExecutorKind  `json:"executor_kind,omitempty" yaml:"executor_kind,omitempty"`
-	Command      string            `json:"command,omitempty" yaml:"command,omitempty"`
-	Args         []string          `json:"args,omitempty" yaml:"args,omitempty"`
-	WorkingDir   string            `json:"-" yaml:"-"`
-	Env          map[string]string `json:"env,omitempty" yaml:"env,omitempty"`
-	Metadata     map[string]string `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	SkillSource  HookSkillSource   `json:"-" yaml:"-"`
+	Command      string            `json:"command,omitempty"       yaml:"command,omitempty"`
+	Args         []string          `json:"args,omitempty"          yaml:"args,omitempty"`
+	WorkingDir   string            `json:"-"                       yaml:"-"`
+	Env          map[string]string `json:"env,omitempty"           yaml:"env,omitempty"`
+	Metadata     map[string]string `json:"metadata,omitempty"      yaml:"metadata,omitempty"`
+	SkillSource  HookSkillSource   `json:"-"                       yaml:"-"`
 }
 
 // RegisteredHook is the normalized hook ready for dispatch.
@@ -221,7 +222,10 @@ type ResolvedHook struct {
 }
 
 // Validate ensures the resolved hook is internally consistent.
-func (h ResolvedHook) Validate() error {
+func (h *ResolvedHook) Validate() error {
+	if h == nil {
+		return errors.New("hooks: resolved hook is required")
+	}
 	if err := h.RegisteredHook.Validate(); err != nil {
 		return err
 	}
@@ -235,7 +239,12 @@ func (h ResolvedHook) Validate() error {
 		return err
 	}
 	if h.Decl.ExecutorKind != "" && h.Executor.Kind() != h.Decl.ExecutorKind {
-		return fmt.Errorf("hooks: resolved hook %q executor kind %q does not match declaration %q", h.Name, h.Executor.Kind(), h.Decl.ExecutorKind)
+		return fmt.Errorf(
+			"hooks: resolved hook %q executor kind %q does not match declaration %q",
+			h.Name,
+			h.Executor.Kind(),
+			h.Decl.ExecutorKind,
+		)
 	}
 	if h.Decl.Name != h.Name {
 		return fmt.Errorf("hooks: resolved hook %q does not match declaration %q", h.Name, h.Decl.Name)

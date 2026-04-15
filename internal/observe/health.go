@@ -12,6 +12,8 @@ import (
 	"github.com/pedronauck/agh/internal/store"
 )
 
+const sessionStateOrphaned = "orphaned"
+
 // Health is the daemon-local observability health snapshot.
 type Health struct {
 	Status             string                `json:"status"`
@@ -51,10 +53,7 @@ func (o *Observer) Health(ctx context.Context) (Health, error) {
 		return Health{}, fmt.Errorf("observe: collect task health: %w", err)
 	}
 
-	uptimeSeconds := int64(o.now().Sub(o.startedAt).Seconds())
-	if uptimeSeconds < 0 {
-		uptimeSeconds = 0
-	}
+	uptimeSeconds := max(int64(o.now().Sub(o.startedAt).Seconds()), 0)
 
 	return Health{
 		Status:             "ok",
@@ -94,7 +93,7 @@ func (o *Observer) activeCounts(ctx context.Context) (int, int, error) {
 	agents := make(map[string]struct{})
 	for _, info := range sessions {
 		state := strings.TrimSpace(info.State)
-		if state == "" || state == string(session.StateStopped) || state == "orphaned" {
+		if state == "" || state == string(session.StateStopped) || state == sessionStateOrphaned {
 			continue
 		}
 		count++

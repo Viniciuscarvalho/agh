@@ -1,4 +1,4 @@
-package extension
+package extensionpkg
 
 import (
 	"bufio"
@@ -38,7 +38,7 @@ func (noopBridgeTelemetrySink) RecordBridgeRuntimeIssue(string, bridgepkg.Bridge
 
 func (noopBridgeTelemetrySink) ClearBridgeRuntimeIssue(string) {}
 
-func TestExtensionManagerHelperProcess(t *testing.T) {
+func TestExtensionManagerHelperProcess(_ *testing.T) {
 	if os.Getenv(extensionHelperEnvKey) != "1" {
 		return
 	}
@@ -431,13 +431,17 @@ func TestManagerStartRejectsIncompatibleManifest(t *testing.T) {
 		security:     []string{"session.read"},
 	}), nil)
 	installManagerFixture(t, env.registry, fixture, SourceUser, true)
-	writeFile(t, filepath.Join(fixture.dir, manifestTOMLFileName), managerTestManifest("ext-incompatible", managerManifestOptions{
-		command:      "fake-extension",
-		minVersion:   "9.0.0",
-		capabilities: []string{"memory.backend"},
-		actions:      []string{"sessions/list"},
-		security:     []string{"session.read"},
-	}))
+	writeFile(
+		t,
+		filepath.Join(fixture.dir, manifestTOMLFileName),
+		managerTestManifest("ext-incompatible", managerManifestOptions{
+			command:      "fake-extension",
+			minVersion:   "9.0.0",
+			capabilities: []string{"memory.backend"},
+			actions:      []string{"sessions/list"},
+			security:     []string{"session.read"},
+		}),
+	)
 
 	launcher := &fakeLauncher{}
 	manager := NewManager(env.registry, withProcessLauncher(launcher.launch))
@@ -917,7 +921,11 @@ func TestManagerHelperPathsAndAccessors(t *testing.T) {
 		t.Fatal("awaitingStability = true, want false after markStable")
 	}
 	if manager.extensions["zeta"].consecutiveFailures != 0 || manager.extensions["zeta"].restartBackoff != 0 {
-		t.Fatalf("post-markStable failures/backoff = %d/%v, want 0/0", manager.extensions["zeta"].consecutiveFailures, manager.extensions["zeta"].restartBackoff)
+		t.Fatalf(
+			"post-markStable failures/backoff = %d/%v, want 0/0",
+			manager.extensions["zeta"].consecutiveFailures,
+			manager.extensions["zeta"].restartBackoff,
+		)
 	}
 
 	current, interval, ok := manager.currentProcess("zeta", 2)
@@ -1303,23 +1311,32 @@ func TestManagerDirectPhaseAndMonitorBranches(t *testing.T) {
 		Actions:  ActionsConfig{Requires: []string{"sessions/list"}},
 		Security: SecurityConfig{Capabilities: []string{"session.read"}},
 	})
-	allowed := manager.wrapHostHandler("ext-host", "sessions/list", nil, func(_ context.Context, _ json.RawMessage) (any, error) {
-		return "ok", nil
-	})
+	allowed := manager.wrapHostHandler(
+		"ext-host",
+		"sessions/list",
+		nil,
+		func(_ context.Context, _ json.RawMessage) (any, error) {
+			return "ok", nil
+		},
+	)
 	result, err := allowed(context.Background(), json.RawMessage(`{}`))
 	if err != nil || result != "ok" {
 		t.Fatalf("wrapHostHandler allowed call = (%v, %v), want (ok, nil)", result, err)
 	}
-	denied := manager.wrapHostHandler("ext-denied", "sessions/list", nil, func(_ context.Context, _ json.RawMessage) (any, error) {
-		return "never", nil
-	})
+	denied := manager.wrapHostHandler(
+		"ext-denied",
+		"sessions/list",
+		nil,
+		func(_ context.Context, _ json.RawMessage) (any, error) {
+			return "never", nil
+		},
+	)
 	if _, err := denied(context.Background(), nil); err == nil {
 		t.Fatal("wrapHostHandler denied call error = nil, want capability denial")
 	}
 
 	monitorManager := NewManager(nil, withHealthPollBounds(time.Millisecond, time.Millisecond))
-	monitorCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	monitorCtx := t.Context()
 	monitorManager.lifecycleCtx = monitorCtx
 	unhealthy := newFakeProcess(808)
 	unhealthy.health = subprocess.HealthState{
@@ -1338,11 +1355,12 @@ func TestManagerDirectPhaseAndMonitorBranches(t *testing.T) {
 		},
 	}
 
-	reason, shouldRecover := monitorManager.monitorProcess("ext-health", 1, unhealthy, 4*time.Millisecond)
+	shouldRecover, reason := monitorManager.monitorProcess("ext-health", 1, unhealthy, 4*time.Millisecond)
 	if !shouldRecover {
 		t.Fatal("monitorProcess() shouldRecover = false, want true for unhealthy process")
 	}
-	if reason == nil || !strings.Contains(reason.Error(), "health check failed") || !strings.Contains(reason.Error(), "rpc timeout") {
+	if reason == nil || !strings.Contains(reason.Error(), "health check failed") ||
+		!strings.Contains(reason.Error(), "rpc timeout") {
 		t.Fatalf("monitorProcess() reason = %v, want joined health failure detail", reason)
 	}
 	if unhealthy.shutdownCnt != 1 {
@@ -1379,7 +1397,7 @@ type fakeLauncher struct {
 	config []subprocess.LaunchConfig
 }
 
-func (l *fakeLauncher) launch(ctx context.Context, cfg subprocess.LaunchConfig) (processHandle, error) {
+func (l *fakeLauncher) launch(_ context.Context, cfg subprocess.LaunchConfig) (processHandle, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.config = append(l.config, cfg)
@@ -1432,7 +1450,10 @@ func (p *fakeProcess) HandleMethod(method string, handler subprocess.HandlerFunc
 	return nil
 }
 
-func (p *fakeProcess) Initialize(_ context.Context, req subprocess.InitializeRequest) (subprocess.InitializeResponse, error) {
+func (p *fakeProcess) Initialize(
+	_ context.Context,
+	req subprocess.InitializeRequest,
+) (subprocess.InitializeResponse, error) {
 	p.mu.Lock()
 	p.initReqs = append(p.initReqs, req)
 	resp := p.initResp
@@ -1789,7 +1810,10 @@ type stubBridgeRuntimeResolver struct {
 	err      error
 }
 
-func (r *stubBridgeRuntimeResolver) ResolveBridgeRuntime(_ context.Context, extensionName string) (*subprocess.InitializeBridgeRuntime, error) {
+func (r *stubBridgeRuntimeResolver) ResolveBridgeRuntime(
+	_ context.Context,
+	extensionName string,
+) (*subprocess.InitializeBridgeRuntime, error) {
 	if r == nil {
 		return nil, nil
 	}
@@ -1831,7 +1855,13 @@ func createManagerTestExtension(t *testing.T, manifestContent string, files map[
 	}
 }
 
-func installManagerFixture(t *testing.T, registry *Registry, fixture managerFixture, source ExtensionSource, enabled bool) {
+func installManagerFixture(
+	t *testing.T,
+	registry *Registry,
+	fixture managerFixture,
+	source ExtensionSource,
+	enabled bool,
+) {
 	t.Helper()
 
 	if err := registry.Install(fixture.manifest, fixture.dir, fixture.checksum, WithInstallSource(source)); err != nil {
@@ -2036,7 +2066,7 @@ func markerLineCount(path string) int {
 		return 0
 	}
 	count := 0
-	for _, line := range strings.Split(string(payload), "\n") {
+	for line := range strings.SplitSeq(string(payload), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -2109,7 +2139,10 @@ func testScopedBridgeRuntimeForInstance(
 	}
 }
 
-func mustSingleManagedBridge(t testing.TB, runtime *subprocess.InitializeBridgeRuntime) subprocess.InitializeBridgeManagedInstance {
+func mustSingleManagedBridge(
+	t testing.TB,
+	runtime *subprocess.InitializeBridgeRuntime,
+) subprocess.InitializeBridgeManagedInstance {
 	t.Helper()
 
 	if runtime == nil {

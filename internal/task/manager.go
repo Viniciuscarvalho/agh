@@ -14,7 +14,7 @@ import (
 const (
 	taskEventCreated           = "task.created"
 	taskEventUpdated           = "task.updated"
-	taskEventCancelled         = "task.cancelled"
+	taskEventCanceled          = "task.canceled"
 	taskEventChildCreated      = "task.child_created"
 	taskEventDependencyAdded   = "task.dependency_added"
 	taskEventDependencyRemoved = "task.dependency_removed"
@@ -25,13 +25,13 @@ const (
 	taskEventRunStarted        = "task.run_started"
 	taskEventRunCompleted      = "task.run_completed"
 	taskEventRunFailed         = "task.run_failed"
-	taskEventRunCancelled      = "task.run_cancelled"
+	taskEventRunCanceled       = "task.run_canceled"
 	taskEventRunForceStopped   = "task.run_force_stopped"
 	taskEventRunRecovered      = "task.run_recovered"
 	taskEventRunRejected       = "task.run_rejected"
 )
 
-// Option customizes TaskManager construction.
+// Option customizes Service construction.
 type Option func(*managerOptions)
 
 type managerOptions struct {
@@ -43,9 +43,9 @@ type managerOptions struct {
 	cancelGracePeriod time.Duration
 }
 
-// TaskManager centralizes canonical task-domain creation, mutation, read, and
+// Service centralizes canonical task-domain creation, mutation, read, and
 // graph-management rules above the persistence layer.
-type TaskManager struct {
+type Service struct {
 	store             Store
 	sessions          SessionExecutor
 	channelValidator  func(string) error
@@ -54,7 +54,7 @@ type TaskManager struct {
 	cancelGracePeriod time.Duration
 }
 
-var _ Manager = (*TaskManager)(nil)
+var _ Manager = (*Service)(nil)
 
 // WithStore injects the durable task-domain store consumed by the manager.
 func WithStore(store Store) Option {
@@ -103,7 +103,7 @@ func WithCancelGracePeriod(timeout time.Duration) Option {
 }
 
 // NewManager constructs one task-domain manager with the supplied dependencies.
-func NewManager(opts ...Option) (*TaskManager, error) {
+func NewManager(opts ...Option) (*Service, error) {
 	options := managerOptions{
 		now: func() time.Time {
 			return time.Now().UTC()
@@ -128,7 +128,7 @@ func NewManager(opts ...Option) (*TaskManager, error) {
 		return nil, fmt.Errorf("task: manager cancel grace period must be zero or positive")
 	}
 
-	return &TaskManager{
+	return &Service{
 		store:             options.store,
 		sessions:          options.sessions,
 		channelValidator:  options.channelValidator,
@@ -140,7 +140,7 @@ func NewManager(opts ...Option) (*TaskManager, error) {
 
 // CreateTask derives one canonical task record from trusted actor context and
 // persists the corresponding immutable audit event.
-func (m *TaskManager) CreateTask(ctx context.Context, spec CreateTask, actor ActorContext) (*Task, error) {
+func (m *Service) CreateTask(ctx context.Context, spec CreateTask, actor ActorContext) (*Task, error) {
 	if err := requireCreateAuthority(actor, spec.Scope); err != nil {
 		return nil, err
 	}
@@ -199,7 +199,12 @@ func (m *TaskManager) CreateTask(ctx context.Context, spec CreateTask, actor Act
 
 // CreateChildTask creates one child task beneath the supplied parent and emits
 // an additional parent-scoped audit event.
-func (m *TaskManager) CreateChildTask(ctx context.Context, parentTaskID string, spec CreateTask, actor ActorContext) (*Task, error) {
+func (m *Service) CreateChildTask(
+	ctx context.Context,
+	parentTaskID string,
+	spec CreateTask,
+	actor ActorContext,
+) (*Task, error) {
 	trimmedParentID := strings.TrimSpace(parentTaskID)
 	if trimmedParentID == "" {
 		return nil, fmt.Errorf("%w: child parent task id is required", ErrValidation)
@@ -225,7 +230,7 @@ func (m *TaskManager) CreateChildTask(ctx context.Context, parentTaskID string, 
 
 // UpdateTask applies one mutable patch while preserving immutable identity and
 // structural fields under manager control.
-func (m *TaskManager) UpdateTask(ctx context.Context, id string, patch TaskPatch, actor ActorContext) (*Task, error) {
+func (m *Service) UpdateTask(ctx context.Context, id string, patch Patch, actor ActorContext) (*Task, error) {
 	if err := requireWriteAuthority(actor); err != nil {
 		return nil, err
 	}
@@ -249,33 +254,7 @@ func (m *TaskManager) UpdateTask(ctx context.Context, id string, patch TaskPatch
 		return nil, err
 	}
 
-	updated := current
-	changedFields := make([]string, 0, len(MutableTaskFields()))
-
-	if normalizedPatch.Title != nil && updated.Title != *normalizedPatch.Title {
-		updated.Title = *normalizedPatch.Title
-		changedFields = append(changedFields, TaskFieldTitle)
-	}
-	if normalizedPatch.Description != nil && updated.Description != *normalizedPatch.Description {
-		updated.Description = *normalizedPatch.Description
-		changedFields = append(changedFields, TaskFieldDescription)
-	}
-	if normalizedPatch.Metadata != nil && !sameRawJSON(updated.Metadata, *normalizedPatch.Metadata) {
-		updated.Metadata = cloneRawJSON(*normalizedPatch.Metadata)
-		changedFields = append(changedFields, TaskFieldMetadata)
-	}
-	if normalizedPatch.NetworkChannel != nil && updated.NetworkChannel != *normalizedPatch.NetworkChannel {
-		updated.NetworkChannel = *normalizedPatch.NetworkChannel
-		changedFields = append(changedFields, TaskFieldNetworkChannel)
-	}
-	if normalizedPatch.Owner != nil && !sameOwnership(updated.Owner, normalizedPatch.Owner) {
-		updated.Owner = cloneOwnership(normalizedPatch.Owner)
-		changedFields = append(changedFields, TaskFieldOwner)
-	}
-	if normalizedPatch.ClearOwner && updated.Owner != nil {
-		updated.Owner = nil
-		changedFields = append(changedFields, TaskFieldOwner)
-	}
+	updated, changedFields := applyTaskPatch(current, normalizedPatch)
 	if len(changedFields) == 0 {
 		return &current, nil
 	}
@@ -284,7 +263,7 @@ func (m *TaskManager) UpdateTask(ctx context.Context, id string, patch TaskPatch
 	if err != nil {
 		return nil, err
 	}
-	runs, err := m.store.ListTaskRuns(ctx, TaskRunQuery{TaskID: trimmedID})
+	runs, err := m.store.ListTaskRuns(ctx, RunQuery{TaskID: trimmedID})
 	if err != nil {
 		return nil, err
 	}
@@ -310,7 +289,7 @@ func (m *TaskManager) UpdateTask(ctx context.Context, id string, patch TaskPatch
 
 // CancelTask propagates manager-owned cancellation through the target task,
 // affected runs, and all non-terminal descendants.
-func (m *TaskManager) CancelTask(ctx context.Context, id string, req CancelTask, actor ActorContext) (*Task, error) {
+func (m *Service) CancelTask(ctx context.Context, id string, req CancelTask, actor ActorContext) (*Task, error) {
 	if err := requireWriteAuthority(actor); err != nil {
 		return nil, err
 	}
@@ -324,100 +303,20 @@ func (m *TaskManager) CancelTask(ctx context.Context, id string, req CancelTask,
 		return nil, err
 	}
 
-	tree, err := m.collectTaskTree(ctx, trimmedID)
+	tree, root, err := m.loadCancellationTree(ctx, trimmedID)
 	if err != nil {
 		return nil, err
 	}
-	if len(tree) == 0 {
-		return nil, ErrTaskNotFound
-	}
-
-	root := tree[0]
-	rootRuns, err := m.store.ListTaskRuns(ctx, TaskRunQuery{TaskID: root.ID})
-	if err != nil {
+	if err := m.ensureTaskCancelable(ctx, root); err != nil {
 		return nil, err
-	}
-	rootDeps, err := m.store.ListDependencies(ctx, root.ID)
-	if err != nil {
-		return nil, err
-	}
-	rootStatus, err := m.canonicalTaskStatus(ctx, root, rootDeps, rootRuns)
-	if err != nil {
-		return nil, err
-	}
-	if isTerminalTaskStatus(rootStatus) && rootStatus != TaskStatusCancelled && !hasOpenRun(rootRuns) {
-		return nil, fmt.Errorf("%w: task %q cannot transition from %q to %q", ErrInvalidStatusTransition, root.ID, rootStatus, TaskStatusCancelled)
 	}
 
 	cancelledRoot := root
 	for idx, record := range tree {
-		runs, err := m.store.ListTaskRuns(ctx, TaskRunQuery{TaskID: record.ID})
+		record, err = m.cancelTaskTreeRecord(ctx, trimmedID, idx, record, normalizedReq, actor)
 		if err != nil {
 			return nil, err
 		}
-		dependencies, err := m.store.ListDependencies(ctx, record.ID)
-		if err != nil {
-			return nil, err
-		}
-		status, err := m.canonicalTaskStatus(ctx, record, dependencies, runs)
-		if err != nil {
-			return nil, err
-		}
-		record.Status = status
-
-		if idx > 0 && isTerminalTaskStatus(status) {
-			if record.ID == trimmedID {
-				cancelledRoot = record
-			}
-			continue
-		}
-
-		propagatedFromTaskID := ""
-		if idx > 0 {
-			propagatedFromTaskID = trimmedID
-		}
-
-		cancelledRunIDs := make([]string, 0)
-		for _, run := range runs {
-			if isTerminalRunStatus(run.Status) {
-				continue
-			}
-			cancelledRun, err := m.cancelRunRecord(ctx, record, run, CancelRun(normalizedReq), actor, cancelRunOptions{
-				propagatedFromTaskID: propagatedFromTaskID,
-				reconcileTask:        false,
-			})
-			if err != nil {
-				return nil, err
-			}
-			cancelledRunIDs = append(cancelledRunIDs, cancelledRun.ID)
-		}
-
-		if status.Normalize() == TaskStatusCancelled && len(cancelledRunIDs) == 0 {
-			if record.ID == trimmedID {
-				cancelledRoot = record
-			}
-			continue
-		}
-
-		record.Status = TaskStatusCancelled
-		record.UpdatedAt = m.now().UTC()
-		record.ClosedAt = record.UpdatedAt
-		if err := m.store.UpdateTask(ctx, record); err != nil {
-			return nil, err
-		}
-		if err := m.recordTaskEvent(ctx, record.ID, "", taskEventCancelled, actor, cancelledTaskPayload{
-			Reason:               normalizedReq.Reason,
-			Metadata:             cloneRawJSON(normalizedReq.Metadata),
-			Status:               record.Status,
-			PropagatedFromTaskID: propagatedFromTaskID,
-			CancelledRunIDs:      append([]string(nil), cancelledRunIDs...),
-		}); err != nil {
-			return nil, err
-		}
-		if err := m.reconcileDependentTasks(ctx, record.ID, map[string]struct{}{record.ID: {}}); err != nil {
-			return nil, err
-		}
-
 		if record.ID == trimmedID {
 			cancelledRoot = record
 		}
@@ -426,8 +325,425 @@ func (m *TaskManager) CancelTask(ctx context.Context, id string, req CancelTask,
 	return &cancelledRoot, nil
 }
 
+func applyTaskPatch(current Task, patch Patch) (Task, []string) {
+	updated := current
+	changedFields := make([]string, 0, len(MutableTaskFields()))
+
+	if patch.Title != nil && updated.Title != *patch.Title {
+		updated.Title = *patch.Title
+		changedFields = append(changedFields, TaskFieldTitle)
+	}
+	if patch.Description != nil && updated.Description != *patch.Description {
+		updated.Description = *patch.Description
+		changedFields = append(changedFields, TaskFieldDescription)
+	}
+	if patch.Metadata != nil && !sameRawJSON(updated.Metadata, *patch.Metadata) {
+		updated.Metadata = cloneRawJSON(*patch.Metadata)
+		changedFields = append(changedFields, TaskFieldMetadata)
+	}
+	if patch.NetworkChannel != nil && updated.NetworkChannel != *patch.NetworkChannel {
+		updated.NetworkChannel = *patch.NetworkChannel
+		changedFields = append(changedFields, TaskFieldNetworkChannel)
+	}
+	if patch.Owner != nil && !sameOwnership(updated.Owner, patch.Owner) {
+		updated.Owner = cloneOwnership(patch.Owner)
+		changedFields = append(changedFields, TaskFieldOwner)
+	}
+	if patch.ClearOwner && updated.Owner != nil {
+		updated.Owner = nil
+		changedFields = append(changedFields, TaskFieldOwner)
+	}
+
+	return updated, changedFields
+}
+
+func (m *Service) loadCancellationTree(ctx context.Context, taskID string) ([]Task, Task, error) {
+	tree, err := m.collectTaskTree(ctx, taskID)
+	if err != nil {
+		return nil, Task{}, err
+	}
+	if len(tree) == 0 {
+		return nil, Task{}, ErrTaskNotFound
+	}
+	return tree, tree[0], nil
+}
+
+func (m *Service) ensureTaskCancelable(ctx context.Context, root Task) error {
+	rootRuns, rootStatus, err := m.loadTaskRuntimeState(ctx, root)
+	if err != nil {
+		return err
+	}
+	if isTerminalTaskStatus(rootStatus) && rootStatus != TaskStatusCanceled && !hasOpenRun(rootRuns) {
+		return fmt.Errorf(
+			"%w: task %q cannot transition from %q to %q",
+			ErrInvalidStatusTransition,
+			root.ID,
+			rootStatus,
+			TaskStatusCanceled,
+		)
+	}
+	return nil
+}
+
+func (m *Service) cancelTaskTreeRecord(
+	ctx context.Context,
+	rootTaskID string,
+	idx int,
+	record Task,
+	req CancelTask,
+	actor ActorContext,
+) (Task, error) {
+	runs, status, err := m.loadTaskRuntimeState(ctx, record)
+	if err != nil {
+		return Task{}, err
+	}
+	record.Status = status
+	if idx > 0 && isTerminalTaskStatus(status) {
+		return record, nil
+	}
+
+	propagatedFromTaskID := cancellationPropagationRoot(rootTaskID, idx)
+	cancelledRunIDs, err := m.cancelOpenTaskRuns(ctx, record, runs, req, actor, propagatedFromTaskID)
+	if err != nil {
+		return Task{}, err
+	}
+	if status.Normalize() == TaskStatusCanceled && len(cancelledRunIDs) == 0 {
+		return record, nil
+	}
+	return m.persistCancelledTask(ctx, record, req, actor, propagatedFromTaskID, cancelledRunIDs)
+}
+
+func (m *Service) loadTaskRuntimeState(
+	ctx context.Context,
+	record Task,
+) ([]Run, Status, error) {
+	runs, err := m.store.ListTaskRuns(ctx, RunQuery{TaskID: record.ID})
+	if err != nil {
+		return nil, "", err
+	}
+	dependencies, err := m.store.ListDependencies(ctx, record.ID)
+	if err != nil {
+		return nil, "", err
+	}
+	status, err := m.canonicalTaskStatus(ctx, record, dependencies, runs)
+	if err != nil {
+		return nil, "", err
+	}
+	return runs, status, nil
+}
+
+func cancellationPropagationRoot(rootTaskID string, idx int) string {
+	if idx == 0 {
+		return ""
+	}
+	return rootTaskID
+}
+
+func (m *Service) cancelOpenTaskRuns(
+	ctx context.Context,
+	record Task,
+	runs []Run,
+	req CancelTask,
+	actor ActorContext,
+	propagatedFromTaskID string,
+) ([]string, error) {
+	cancelledRunIDs := make([]string, 0)
+	for _, run := range runs {
+		if isTerminalRunStatus(run.Status) {
+			continue
+		}
+		cancelledRun, err := m.cancelRunRecord(ctx, record, run, CancelRun(req), actor, cancelRunOptions{
+			propagatedFromTaskID: propagatedFromTaskID,
+			reconcileTask:        false,
+		})
+		if err != nil {
+			return nil, err
+		}
+		cancelledRunIDs = append(cancelledRunIDs, cancelledRun.ID)
+	}
+	return cancelledRunIDs, nil
+}
+
+func (m *Service) persistCancelledTask(
+	ctx context.Context,
+	record Task,
+	req CancelTask,
+	actor ActorContext,
+	propagatedFromTaskID string,
+	cancelledRunIDs []string,
+) (Task, error) {
+	record.Status = TaskStatusCanceled
+	record.UpdatedAt = m.now().UTC()
+	record.ClosedAt = record.UpdatedAt
+	if err := m.store.UpdateTask(ctx, record); err != nil {
+		return Task{}, err
+	}
+	if err := m.recordTaskEvent(ctx, record.ID, "", taskEventCanceled, actor, cancelledTaskPayload{
+		Reason:               req.Reason,
+		Metadata:             cloneRawJSON(req.Metadata),
+		Status:               record.Status,
+		PropagatedFromTaskID: propagatedFromTaskID,
+		CancelledRunIDs:      append([]string(nil), cancelledRunIDs...),
+	}); err != nil {
+		return Task{}, err
+	}
+	if err := m.reconcileDependentTasks(ctx, record.ID, map[string]struct{}{record.ID: {}}); err != nil {
+		return Task{}, err
+	}
+	return record, nil
+}
+
+func (m *Service) transitionClaimedRunToStarting(
+	ctx context.Context,
+	taskRecord Task,
+	run Run,
+	actor ActorContext,
+) (Run, *Run, error) {
+	if err := m.requireSessionExecutor("start run"); err != nil {
+		return Run{}, nil, err
+	}
+
+	run.Status = TaskRunStatusStarting
+	if err := m.store.UpdateTaskRun(ctx, run); err != nil {
+		return Run{}, nil, err
+	}
+
+	startingTask, err := m.reconcileTaskCascade(ctx, run.TaskID)
+	if err != nil {
+		return Run{}, nil, err
+	}
+	if err := m.recordTaskEvent(ctx, run.TaskID, run.ID, taskEventRunStarting, actor, runTransitionPayload{
+		Status:     run.Status,
+		TaskStatus: startingTask.Status,
+		SessionID:  run.SessionID,
+	}); err != nil {
+		return Run{}, nil, err
+	}
+
+	sessionID, failedRun, err := m.startRunSession(ctx, taskRecord, startingTask, run, actor)
+	if err != nil {
+		return Run{}, failedRun, err
+	}
+	run.SessionID = sessionID
+	return run, nil, nil
+}
+
+func (m *Service) startRunSession(
+	ctx context.Context,
+	taskRecord Task,
+	startingTask Task,
+	run Run,
+	actor ActorContext,
+) (string, *Run, error) {
+	sessionRef, err := m.sessions.StartTaskSession(ctx, &StartTaskSession{
+		Task:  startingTask,
+		Run:   run,
+		Actor: actor,
+	})
+	if err != nil {
+		message := fmt.Sprintf("start task session: %v", err)
+		failedRun, failErr := m.failRunAfterSessionStartError(ctx, taskRecord, run, actor, message)
+		if failErr != nil {
+			return "", nil, errorsJoin(err, failErr)
+		}
+		return "", failedRun, fmt.Errorf("task: start task session for run %q: %w", run.ID, err)
+	}
+	if sessionRef == nil {
+		failedRun, failErr := m.failRunAfterSessionStartError(
+			ctx,
+			taskRecord,
+			run,
+			actor,
+			"start task session: nil session reference",
+		)
+		if failErr != nil {
+			return "", nil, failErr
+		}
+		return "", failedRun, fmt.Errorf("%w: start_task_session returned nil session reference", ErrValidation)
+	}
+	if err := sessionRef.Validate(); err != nil {
+		message := fmt.Sprintf("start task session: %v", err)
+		failedRun, failErr := m.failRunAfterSessionStartError(ctx, taskRecord, run, actor, message)
+		if failErr != nil {
+			return "", nil, errorsJoin(err, failErr)
+		}
+		return "", failedRun, err
+	}
+	return strings.TrimSpace(sessionRef.SessionID), nil, nil
+}
+
+func (m *Service) failRunAfterSessionStartError(
+	ctx context.Context,
+	taskRecord Task,
+	run Run,
+	actor ActorContext,
+	message string,
+) (*Run, error) {
+	return m.failRunRecord(ctx, taskRecord, run, RunFailure{Error: message}, actor)
+}
+
+func validateRunningSessionBinding(run Run) error {
+	if strings.TrimSpace(run.SessionID) == "" {
+		return fmt.Errorf(
+			"%w: task run %q cannot transition from %q to %q without a session binding",
+			ErrInvalidStatusTransition,
+			run.ID,
+			run.Status,
+			TaskRunStatusRunning,
+		)
+	}
+	return nil
+}
+
+func (m *Service) recoverRunByRequeue(
+	ctx context.Context,
+	taskRecord Task,
+	run Run,
+	recovery RunBootRecovery,
+	actor ActorContext,
+	previousStatus RunStatus,
+	previousSessionID string,
+) (*Run, error) {
+	if previousStatus != TaskRunStatusClaimed {
+		return nil, invalidRunRecoveryTransition(run, previousStatus, recovery.Action)
+	}
+
+	run.Status = TaskRunStatusQueued
+	run.ClaimedBy = nil
+	run.ClaimedAt = time.Time{}
+	run.SessionID = ""
+	run.StartedAt = time.Time{}
+	run.EndedAt = time.Time{}
+	run.Error = ""
+	run.Result = nil
+	if err := m.store.UpdateTaskRun(ctx, run); err != nil {
+		return nil, err
+	}
+	if err := m.recordRecoveredRun(
+		ctx,
+		taskRecord.ID,
+		run,
+		recovery,
+		actor,
+		previousStatus,
+		previousSessionID,
+	); err != nil {
+		return nil, err
+	}
+	return &run, nil
+}
+
+func (m *Service) recoverRunByMarkRunning(
+	ctx context.Context,
+	taskRecord Task,
+	run Run,
+	recovery RunBootRecovery,
+	actor ActorContext,
+	previousStatus RunStatus,
+	previousSessionID string,
+) (*Run, error) {
+	switch previousStatus {
+	case TaskRunStatusClaimed, TaskRunStatusStarting:
+	case TaskRunStatusRunning:
+		return &run, nil
+	default:
+		return nil, invalidRunRecoveryTransition(run, previousStatus, recovery.Action)
+	}
+	if previousSessionID == "" {
+		return nil, fmt.Errorf(
+			"%w: task run %q cannot recover to running without a session binding",
+			ErrInvalidStatusTransition,
+			run.ID,
+		)
+	}
+
+	run.Status = TaskRunStatusRunning
+	if run.StartedAt.IsZero() {
+		run.StartedAt = m.now().UTC()
+	}
+	if err := m.store.UpdateTaskRun(ctx, run); err != nil {
+		return nil, err
+	}
+	if err := m.recordRecoveredRun(
+		ctx,
+		taskRecord.ID,
+		run,
+		recovery,
+		actor,
+		previousStatus,
+		previousSessionID,
+	); err != nil {
+		return nil, err
+	}
+	return &run, nil
+}
+
+func (m *Service) recoverRunByFailure(
+	ctx context.Context,
+	taskRecord Task,
+	run Run,
+	recovery RunBootRecovery,
+	actor ActorContext,
+	previousStatus RunStatus,
+	previousSessionID string,
+) (*Run, error) {
+	failedRun, err := m.failRunRecord(ctx, taskRecord, run, RunFailure{
+		Error:    runBootRecoveryError(run, recovery),
+		Metadata: runBootRecoveryMetadata(run, recovery),
+	}, actor)
+	if err != nil {
+		return nil, err
+	}
+	if err := m.recordRecoveredRun(
+		ctx,
+		taskRecord.ID,
+		*failedRun,
+		recovery,
+		actor,
+		previousStatus,
+		previousSessionID,
+	); err != nil {
+		return nil, err
+	}
+	return failedRun, nil
+}
+
+func invalidRunRecoveryTransition(run Run, previousStatus RunStatus, action RunBootRecoveryAction) error {
+	return fmt.Errorf(
+		"%w: task run %q cannot recover from %q via %q",
+		ErrInvalidStatusTransition,
+		run.ID,
+		previousStatus,
+		action,
+	)
+}
+
+func (m *Service) recordRecoveredRun(
+	ctx context.Context,
+	taskID string,
+	run Run,
+	recovery RunBootRecovery,
+	actor ActorContext,
+	previousStatus RunStatus,
+	previousSessionID string,
+) error {
+	reconciledTask, err := m.reconcileTaskCascade(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	return m.recordTaskEvent(ctx, run.TaskID, run.ID, taskEventRunRecovered, actor, recoveredRunPayload{
+		Action:         recovery.Action,
+		PreviousStatus: previousStatus,
+		Status:         run.Status,
+		TaskStatus:     reconciledTask.Status,
+		Reason:         recovery.Reason,
+		SessionID:      previousSessionID,
+		SessionState:   recovery.SessionState,
+	})
+}
+
 // GetTask returns one expanded task view after enforcing read authority.
-func (m *TaskManager) GetTask(ctx context.Context, id string, actor ActorContext) (*TaskView, error) {
+func (m *Service) GetTask(ctx context.Context, id string, actor ActorContext) (*View, error) {
 	if err := requireReadAuthority(actor); err != nil {
 		return nil, err
 	}
@@ -442,7 +758,7 @@ func (m *TaskManager) GetTask(ctx context.Context, id string, actor ActorContext
 		return nil, err
 	}
 
-	children, err := m.store.ListTasks(ctx, TaskQuery{ParentTaskID: trimmedID})
+	children, err := m.store.ListTasks(ctx, Query{ParentTaskID: trimmedID})
 	if err != nil {
 		return nil, err
 	}
@@ -450,16 +766,16 @@ func (m *TaskManager) GetTask(ctx context.Context, id string, actor ActorContext
 	if err != nil {
 		return nil, err
 	}
-	runs, err := m.store.ListTaskRuns(ctx, TaskRunQuery{TaskID: trimmedID})
+	runs, err := m.store.ListTaskRuns(ctx, RunQuery{TaskID: trimmedID})
 	if err != nil {
 		return nil, err
 	}
-	events, err := m.store.ListTaskEvents(ctx, TaskEventQuery{TaskID: trimmedID})
+	events, err := m.store.ListTaskEvents(ctx, EventQuery{TaskID: trimmedID})
 	if err != nil {
 		return nil, err
 	}
 
-	view := &TaskView{
+	view := &View{
 		Task:         record,
 		Children:     children,
 		Dependencies: dependencies,
@@ -475,7 +791,12 @@ func (m *TaskManager) GetTask(ctx context.Context, id string, actor ActorContext
 
 // ListTaskRuns returns task runs for one task after enforcing read authority and
 // task existence.
-func (m *TaskManager) ListTaskRuns(ctx context.Context, taskID string, query TaskRunQuery, actor ActorContext) ([]TaskRun, error) {
+func (m *Service) ListTaskRuns(
+	ctx context.Context,
+	taskID string,
+	query RunQuery,
+	actor ActorContext,
+) ([]Run, error) {
 	if err := requireReadAuthority(actor); err != nil {
 		return nil, err
 	}
@@ -496,7 +817,7 @@ func (m *TaskManager) ListTaskRuns(ctx context.Context, taskID string, query Tas
 
 // ListTasks returns task summaries that satisfy the supplied query filters
 // after enforcing read authority.
-func (m *TaskManager) ListTasks(ctx context.Context, query TaskQuery, actor ActorContext) ([]TaskSummary, error) {
+func (m *Service) ListTasks(ctx context.Context, query Query, actor ActorContext) ([]Summary, error) {
 	if err := requireReadAuthority(actor); err != nil {
 		return nil, err
 	}
@@ -505,7 +826,7 @@ func (m *TaskManager) ListTasks(ctx context.Context, query TaskQuery, actor Acto
 
 // AddDependency adds one dependency edge through the manager, reconciles the
 // task status, and records the canonical audit event.
-func (m *TaskManager) AddDependency(ctx context.Context, spec AddDependency, actor ActorContext) error {
+func (m *Service) AddDependency(ctx context.Context, spec AddDependency, actor ActorContext) error {
 	if err := requireWriteAuthority(actor); err != nil {
 		return err
 	}
@@ -514,7 +835,7 @@ func (m *TaskManager) AddDependency(ctx context.Context, spec AddDependency, act
 	if err != nil {
 		return err
 	}
-	if err := m.store.CreateDependency(ctx, TaskDependency{
+	if err := m.store.CreateDependency(ctx, Dependency{
 		TaskID:          normalizedSpec.TaskID,
 		DependsOnTaskID: normalizedSpec.DependsOnTaskID,
 		Kind:            normalizedSpec.Kind,
@@ -535,7 +856,12 @@ func (m *TaskManager) AddDependency(ctx context.Context, spec AddDependency, act
 
 // RemoveDependency deletes one dependency edge through the manager, reconciles
 // the task status, and records the canonical audit event.
-func (m *TaskManager) RemoveDependency(ctx context.Context, taskID string, dependsOnID string, actor ActorContext) error {
+func (m *Service) RemoveDependency(
+	ctx context.Context,
+	taskID string,
+	dependsOnID string,
+	actor ActorContext,
+) error {
 	if err := requireWriteAuthority(actor); err != nil {
 		return err
 	}
@@ -565,7 +891,7 @@ func (m *TaskManager) RemoveDependency(ctx context.Context, taskID string, depen
 }
 
 // EnqueueRun persists one new queue-first task run under manager authority.
-func (m *TaskManager) EnqueueRun(ctx context.Context, spec EnqueueRun, actor ActorContext) (*TaskRun, error) {
+func (m *Service) EnqueueRun(ctx context.Context, spec EnqueueRun, actor ActorContext) (*Run, error) {
 	if err := requireWriteAuthority(actor); err != nil {
 		return nil, err
 	}
@@ -585,21 +911,26 @@ func (m *TaskManager) EnqueueRun(ctx context.Context, spec EnqueueRun, actor Act
 	if err != nil {
 		return nil, err
 	}
-	if taskRecord.Status.Normalize() == TaskStatusCancelled {
-		return nil, fmt.Errorf("%w: task %q is cancelled", ErrInvalidStatusTransition, taskRecord.ID)
+	if taskRecord.Status.Normalize() == TaskStatusCanceled {
+		return nil, fmt.Errorf("%w: task %q is canceled", ErrInvalidStatusTransition, taskRecord.ID)
 	}
 
-	if existing, err := m.lookupIdempotentRun(ctx, normalizedSpec.IdempotencyKey, actor.Origin, normalizedSpec.TaskID); err != nil {
+	if existing, err := m.lookupIdempotentRun(
+		ctx,
+		normalizedSpec.IdempotencyKey,
+		actor.Origin,
+		normalizedSpec.TaskID,
+	); err != nil {
 		return nil, err
 	} else if existing != nil {
 		return existing, nil
 	}
 
-	existingRuns, err := m.store.ListTaskRuns(ctx, TaskRunQuery{TaskID: normalizedSpec.TaskID})
+	existingRuns, err := m.store.ListTaskRuns(ctx, RunQuery{TaskID: normalizedSpec.TaskID})
 	if err != nil {
 		return nil, err
 	}
-	run := TaskRun{
+	run := Run{
 		ID:             m.newID("run"),
 		TaskID:         normalizedSpec.TaskID,
 		Status:         TaskRunStatusQueued,
@@ -634,7 +965,12 @@ func (m *TaskManager) EnqueueRun(ctx context.Context, spec EnqueueRun, actor Act
 }
 
 // ClaimRun transitions one queued run into the claimed state.
-func (m *TaskManager) ClaimRun(ctx context.Context, runID string, claim ClaimRun, actor ActorContext) (*TaskRun, error) {
+func (m *Service) ClaimRun(
+	ctx context.Context,
+	runID string,
+	claim ClaimRun,
+	actor ActorContext,
+) (*Run, error) {
 	if err := requireWriteAuthority(actor); err != nil {
 		return nil, err
 	}
@@ -681,7 +1017,7 @@ func (m *TaskManager) ClaimRun(ctx context.Context, runID string, claim ClaimRun
 }
 
 // StartRun transitions one claimed or starting run into active execution.
-func (m *TaskManager) StartRun(ctx context.Context, runID string, req StartRun, actor ActorContext) (*TaskRun, error) {
+func (m *Service) StartRun(ctx context.Context, runID string, req StartRun, actor ActorContext) (*Run, error) {
 	if err := requireWriteAuthority(actor); err != nil {
 		return nil, err
 	}
@@ -707,63 +1043,17 @@ func (m *TaskManager) StartRun(ctx context.Context, runID string, req StartRun, 
 
 	switch run.Status.Normalize() {
 	case TaskRunStatusClaimed:
-		if err := m.requireSessionExecutor("start run"); err != nil {
-			return nil, err
-		}
-
-		run.Status = TaskRunStatusStarting
-		if err := m.store.UpdateTaskRun(ctx, run); err != nil {
-			return nil, err
-		}
-
-		startingTask, err := m.reconcileTaskCascade(ctx, run.TaskID)
+		var failedRun *Run
+		run, failedRun, err = m.transitionClaimedRunToStarting(ctx, taskRecord, run, actor)
 		if err != nil {
+			if failedRun != nil {
+				return failedRun, err
+			}
 			return nil, err
 		}
-		if err := m.recordTaskEvent(ctx, run.TaskID, run.ID, taskEventRunStarting, actor, runTransitionPayload{
-			Status:     run.Status,
-			TaskStatus: startingTask.Status,
-			SessionID:  run.SessionID,
-		}); err != nil {
-			return nil, err
-		}
-
-		sessionRef, err := m.sessions.StartTaskSession(ctx, StartTaskSession{
-			Task:  startingTask,
-			Run:   run,
-			Actor: actor,
-		})
-		if err != nil {
-			failedRun, failErr := m.failRunRecord(ctx, taskRecord, run, RunFailure{
-				Error: fmt.Sprintf("start task session: %v", err),
-			}, actor)
-			if failErr != nil {
-				return nil, errorsJoin(err, failErr)
-			}
-			return failedRun, fmt.Errorf("task: start task session for run %q: %w", run.ID, err)
-		}
-		if sessionRef == nil {
-			failedRun, failErr := m.failRunRecord(ctx, taskRecord, run, RunFailure{
-				Error: "start task session: nil session reference",
-			}, actor)
-			if failErr != nil {
-				return nil, failErr
-			}
-			return failedRun, fmt.Errorf("%w: start_task_session returned nil session reference", ErrValidation)
-		}
-		if err := sessionRef.Validate(); err != nil {
-			failedRun, failErr := m.failRunRecord(ctx, taskRecord, run, RunFailure{
-				Error: fmt.Sprintf("start task session: %v", err),
-			}, actor)
-			if failErr != nil {
-				return nil, errorsJoin(err, failErr)
-			}
-			return failedRun, err
-		}
-		run.SessionID = strings.TrimSpace(sessionRef.SessionID)
 	case TaskRunStatusStarting:
-		if strings.TrimSpace(run.SessionID) == "" {
-			return nil, fmt.Errorf("%w: task run %q cannot transition from %q to %q without a session binding", ErrInvalidStatusTransition, run.ID, run.Status, TaskRunStatusRunning)
+		if err := validateRunningSessionBinding(run); err != nil {
+			return nil, err
 		}
 	default:
 		return nil, requireRunTransition(run, TaskRunStatusRunning)
@@ -791,7 +1081,12 @@ func (m *TaskManager) StartRun(ctx context.Context, runID string, req StartRun, 
 }
 
 // AttachRunSession binds one existing session to a claimed or starting run.
-func (m *TaskManager) AttachRunSession(ctx context.Context, runID string, sessionID string, actor ActorContext) (*TaskRun, error) {
+func (m *Service) AttachRunSession(
+	ctx context.Context,
+	runID string,
+	sessionID string,
+	actor ActorContext,
+) (*Run, error) {
 	if err := requireWriteAuthority(actor); err != nil {
 		return nil, err
 	}
@@ -867,7 +1162,12 @@ func (m *TaskManager) AttachRunSession(ctx context.Context, runID string, sessio
 }
 
 // CompleteRun marks one running task run as completed and reconciles task state.
-func (m *TaskManager) CompleteRun(ctx context.Context, runID string, result RunResult, actor ActorContext) (*TaskRun, error) {
+func (m *Service) CompleteRun(
+	ctx context.Context,
+	runID string,
+	result RunResult,
+	actor ActorContext,
+) (*Run, error) {
 	if err := requireWriteAuthority(actor); err != nil {
 		return nil, err
 	}
@@ -909,7 +1209,12 @@ func (m *TaskManager) CompleteRun(ctx context.Context, runID string, result RunR
 }
 
 // FailRun marks one starting or running task run as failed and reconciles task state.
-func (m *TaskManager) FailRun(ctx context.Context, runID string, failure RunFailure, actor ActorContext) (*TaskRun, error) {
+func (m *Service) FailRun(
+	ctx context.Context,
+	runID string,
+	failure RunFailure,
+	actor ActorContext,
+) (*Run, error) {
 	if err := requireWriteAuthority(actor); err != nil {
 		return nil, err
 	}
@@ -927,7 +1232,12 @@ func (m *TaskManager) FailRun(ctx context.Context, runID string, failure RunFail
 }
 
 // CancelRun cancels one non-terminal task run under manager authority.
-func (m *TaskManager) CancelRun(ctx context.Context, runID string, req CancelRun, actor ActorContext) (*TaskRun, error) {
+func (m *Service) CancelRun(
+	ctx context.Context,
+	runID string,
+	req CancelRun,
+	actor ActorContext,
+) (*Run, error) {
 	if err := requireWriteAuthority(actor); err != nil {
 		return nil, err
 	}
@@ -948,7 +1258,12 @@ func (m *TaskManager) CancelRun(ctx context.Context, runID string, req CancelRun
 
 // RecoverRunOnBoot applies one daemon-owned recovery decision to a non-terminal
 // run discovered during startup reconciliation.
-func (m *TaskManager) RecoverRunOnBoot(ctx context.Context, runID string, recovery RunBootRecovery, actor ActorContext) (*TaskRun, error) {
+func (m *Service) RecoverRunOnBoot(
+	ctx context.Context,
+	runID string,
+	recovery RunBootRecovery,
+	actor ActorContext,
+) (*Run, error) {
 	if err := requireWriteAuthority(actor); err != nil {
 		return nil, err
 	}
@@ -967,104 +1282,41 @@ func (m *TaskManager) RecoverRunOnBoot(ctx context.Context, runID string, recove
 	previousSessionID := strings.TrimSpace(run.SessionID)
 	switch normalizedRecovery.Action.Normalize() {
 	case RunBootRecoveryRequeue:
-		if previousStatus != TaskRunStatusClaimed {
-			return nil, fmt.Errorf("%w: task run %q cannot recover from %q via %q", ErrInvalidStatusTransition, run.ID, previousStatus, normalizedRecovery.Action)
-		}
-
-		run.Status = TaskRunStatusQueued
-		run.ClaimedBy = nil
-		run.ClaimedAt = time.Time{}
-		run.SessionID = ""
-		run.StartedAt = time.Time{}
-		run.EndedAt = time.Time{}
-		run.Error = ""
-		run.Result = nil
-		if err := m.store.UpdateTaskRun(ctx, run); err != nil {
-			return nil, err
-		}
-
-		reconciledTask, err := m.reconcileTaskCascade(ctx, taskRecord.ID)
-		if err != nil {
-			return nil, err
-		}
-		if err := m.recordTaskEvent(ctx, run.TaskID, run.ID, taskEventRunRecovered, actor, recoveredRunPayload{
-			Action:         normalizedRecovery.Action,
-			PreviousStatus: previousStatus,
-			Status:         run.Status,
-			TaskStatus:     reconciledTask.Status,
-			Reason:         normalizedRecovery.Reason,
-			SessionID:      previousSessionID,
-			SessionState:   normalizedRecovery.SessionState,
-		}); err != nil {
-			return nil, err
-		}
-		return &run, nil
-
+		return m.recoverRunByRequeue(
+			ctx,
+			taskRecord,
+			run,
+			normalizedRecovery,
+			actor,
+			previousStatus,
+			previousSessionID,
+		)
 	case RunBootRecoveryMarkRunning:
-		switch previousStatus {
-		case TaskRunStatusClaimed, TaskRunStatusStarting:
-		case TaskRunStatusRunning:
-			return &run, nil
-		default:
-			return nil, fmt.Errorf("%w: task run %q cannot recover from %q via %q", ErrInvalidStatusTransition, run.ID, previousStatus, normalizedRecovery.Action)
-		}
-		if previousSessionID == "" {
-			return nil, fmt.Errorf("%w: task run %q cannot recover to running without a session binding", ErrInvalidStatusTransition, run.ID)
-		}
-
-		run.Status = TaskRunStatusRunning
-		if run.StartedAt.IsZero() {
-			run.StartedAt = m.now().UTC()
-		}
-		if err := m.store.UpdateTaskRun(ctx, run); err != nil {
-			return nil, err
-		}
-
-		reconciledTask, err := m.reconcileTaskCascade(ctx, taskRecord.ID)
-		if err != nil {
-			return nil, err
-		}
-		if err := m.recordTaskEvent(ctx, run.TaskID, run.ID, taskEventRunRecovered, actor, recoveredRunPayload{
-			Action:         normalizedRecovery.Action,
-			PreviousStatus: previousStatus,
-			Status:         run.Status,
-			TaskStatus:     reconciledTask.Status,
-			Reason:         normalizedRecovery.Reason,
-			SessionID:      previousSessionID,
-			SessionState:   normalizedRecovery.SessionState,
-		}); err != nil {
-			return nil, err
-		}
-		return &run, nil
-
+		return m.recoverRunByMarkRunning(
+			ctx,
+			taskRecord,
+			run,
+			normalizedRecovery,
+			actor,
+			previousStatus,
+			previousSessionID,
+		)
 	case RunBootRecoveryFail:
-		failedRun, err := m.failRunRecord(ctx, taskRecord, run, RunFailure{
-			Error:    runBootRecoveryError(run, normalizedRecovery),
-			Metadata: runBootRecoveryMetadata(run, normalizedRecovery),
-		}, actor)
-		if err != nil {
-			return nil, err
-		}
-
-		reconciledTask, err := m.store.GetTask(ctx, taskRecord.ID)
-		if err != nil {
-			return nil, err
-		}
-		if err := m.recordTaskEvent(ctx, run.TaskID, run.ID, taskEventRunRecovered, actor, recoveredRunPayload{
-			Action:         normalizedRecovery.Action,
-			PreviousStatus: previousStatus,
-			Status:         failedRun.Status,
-			TaskStatus:     reconciledTask.Status,
-			Reason:         normalizedRecovery.Reason,
-			SessionID:      previousSessionID,
-			SessionState:   normalizedRecovery.SessionState,
-		}); err != nil {
-			return nil, err
-		}
-		return failedRun, nil
-
+		return m.recoverRunByFailure(
+			ctx,
+			taskRecord,
+			run,
+			normalizedRecovery,
+			actor,
+			previousStatus,
+			previousSessionID,
+		)
 	default:
-		return nil, fmt.Errorf("%w: run boot recovery action %q is not supported", ErrValidation, normalizedRecovery.Action)
+		return nil, fmt.Errorf(
+			"%w: run boot recovery action %q is not supported",
+			ErrValidation,
+			normalizedRecovery.Action,
+		)
 	}
 }
 
@@ -1128,7 +1380,7 @@ func normalizeCreateTaskSpec(spec CreateTask) (CreateTask, error) {
 	return normalized, nil
 }
 
-func normalizeTaskPatch(patch TaskPatch) (TaskPatch, error) {
+func normalizeTaskPatch(patch Patch) (Patch, error) {
 	normalized := patch
 	if normalized.Title != nil {
 		title := strings.TrimSpace(*normalized.Title)
@@ -1150,7 +1402,7 @@ func normalizeTaskPatch(patch TaskPatch) (TaskPatch, error) {
 		normalized.Owner = normalizeOwnership(normalized.Owner)
 	}
 	if err := normalized.Validate("task_patch"); err != nil {
-		return TaskPatch{}, err
+		return Patch{}, err
 	}
 	return normalized, nil
 }
@@ -1255,7 +1507,7 @@ func requireLifecycleIdempotency(actor ActorContext, key string, path string) er
 	return nil
 }
 
-func (m *TaskManager) validateParentConstraints(ctx context.Context, spec CreateTask) error {
+func (m *Service) validateParentConstraints(ctx context.Context, spec CreateTask) error {
 	if strings.TrimSpace(spec.ParentTaskID) == "" {
 		return nil
 	}
@@ -1300,7 +1552,7 @@ func validateParentChildScope(parent Task, childScope Scope, childWorkspaceID st
 	}
 }
 
-func (m *TaskManager) taskDepth(ctx context.Context, record Task) (int, error) {
+func (m *Service) taskDepth(ctx context.Context, record Task) (int, error) {
 	depth := 1
 	current := record
 	seen := map[string]struct{}{strings.TrimSpace(record.ID): {}}
@@ -1323,7 +1575,7 @@ func (m *TaskManager) taskDepth(ctx context.Context, record Task) (int, error) {
 	return depth, nil
 }
 
-func (m *TaskManager) reconcileTask(ctx context.Context, taskID string) (Task, error) {
+func (m *Service) reconcileTask(ctx context.Context, taskID string) (Task, error) {
 	record, err := m.store.GetTask(ctx, taskID)
 	if err != nil {
 		return Task{}, err
@@ -1332,7 +1584,7 @@ func (m *TaskManager) reconcileTask(ctx context.Context, taskID string) (Task, e
 	if err != nil {
 		return Task{}, err
 	}
-	runs, err := m.store.ListTaskRuns(ctx, TaskRunQuery{TaskID: taskID})
+	runs, err := m.store.ListTaskRuns(ctx, RunQuery{TaskID: taskID})
 	if err != nil {
 		return Task{}, err
 	}
@@ -1358,7 +1610,7 @@ func (m *TaskManager) reconcileTask(ctx context.Context, taskID string) (Task, e
 	return record, nil
 }
 
-func (m *TaskManager) reconcileTaskCascade(ctx context.Context, taskID string) (Task, error) {
+func (m *Service) reconcileTaskCascade(ctx context.Context, taskID string) (Task, error) {
 	previous, err := m.store.GetTask(ctx, taskID)
 	if err != nil {
 		return Task{}, err
@@ -1376,7 +1628,12 @@ func (m *TaskManager) reconcileTaskCascade(ctx context.Context, taskID string) (
 	return reconciled, nil
 }
 
-func (m *TaskManager) canonicalTaskStatus(ctx context.Context, record Task, dependencies []TaskDependency, runs []TaskRun) (TaskStatus, error) {
+func (m *Service) canonicalTaskStatus(
+	ctx context.Context,
+	record Task,
+	dependencies []Dependency,
+	runs []Run,
+) (Status, error) {
 	unresolvedDependencies, err := m.hasUnresolvedDependencies(ctx, dependencies)
 	if err != nil {
 		return "", err
@@ -1384,7 +1641,7 @@ func (m *TaskManager) canonicalTaskStatus(ctx context.Context, record Task, depe
 	return taskStatusFromSnapshot(record.Status, unresolvedDependencies, runs), nil
 }
 
-func hasActiveRun(runs []TaskRun) bool {
+func hasActiveRun(runs []Run) bool {
 	for _, run := range runs {
 		switch run.Status.Normalize() {
 		case TaskRunStatusStarting, TaskRunStatusRunning:
@@ -1394,7 +1651,7 @@ func hasActiveRun(runs []TaskRun) bool {
 	return false
 }
 
-func hasOpenRun(runs []TaskRun) bool {
+func hasOpenRun(runs []Run) bool {
 	for _, run := range runs {
 		if !isTerminalRunStatus(run.Status) {
 			return true
@@ -1403,27 +1660,27 @@ func hasOpenRun(runs []TaskRun) bool {
 	return false
 }
 
-func isTerminalTaskStatus(status TaskStatus) bool {
+func isTerminalTaskStatus(status Status) bool {
 	switch status.Normalize() {
-	case TaskStatusCompleted, TaskStatusFailed, TaskStatusCancelled:
+	case TaskStatusCompleted, TaskStatusFailed, TaskStatusCanceled:
 		return true
 	default:
 		return false
 	}
 }
 
-func isTerminalRunStatus(status TaskRunStatus) bool {
+func isTerminalRunStatus(status RunStatus) bool {
 	switch status.Normalize() {
-	case TaskRunStatusCompleted, TaskRunStatusFailed, TaskRunStatusCancelled:
+	case TaskRunStatusCompleted, TaskRunStatusFailed, TaskRunStatusCanceled:
 		return true
 	default:
 		return false
 	}
 }
 
-func taskStatusFromSnapshot(currentStatus TaskStatus, unresolvedDependencies bool, runs []TaskRun) TaskStatus {
+func taskStatusFromSnapshot(currentStatus Status, unresolvedDependencies bool, runs []Run) Status {
 	status := currentStatus.Normalize()
-	if status == TaskStatusCancelled {
+	if status == TaskStatusCanceled {
 		return status
 	}
 	if hasActiveRun(runs) {
@@ -1441,8 +1698,8 @@ func taskStatusFromSnapshot(currentStatus TaskStatus, unresolvedDependencies boo
 			return TaskStatusCompleted
 		case TaskRunStatusFailed:
 			return TaskStatusFailed
-		case TaskRunStatusCancelled:
-			return TaskStatusCancelled
+		case TaskRunStatusCanceled:
+			return TaskStatusCanceled
 		}
 	}
 
@@ -1455,7 +1712,7 @@ func taskStatusFromSnapshot(currentStatus TaskStatus, unresolvedDependencies boo
 	return TaskStatusReady
 }
 
-func hasQueuedOrClaimedRun(runs []TaskRun) bool {
+func hasQueuedOrClaimedRun(runs []Run) bool {
 	for _, run := range runs {
 		switch run.Status.Normalize() {
 		case TaskRunStatusQueued, TaskRunStatusClaimed:
@@ -1465,8 +1722,8 @@ func hasQueuedOrClaimedRun(runs []TaskRun) bool {
 	return false
 }
 
-func latestTerminalRun(runs []TaskRun) *TaskRun {
-	var latest *TaskRun
+func latestTerminalRun(runs []Run) *Run {
+	var latest *Run
 	for idx := range runs {
 		run := runs[idx]
 		if !isTerminalRunStatus(run.Status) {
@@ -1480,7 +1737,7 @@ func latestTerminalRun(runs []TaskRun) *TaskRun {
 	return latest
 }
 
-func runComesAfter(left TaskRun, right TaskRun) bool {
+func runComesAfter(left Run, right Run) bool {
 	switch {
 	case left.Attempt != right.Attempt:
 		return left.Attempt > right.Attempt
@@ -1491,7 +1748,7 @@ func runComesAfter(left TaskRun, right TaskRun) bool {
 	}
 }
 
-func (m *TaskManager) hasUnresolvedDependencies(ctx context.Context, dependencies []TaskDependency) (bool, error) {
+func (m *Service) hasUnresolvedDependencies(ctx context.Context, dependencies []Dependency) (bool, error) {
 	for _, dependency := range dependencies {
 		record, err := m.reconcileTask(ctx, dependency.DependsOnTaskID)
 		if err != nil {
@@ -1504,7 +1761,7 @@ func (m *TaskManager) hasUnresolvedDependencies(ctx context.Context, dependencie
 	return false, nil
 }
 
-func (m *TaskManager) reconcileDependentTasks(ctx context.Context, taskID string, visited map[string]struct{}) error {
+func (m *Service) reconcileDependentTasks(ctx context.Context, taskID string, visited map[string]struct{}) error {
 	dependents, err := m.store.ListDependents(ctx, taskID)
 	if err != nil {
 		return err
@@ -1535,7 +1792,12 @@ func (m *TaskManager) reconcileDependentTasks(ctx context.Context, taskID string
 	return nil
 }
 
-func (m *TaskManager) lookupIdempotentRun(ctx context.Context, key string, origin Origin, taskID string) (*TaskRun, error) {
+func (m *Service) lookupIdempotentRun(
+	ctx context.Context,
+	key string,
+	origin Origin,
+	taskID string,
+) (*Run, error) {
 	trimmedKey := strings.TrimSpace(key)
 	if trimmedKey == "" {
 		return nil, nil
@@ -1554,11 +1816,11 @@ func (m *TaskManager) lookupIdempotentRun(ctx context.Context, key string, origi
 	return &run, nil
 }
 
-func (m *TaskManager) saveRunIdempotency(ctx context.Context, run TaskRun, origin Origin) error {
+func (m *Service) saveRunIdempotency(ctx context.Context, run Run, origin Origin) error {
 	if strings.TrimSpace(run.IdempotencyKey) == "" {
 		return nil
 	}
-	return m.store.SaveTaskRunIdempotency(ctx, TaskRunIdempotency{
+	return m.store.SaveTaskRunIdempotency(ctx, RunIdempotency{
 		IdempotencyKey: run.IdempotencyKey,
 		RunID:          run.ID,
 		Origin:         origin,
@@ -1566,29 +1828,29 @@ func (m *TaskManager) saveRunIdempotency(ctx context.Context, run TaskRun, origi
 	})
 }
 
-func (m *TaskManager) loadRunWithTask(ctx context.Context, runID string) (TaskRun, Task, error) {
+func (m *Service) loadRunWithTask(ctx context.Context, runID string) (Run, Task, error) {
 	trimmedRunID := strings.TrimSpace(runID)
 	if trimmedRunID == "" {
-		return TaskRun{}, Task{}, fmt.Errorf("%w: task run id is required", ErrValidation)
+		return Run{}, Task{}, fmt.Errorf("%w: task run id is required", ErrValidation)
 	}
 
 	run, err := m.store.GetTaskRun(ctx, trimmedRunID)
 	if err != nil {
-		return TaskRun{}, Task{}, err
+		return Run{}, Task{}, err
 	}
 	taskRecord, err := m.store.GetTask(ctx, run.TaskID)
 	if err != nil {
-		return TaskRun{}, Task{}, err
+		return Run{}, Task{}, err
 	}
 	return run, taskRecord, nil
 }
 
-func (m *TaskManager) ensureTaskExecutable(ctx context.Context, record Task) error {
+func (m *Service) ensureTaskExecutable(ctx context.Context, record Task) error {
 	dependencies, err := m.store.ListDependencies(ctx, record.ID)
 	if err != nil {
 		return err
 	}
-	runs, err := m.store.ListTaskRuns(ctx, TaskRunQuery{TaskID: record.ID})
+	runs, err := m.store.ListTaskRuns(ctx, RunQuery{TaskID: record.ID})
 	if err != nil {
 		return err
 	}
@@ -1600,21 +1862,21 @@ func (m *TaskManager) ensureTaskExecutable(ctx context.Context, record Task) err
 	switch status.Normalize() {
 	case TaskStatusBlocked:
 		return fmt.Errorf("%w: task %q is blocked", ErrInvalidStatusTransition, record.ID)
-	case TaskStatusCancelled:
-		return fmt.Errorf("%w: task %q is cancelled", ErrInvalidStatusTransition, record.ID)
+	case TaskStatusCanceled:
+		return fmt.Errorf("%w: task %q is canceled", ErrInvalidStatusTransition, record.ID)
 	default:
 		return nil
 	}
 }
 
-func (m *TaskManager) requireSessionExecutor(action string) error {
+func (m *Service) requireSessionExecutor(action string) error {
 	if m.sessions == nil {
 		return fmt.Errorf("%w: session executor is required to %s", ErrValidation, action)
 	}
 	return nil
 }
 
-func (m *TaskManager) collectTaskTree(ctx context.Context, rootTaskID string) ([]Task, error) {
+func (m *Service) collectTaskTree(ctx context.Context, rootTaskID string) ([]Task, error) {
 	root, err := m.store.GetTask(ctx, rootTaskID)
 	if err != nil {
 		return nil, err
@@ -1626,7 +1888,7 @@ func (m *TaskManager) collectTaskTree(ctx context.Context, rootTaskID string) ([
 		current := queue[0]
 		queue = queue[1:]
 
-		children, err := m.store.ListTasks(ctx, TaskQuery{ParentTaskID: current.ID})
+		children, err := m.store.ListTasks(ctx, Query{ParentTaskID: current.ID})
 		if err != nil {
 			return nil, err
 		}
@@ -1648,7 +1910,13 @@ type cancelRunOptions struct {
 	reconcileTask        bool
 }
 
-func (m *TaskManager) failRunRecord(ctx context.Context, taskRecord Task, run TaskRun, failure RunFailure, actor ActorContext) (*TaskRun, error) {
+func (m *Service) failRunRecord(
+	ctx context.Context,
+	taskRecord Task,
+	run Run,
+	failure RunFailure,
+	actor ActorContext,
+) (*Run, error) {
 	switch run.Status.Normalize() {
 	case TaskRunStatusStarting, TaskRunStatusRunning:
 	default:
@@ -1679,12 +1947,19 @@ func (m *TaskManager) failRunRecord(ctx context.Context, taskRecord Task, run Ta
 	return &run, nil
 }
 
-func (m *TaskManager) cancelRunRecord(ctx context.Context, taskRecord Task, run TaskRun, req CancelRun, actor ActorContext, opts cancelRunOptions) (*TaskRun, error) {
+func (m *Service) cancelRunRecord(
+	ctx context.Context,
+	taskRecord Task,
+	run Run,
+	req CancelRun,
+	actor ActorContext,
+	opts cancelRunOptions,
+) (*Run, error) {
 	status := run.Status.Normalize()
 	switch status {
 	case TaskRunStatusQueued, TaskRunStatusClaimed, TaskRunStatusStarting, TaskRunStatusRunning:
 	default:
-		return nil, requireRunTransition(run, TaskRunStatusCancelled)
+		return nil, requireRunTransition(run, TaskRunStatusCanceled)
 	}
 
 	sessionID := strings.TrimSpace(run.SessionID)
@@ -1695,7 +1970,7 @@ func (m *TaskManager) cancelRunRecord(ctx context.Context, taskRecord Task, run 
 		}
 	}
 
-	run.Status = TaskRunStatusCancelled
+	run.Status = TaskRunStatusCanceled
 	run.Result = nil
 	run.Error = ""
 	run.EndedAt = m.now().UTC()
@@ -1719,7 +1994,7 @@ func (m *TaskManager) cancelRunRecord(ctx context.Context, taskRecord Task, run 
 			return nil, err
 		}
 	}
-	if err := m.recordTaskEvent(ctx, run.TaskID, run.ID, taskEventRunCancelled, actor, cancelledRunPayload{
+	if err := m.recordTaskEvent(ctx, run.TaskID, run.ID, taskEventRunCanceled, actor, cancelledRunPayload{
 		Status:                   run.Status,
 		TaskStatus:               reconciledTask.Status,
 		Reason:                   req.Reason,
@@ -1747,7 +2022,7 @@ func (m *TaskManager) cancelRunRecord(ctx context.Context, taskRecord Task, run 
 	return &run, nil
 }
 
-func (m *TaskManager) waitAndForceStopRun(ctx context.Context, sessionID string) error {
+func (m *Service) waitAndForceStopRun(ctx context.Context, sessionID string) error {
 	if m.cancelGracePeriod > 0 {
 		timer := time.NewTimer(m.cancelGracePeriod)
 		defer timer.Stop()
@@ -1764,39 +2039,45 @@ func (m *TaskManager) waitAndForceStopRun(ctx context.Context, sessionID string)
 	return nil
 }
 
-func requireRunTransition(run TaskRun, next TaskRunStatus) error {
+func requireRunTransition(run Run, next RunStatus) error {
 	current := run.Status.Normalize()
 	target := next.Normalize()
 	if allowsRunTransition(current, target) {
 		return nil
 	}
-	return fmt.Errorf("%w: task run %q cannot transition from %q to %q", ErrInvalidStatusTransition, run.ID, current, target)
+	return fmt.Errorf(
+		"%w: task run %q cannot transition from %q to %q",
+		ErrInvalidStatusTransition,
+		run.ID,
+		current,
+		target,
+	)
 }
 
-func allowsRunTransition(current TaskRunStatus, next TaskRunStatus) bool {
+func allowsRunTransition(current RunStatus, next RunStatus) bool {
 	switch current.Normalize() {
 	case TaskRunStatusQueued:
-		return next.Normalize() == TaskRunStatusClaimed || next.Normalize() == TaskRunStatusCancelled
+		return next.Normalize() == TaskRunStatusClaimed || next.Normalize() == TaskRunStatusCanceled
 	case TaskRunStatusClaimed:
 		switch next.Normalize() {
-		case TaskRunStatusStarting, TaskRunStatusCancelled:
+		case TaskRunStatusStarting, TaskRunStatusCanceled:
 			return true
 		}
 	case TaskRunStatusStarting:
 		switch next.Normalize() {
-		case TaskRunStatusRunning, TaskRunStatusFailed, TaskRunStatusCancelled:
+		case TaskRunStatusRunning, TaskRunStatusFailed, TaskRunStatusCanceled:
 			return true
 		}
 	case TaskRunStatusRunning:
 		switch next.Normalize() {
-		case TaskRunStatusCompleted, TaskRunStatusFailed, TaskRunStatusCancelled:
+		case TaskRunStatusCompleted, TaskRunStatusFailed, TaskRunStatusCanceled:
 			return true
 		}
 	}
 	return false
 }
 
-func nextRunAttempt(runs []TaskRun) int {
+func nextRunAttempt(runs []Run) int {
 	maxAttempt := 0
 	for _, run := range runs {
 		if run.Attempt > maxAttempt {
@@ -1806,7 +2087,7 @@ func nextRunAttempt(runs []TaskRun) int {
 	return maxAttempt + 1
 }
 
-func (m *TaskManager) validateNetworkChannel(path string, channel string) error {
+func (m *Service) validateNetworkChannel(path string, channel string) error {
 	if m == nil || m.channelValidator == nil {
 		return nil
 	}
@@ -1821,7 +2102,13 @@ func (m *TaskManager) validateNetworkChannel(path string, channel string) error 
 	return nil
 }
 
-func (m *TaskManager) validateRunChannelUsable(ctx context.Context, taskRecord Task, run TaskRun, actor ActorContext, operation string) error {
+func (m *Service) validateRunChannelUsable(
+	ctx context.Context,
+	taskRecord Task,
+	run Run,
+	actor ActorContext,
+	operation string,
+) error {
 	channel := resolvedRunChannel(run.NetworkChannel, taskRecord.NetworkChannel)
 	if strings.TrimSpace(channel) == "" {
 		return nil
@@ -1858,7 +2145,7 @@ func errorsJoin(errs ...error) error {
 	return errors.Join(errs...)
 }
 
-func runBootRecoveryError(run TaskRun, recovery RunBootRecovery) string {
+func runBootRecoveryError(run Run, recovery RunBootRecovery) string {
 	sessionID := strings.TrimSpace(run.SessionID)
 	switch {
 	case sessionID != "" && recovery.SessionState != "":
@@ -1870,7 +2157,7 @@ func runBootRecoveryError(run TaskRun, recovery RunBootRecovery) string {
 	}
 }
 
-func runBootRecoveryMetadata(run TaskRun, recovery RunBootRecovery) json.RawMessage {
+func runBootRecoveryMetadata(run Run, recovery RunBootRecovery) json.RawMessage {
 	payload, err := marshalTaskEventPayload(map[string]string{
 		"reason":          normalizedBootRecoveryReason(recovery.Reason),
 		"previous_status": string(run.Status.Normalize()),
@@ -1891,12 +2178,19 @@ func normalizedBootRecoveryReason(reason string) string {
 	return trimmed
 }
 
-func (m *TaskManager) recordTaskEvent(ctx context.Context, taskID string, runID string, eventType string, actor ActorContext, payload any) error {
+func (m *Service) recordTaskEvent(
+	ctx context.Context,
+	taskID string,
+	runID string,
+	eventType string,
+	actor ActorContext,
+	payload any,
+) error {
 	rawPayload, err := marshalTaskEventPayload(payload)
 	if err != nil {
 		return err
 	}
-	return m.store.CreateTaskEvent(ctx, TaskEvent{
+	return m.store.CreateTaskEvent(ctx, Event{
 		ID:        m.newID("evt"),
 		TaskID:    strings.TrimSpace(taskID),
 		RunID:     strings.TrimSpace(runID),
@@ -1947,7 +2241,8 @@ func sameOwnership(left *Ownership, right *Ownership) bool {
 	case left == nil || right == nil:
 		return false
 	default:
-		return left.Kind.Normalize() == right.Kind.Normalize() && strings.TrimSpace(left.Ref) == strings.TrimSpace(right.Ref)
+		return left.Kind.Normalize() == right.Kind.Normalize() &&
+			strings.TrimSpace(left.Ref) == strings.TrimSpace(right.Ref)
 	}
 }
 
@@ -1979,14 +2274,14 @@ type createdTaskPayload struct {
 	Scope          Scope      `json:"scope"`
 	WorkspaceID    string     `json:"workspace_id,omitempty"`
 	ParentTaskID   string     `json:"parent_task_id,omitempty"`
-	Status         TaskStatus `json:"status"`
+	Status         Status     `json:"status"`
 	NetworkChannel string     `json:"network_channel,omitempty"`
 	Owner          *Ownership `json:"owner,omitempty"`
 }
 
 type updatedTaskPayload struct {
-	ChangedFields []string   `json:"changed_fields"`
-	Status        TaskStatus `json:"status"`
+	ChangedFields []string `json:"changed_fields"`
+	Status        Status   `json:"status"`
 }
 
 type childCreatedTaskPayload struct {
@@ -1998,53 +2293,53 @@ type childCreatedTaskPayload struct {
 type dependencyTaskPayload struct {
 	DependsOnTaskID string         `json:"depends_on_task_id"`
 	Kind            DependencyKind `json:"kind"`
-	Status          TaskStatus     `json:"status"`
+	Status          Status         `json:"status"`
 }
 
 type cancelledTaskPayload struct {
 	Reason               string          `json:"reason,omitempty"`
 	Metadata             json.RawMessage `json:"metadata,omitempty"`
-	Status               TaskStatus      `json:"status"`
+	Status               Status          `json:"status"`
 	PropagatedFromTaskID string          `json:"propagated_from_task_id,omitempty"`
-	CancelledRunIDs      []string        `json:"cancelled_run_ids,omitempty"`
+	CancelledRunIDs      []string        `json:"canceled_run_ids,omitempty"`
 }
 
 type runEnqueuedPayload struct {
-	Attempt        int           `json:"attempt"`
-	Status         TaskRunStatus `json:"status"`
-	TaskStatus     TaskStatus    `json:"task_status"`
-	NetworkChannel string        `json:"network_channel,omitempty"`
-	IdempotencyKey string        `json:"idempotency_key,omitempty"`
+	Attempt        int       `json:"attempt"`
+	Status         RunStatus `json:"status"`
+	TaskStatus     Status    `json:"task_status"`
+	NetworkChannel string    `json:"network_channel,omitempty"`
+	IdempotencyKey string    `json:"idempotency_key,omitempty"`
 }
 
 type runClaimedPayload struct {
-	Status     TaskRunStatus `json:"status"`
-	TaskStatus TaskStatus    `json:"task_status"`
+	Status     RunStatus     `json:"status"`
+	TaskStatus Status        `json:"task_status"`
 	ClaimedBy  ActorIdentity `json:"claimed_by"`
 }
 
 type runTransitionPayload struct {
-	Status     TaskRunStatus `json:"status"`
-	TaskStatus TaskStatus    `json:"task_status"`
-	SessionID  string        `json:"session_id,omitempty"`
+	Status     RunStatus `json:"status"`
+	TaskStatus Status    `json:"task_status"`
+	SessionID  string    `json:"session_id,omitempty"`
 }
 
 type completedRunPayload struct {
-	Status     TaskRunStatus   `json:"status"`
-	TaskStatus TaskStatus      `json:"task_status"`
+	Status     RunStatus       `json:"status"`
+	TaskStatus Status          `json:"task_status"`
 	Result     json.RawMessage `json:"result,omitempty"`
 }
 
 type failedRunPayload struct {
-	Status     TaskRunStatus   `json:"status"`
-	TaskStatus TaskStatus      `json:"task_status"`
+	Status     RunStatus       `json:"status"`
+	TaskStatus Status          `json:"task_status"`
 	Error      string          `json:"error"`
 	Metadata   json.RawMessage `json:"metadata,omitempty"`
 }
 
 type cancelledRunPayload struct {
-	Status                   TaskRunStatus   `json:"status"`
-	TaskStatus               TaskStatus      `json:"task_status,omitempty"`
+	Status                   RunStatus       `json:"status"`
+	TaskStatus               Status          `json:"task_status,omitempty"`
 	Reason                   string          `json:"reason,omitempty"`
 	Metadata                 json.RawMessage `json:"metadata,omitempty"`
 	SessionID                string          `json:"session_id,omitempty"`
@@ -2066,9 +2361,9 @@ type rejectedRunPayload struct {
 
 type recoveredRunPayload struct {
 	Action         RunBootRecoveryAction `json:"action"`
-	PreviousStatus TaskRunStatus         `json:"previous_status"`
-	Status         TaskRunStatus         `json:"status"`
-	TaskStatus     TaskStatus            `json:"task_status"`
+	PreviousStatus RunStatus             `json:"previous_status"`
+	Status         RunStatus             `json:"status"`
+	TaskStatus     Status                `json:"task_status"`
 	Reason         string                `json:"reason,omitempty"`
 	SessionID      string                `json:"session_id,omitempty"`
 	SessionState   string                `json:"session_state,omitempty"`

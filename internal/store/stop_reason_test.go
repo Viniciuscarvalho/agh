@@ -23,7 +23,6 @@ func TestValidStopReason(t *testing.T) {
 	}
 
 	for _, reason := range validReasons {
-		reason := reason
 		t.Run("Should validate "+string(reason), func(t *testing.T) {
 			t.Parallel()
 
@@ -35,7 +34,6 @@ func TestValidStopReason(t *testing.T) {
 
 	invalidReasons := []StopReason{"", "unknown", " completed "}
 	for _, reason := range invalidReasons {
-		reason := reason
 		name := strings.TrimSpace(string(reason))
 		if name == "" {
 			name = "empty"
@@ -69,7 +67,6 @@ func TestSessionMetaValidateStopReason(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 

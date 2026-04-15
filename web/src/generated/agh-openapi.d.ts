@@ -2042,7 +2042,7 @@ export interface operations {
     parameters: {
       query?: {
         /** @description Filter by run status */
-        status?: "scheduled" | "running" | "delegated" | "completed" | "failed" | "cancelled";
+        status?: "scheduled" | "running" | "delegated" | "completed" | "failed" | "canceled";
         /** @description Only runs started since this timestamp */
         since?: string;
         /** @description Only runs started before this timestamp */
@@ -2077,7 +2077,7 @@ export interface operations {
               /** Format: date-time */
               started_at?: string | null;
               /** @enum {string} */
-              status: "scheduled" | "running" | "delegated" | "completed" | "failed" | "cancelled";
+              status: "scheduled" | "running" | "delegated" | "completed" | "failed" | "canceled";
               task_id?: string;
               task_run_id?: string;
               trigger_id?: string;
@@ -2167,7 +2167,7 @@ export interface operations {
               /** Format: date-time */
               started_at?: string | null;
               /** @enum {string} */
-              status: "scheduled" | "running" | "delegated" | "completed" | "failed" | "cancelled";
+              status: "scheduled" | "running" | "delegated" | "completed" | "failed" | "canceled";
               task_id?: string;
               task_run_id?: string;
               trigger_id?: string;
@@ -2235,7 +2235,7 @@ export interface operations {
         /** @description Filter by automation trigger id */
         trigger_id?: string;
         /** @description Filter by run status */
-        status?: "scheduled" | "running" | "delegated" | "completed" | "failed" | "cancelled";
+        status?: "scheduled" | "running" | "delegated" | "completed" | "failed" | "canceled";
         /** @description Only runs started since this timestamp */
         since?: string;
         /** @description Only runs started before this timestamp */
@@ -2267,7 +2267,7 @@ export interface operations {
               /** Format: date-time */
               started_at?: string | null;
               /** @enum {string} */
-              status: "scheduled" | "running" | "delegated" | "completed" | "failed" | "cancelled";
+              status: "scheduled" | "running" | "delegated" | "completed" | "failed" | "canceled";
               task_id?: string;
               task_run_id?: string;
               trigger_id?: string;
@@ -2346,7 +2346,7 @@ export interface operations {
               /** Format: date-time */
               started_at?: string | null;
               /** @enum {string} */
-              status: "scheduled" | "running" | "delegated" | "completed" | "failed" | "cancelled";
+              status: "scheduled" | "running" | "delegated" | "completed" | "failed" | "canceled";
               task_id?: string;
               task_run_id?: string;
               trigger_id?: string;
@@ -2946,7 +2946,7 @@ export interface operations {
     parameters: {
       query?: {
         /** @description Filter by run status */
-        status?: "scheduled" | "running" | "delegated" | "completed" | "failed" | "cancelled";
+        status?: "scheduled" | "running" | "delegated" | "completed" | "failed" | "canceled";
         /** @description Only runs started since this timestamp */
         since?: string;
         /** @description Only runs started before this timestamp */
@@ -2981,7 +2981,7 @@ export interface operations {
               /** Format: date-time */
               started_at?: string | null;
               /** @enum {string} */
-              status: "scheduled" | "running" | "delegated" | "completed" | "failed" | "cancelled";
+              status: "scheduled" | "running" | "delegated" | "completed" | "failed" | "canceled";
               task_id?: string;
               task_run_id?: string;
               trigger_id?: string;
@@ -5188,7 +5188,7 @@ export interface operations {
             hooks: {
               event: string;
               executor_kind?: string;
-              matcher?: {
+              matcher: {
                 acp_event_type?: string;
                 agent_name?: string;
                 agent_type?: string;
@@ -8118,7 +8118,7 @@ export interface operations {
                 | "running"
                 | "completed"
                 | "failed"
-                | "cancelled";
+                | "canceled";
               task_id: string;
             };
           };
@@ -8263,7 +8263,7 @@ export interface operations {
                 | "running"
                 | "completed"
                 | "failed"
-                | "cancelled";
+                | "canceled";
               task_id: string;
             };
           };
@@ -8407,7 +8407,7 @@ export interface operations {
                 | "running"
                 | "completed"
                 | "failed"
-                | "cancelled";
+                | "canceled";
               task_id: string;
             };
           };
@@ -8551,7 +8551,7 @@ export interface operations {
                 | "running"
                 | "completed"
                 | "failed"
-                | "cancelled";
+                | "canceled";
               task_id: string;
             };
           };
@@ -8696,7 +8696,7 @@ export interface operations {
                 | "running"
                 | "completed"
                 | "failed"
-                | "cancelled";
+                | "canceled";
               task_id: string;
             };
           };
@@ -8840,7 +8840,7 @@ export interface operations {
                 | "running"
                 | "completed"
                 | "failed"
-                | "cancelled";
+                | "canceled";
               task_id: string;
             };
           };
@@ -8924,7 +8924,7 @@ export interface operations {
           | "in_progress"
           | "completed"
           | "failed"
-          | "cancelled";
+          | "canceled";
         /** @description Filter by owner kind */
         owner_kind?:
           | "human"
@@ -9010,7 +9010,7 @@ export interface operations {
                 | "in_progress"
                 | "completed"
                 | "failed"
-                | "cancelled";
+                | "canceled";
               title: string;
               /** Format: date-time */
               updated_at: string;
@@ -9164,7 +9164,7 @@ export interface operations {
                 | "in_progress"
                 | "completed"
                 | "failed"
-                | "cancelled";
+                | "canceled";
               title: string;
               /** Format: date-time */
               updated_at: string;
@@ -9311,7 +9311,7 @@ export interface operations {
                   | "in_progress"
                   | "completed"
                   | "failed"
-                  | "cancelled";
+                  | "canceled";
                 title: string;
                 /** Format: date-time */
                 updated_at: string;
@@ -9408,7 +9408,7 @@ export interface operations {
                   | "running"
                   | "completed"
                   | "failed"
-                  | "cancelled";
+                  | "canceled";
                 task_id: string;
               }[];
               task: {
@@ -9468,7 +9468,7 @@ export interface operations {
                   | "in_progress"
                   | "completed"
                   | "failed"
-                  | "cancelled";
+                  | "canceled";
                 title: string;
                 /** Format: date-time */
                 updated_at: string;
@@ -9622,7 +9622,7 @@ export interface operations {
                 | "in_progress"
                 | "completed"
                 | "failed"
-                | "cancelled";
+                | "canceled";
               title: string;
               /** Format: date-time */
               updated_at: string;
@@ -9778,7 +9778,7 @@ export interface operations {
                 | "in_progress"
                 | "completed"
                 | "failed"
-                | "cancelled";
+                | "canceled";
               title: string;
               /** Format: date-time */
               updated_at: string;
@@ -9946,7 +9946,7 @@ export interface operations {
                 | "in_progress"
                 | "completed"
                 | "failed"
-                | "cancelled";
+                | "canceled";
               title: string;
               /** Format: date-time */
               updated_at: string;
@@ -10102,7 +10102,7 @@ export interface operations {
                   | "in_progress"
                   | "completed"
                   | "failed"
-                  | "cancelled";
+                  | "canceled";
                 title: string;
                 /** Format: date-time */
                 updated_at: string;
@@ -10199,7 +10199,7 @@ export interface operations {
                   | "running"
                   | "completed"
                   | "failed"
-                  | "cancelled";
+                  | "canceled";
                 task_id: string;
               }[];
               task: {
@@ -10259,7 +10259,7 @@ export interface operations {
                   | "in_progress"
                   | "completed"
                   | "failed"
-                  | "cancelled";
+                  | "canceled";
                 title: string;
                 /** Format: date-time */
                 updated_at: string;
@@ -10409,7 +10409,7 @@ export interface operations {
                   | "in_progress"
                   | "completed"
                   | "failed"
-                  | "cancelled";
+                  | "canceled";
                 title: string;
                 /** Format: date-time */
                 updated_at: string;
@@ -10506,7 +10506,7 @@ export interface operations {
                   | "running"
                   | "completed"
                   | "failed"
-                  | "cancelled";
+                  | "canceled";
                 task_id: string;
               }[];
               task: {
@@ -10566,7 +10566,7 @@ export interface operations {
                   | "in_progress"
                   | "completed"
                   | "failed"
-                  | "cancelled";
+                  | "canceled";
                 title: string;
                 /** Format: date-time */
                 updated_at: string;
@@ -10639,7 +10639,7 @@ export interface operations {
           | "running"
           | "completed"
           | "failed"
-          | "cancelled";
+          | "canceled";
         /** @description Filter by attached session id */
         session_id?: string;
         /** @description Maximum number of records to return */
@@ -10710,7 +10710,7 @@ export interface operations {
                 | "running"
                 | "completed"
                 | "failed"
-                | "cancelled";
+                | "canceled";
               task_id: string;
             }[];
           };
@@ -10844,7 +10844,7 @@ export interface operations {
                 | "running"
                 | "completed"
                 | "failed"
-                | "cancelled";
+                | "canceled";
               task_id: string;
             };
           };
@@ -10957,13 +10957,7 @@ export interface operations {
                 /** Format: date-time */
                 started_at?: string | null;
                 /** @enum {string} */
-                status:
-                  | "scheduled"
-                  | "running"
-                  | "delegated"
-                  | "completed"
-                  | "failed"
-                  | "cancelled";
+                status: "scheduled" | "running" | "delegated" | "completed" | "failed" | "canceled";
                 task_id?: string;
                 task_run_id?: string;
                 trigger_id?: string;
@@ -11081,13 +11075,7 @@ export interface operations {
                 /** Format: date-time */
                 started_at?: string | null;
                 /** @enum {string} */
-                status:
-                  | "scheduled"
-                  | "running"
-                  | "delegated"
-                  | "completed"
-                  | "failed"
-                  | "cancelled";
+                status: "scheduled" | "running" | "delegated" | "completed" | "failed" | "canceled";
                 task_id?: string;
                 task_run_id?: string;
                 trigger_id?: string;

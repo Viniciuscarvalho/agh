@@ -8,69 +8,69 @@ import (
 type Manager interface {
 	CreateTask(ctx context.Context, spec CreateTask, actor ActorContext) (*Task, error)
 	CreateChildTask(ctx context.Context, parentTaskID string, spec CreateTask, actor ActorContext) (*Task, error)
-	UpdateTask(ctx context.Context, id string, patch TaskPatch, actor ActorContext) (*Task, error)
+	UpdateTask(ctx context.Context, id string, patch Patch, actor ActorContext) (*Task, error)
 	CancelTask(ctx context.Context, id string, req CancelTask, actor ActorContext) (*Task, error)
 
 	AddDependency(ctx context.Context, spec AddDependency, actor ActorContext) error
 	RemoveDependency(ctx context.Context, taskID string, dependsOnID string, actor ActorContext) error
 
-	EnqueueRun(ctx context.Context, spec EnqueueRun, actor ActorContext) (*TaskRun, error)
-	ClaimRun(ctx context.Context, runID string, claim ClaimRun, actor ActorContext) (*TaskRun, error)
-	StartRun(ctx context.Context, runID string, req StartRun, actor ActorContext) (*TaskRun, error)
-	AttachRunSession(ctx context.Context, runID string, sessionID string, actor ActorContext) (*TaskRun, error)
-	CompleteRun(ctx context.Context, runID string, result RunResult, actor ActorContext) (*TaskRun, error)
-	FailRun(ctx context.Context, runID string, failure RunFailure, actor ActorContext) (*TaskRun, error)
-	CancelRun(ctx context.Context, runID string, req CancelRun, actor ActorContext) (*TaskRun, error)
+	EnqueueRun(ctx context.Context, spec EnqueueRun, actor ActorContext) (*Run, error)
+	ClaimRun(ctx context.Context, runID string, claim ClaimRun, actor ActorContext) (*Run, error)
+	StartRun(ctx context.Context, runID string, req StartRun, actor ActorContext) (*Run, error)
+	AttachRunSession(ctx context.Context, runID string, sessionID string, actor ActorContext) (*Run, error)
+	CompleteRun(ctx context.Context, runID string, result RunResult, actor ActorContext) (*Run, error)
+	FailRun(ctx context.Context, runID string, failure RunFailure, actor ActorContext) (*Run, error)
+	CancelRun(ctx context.Context, runID string, req CancelRun, actor ActorContext) (*Run, error)
 
-	GetTask(ctx context.Context, id string, actor ActorContext) (*TaskView, error)
-	ListTaskRuns(ctx context.Context, taskID string, query TaskRunQuery, actor ActorContext) ([]TaskRun, error)
-	ListTasks(ctx context.Context, query TaskQuery, actor ActorContext) ([]TaskSummary, error)
+	GetTask(ctx context.Context, id string, actor ActorContext) (*View, error)
+	ListTaskRuns(ctx context.Context, taskID string, query RunQuery, actor ActorContext) ([]Run, error)
+	ListTasks(ctx context.Context, query Query, actor ActorContext) ([]Summary, error)
 }
 
-// TaskStore is the persistence surface for durable task records.
-type TaskStore interface {
+// RecordStore is the persistence surface for durable task records.
+type RecordStore interface {
 	CreateTask(ctx context.Context, task Task) error
 	UpdateTask(ctx context.Context, task Task) error
 	GetTask(ctx context.Context, id string) (Task, error)
-	ListTasks(ctx context.Context, query TaskQuery) ([]TaskSummary, error)
+	ListTasks(ctx context.Context, query Query) ([]Summary, error)
 	CountDirectChildren(ctx context.Context, parentTaskID string) (int, error)
 }
 
 // DependencyStore is the persistence surface for durable dependency edges.
 type DependencyStore interface {
-	CreateDependency(ctx context.Context, dependency TaskDependency) error
+	CreateDependency(ctx context.Context, dependency Dependency) error
 	DeleteDependency(ctx context.Context, taskID string, dependsOnID string) error
-	ListDependencies(ctx context.Context, taskID string) ([]TaskDependency, error)
-	ListDependents(ctx context.Context, dependsOnTaskID string) ([]TaskDependency, error)
+	ListDependencies(ctx context.Context, taskID string) ([]Dependency, error)
+	ListDependents(ctx context.Context, dependsOnTaskID string) ([]Dependency, error)
 	CountDependencies(ctx context.Context, taskID string) (int, error)
 	HasDependencyPath(ctx context.Context, fromTaskID string, toTaskID string) (bool, error)
 }
 
 // RunStore is the persistence surface for durable task-run records.
 type RunStore interface {
-	CreateTaskRun(ctx context.Context, run TaskRun) error
-	UpdateTaskRun(ctx context.Context, run TaskRun) error
-	GetTaskRun(ctx context.Context, id string) (TaskRun, error)
-	ListTaskRuns(ctx context.Context, query TaskRunQuery) ([]TaskRun, error)
-	ListTaskRunsByStatus(ctx context.Context, statuses []TaskRunStatus) ([]TaskRun, error)
+	CreateTaskRun(ctx context.Context, run Run) error
+	UpdateTaskRun(ctx context.Context, run Run) error
+	GetTaskRun(ctx context.Context, id string) (Run, error)
+	ListTaskRuns(ctx context.Context, query RunQuery) ([]Run, error)
+	ListTaskRunsByStatus(ctx context.Context, statuses []RunStatus) ([]Run, error)
 	CountActiveSessionBindings(ctx context.Context, sessionID string) (int, error)
 }
 
 // EventStore is the persistence surface for immutable task audit events.
 type EventStore interface {
-	CreateTaskEvent(ctx context.Context, event TaskEvent) error
-	ListTaskEvents(ctx context.Context, query TaskEventQuery) ([]TaskEvent, error)
+	CreateTaskEvent(ctx context.Context, event Event) error
+	ListTaskEvents(ctx context.Context, query EventQuery) ([]Event, error)
 }
 
 // IdempotencyStore is the persistence surface for non-human run idempotency tracking.
 type IdempotencyStore interface {
-	GetTaskRunByIdempotencyKey(ctx context.Context, key string, origin Origin) (TaskRun, error)
-	SaveTaskRunIdempotency(ctx context.Context, record TaskRunIdempotency) error
+	GetTaskRunByIdempotencyKey(ctx context.Context, key string, origin Origin) (Run, error)
+	SaveTaskRunIdempotency(ctx context.Context, record RunIdempotency) error
 }
 
 // Store composes the task-domain persistence surfaces consumed by the manager.
 type Store interface {
-	TaskStore
+	RecordStore
 	DependencyStore
 	RunStore
 	EventStore
@@ -79,7 +79,7 @@ type Store interface {
 
 // SessionExecutor is the injected runtime bridge used to start, attach, and stop task sessions.
 type SessionExecutor interface {
-	StartTaskSession(ctx context.Context, spec StartTaskSession) (*SessionRef, error)
+	StartTaskSession(ctx context.Context, spec *StartTaskSession) (*SessionRef, error)
 	AttachTaskSession(ctx context.Context, runID string, sessionID string) (*SessionRef, error)
 	RequestTaskStop(ctx context.Context, sessionID string, reason StopReason) error
 	ForceTaskStop(ctx context.Context, sessionID string, reason StopReason) error

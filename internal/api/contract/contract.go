@@ -28,13 +28,13 @@ type ApproveSessionRequest struct {
 
 // SessionPayload is the shared session response payload.
 type SessionPayload struct {
-	ID            string               `json:"id"`
-	Name          string               `json:"name,omitempty"`
-	AgentName     string               `json:"agent_name"`
-	WorkspaceID   string               `json:"workspace_id,omitempty"`
-	WorkspacePath string               `json:"workspace_path,omitempty"`
-	Channel       string               `json:"channel,omitempty"`
-	State         session.SessionState `json:"state"`
+	ID            string        `json:"id"`
+	Name          string        `json:"name,omitempty"`
+	AgentName     string        `json:"agent_name"`
+	WorkspaceID   string        `json:"workspace_id,omitempty"`
+	WorkspacePath string        `json:"workspace_path,omitempty"`
+	Channel       string        `json:"channel,omitempty"`
+	State         session.State `json:"state"`
 	// StopReason is the session-level stop classification, distinct from AgentEventPayload.StopReason.
 	StopReason store.StopReason `json:"stop_reason,omitempty"`
 	// StopDetail is the session-level stop context paired with StopReason.
@@ -185,7 +185,7 @@ type HookCatalogPayload struct {
 	Priority     int                  `json:"priority"`
 	TimeoutMS    int64                `json:"timeout_ms,omitempty"`
 	ExecutorKind string               `json:"executor_kind,omitempty"`
-	Matcher      hookspkg.HookMatcher `json:"matcher,omitempty"`
+	Matcher      hookspkg.HookMatcher `json:"matcher"`
 	Metadata     map[string]string    `json:"metadata,omitempty"`
 }
 

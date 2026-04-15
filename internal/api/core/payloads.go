@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"io"
+	"maps"
 	"time"
 
 	"github.com/pedronauck/agh/internal/api/contract"
@@ -97,9 +98,7 @@ func cloneCatalogMetadata(src map[string]string) map[string]string {
 		return nil
 	}
 	cloned := make(map[string]string, len(src))
-	for key, value := range src {
-		cloned[key] = value
-	}
+	maps.Copy(cloned, src)
 	return cloned
 }
 

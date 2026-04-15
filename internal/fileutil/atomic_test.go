@@ -1,6 +1,7 @@
 package fileutil
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -22,7 +23,7 @@ func TestAtomicWriteFileWritesContentAndPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
-	if string(got) != string(content) {
+	if !bytes.Equal(got, content) {
 		t.Fatalf("ReadFile() = %q, want %q", string(got), string(content))
 	}
 
@@ -65,7 +66,7 @@ func TestAtomicWriteFileDoesNotCorruptTargetOnFailure(t *testing.T) {
 	if readErr != nil {
 		t.Fatalf("ReadFile(original target) error = %v", readErr)
 	}
-	if string(got) != string(original) {
+	if !bytes.Equal(got, original) {
 		t.Fatalf("target contents after failure = %q, want %q", string(got), string(original))
 	}
 }

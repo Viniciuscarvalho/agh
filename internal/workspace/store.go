@@ -2,8 +2,8 @@ package workspace
 
 import "context"
 
-// WorkspaceStore persists and looks up registered workspaces.
-type WorkspaceStore interface {
+// Store persists and looks up registered workspaces.
+type Store interface {
 	InsertWorkspace(ctx context.Context, ws Workspace) error
 	UpdateWorkspace(ctx context.Context, ws Workspace) error
 	DeleteWorkspace(ctx context.Context, id string) error

@@ -109,7 +109,15 @@ func TestAutomationEndpointsAdditionalCoverage(t *testing.T) {
 			},
 		}
 
-		return newHandlerFixtureWithAutomation(t, testutil.StubSessionManager{}, testutil.StubObserver{}, automation, testutil.StubWorkspaceService{}, nil, nil)
+		return newHandlerFixtureWithAutomation(
+			t,
+			testutil.StubSessionManager{},
+			testutil.StubObserver{},
+			automation,
+			testutil.StubWorkspaceService{},
+			nil,
+			nil,
+		)
 	}
 
 	for _, request := range []struct {
@@ -127,22 +135,41 @@ func TestAutomationEndpointsAdditionalCoverage(t *testing.T) {
 		{name: "Should list automation runs", method: http.MethodGet, path: "/automation/runs?limit=1"},
 		{name: "Should return automation run details", method: http.MethodGet, path: "/automation/runs/run-1"},
 	} {
-		request := request
 		t.Run(request.name, func(t *testing.T) {
 			fixture := newFixture(t)
 			resp := performRequest(t, fixture.Engine, request.method, request.path, nil)
 			if request.method == http.MethodDelete {
 				if resp.Code != http.StatusNoContent {
-					t.Fatalf("%s %s status = %d, want %d; body=%s", request.method, request.path, resp.Code, http.StatusNoContent, resp.Body.String())
+					t.Fatalf(
+						"%s %s status = %d, want %d; body=%s",
+						request.method,
+						request.path,
+						resp.Code,
+						http.StatusNoContent,
+						resp.Body.String(),
+					)
 				}
 				followUp := performRequest(t, fixture.Engine, http.MethodGet, request.path, nil)
 				if followUp.Code != http.StatusNotFound {
-					t.Fatalf("follow-up GET %s status = %d, want %d; body=%s", request.path, followUp.Code, http.StatusNotFound, followUp.Body.String())
+					t.Fatalf(
+						"follow-up GET %s status = %d, want %d; body=%s",
+						request.path,
+						followUp.Code,
+						http.StatusNotFound,
+						followUp.Body.String(),
+					)
 				}
 				return
 			}
 			if resp.Code != http.StatusOK {
-				t.Fatalf("%s %s status = %d, want %d; body=%s", request.method, request.path, resp.Code, http.StatusOK, resp.Body.String())
+				t.Fatalf(
+					"%s %s status = %d, want %d; body=%s",
+					request.method,
+					request.path,
+					resp.Code,
+					http.StatusOK,
+					resp.Body.String(),
+				)
 			}
 
 			switch request.path {

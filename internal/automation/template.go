@@ -1,8 +1,9 @@
 package automation
 
 import (
-	modelpkg "github.com/pedronauck/agh/internal/automation/model"
 	"text/template"
+
+	modelpkg "github.com/pedronauck/agh/internal/automation/model"
 )
 
 // ParseTriggerPromptTemplate parses a trigger prompt template with strict activation-envelope validation.

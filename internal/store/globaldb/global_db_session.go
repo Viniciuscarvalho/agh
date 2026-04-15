@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/pedronauck/agh/internal/store"
 )
@@ -46,21 +47,7 @@ func (g *GlobalDB) UpdateSessionState(ctx context.Context, update store.SessionS
 		updatedAt = g.now()
 	}
 
-	assignments := []string{"state = ?"}
-	args := []any{update.State}
-	if update.ACPSessionID != nil {
-		assignments = append(assignments, "acp_session_id = ?")
-		args = append(args, store.NullableStringPointer(update.ACPSessionID))
-	}
-	if update.StopReasonSet {
-		assignments = append(assignments, "stop_reason = ?", "stop_detail = ?")
-		args = append(args, store.NullableStringPointer(update.StopReason), store.NullableString(update.StopDetail))
-	}
-	assignments = append(assignments, "updated_at = ?")
-	args = append(args, store.FormatTimestamp(updatedAt), update.ID)
-
-	query := fmt.Sprintf("UPDATE sessions SET %s WHERE id = ?", strings.Join(assignments, ", "))
-
+	query, args := buildUpdateSessionStateStatement(update, updatedAt)
 	result, err := g.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("store: update session state %q: %w", update.ID, err)
@@ -84,7 +71,9 @@ func (g *GlobalDB) ListSessions(ctx context.Context, query store.SessionListQuer
 		return nil, err
 	}
 
-	sqlQuery := `SELECT id, name, agent_name, workspace_id, channel, session_type, state, acp_session_id, stop_reason, stop_detail, created_at, updated_at FROM sessions`
+	sqlQuery := `SELECT id, name, agent_name, workspace_id, channel, session_type,
+		state, acp_session_id, stop_reason, stop_detail, created_at, updated_at
+	FROM sessions`
 	where, args := store.BuildClauses(
 		store.StringClause("state", query.State),
 		store.StringClause("agent_name", query.AgentName),
@@ -117,7 +106,10 @@ func (g *GlobalDB) ListSessions(ctx context.Context, query store.SessionListQuer
 }
 
 // ReconcileSessions upserts on-disk sessions and marks missing ones as orphaned.
-func (g *GlobalDB) ReconcileSessions(ctx context.Context, sessions []store.SessionInfo) (store.ReconcileResult, error) {
+func (g *GlobalDB) ReconcileSessions(
+	ctx context.Context,
+	sessions []store.SessionInfo,
+) (result store.ReconcileResult, err error) {
 	if err := g.checkReady(ctx, "reconcile sessions"); err != nil {
 		return store.ReconcileResult{}, err
 	}
@@ -126,14 +118,16 @@ func (g *GlobalDB) ReconcileSessions(ctx context.Context, sessions []store.Sessi
 	if err != nil {
 		return store.ReconcileResult{}, fmt.Errorf("store: begin session reconcile transaction: %w", err)
 	}
+	defer func() {
+		joinCleanupError(&err, rollbackTx(tx, "session reconcile"))
+	}()
 
 	existing, err := g.loadSessionIDs(ctx, tx)
 	if err != nil {
-		_ = tx.Rollback()
 		return store.ReconcileResult{}, err
 	}
 
-	result := store.ReconcileResult{
+	result = store.ReconcileResult{
 		Indexed:  make([]string, 0),
 		Orphaned: make([]string, 0),
 	}
@@ -141,7 +135,6 @@ func (g *GlobalDB) ReconcileSessions(ctx context.Context, sessions []store.Sessi
 
 	for _, session := range sessions {
 		if err := session.Validate(); err != nil {
-			_ = tx.Rollback()
 			return store.ReconcileResult{}, err
 		}
 		normalized := session
@@ -159,7 +152,6 @@ func (g *GlobalDB) ReconcileSessions(ctx context.Context, sessions []store.Sessi
 			result.Indexed = append(result.Indexed, normalized.ID)
 		}
 		if err := g.registerSession(ctx, tx, normalized); err != nil {
-			_ = tx.Rollback()
 			return store.ReconcileResult{}, fmt.Errorf("store: reconcile session %q: %w", normalized.ID, err)
 		}
 	}
@@ -176,7 +168,6 @@ func (g *GlobalDB) ReconcileSessions(ctx context.Context, sessions []store.Sessi
 			orphanedAt,
 			id,
 		); err != nil {
-			_ = tx.Rollback()
 			return store.ReconcileResult{}, fmt.Errorf("store: mark orphaned session %q: %w", id, err)
 		}
 		result.Orphaned = append(result.Orphaned, id)
@@ -193,7 +184,8 @@ func (g *GlobalDB) registerSession(ctx context.Context, exec sqlExecutor, sessio
 	_, err := exec.ExecContext(
 		ctx,
 		`INSERT INTO sessions (
-			id, name, agent_name, workspace_id, session_type, channel, state, acp_session_id, stop_reason, stop_detail, created_at, updated_at
+			id, name, agent_name, workspace_id, session_type, channel, state,
+			acp_session_id, stop_reason, stop_detail, created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name = excluded.name,
@@ -248,6 +240,51 @@ func (g *GlobalDB) loadSessionIDs(ctx context.Context, tx *sql.Tx) (map[string]s
 
 type sqlExecutor interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+func buildUpdateSessionStateStatement(update store.SessionStateUpdate, updatedAt time.Time) (string, []any) {
+	args := []any{update.State}
+
+	switch {
+	case update.ACPSessionID != nil && update.StopReasonSet:
+		args = append(
+			args,
+			store.NullableStringPointer(update.ACPSessionID),
+			store.NullableStringPointer(update.StopReason),
+			store.NullableString(update.StopDetail),
+			store.FormatTimestamp(updatedAt),
+			update.ID,
+		)
+		return `UPDATE sessions
+			SET state = ?, acp_session_id = ?, stop_reason = ?, stop_detail = ?, updated_at = ?
+			WHERE id = ?`, args
+	case update.ACPSessionID != nil:
+		args = append(
+			args,
+			store.NullableStringPointer(update.ACPSessionID),
+			store.FormatTimestamp(updatedAt),
+			update.ID,
+		)
+		return `UPDATE sessions
+			SET state = ?, acp_session_id = ?, updated_at = ?
+			WHERE id = ?`, args
+	case update.StopReasonSet:
+		args = append(
+			args,
+			store.NullableStringPointer(update.StopReason),
+			store.NullableString(update.StopDetail),
+			store.FormatTimestamp(updatedAt),
+			update.ID,
+		)
+		return `UPDATE sessions
+			SET state = ?, stop_reason = ?, stop_detail = ?, updated_at = ?
+			WHERE id = ?`, args
+	default:
+		args = append(args, store.FormatTimestamp(updatedAt), update.ID)
+		return `UPDATE sessions
+			SET state = ?, updated_at = ?
+			WHERE id = ?`, args
+	}
 }
 
 func scanSessionInfo(scanner rowScanner) (store.SessionInfo, error) {

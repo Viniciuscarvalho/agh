@@ -88,7 +88,11 @@ func TestBuildCatalogTruncatesDescriptionsAtTwoHundredCharactersWithEllipsis(t *
 	}
 
 	if utf8.RuneCountInString(wantDescription) != catalogDescriptionLimit {
-		t.Fatalf("truncated description rune count = %d, want %d", utf8.RuneCountInString(wantDescription), catalogDescriptionLimit)
+		t.Fatalf(
+			"truncated description rune count = %d, want %d",
+			utf8.RuneCountInString(wantDescription),
+			catalogDescriptionLimit,
+		)
 	}
 }
 
@@ -127,7 +131,7 @@ func TestCatalogProviderPromptSectionReturnsEmptyStringWhenWorkspaceHasNoSkills(
 
 	provider := NewCatalogProvider(newTestRegistry(t, RegistryConfig{}))
 
-	got, err := provider.PromptSection(context.Background(), workspacepkg.ResolvedWorkspace{})
+	got, err := provider.PromptSection(context.Background(), &workspacepkg.ResolvedWorkspace{})
 	if err != nil {
 		t.Fatalf("PromptSection() error = %v", err)
 	}
@@ -145,8 +149,18 @@ func TestCatalogProviderPromptSectionUsesWorkspaceScopedSkills(t *testing.T) {
 	workspaceTwo := filepath.Join(root, "workspace-two")
 
 	writeSkillFile(t, userDir, filepath.Join("global", skillFileName), skillWithDescription("global", "Global skill"))
-	writeSkillFile(t, filepath.Join(workspaceOne, ".agh", "skills"), filepath.Join("alpha", skillFileName), skillWithDescription("alpha", "Workspace one skill"))
-	writeSkillFile(t, filepath.Join(workspaceTwo, ".agh", "skills"), filepath.Join("beta", skillFileName), skillWithDescription("beta", "Workspace two skill"))
+	writeSkillFile(
+		t,
+		filepath.Join(workspaceOne, ".agh", "skills"),
+		filepath.Join("alpha", skillFileName),
+		skillWithDescription("alpha", "Workspace one skill"),
+	)
+	writeSkillFile(
+		t,
+		filepath.Join(workspaceTwo, ".agh", "skills"),
+		filepath.Join("beta", skillFileName),
+		skillWithDescription("beta", "Workspace two skill"),
+	)
 
 	registry := newTestRegistry(t, RegistryConfig{
 		UserSkillsDir: userDir,
@@ -157,7 +171,9 @@ func TestCatalogProviderPromptSectionUsesWorkspaceScopedSkills(t *testing.T) {
 
 	provider := NewCatalogProvider(registry)
 
-	got, err := provider.PromptSection(context.Background(), resolvedWorkspaceForTest("ws_catalog_one", workspaceOne,
+	got, err := provider.PromptSection(context.Background(), resolvedWorkspacePtr(
+		"ws_catalog_one",
+		workspaceOne,
 		resolvedSkillPath(filepath.Join(workspaceOne, ".agh", "skills", "alpha"), "workspace"),
 	))
 	if err != nil {

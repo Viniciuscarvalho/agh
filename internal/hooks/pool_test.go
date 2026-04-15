@@ -42,7 +42,7 @@ func TestAsyncPoolStartsConfiguredWorkers(t *testing.T) {
 
 	started := make(chan struct{}, workers)
 	release := make(chan struct{})
-	for i := 0; i < workers; i++ {
+	for i := range workers {
 		if ok := pool.Submit(asyncTask{
 			run: func(context.Context) {
 				started <- struct{}{}
@@ -53,7 +53,7 @@ func TestAsyncPoolStartsConfiguredWorkers(t *testing.T) {
 		}
 	}
 
-	for i := 0; i < workers; i++ {
+	for range workers {
 		waitForPoolSignal(t, started, "worker start")
 	}
 
@@ -175,7 +175,7 @@ func TestAsyncPoolCloseDrainsQueuedTasksBeforeReturning(t *testing.T) {
 	waitForPoolSignal(t, started, "first task start")
 
 	completed := make(chan struct{}, 2)
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if ok := pool.Submit(asyncTask{
 			run: func(context.Context) {
 				ran.Add(1)
@@ -220,12 +220,12 @@ func TestAsyncPoolCloseCancelsAfterDrainDeadline(t *testing.T) {
 	pool.Start(t.Context())
 
 	started := make(chan struct{})
-	cancelled := make(chan struct{})
+	canceled := make(chan struct{})
 	if ok := pool.Submit(asyncTask{
 		run: func(ctx context.Context) {
 			close(started)
 			<-ctx.Done()
-			close(cancelled)
+			close(canceled)
 		},
 	}); !ok {
 		t.Fatal("Submit() first task = false, want true")
@@ -245,7 +245,7 @@ func TestAsyncPoolCloseCancelsAfterDrainDeadline(t *testing.T) {
 	pool.Close()
 	elapsed := time.Since(start)
 
-	waitForPoolSignal(t, cancelled, "task cancellation")
+	waitForPoolSignal(t, canceled, "task cancellation")
 	if queuedRan.Load() {
 		t.Fatal("queued task ran after drain deadline, want abandoned")
 	}
@@ -304,7 +304,7 @@ func TestAsyncPoolContextCancellationStopsWorkers(t *testing.T) {
 
 	started := make(chan struct{}, 2)
 	stopped := make(chan struct{}, 2)
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if ok := pool.Submit(asyncTask{
 			run: func(ctx context.Context) {
 				started <- struct{}{}
@@ -363,10 +363,10 @@ func TestAsyncPoolConcurrentSubmitIsSafe(t *testing.T) {
 	var ran atomic.Int32
 	var submitWG sync.WaitGroup
 	submitWG.Add(goroutines)
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		go func() {
 			defer submitWG.Done()
-			for j := 0; j < tasksPerGoro; j++ {
+			for range tasksPerGoro {
 				if ok := pool.Submit(asyncTask{
 					run: func(context.Context) {
 						ran.Add(1)

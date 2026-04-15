@@ -121,7 +121,10 @@ func BuildDeliveryTarget(instance BridgeInstance, req ResolveDeliveryTargetReque
 
 // ResolveDeliveryTarget loads the owning bridge instance and resolves the
 // canonical outbound target under that instance's delivery defaults.
-func (s *Service) ResolveDeliveryTarget(ctx context.Context, req ResolveDeliveryTargetRequest) (*DeliveryTarget, error) {
+func (s *Service) ResolveDeliveryTarget(
+	ctx context.Context,
+	req ResolveDeliveryTargetRequest,
+) (*DeliveryTarget, error) {
 	if err := s.checkReady(ctx, "resolve delivery target"); err != nil {
 		return nil, err
 	}

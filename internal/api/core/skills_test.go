@@ -20,7 +20,11 @@ type stubSkillsRegistry = testutil.StubSkillsRegistry
 
 var _ core.SkillsRegistry = (*testutil.StubSkillsRegistry)(nil)
 
-func newSkillsHandlerFixture(t *testing.T, registry core.SkillsRegistry, workspaces testutil.StubWorkspaceService) *gin.Engine {
+func newSkillsHandlerFixture(
+	t *testing.T,
+	registry core.SkillsRegistry,
+	workspaces testutil.StubWorkspaceService,
+) *gin.Engine {
 	t.Helper()
 
 	gin.SetMode(gin.TestMode)
@@ -30,7 +34,7 @@ func newSkillsHandlerFixture(t *testing.T, registry core.SkillsRegistry, workspa
 	cfg.HTTP.Port = 2123
 	cfg.Daemon.Socket = "/tmp/skills-test.sock"
 
-	handlers := core.NewBaseHandlers(core.BaseHandlerConfig{
+	handlers := core.NewBaseHandlers(&core.BaseHandlerConfig{
 		TransportName:  "skills-test",
 		Sessions:       testutil.StubSessionManager{},
 		Observer:       testutil.StubObserver{},
@@ -211,15 +215,15 @@ func TestListSkills(t *testing.T) {
 
 		skill := testSkill()
 		registry := &stubSkillsRegistry{
-			ForWorkspaceFn: func(_ context.Context, resolved workspacepkg.ResolvedWorkspace) ([]*skills.Skill, error) {
-				if resolved.ID != "ws-1" {
-					t.Errorf("ForWorkspace got ID %q, want ws-1", resolved.ID)
+			ForWorkspaceFn: func(_ context.Context, resolved *workspacepkg.ResolvedWorkspace) ([]*skills.Skill, error) {
+				if resolved == nil || resolved.ID != "ws-1" {
+					t.Errorf("ForWorkspace got workspace %v, want ws-1", resolved)
 				}
 				return []*skills.Skill{skill}, nil
 			},
 		}
 		workspaces := testutil.StubWorkspaceService{
-			ResolveFn: func(_ context.Context, ref string) (workspacepkg.ResolvedWorkspace, error) {
+			ResolveFn: func(_ context.Context, _ string) (workspacepkg.ResolvedWorkspace, error) {
 				return workspacepkg.ResolvedWorkspace{
 					Workspace: workspacepkg.Workspace{
 						ID:      "ws-1",
@@ -258,7 +262,7 @@ func TestGetSkill(t *testing.T) {
 		t.Parallel()
 
 		registry := &stubSkillsRegistry{
-			GetFn: func(name string) (*skills.Skill, bool) {
+			GetFn: func(_ string) (*skills.Skill, bool) {
 				return nil, false
 			},
 		}
@@ -310,12 +314,12 @@ func TestGetSkill(t *testing.T) {
 		workspaceSkill.Dir = "/workspace/.agh/skills/test-skill"
 
 		registry := &stubSkillsRegistry{
-			GetFn: func(name string) (*skills.Skill, bool) {
+			GetFn: func(_ string) (*skills.Skill, bool) {
 				return nil, false
 			},
-			ForWorkspaceFn: func(_ context.Context, resolved workspacepkg.ResolvedWorkspace) ([]*skills.Skill, error) {
-				if resolved.ID != "ws-1" {
-					t.Errorf("ForWorkspace got ID %q, want ws-1", resolved.ID)
+			ForWorkspaceFn: func(_ context.Context, resolved *workspacepkg.ResolvedWorkspace) ([]*skills.Skill, error) {
+				if resolved == nil || resolved.ID != "ws-1" {
+					t.Errorf("ForWorkspace got workspace %v, want ws-1", resolved)
 				}
 				return []*skills.Skill{workspaceSkill}, nil
 			},
@@ -395,9 +399,9 @@ func TestGetSkillContent(t *testing.T) {
 		workspaceSkill.Dir = "/workspace/.agh/skills/test-skill"
 
 		registry := &stubSkillsRegistry{
-			ForWorkspaceFn: func(_ context.Context, resolved workspacepkg.ResolvedWorkspace) ([]*skills.Skill, error) {
-				if resolved.ID != "ws-1" {
-					t.Errorf("ForWorkspace got ID %q, want ws-1", resolved.ID)
+			ForWorkspaceFn: func(_ context.Context, resolved *workspacepkg.ResolvedWorkspace) ([]*skills.Skill, error) {
+				if resolved == nil || resolved.ID != "ws-1" {
+					t.Errorf("ForWorkspace got workspace %v, want ws-1", resolved)
 				}
 				return []*skills.Skill{workspaceSkill}, nil
 			},
@@ -409,7 +413,7 @@ func TestGetSkillContent(t *testing.T) {
 			},
 		}
 		workspaces := testutil.StubWorkspaceService{
-			ResolveFn: func(_ context.Context, ref string) (workspacepkg.ResolvedWorkspace, error) {
+			ResolveFn: func(_ context.Context, _ string) (workspacepkg.ResolvedWorkspace, error) {
 				return workspacepkg.ResolvedWorkspace{
 					Workspace: workspacepkg.Workspace{ID: "ws-1", RootDir: "/workspace", Name: "test"},
 				}, nil
@@ -446,9 +450,9 @@ func TestEnableSkill(t *testing.T) {
 				}
 				return nil, false
 			},
-			ForWorkspaceFn: func(_ context.Context, resolved workspacepkg.ResolvedWorkspace) ([]*skills.Skill, error) {
-				if resolved.ID != "ws-1" {
-					t.Errorf("ForWorkspace got ID %q, want ws-1", resolved.ID)
+			ForWorkspaceFn: func(_ context.Context, resolved *workspacepkg.ResolvedWorkspace) ([]*skills.Skill, error) {
+				if resolved == nil || resolved.ID != "ws-1" {
+					t.Errorf("ForWorkspace got workspace %v, want ws-1", resolved)
 				}
 				return []*skills.Skill{skill}, nil
 			},
@@ -495,12 +499,12 @@ func TestEnableSkill(t *testing.T) {
 		t.Parallel()
 
 		registry := &stubSkillsRegistry{
-			GetFn: func(name string) (*skills.Skill, bool) {
+			GetFn: func(_ string) (*skills.Skill, bool) {
 				return nil, false
 			},
 		}
 		workspaces := testutil.StubWorkspaceService{
-			ResolveFn: func(_ context.Context, ref string) (workspacepkg.ResolvedWorkspace, error) {
+			ResolveFn: func(_ context.Context, _ string) (workspacepkg.ResolvedWorkspace, error) {
 				return workspacepkg.ResolvedWorkspace{
 					Workspace: workspacepkg.Workspace{ID: "ws-1", RootDir: "/workspace", Name: "test"},
 				}, nil
@@ -530,9 +534,9 @@ func TestDisableSkill(t *testing.T) {
 				}
 				return nil, false
 			},
-			ForWorkspaceFn: func(_ context.Context, resolved workspacepkg.ResolvedWorkspace) ([]*skills.Skill, error) {
-				if resolved.ID != "ws-1" {
-					t.Errorf("ForWorkspace got ID %q, want ws-1", resolved.ID)
+			ForWorkspaceFn: func(_ context.Context, resolved *workspacepkg.ResolvedWorkspace) ([]*skills.Skill, error) {
+				if resolved == nil || resolved.ID != "ws-1" {
+					t.Errorf("ForWorkspace got workspace %v, want ws-1", resolved)
 				}
 				return []*skills.Skill{skill}, nil
 			},
@@ -579,12 +583,12 @@ func TestDisableSkill(t *testing.T) {
 		t.Parallel()
 
 		registry := &stubSkillsRegistry{
-			GetFn: func(name string) (*skills.Skill, bool) {
+			GetFn: func(_ string) (*skills.Skill, bool) {
 				return nil, false
 			},
 		}
 		workspaces := testutil.StubWorkspaceService{
-			ResolveFn: func(_ context.Context, ref string) (workspacepkg.ResolvedWorkspace, error) {
+			ResolveFn: func(_ context.Context, _ string) (workspacepkg.ResolvedWorkspace, error) {
 				return workspacepkg.ResolvedWorkspace{
 					Workspace: workspacepkg.Workspace{ID: "ws-1", RootDir: "/workspace", Name: "test"},
 				}, nil
@@ -622,7 +626,13 @@ func TestSkillsRegistryNotConfigured(t *testing.T) {
 
 			rec := testutil.PerformRequest(t, engine, tt.method, tt.path, nil)
 			if rec.Code != http.StatusServiceUnavailable {
-				t.Errorf("%s status = %d, want %d; body=%s", tt.name, rec.Code, http.StatusServiceUnavailable, rec.Body.String())
+				t.Errorf(
+					"%s status = %d, want %d; body=%s",
+					tt.name,
+					rec.Code,
+					http.StatusServiceUnavailable,
+					rec.Body.String(),
+				)
 			}
 		})
 	}

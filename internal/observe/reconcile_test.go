@@ -1,12 +1,13 @@
 package observe
 
 import (
-	"github.com/pedronauck/agh/internal/testutil"
 	"os"
 	"path/filepath"
 	"sort"
 	"testing"
 	"time"
+
+	"github.com/pedronauck/agh/internal/testutil"
 
 	"github.com/pedronauck/agh/internal/store"
 )

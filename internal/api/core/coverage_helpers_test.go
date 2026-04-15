@@ -46,7 +46,8 @@ func TestBundleCatalogPayloadsAndDeclaredChannels(t *testing.T) {
 	if got, want := len(catalog), 1; got != want {
 		t.Fatalf("len(catalog) = %d, want %d", got, want)
 	}
-	if catalog[0].ExtensionName != "ext-bundle" || catalog[0].BundleName != "ops" || catalog[0].Profiles[0].PrimaryChannel != "primary" {
+	if catalog[0].ExtensionName != "ext-bundle" || catalog[0].BundleName != "ops" ||
+		catalog[0].Profiles[0].PrimaryChannel != "primary" {
 		t.Fatalf("catalog payload = %#v", catalog[0])
 	}
 	if got, want := len(catalog[0].Profiles[0].Channels), 2; got != want {
@@ -88,7 +89,11 @@ func TestStatusForBundleErrorAndChannelHelpers(t *testing.T) {
 		{name: "profile missing", err: bundlepkg.ErrProfileNotFound, want: http.StatusNotFound},
 		{name: "extension missing", err: extensionpkg.ErrExtensionNotFound, want: http.StatusNotFound},
 		{name: "default channel busy", err: bundlepkg.ErrDefaultChannelBusy, want: http.StatusConflict},
-		{name: "extension has active bundles", err: extensionpkg.ErrExtensionHasActiveBundles, want: http.StatusConflict},
+		{
+			name: "extension has active bundles",
+			err:  extensionpkg.ErrExtensionHasActiveBundles,
+			want: http.StatusConflict,
+		},
 		{name: "webhook unsupported", err: bundlepkg.ErrWebhookUnsupported, want: http.StatusBadRequest},
 		{name: "workspace missing", err: workspacepkg.ErrWorkspaceNotFound, want: http.StatusNotFound},
 		{name: "workspace root missing", err: workspacepkg.ErrWorkspaceRootMissing, want: http.StatusGone},
@@ -96,7 +101,6 @@ func TestStatusForBundleErrorAndChannelHelpers(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			if got := StatusForBundleError(tt.err); got != tt.want {
@@ -106,7 +110,7 @@ func TestStatusForBundleErrorAndChannelHelpers(t *testing.T) {
 	}
 
 	sessionChannel := "builders"
-	sessions := []*session.SessionInfo{
+	sessions := []*session.Info{
 		{ID: "sess-visible", Channel: " builders ", State: session.StateActive},
 		{ID: "sess-stopped", Channel: "builders", State: session.StateStopped},
 	}
@@ -198,7 +202,8 @@ func TestCoreConversionHelpers(t *testing.T) {
 		CostCurrency:     stringPtr("USD"),
 		Timestamp:        now,
 	})
-	if usage == nil || usage.TotalTokens == nil || *usage.TotalTokens != 30 || usage.CostCurrency == nil || *usage.CostCurrency != "USD" {
+	if usage == nil || usage.TotalTokens == nil || *usage.TotalTokens != 30 || usage.CostCurrency == nil ||
+		*usage.CostCurrency != "USD" {
 		t.Fatalf("TokenUsagePayloadFromUsage() = %#v", usage)
 	}
 	if TokenUsagePayloadFromUsage(nil) != nil {
@@ -232,7 +237,10 @@ func TestCoreConversionHelpers(t *testing.T) {
 		t.Fatalf("PayloadJSON(string) = %s, want quoted string", got)
 	}
 
-	if workspaceID, workspace := sessionWorkspaceFromInfo(&session.SessionInfo{WorkspaceID: " ws-1 ", Workspace: " /tmp/ws "}); workspaceID != "ws-1" || workspace != "/tmp/ws" {
+	if workspaceID, workspace := sessionWorkspaceFromInfo(
+		&session.Info{WorkspaceID: " ws-1 ", Workspace: " /tmp/ws "},
+	); workspaceID != "ws-1" ||
+		workspace != "/tmp/ws" {
 		t.Fatalf("sessionWorkspaceFromInfo() = %q/%q", workspaceID, workspace)
 	}
 	if workspaceID, workspace := sessionWorkspaceFromInfo(nil); workspaceID != "" || workspace != "" {
@@ -276,7 +284,7 @@ func TestCoreConversionHelpers(t *testing.T) {
 	if got := networkPeerDisplayName(network.PeerInfo{
 		SessionID: &peerSessionID,
 		PeerID:    "peer-1",
-	}, map[string]*session.SessionInfo{
+	}, map[string]*session.Info{
 		"sess-1": {Name: "Session Name", AgentName: "coder"},
 	}); got != "Session Name" {
 		t.Fatalf("networkPeerDisplayName(session name) = %q", got)
@@ -285,7 +293,7 @@ func TestCoreConversionHelpers(t *testing.T) {
 	if got := networkPeerDisplayName(network.PeerInfo{
 		SessionID: &peerSessionID,
 		PeerID:    "peer-1",
-	}, map[string]*session.SessionInfo{
+	}, map[string]*session.Info{
 		"sess-1": {AgentName: "coder"},
 	}); got != "coder" {
 		t.Fatalf("networkPeerDisplayName(agent fallback) = %q", got)
@@ -313,10 +321,10 @@ func TestCoreTimeAndSessionHelpers(t *testing.T) {
 	if networkChannelSessionVisible(nil) {
 		t.Fatal("networkChannelSessionVisible(nil) = true, want false")
 	}
-	if networkChannelSessionVisible(&session.SessionInfo{State: session.StateStopped, Channel: "builders"}) {
+	if networkChannelSessionVisible(&session.Info{State: session.StateStopped, Channel: "builders"}) {
 		t.Fatal("networkChannelSessionVisible(stopped) = true, want false")
 	}
-	if !networkChannelSessionVisible(&session.SessionInfo{State: session.StateActive, Channel: " builders "}) {
+	if !networkChannelSessionVisible(&session.Info{State: session.StateActive, Channel: " builders "}) {
 		t.Fatal("networkChannelSessionVisible(active) = false, want true")
 	}
 }
@@ -324,18 +332,19 @@ func TestCoreTimeAndSessionHelpers(t *testing.T) {
 func TestSessionAndNetworkMappingHelpers(t *testing.T) {
 	t.Parallel()
 
-	payload := SessionPayloadFromInfo(&session.SessionInfo{
+	payload := SessionPayloadFromInfo(&session.Info{
 		ID:          "sess-1",
 		Name:        "Support session",
 		AgentName:   "coder",
 		WorkspaceID: " ws-1 ",
 		Workspace:   " /tmp/ws ",
-		ACPCaps: acp.ACPCaps{
+		ACPCaps: acp.Caps{
 			SupportsLoadSession: true,
 			SupportedModes:      []string{"edit"},
 		},
 	})
-	if payload.ID != "sess-1" || payload.WorkspaceID != "ws-1" || payload.WorkspacePath != "/tmp/ws" || payload.ACPCaps == nil {
+	if payload.ID != "sess-1" || payload.WorkspaceID != "ws-1" || payload.WorkspacePath != "/tmp/ws" ||
+		payload.ACPCaps == nil {
 		t.Fatalf("SessionPayloadFromInfo() = %#v", payload)
 	}
 	if zero := SessionPayloadFromInfo(nil); zero.ID != "" {
@@ -367,7 +376,7 @@ func TestSessionAndNetworkMappingHelpers(t *testing.T) {
 		t.Fatalf("networkMessageDirectionMap(msg-2) unexpectedly set: %#v", directions)
 	}
 
-	sessionsByID := sessionInfoMapByID([]*session.SessionInfo{
+	sessionsByID := sessionInfoMapByID([]*session.Info{
 		{ID: " sess-1 ", Name: "Support"},
 		nil,
 	})

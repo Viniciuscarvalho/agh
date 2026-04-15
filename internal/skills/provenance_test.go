@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -199,7 +200,6 @@ func TestReadSidecarRejectsMissingRequiredFields(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -408,7 +408,7 @@ func TestSidecarRoundTripProducesIdenticalProvenance(t *testing.T) {
 		t.Fatalf("json.Marshal(want) error = %v", err)
 	}
 
-	if string(marshaledGot) != string(marshaledWant) {
+	if !bytes.Equal(marshaledGot, marshaledWant) {
 		t.Fatalf("round-trip mismatch\ngot:  %s\nwant: %s", marshaledGot, marshaledWant)
 	}
 }

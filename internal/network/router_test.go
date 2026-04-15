@@ -51,7 +51,12 @@ func TestRouterSendEnforcesPresencePreflight(t *testing.T) {
 	}
 
 	later := now.Add(21 * time.Second)
-	expiredRouter, err := NewRouter(registry, transport, DefaultMaxReplayAge, WithRouterClock(func() time.Time { return later }))
+	expiredRouter, err := NewRouter(
+		registry,
+		transport,
+		DefaultMaxReplayAge,
+		WithRouterClock(func() time.Time { return later }),
+	)
 	if err != nil {
 		t.Fatalf("NewRouter(expired) error = %v", err)
 	}
@@ -314,7 +319,12 @@ func TestRouterWhoisResponseRefreshesRemotePresenceAndDeliversToRequester(t *tes
 	if _, err := registry.RegisterLocal("sess-a", "builders", local, now); err != nil {
 		t.Fatalf("RegisterLocal(local) error = %v", err)
 	}
-	router, err := NewRouter(registry, &spyRouterTransport{}, DefaultMaxReplayAge, WithRouterClock(func() time.Time { return now }))
+	router, err := NewRouter(
+		registry,
+		&spyRouterTransport{},
+		DefaultMaxReplayAge,
+		WithRouterClock(func() time.Time { return now }),
+	)
 	if err != nil {
 		t.Fatalf("NewRouter() error = %v", err)
 	}
@@ -383,8 +393,7 @@ func TestRouterHeartbeatPublishAndLeaveHelpers(t *testing.T) {
 		t.Fatalf("PublishGreet().Subject = %q, want %q", got, want)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	heartbeat, err := router.StartHeartbeat(ctx, "sess-a", "alive")
 	if err != nil {
 		t.Fatalf("StartHeartbeat() error = %v", err)
@@ -425,7 +434,12 @@ func TestRouterReceiveRejectsNotTargetAndMapsMalformedErrors(t *testing.T) {
 	if _, err := registry.RegisterLocal("sess-b", "builders", local, now); err != nil {
 		t.Fatalf("RegisterLocal(local) error = %v", err)
 	}
-	router, err := NewRouter(registry, &spyRouterTransport{}, DefaultMaxReplayAge, WithRouterClock(func() time.Time { return now }))
+	router, err := NewRouter(
+		registry,
+		&spyRouterTransport{},
+		DefaultMaxReplayAge,
+		WithRouterClock(func() time.Time { return now }),
+	)
 	if err != nil {
 		t.Fatalf("NewRouter() error = %v", err)
 	}
@@ -639,7 +653,14 @@ func TestRouterConstructionAndHelperErrors(t *testing.T) {
 	if _, err := router.PublishGreet(context.Background(), "missing", "hello"); !errors.Is(err, ErrLocalPeerNotFound) {
 		t.Fatalf("PublishGreet(missing local) error = %v, want ErrLocalPeerNotFound", err)
 	}
-	if _, err := router.StartHeartbeat(context.Background(), "missing", "hello"); !errors.Is(err, ErrLocalPeerNotFound) {
+	if _, err := router.StartHeartbeat(
+		context.Background(),
+		"missing",
+		"hello",
+	); !errors.Is(
+		err,
+		ErrLocalPeerNotFound,
+	) {
 		t.Fatalf("StartHeartbeat(missing local) error = %v, want ErrLocalPeerNotFound", err)
 	}
 
@@ -690,7 +711,12 @@ func TestRouterDirectedRecipeOpensInteractionForReceiptAndTrace(t *testing.T) {
 		t.Fatalf("RegisterLocal(delta) error = %v", err)
 	}
 
-	router, err := NewRouter(registry, &spyRouterTransport{}, DefaultMaxReplayAge, WithRouterClock(func() time.Time { return now }))
+	router, err := NewRouter(
+		registry,
+		&spyRouterTransport{},
+		DefaultMaxReplayAge,
+		WithRouterClock(func() time.Time { return now }),
+	)
 	if err != nil {
 		t.Fatalf("NewRouter() error = %v", err)
 	}
@@ -807,7 +833,12 @@ func TestRouterReceiveRejectsInvalidLifecycleTransition(t *testing.T) {
 	if _, err := registry.RegisterLocal("sess-b", "builders", local, now); err != nil {
 		t.Fatalf("RegisterLocal(local) error = %v", err)
 	}
-	router, err := NewRouter(registry, &spyRouterTransport{}, DefaultMaxReplayAge, WithRouterClock(func() time.Time { return now }))
+	router, err := NewRouter(
+		registry,
+		&spyRouterTransport{},
+		DefaultMaxReplayAge,
+		WithRouterClock(func() time.Time { return now }),
+	)
 	if err != nil {
 		t.Fatalf("NewRouter() error = %v", err)
 	}

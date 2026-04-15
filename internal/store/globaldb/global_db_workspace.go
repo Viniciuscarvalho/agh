@@ -118,7 +118,11 @@ func (g *GlobalDB) GetWorkspace(ctx context.Context, id string) (aghworkspace.Wo
 		return aghworkspace.Workspace{}, errors.New("store: workspace id is required")
 	}
 
-	return g.getWorkspaceByQuery(ctx, `SELECT id, root_dir, add_dirs, name, default_agent, created_at, updated_at FROM workspaces WHERE id = ?`, trimmedID)
+	return g.getWorkspaceByQuery(
+		ctx,
+		`SELECT id, root_dir, add_dirs, name, default_agent, created_at, updated_at FROM workspaces WHERE id = ?`,
+		trimmedID,
+	)
 }
 
 // GetWorkspaceByPath loads a workspace registration by canonical root directory.
@@ -132,7 +136,11 @@ func (g *GlobalDB) GetWorkspaceByPath(ctx context.Context, rootDir string) (aghw
 		return aghworkspace.Workspace{}, errors.New("store: workspace root directory is required")
 	}
 
-	return g.getWorkspaceByQuery(ctx, `SELECT id, root_dir, add_dirs, name, default_agent, created_at, updated_at FROM workspaces WHERE root_dir = ?`, trimmedRoot)
+	return g.getWorkspaceByQuery(
+		ctx,
+		`SELECT id, root_dir, add_dirs, name, default_agent, created_at, updated_at FROM workspaces WHERE root_dir = ?`,
+		trimmedRoot,
+	)
 }
 
 // GetWorkspaceByName loads a workspace registration by unique workspace name.
@@ -146,7 +154,11 @@ func (g *GlobalDB) GetWorkspaceByName(ctx context.Context, name string) (aghwork
 		return aghworkspace.Workspace{}, errors.New("store: workspace name is required")
 	}
 
-	return g.getWorkspaceByQuery(ctx, `SELECT id, root_dir, add_dirs, name, default_agent, created_at, updated_at FROM workspaces WHERE name = ?`, trimmedName)
+	return g.getWorkspaceByQuery(
+		ctx,
+		`SELECT id, root_dir, add_dirs, name, default_agent, created_at, updated_at FROM workspaces WHERE name = ?`,
+		trimmedName,
+	)
 }
 
 // ListWorkspaces returns all registered workspaces in stable name order.

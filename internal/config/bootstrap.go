@@ -19,11 +19,11 @@ func LoadGlobalConfig(homePaths HomePaths) (Config, error) {
 }
 
 // ResolveAgentName resolves an explicit session agent name or falls back to config defaults.
-func ResolveAgentName(name string, cfg Config) (string, error) {
+func ResolveAgentName(name string, defaults DefaultsConfig) (string, error) {
 	if resolved := strings.TrimSpace(name); resolved != "" {
 		return resolved, nil
 	}
-	if resolved := strings.TrimSpace(cfg.Defaults.Agent); resolved != "" {
+	if resolved := strings.TrimSpace(defaults.Agent); resolved != "" {
 		return resolved, nil
 	}
 	return "", errors.New("agent name is required; run `agh install` or set defaults.agent")
@@ -56,7 +56,8 @@ func SaveBootstrapConfig(homePaths HomePaths, provider string, model string) (Co
 	overlay.Defaults.Agent = stringPtr(DefaultAgentName)
 	overlay.Defaults.Provider = stringPtr(selectedProvider)
 	overlay.Permissions.Mode = permissionModePtr(PermissionModeApproveAll)
-	if strings.TrimSpace(current.Memory.Dream.Agent) == "" || strings.TrimSpace(current.Memory.Dream.Agent) == legacyDreamAgentName {
+	if strings.TrimSpace(current.Memory.Dream.Agent) == "" ||
+		strings.TrimSpace(current.Memory.Dream.Agent) == legacyDreamAgentName {
 		overlay.Memory.Dream.Agent = stringPtr(DefaultAgentName)
 	}
 	if overlay.Providers == nil {
@@ -102,7 +103,7 @@ func EnsureBootstrapAgent(homePaths HomePaths) (string, bool, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return "", false, fmt.Errorf("create bootstrap agent directory %q: %w", filepath.Dir(path), err)
 	}
-	if err := os.WriteFile(path, []byte(bootstrapAgentContents()), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(bootstrapAgentContents()), 0o600); err != nil {
 		return "", false, fmt.Errorf("write bootstrap agent file %q: %w", path, err)
 	}
 	return path, true, nil
@@ -130,7 +131,7 @@ func writeConfigOverlayFile(path string, overlay configOverlay) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create config directory %q: %w", filepath.Dir(path), err)
 	}
-	if err := os.WriteFile(path, buffer.Bytes(), 0o644); err != nil {
+	if err := os.WriteFile(path, buffer.Bytes(), 0o600); err != nil {
 		return fmt.Errorf("write config file %q: %w", path, err)
 	}
 	return nil

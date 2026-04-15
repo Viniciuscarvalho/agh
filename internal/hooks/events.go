@@ -195,11 +195,12 @@ var allHookEvents = []HookEvent{
 	HookContextPostCompact,
 }
 
-func init() {
+var _ = func() bool {
 	if err := validateHookEventSpecsConsistency(); err != nil {
 		panic(err)
 	}
-}
+	return true
+}()
 
 // AllHookEvents returns the full taxonomy in deterministic order.
 func AllHookEvents() []HookEvent {

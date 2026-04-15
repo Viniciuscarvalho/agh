@@ -82,7 +82,6 @@ func TestResolveRoutesByIdentifierType(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -287,7 +286,11 @@ func TestResolverCRUDFlow(t *testing.T) {
 		t.Fatalf("Resolve(updated) DefaultAgent = %q, want empty", resolved.DefaultAgent)
 	}
 	if resolved.Config.Defaults.Agent != aghconfig.DefaultAgentName {
-		t.Fatalf("Resolve(updated) Config.Defaults.Agent = %q, want %q", resolved.Config.Defaults.Agent, aghconfig.DefaultAgentName)
+		t.Fatalf(
+			"Resolve(updated) Config.Defaults.Agent = %q, want %q",
+			resolved.Config.Defaults.Agent,
+			aghconfig.DefaultAgentName,
+		)
 	}
 
 	if err := resolver.Unregister(ctx, registered.ID); err != nil {
@@ -479,7 +482,12 @@ func TestResolveLocalAgentOverridesGlobalByName(t *testing.T) {
 	root := t.TempDir()
 
 	writeAgentDef(t, filepath.Join(homePaths.AgentsDir, "coder", agentDefinitionFile), "coder", "global")
-	writeAgentDef(t, filepath.Join(root, aghconfig.DirName, aghconfig.AgentsDirName, "coder", agentDefinitionFile), "coder", "local")
+	writeAgentDef(
+		t,
+		filepath.Join(root, aghconfig.DirName, aghconfig.AgentsDirName, "coder", agentDefinitionFile),
+		"coder",
+		"local",
+	)
 	writeAgentDef(t, filepath.Join(homePaths.AgentsDir, "reviewer", agentDefinitionFile), "reviewer", "review")
 
 	store := newMockWorkspaceStore(Workspace{ID: "ws_agents", RootDir: root, Name: "repo"})
@@ -680,7 +688,7 @@ func TestCloneConfigProducesDeepCopy(t *testing.T) {
 		},
 	}
 
-	cloned := cloneConfig(original)
+	cloned := cloneConfig(&original)
 	cloned.Session.Limits.Timeout = 2 * time.Minute
 	cloned.Providers["claude"] = aghconfig.ProviderConfig{}
 	cloned.Skills.DisabledSkills[0] = "beta"
@@ -734,7 +742,7 @@ func TestWorkspaceHelperFunctions(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 		if err := checkContext(ctx); !errors.Is(err, context.Canceled) {
-			t.Fatalf("checkContext(cancelled) error = %v, want %v", err, context.Canceled)
+			t.Fatalf("checkContext(canceled) error = %v, want %v", err, context.Canceled)
 		}
 
 		if err := checkContext(context.Background()); err != nil {
@@ -776,7 +784,11 @@ func TestWorkspaceHelperFunctions(t *testing.T) {
 		cfg := aghconfig.Config{Defaults: aghconfig.DefaultsConfig{Agent: aghconfig.DefaultAgentName}}
 		applyDefaultAgentOverride(&cfg, "")
 		if cfg.Defaults.Agent != aghconfig.DefaultAgentName {
-			t.Fatalf("Defaults.Agent after empty override = %q, want %q", cfg.Defaults.Agent, aghconfig.DefaultAgentName)
+			t.Fatalf(
+				"Defaults.Agent after empty override = %q, want %q",
+				cfg.Defaults.Agent,
+				aghconfig.DefaultAgentName,
+			)
 		}
 		applyDefaultAgentOverride(&cfg, "workspace-agent")
 		if cfg.Defaults.Agent != "workspace-agent" {
@@ -1009,7 +1021,7 @@ func (l *countingConfigLoader) Load(root string) (aghconfig.Config, error) {
 
 	l.calls++
 	l.roots = append(l.roots, root)
-	return cloneConfig(l.cfg), nil
+	return cloneConfig(&l.cfg), nil
 }
 
 func (l *countingConfigLoader) Calls() int {
@@ -1027,7 +1039,7 @@ func (l *countingConfigLoader) LastRoot() string {
 	return l.roots[len(l.roots)-1]
 }
 
-func newTestResolver(t *testing.T, store WorkspaceStore, opts ...Option) *Resolver {
+func newTestResolver(t *testing.T, store Store, opts ...Option) *Resolver {
 	t.Helper()
 
 	opts = append([]Option{WithLogger(discardLogger())}, opts...)

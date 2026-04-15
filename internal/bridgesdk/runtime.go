@@ -333,7 +333,7 @@ func (r *Runtime) handleShutdown(ctx context.Context, raw json.RawMessage) (any,
 	}
 
 	var request subprocess.ShutdownRequest
-	if len(strings.TrimSpace(string(raw))) > 0 && string(raw) != "null" {
+	if strings.TrimSpace(string(raw)) != "" && string(raw) != "null" {
 		if err := decodeParams(raw, &request); err != nil {
 			return nil, err
 		}
@@ -388,7 +388,7 @@ func (r *Runtime) initializeResponse(request subprocess.InitializeRequest) subpr
 }
 
 func decodeParams(raw json.RawMessage, dest any) error {
-	if len(strings.TrimSpace(string(raw))) == 0 || string(raw) == "null" {
+	if strings.TrimSpace(string(raw)) == "" || string(raw) == "null" {
 		raw = json.RawMessage("{}")
 	}
 	if err := json.Unmarshal(raw, dest); err != nil {

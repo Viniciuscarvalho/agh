@@ -102,12 +102,16 @@ func TestValidateConformanceRejectsUnexpectedOwnedInstanceDelivery(t *testing.T)
 func TestHarnessHelperCloningAndMarkerParsingSupportManyManagedInstances(t *testing.T) {
 	managed := []subprocess.InitializeBridgeManagedInstance{
 		{
-			Instance:     testBridgeInstanceWithID("brg-1"),
-			BoundSecrets: []subprocess.InitializeBridgeBoundSecret{{BindingName: "bot_token", Kind: "token", Value: "token-1"}},
+			Instance: testBridgeInstanceWithID("brg-1"),
+			BoundSecrets: []subprocess.InitializeBridgeBoundSecret{
+				{BindingName: "bot_token", Kind: "token", Value: "token-1"},
+			},
 		},
 		{
-			Instance:     testBridgeInstanceWithID("brg-2"),
-			BoundSecrets: []subprocess.InitializeBridgeBoundSecret{{BindingName: "bot_token", Kind: "token", Value: "token-2"}},
+			Instance: testBridgeInstanceWithID("brg-2"),
+			BoundSecrets: []subprocess.InitializeBridgeBoundSecret{
+				{BindingName: "bot_token", Kind: "token", Value: "token-2"},
+			},
 		},
 	}
 	cloned := cloneManagedRuntime(managed)
@@ -145,7 +149,10 @@ func TestHarnessHelperUtilities(t *testing.T) {
 		t.Fatalf("ScriptedPromptDriver.Cancel() error = %v", err)
 	}
 
-	workspace := defaultResolvedWorkspace("/tmp/bridge-adapter-workspace", time.Date(2026, 4, 11, 5, 15, 0, 0, time.UTC))
+	workspace := defaultResolvedWorkspace(
+		"/tmp/bridge-adapter-workspace",
+		time.Date(2026, 4, 11, 5, 15, 0, 0, time.UTC),
+	)
 	resolver := staticWorkspaceResolver{resolved: workspace}
 	resolved, err := resolver.ResolveOrRegister(context.Background(), "")
 	if err != nil {
@@ -235,7 +242,8 @@ func TestRecordHostStateTransitionCapturesReportedState(t *testing.T) {
 	if got, want := records[0].Status.Normalize(), bridgepkg.BridgeStatusDegraded; got != want {
 		t.Fatalf("records[0].Status = %q, want %q", got, want)
 	}
-	if records[0].Instance.Degradation == nil || records[0].Instance.Degradation.Reason != bridgepkg.BridgeDegradationReasonRateLimited {
+	if records[0].Instance.Degradation == nil ||
+		records[0].Instance.Degradation.Reason != bridgepkg.BridgeDegradationReasonRateLimited {
 		t.Fatalf("records[0].Instance.Degradation = %#v, want rate limited", records[0].Instance.Degradation)
 	}
 }

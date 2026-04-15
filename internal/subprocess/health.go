@@ -28,8 +28,36 @@ type HealthState struct {
 type healthMonitor struct {
 	mu     sync.RWMutex
 	state  HealthState
-	cancel context.CancelFunc
-	done   chan struct{}
+	active *healthMonitorRun
+}
+
+type healthMonitorRun struct {
+	stopCh   chan struct{}
+	doneCh   chan struct{}
+	stopOnce sync.Once
+}
+
+func newHealthMonitorRun() *healthMonitorRun {
+	return &healthMonitorRun{
+		stopCh: make(chan struct{}),
+		doneCh: make(chan struct{}),
+	}
+}
+
+func (r *healthMonitorRun) stop() {
+	if r == nil {
+		return
+	}
+	r.stopOnce.Do(func() {
+		close(r.stopCh)
+	})
+}
+
+func (r *healthMonitorRun) finish() {
+	if r == nil {
+		return
+	}
+	close(r.doneCh)
 }
 
 // HealthState returns the latest health-monitor snapshot.
@@ -52,31 +80,32 @@ func (p *Process) maybeStartHealthMonitor(runtime InitializeRuntime, supports In
 	}
 
 	p.health.mu.Lock()
-	if p.health.cancel != nil {
+	if p.health.active != nil {
 		p.health.mu.Unlock()
 		return
 	}
 
-	ctx, cancel := context.WithCancel(p.lifecycleCtx)
-	p.health.cancel = cancel
-	p.health.done = make(chan struct{})
+	run := newHealthMonitorRun()
+	p.health.active = run
 	p.health.state = HealthState{Healthy: true}
 	p.health.mu.Unlock()
 
 	interval := time.Duration(runtime.HealthCheckIntervalMS) * time.Millisecond
 	timeout := time.Duration(runtime.HealthCheckTimeoutMS) * time.Millisecond
-	go p.runHealthMonitor(ctx, interval, timeout)
+	go p.runHealthMonitor(run, interval, timeout)
 }
 
-func (p *Process) runHealthMonitor(ctx context.Context, interval, timeout time.Duration) {
-	defer close(p.health.done)
+func (p *Process) runHealthMonitor(run *healthMonitorRun, interval, timeout time.Duration) {
+	defer run.finish()
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-ctx.Done():
+		case <-p.lifecycleCtx.Done():
+			return
+		case <-run.stopCh:
 			return
 		case <-ticker.C:
 			p.runHealthProbe(timeout)
@@ -142,16 +171,13 @@ func (p *Process) markUnhealthy(message string, details json.RawMessage, lastErr
 
 func (p *Process) stopHealthMonitor() {
 	p.health.mu.Lock()
-	cancel := p.health.cancel
-	done := p.health.done
-	p.health.cancel = nil
-	p.health.done = nil
+	run := p.health.active
+	p.health.active = nil
 	p.health.mu.Unlock()
 
-	if cancel != nil {
-		cancel()
+	if run == nil {
+		return
 	}
-	if done != nil {
-		<-done
-	}
+	run.stop()
+	<-run.doneCh
 }

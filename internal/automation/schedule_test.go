@@ -256,7 +256,7 @@ func TestSchedulerStartAndShutdownLifecycleGuards(t *testing.T) {
 	cancelledCtx, cancel := context.WithCancel(testutil.Context(t))
 	cancel()
 	if err := scheduler.Start(cancelledCtx); !errors.Is(err, context.Canceled) {
-		t.Fatalf("Start(cancelled) error = %v, want context.Canceled", err)
+		t.Fatalf("Start(canceled) error = %v, want context.Canceled", err)
 	}
 	if err := scheduler.Start(testutil.Context(t)); err != nil {
 		t.Fatalf("Start() error = %v", err)

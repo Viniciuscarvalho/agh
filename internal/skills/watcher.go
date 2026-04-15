@@ -81,7 +81,7 @@ func (w *Watcher) SetAfterRefresh(callback func(context.Context) error) {
 	w.afterRefresh = callback
 }
 
-// Start runs the polling loop until the provided context is cancelled.
+// Start runs the polling loop until the provided context is canceled.
 func (w *Watcher) Start(ctx context.Context) {
 	if ctx == nil {
 		return
@@ -92,7 +92,10 @@ func (w *Watcher) Start(ctx context.Context) {
 	}
 
 	w.logger.Info("skills: watcher started", "roots", w.roots, "interval", w.interval)
-	if err := w.pollOnce(ctx); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+	if err := w.pollOnce(
+		ctx,
+	); err != nil && !errors.Is(err, context.Canceled) &&
+		!errors.Is(err, context.DeadlineExceeded) {
 		w.logger.Warn("skills: watcher poll failed", "error", err)
 	}
 

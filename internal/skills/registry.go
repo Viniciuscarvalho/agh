@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -138,7 +139,7 @@ func (r *Registry) LoadContent(ctx context.Context, skill *Skill) (string, error
 }
 
 // ForWorkspace returns the global skill set overlaid with resolver-provided workspace skills.
-func (r *Registry) ForWorkspace(ctx context.Context, resolved workspacepkg.ResolvedWorkspace) ([]*Skill, error) {
+func (r *Registry) ForWorkspace(ctx context.Context, resolved *workspacepkg.ResolvedWorkspace) ([]*Skill, error) {
 	if err := checkRegistryContext(ctx); err != nil {
 		return nil, err
 	}
@@ -248,24 +249,45 @@ func (r *Registry) reloadGlobal(ctx context.Context) error {
 	return nil
 }
 
-func (r *Registry) loadGlobalSkills(ctx context.Context, disabledSkills []string) (map[string]*Skill, map[string]filesnap.Snapshot, error) {
+func (r *Registry) loadGlobalSkills(
+	ctx context.Context,
+	disabledSkills []string,
+) (map[string]*Skill, map[string]filesnap.Snapshot, error) {
 	skills := make(map[string]*Skill)
 	snapshots := make(map[string]filesnap.Snapshot)
 
 	if err := r.loadBundledSkills(ctx, skills, disabledSkills); err != nil {
 		return nil, nil, err
 	}
-	if err := r.loadDirectorySkills(ctx, r.cfg.UserSkillsDir, SourceUser, skills, snapshots, disabledSkills); err != nil {
+	if err := r.loadDirectorySkills(
+		ctx,
+		r.cfg.UserSkillsDir,
+		SourceUser,
+		skills,
+		snapshots,
+		disabledSkills,
+	); err != nil {
 		return nil, nil, err
 	}
-	if err := r.loadDirectorySkills(ctx, r.cfg.UserAgentsDir, SourceUser, skills, snapshots, disabledSkills); err != nil {
+	if err := r.loadDirectorySkills(
+		ctx,
+		r.cfg.UserAgentsDir,
+		SourceUser,
+		skills,
+		snapshots,
+		disabledSkills,
+	); err != nil {
 		return nil, nil, err
 	}
 
 	return skills, snapshots, nil
 }
 
-func (r *Registry) loadWorkspaceSkills(ctx context.Context, paths []workspaceSkillPath, disabledSkills []string) (map[string]*Skill, error) {
+func (r *Registry) loadWorkspaceSkills(
+	ctx context.Context,
+	paths []workspaceSkillPath,
+	disabledSkills []string,
+) (map[string]*Skill, error) {
 	skills := make(map[string]*Skill)
 
 	for _, path := range paths {
@@ -314,7 +336,14 @@ func (r *Registry) loadBundledSkills(ctx context.Context, dst map[string]*Skill,
 	return nil
 }
 
-func (r *Registry) loadDirectorySkills(ctx context.Context, dir string, source SkillSource, dst map[string]*Skill, snapshots map[string]filesnap.Snapshot, disabledSkills []string) error {
+func (r *Registry) loadDirectorySkills(
+	ctx context.Context,
+	dir string,
+	source SkillSource,
+	dst map[string]*Skill,
+	snapshots map[string]filesnap.Snapshot,
+	disabledSkills []string,
+) error {
 	root := strings.TrimSpace(dir)
 	if root == "" {
 		return nil
@@ -324,9 +353,7 @@ func (r *Registry) loadDirectorySkills(ctx context.Context, dir string, source S
 	if err != nil {
 		return err
 	}
-	for path, snapshot := range dirSnapshots {
-		snapshots[path] = snapshot
-	}
+	maps.Copy(snapshots, dirSnapshots)
 	if err := recordSidecarSnapshots(paths, snapshots); err != nil {
 		return err
 	}
@@ -334,7 +361,13 @@ func (r *Registry) loadDirectorySkills(ctx context.Context, dir string, source S
 	return r.loadSkillPaths(ctx, paths, source, dst, disabledSkills)
 }
 
-func (r *Registry) loadSkillPaths(ctx context.Context, paths []string, source SkillSource, dst map[string]*Skill, disabledSkills []string) error {
+func (r *Registry) loadSkillPaths(
+	ctx context.Context,
+	paths []string,
+	source SkillSource,
+	dst map[string]*Skill,
+	disabledSkills []string,
+) error {
 	for _, skillPath := range paths {
 		if err := checkRegistryContext(ctx); err != nil {
 			return err

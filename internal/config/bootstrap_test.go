@@ -14,7 +14,7 @@ func TestResolveAgentNameFallsBackToDefaults(t *testing.T) {
 		Defaults: DefaultsConfig{Agent: DefaultAgentName},
 	}
 
-	resolved, err := ResolveAgentName("", cfg)
+	resolved, err := ResolveAgentName("", cfg.Defaults)
 	if err != nil {
 		t.Fatalf("ResolveAgentName() error = %v", err)
 	}
@@ -64,10 +64,18 @@ api_key_env = "ANTHROPIC_KEY"
 		t.Fatalf("LoadGlobalConfig() HTTP.Port = %d, want 3030", reloaded.HTTP.Port)
 	}
 	if reloaded.Providers["claude"].APIKeyEnv != "ANTHROPIC_KEY" {
-		t.Fatalf("LoadGlobalConfig() Providers[claude].APIKeyEnv = %q, want %q", reloaded.Providers["claude"].APIKeyEnv, "ANTHROPIC_KEY")
+		t.Fatalf(
+			"LoadGlobalConfig() Providers[claude].APIKeyEnv = %q, want %q",
+			reloaded.Providers["claude"].APIKeyEnv,
+			"ANTHROPIC_KEY",
+		)
 	}
 	if reloaded.Providers["claude"].DefaultModel != "claude-sonnet-4-20250514" {
-		t.Fatalf("LoadGlobalConfig() Providers[claude].DefaultModel = %q, want %q", reloaded.Providers["claude"].DefaultModel, "claude-sonnet-4-20250514")
+		t.Fatalf(
+			"LoadGlobalConfig() Providers[claude].DefaultModel = %q, want %q",
+			reloaded.Providers["claude"].DefaultModel,
+			"claude-sonnet-4-20250514",
+		)
 	}
 
 	contents, err := os.ReadFile(homePaths.ConfigFile)

@@ -16,8 +16,7 @@ import (
 func TestRuntimeServeInitializeDeliverHealthShutdownAndSync(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	hostConn, runtimeConn := net.Pipe()
 	defer func() {
@@ -186,8 +185,7 @@ func TestRuntimeServeInitializeDeliverHealthShutdownAndSync(t *testing.T) {
 func TestRuntimeServeRejectsDeliveryBeforeInitialize(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	hostConn, runtimeConn := net.Pipe()
 	defer func() {
@@ -227,8 +225,7 @@ func TestRuntimeServeRejectsDeliveryBeforeInitialize(t *testing.T) {
 func TestRuntimeServeRejectsInvalidInitializePayload(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	hostConn, runtimeConn := net.Pipe()
 	defer func() {

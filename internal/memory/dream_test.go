@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/pedronauck/agh/internal/testutil"
 	"io"
 	"log/slog"
 	"os"
@@ -14,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/pedronauck/agh/internal/testutil"
 
 	workspacepkg "github.com/pedronauck/agh/internal/workspace"
 )
@@ -311,7 +312,11 @@ func TestServiceRunRequiresWorkspaceResolverForExplicitWorkspace(t *testing.T) {
 		WithMemoryStore(NewStore(filepath.Join(t.TempDir(), "memory"))),
 	)
 
-	err := service.Run(testutil.Context(t), func(context.Context, string, string, string) error { return nil }, "ws-missing")
+	err := service.Run(
+		testutil.Context(t),
+		func(context.Context, string, string, string) error { return nil },
+		"ws-missing",
+	)
 	if err == nil {
 		t.Fatal("Run() error = nil, want non-nil")
 	}
@@ -377,7 +382,11 @@ func TestServiceRunWrapsWorkspaceResolveErrors(t *testing.T) {
 		WithWorkspaceResolver(&fakeDreamWorkspaceResolver{err: resolveErr}),
 	)
 
-	err := service.Run(testutil.Context(t), func(context.Context, string, string, string) error { return nil }, "workspace-alias")
+	err := service.Run(
+		testutil.Context(t),
+		func(context.Context, string, string, string) error { return nil },
+		"workspace-alias",
+	)
 	if err == nil {
 		t.Fatal("Run() error = nil, want non-nil")
 	}
@@ -411,7 +420,11 @@ func TestServiceRunWrapsWorkspaceEnsureDirsErrors(t *testing.T) {
 		WithMemoryStore(NewStore("")),
 	)
 
-	err := service.Run(testutil.Context(t), func(context.Context, string, string, string) error { return nil }, "workspace-alias")
+	err := service.Run(
+		testutil.Context(t),
+		func(context.Context, string, string, string) error { return nil },
+		"workspace-alias",
+	)
 	if err == nil {
 		t.Fatal("Run() error = nil, want non-nil")
 	}
@@ -506,7 +519,11 @@ func TestServiceRunValidatesInputs(t *testing.T) {
 
 	nilContext := func() context.Context { return nil }
 
-	if err := service.Run(nilContext(), func(context.Context, string, string, string) error { return nil }, ""); err == nil {
+	if err := service.Run(
+		nilContext(),
+		func(context.Context, string, string, string) error { return nil },
+		"",
+	); err == nil {
 		t.Fatal("Run(nil context, spawner) error = nil, want non-nil")
 	}
 	if err := service.Run(testutil.Context(t), nil, ""); err == nil {
@@ -850,7 +867,10 @@ func (r *fakeDreamWorkspaceResolver) Resolve(_ context.Context, arg string) (wor
 	return r.resolved, nil
 }
 
-func (r *fakeDreamWorkspaceResolver) ResolveOrRegister(context.Context, string) (workspacepkg.ResolvedWorkspace, error) {
+func (r *fakeDreamWorkspaceResolver) ResolveOrRegister(
+	context.Context,
+	string,
+) (workspacepkg.ResolvedWorkspace, error) {
 	if r.err != nil {
 		return workspacepkg.ResolvedWorkspace{}, r.err
 	}

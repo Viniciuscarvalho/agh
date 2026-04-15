@@ -41,7 +41,11 @@ func (p BridgeDeliveryDefaultsPayload) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON validates that delivery defaults remain scoped to the approved
 // delivery-target fields or null.
 func (p *BridgeDeliveryDefaultsPayload) UnmarshalJSON(data []byte) error {
-	normalized, err := normalizeBridgeJSONPayload(data, "bridge delivery defaults", validateBridgeDeliveryDefaultsPayload)
+	normalized, err := normalizeBridgeJSONPayload(
+		data,
+		"bridge delivery defaults",
+		validateBridgeDeliveryDefaultsPayload,
+	)
 	if err != nil {
 		return err
 	}
@@ -193,7 +197,9 @@ type BridgeTestDeliveryRequest struct {
 // ToResolveDeliveryTargetRequest validates and converts the transport payload
 // into the daemon-owned delivery-target resolution request for the supplied
 // bridge instance id.
-func (r BridgeTestDeliveryRequest) ToResolveDeliveryTargetRequest(bridgeInstanceID string) (bridgepkg.ResolveDeliveryTargetRequest, error) {
+func (r BridgeTestDeliveryRequest) ToResolveDeliveryTargetRequest(
+	bridgeInstanceID string,
+) (bridgepkg.ResolveDeliveryTargetRequest, error) {
 	req := bridgepkg.ResolveDeliveryTargetRequest{
 		BridgeInstanceID: strings.TrimSpace(r.Target.BridgeInstanceID),
 		PeerID:           strings.TrimSpace(r.Target.PeerID),
@@ -334,7 +340,10 @@ type BridgePayload struct {
 }
 
 // ToBridgeSecretBinding validates and converts the transport payload into the daemon-owned binding request.
-func (r PutBridgeSecretBindingRequest) ToBridgeSecretBinding(bridgeInstanceID string, bindingName string) (bridgepkg.BridgeSecretBinding, error) {
+func (r PutBridgeSecretBindingRequest) ToBridgeSecretBinding(
+	bridgeInstanceID string,
+	bindingName string,
+) (bridgepkg.BridgeSecretBinding, error) {
 	binding := bridgepkg.BridgeSecretBinding{
 		BridgeInstanceID: strings.TrimSpace(bridgeInstanceID),
 		BindingName:      strings.TrimSpace(bindingName),
@@ -436,25 +445,25 @@ func validateBridgeDeliveryDefaultsPayload(value json.RawMessage) error {
 	for key, raw := range fields {
 		switch key {
 		case "peer_id":
-			text, err := requireJSONStringField(raw, "bridge delivery defaults", key)
+			text, err := requireJSONStringField(raw, key)
 			if err != nil {
 				return err
 			}
 			peerID = strings.TrimSpace(text)
 		case "thread_id":
-			text, err := requireJSONStringField(raw, "bridge delivery defaults", key)
+			text, err := requireJSONStringField(raw, key)
 			if err != nil {
 				return err
 			}
 			thread = strings.TrimSpace(text)
 		case "group_id":
-			text, err := requireJSONStringField(raw, "bridge delivery defaults", key)
+			text, err := requireJSONStringField(raw, key)
 			if err != nil {
 				return err
 			}
 			groupID = strings.TrimSpace(text)
 		case "mode":
-			text, err := requireJSONStringField(raw, "bridge delivery defaults", key)
+			text, err := requireJSONStringField(raw, key)
 			if err != nil {
 				return err
 			}
@@ -473,14 +482,14 @@ func validateBridgeDeliveryDefaultsPayload(value json.RawMessage) error {
 	return nil
 }
 
-func requireJSONStringField(raw json.RawMessage, label string, field string) (string, error) {
+func requireJSONStringField(raw json.RawMessage, field string) (string, error) {
 	var decoded any
 	if err := json.Unmarshal(raw, &decoded); err != nil {
-		return "", fmt.Errorf("%s field %q must be valid JSON: %w", label, field, err)
+		return "", fmt.Errorf("bridge delivery defaults field %q must be valid JSON: %w", field, err)
 	}
 	text, ok := decoded.(string)
 	if !ok {
-		return "", fmt.Errorf("%s field %q must be a string", label, field)
+		return "", fmt.Errorf("bridge delivery defaults field %q must be a string", field)
 	}
 	return text, nil
 }

@@ -115,14 +115,18 @@ func skillInfoBundle(item skillInfoItem) outputBundle {
 			}
 
 			return renderHumanBlocks(
-				renderToonObject("skill", []string{"name", "description", "version", "source", "path", "enabled"}, []string{
-					item.Name,
-					item.Description,
-					item.Version,
-					item.Source,
-					item.Path,
-					strconv.FormatBool(item.Enabled),
-				}),
+				renderToonObject(
+					"skill",
+					[]string{"name", "description", "version", "source", "path", "enabled"},
+					[]string{
+						item.Name,
+						item.Description,
+						item.Version,
+						item.Source,
+						item.Path,
+						strconv.FormatBool(item.Enabled),
+					},
+				),
 				renderToonArray("metadata", []string{"key", "value"}, metadataRows),
 				renderToonArray("resources", []string{"path"}, resourceRows),
 			), nil
@@ -169,15 +173,19 @@ func skillInstallBundle(item skillInstallItem) outputBundle {
 			}), nil
 		},
 		toon: func() (string, error) {
-			return renderToonObject("skill_install", []string{"name", "slug", "version", "registry", "path", "hash", "status"}, []string{
-				item.Name,
-				item.Slug,
-				item.Version,
-				item.Registry,
-				item.Path,
-				item.Hash,
-				item.Status,
-			}), nil
+			return renderToonObject(
+				"skill_install",
+				[]string{"name", "slug", "version", "registry", "path", "hash", "status"},
+				[]string{
+					item.Name,
+					item.Slug,
+					item.Version,
+					item.Registry,
+					item.Path,
+					item.Hash,
+					item.Status,
+				},
+			), nil
 		},
 	}
 }

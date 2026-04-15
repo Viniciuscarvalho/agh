@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -21,22 +22,52 @@ type hookRuntime interface {
 	Rebuild(context.Context) error
 	Close()
 	Version() int64
-	DispatchSessionPreCreate(context.Context, hookspkg.SessionPreCreatePayload) (hookspkg.SessionPreCreatePayload, error)
-	DispatchSessionPostCreate(context.Context, hookspkg.SessionPostCreatePayload) (hookspkg.SessionPostCreatePayload, error)
-	DispatchSessionPreResume(context.Context, hookspkg.SessionPreResumePayload) (hookspkg.SessionPreResumePayload, error)
-	DispatchSessionPostResume(context.Context, hookspkg.SessionPostResumePayload) (hookspkg.SessionPostResumePayload, error)
+	DispatchSessionPreCreate(
+		context.Context,
+		hookspkg.SessionPreCreatePayload,
+	) (hookspkg.SessionPreCreatePayload, error)
+	DispatchSessionPostCreate(
+		context.Context,
+		hookspkg.SessionPostCreatePayload,
+	) (hookspkg.SessionPostCreatePayload, error)
+	DispatchSessionPreResume(
+		context.Context,
+		hookspkg.SessionPreResumePayload,
+	) (hookspkg.SessionPreResumePayload, error)
+	DispatchSessionPostResume(
+		context.Context,
+		hookspkg.SessionPostResumePayload,
+	) (hookspkg.SessionPostResumePayload, error)
 	DispatchSessionPreStop(context.Context, hookspkg.SessionPreStopPayload) (hookspkg.SessionPreStopPayload, error)
 	DispatchSessionPostStop(context.Context, hookspkg.SessionPostStopPayload) (hookspkg.SessionPostStopPayload, error)
 	DispatchInputPreSubmit(context.Context, hookspkg.InputPreSubmitPayload) (hookspkg.InputPreSubmitPayload, error)
 	DispatchPromptPostAssemble(context.Context, hookspkg.PromptPayload) (hookspkg.PromptPayload, error)
 	DispatchEventPreRecord(context.Context, hookspkg.EventPreRecordPayload) (hookspkg.EventPreRecordPayload, error)
 	DispatchEventPostRecord(context.Context, hookspkg.EventPostRecordPayload) (hookspkg.EventPostRecordPayload, error)
-	DispatchAutomationJobPreFire(context.Context, hookspkg.AutomationJobPreFirePayload) (hookspkg.AutomationJobPreFirePayload, error)
-	DispatchAutomationJobPostFire(context.Context, hookspkg.AutomationJobPostFirePayload) (hookspkg.AutomationJobPostFirePayload, error)
-	DispatchAutomationTriggerPreFire(context.Context, hookspkg.AutomationTriggerPreFirePayload) (hookspkg.AutomationTriggerPreFirePayload, error)
-	DispatchAutomationTriggerPostFire(context.Context, hookspkg.AutomationTriggerPostFirePayload) (hookspkg.AutomationTriggerPostFirePayload, error)
-	DispatchAutomationRunCompleted(context.Context, hookspkg.AutomationRunCompletedPayload) (hookspkg.AutomationRunCompletedPayload, error)
-	DispatchAutomationRunFailed(context.Context, hookspkg.AutomationRunFailedPayload) (hookspkg.AutomationRunFailedPayload, error)
+	DispatchAutomationJobPreFire(
+		context.Context,
+		hookspkg.AutomationJobPreFirePayload,
+	) (hookspkg.AutomationJobPreFirePayload, error)
+	DispatchAutomationJobPostFire(
+		context.Context,
+		hookspkg.AutomationJobPostFirePayload,
+	) (hookspkg.AutomationJobPostFirePayload, error)
+	DispatchAutomationTriggerPreFire(
+		context.Context,
+		hookspkg.AutomationTriggerPreFirePayload,
+	) (hookspkg.AutomationTriggerPreFirePayload, error)
+	DispatchAutomationTriggerPostFire(
+		context.Context,
+		hookspkg.AutomationTriggerPostFirePayload,
+	) (hookspkg.AutomationTriggerPostFirePayload, error)
+	DispatchAutomationRunCompleted(
+		context.Context,
+		hookspkg.AutomationRunCompletedPayload,
+	) (hookspkg.AutomationRunCompletedPayload, error)
+	DispatchAutomationRunFailed(
+		context.Context,
+		hookspkg.AutomationRunFailedPayload,
+	) (hookspkg.AutomationRunFailedPayload, error)
 	DispatchAgentPreStart(context.Context, hookspkg.AgentPreStartPayload) (hookspkg.AgentPreStartPayload, error)
 	DispatchAgentSpawned(context.Context, hookspkg.AgentSpawnedPayload) (hookspkg.AgentSpawnedPayload, error)
 	DispatchAgentCrashed(context.Context, hookspkg.AgentCrashedPayload) (hookspkg.AgentCrashedPayload, error)
@@ -46,8 +77,14 @@ type hookRuntime interface {
 	DispatchMessageStart(context.Context, hookspkg.MessageStartPayload) (hookspkg.MessageStartPayload, error)
 	DispatchMessageDelta(context.Context, hookspkg.MessageDeltaPayload) (hookspkg.MessageDeltaPayload, error)
 	DispatchMessageEnd(context.Context, hookspkg.MessageEndPayload) (hookspkg.MessageEndPayload, error)
-	DispatchContextPreCompact(context.Context, hookspkg.ContextPreCompactPayload) (hookspkg.ContextPreCompactPayload, error)
-	DispatchContextPostCompact(context.Context, hookspkg.ContextPostCompactPayload) (hookspkg.ContextPostCompactPayload, error)
+	DispatchContextPreCompact(
+		context.Context,
+		hookspkg.ContextPreCompactPayload,
+	) (hookspkg.ContextPreCompactPayload, error)
+	DispatchContextPostCompact(
+		context.Context,
+		hookspkg.ContextPostCompactPayload,
+	) (hookspkg.ContextPostCompactPayload, error)
 	OnAgentEvent(context.Context, string, any)
 }
 
@@ -125,7 +162,11 @@ func (f *hookTelemetryFanout) Add(sink hookspkg.TelemetrySink) {
 	f.sinks = append(f.sinks, sink)
 }
 
-func (f *hookTelemetryFanout) WriteHookRecord(ctx context.Context, sessionID string, record hookspkg.HookRunRecord) error {
+func (f *hookTelemetryFanout) WriteHookRecord(
+	ctx context.Context,
+	sessionID string,
+	record hookspkg.HookRunRecord,
+) error {
 	var errs []error
 	for _, sink := range f.snapshot() {
 		if err := sink.WriteHookRecord(ctx, sessionID, record); err != nil {
@@ -154,7 +195,7 @@ type hooksNotifier struct {
 }
 
 var _ session.Notifier = (*hooksNotifier)(nil)
-var _ session.SessionLifecycleHooks = (*hooksNotifier)(nil)
+var _ session.LifecycleHooks = (*hooksNotifier)(nil)
 var _ session.PromptHooks = (*hooksNotifier)(nil)
 var _ session.EventHooks = (*hooksNotifier)(nil)
 var _ session.AgentHooks = (*hooksNotifier)(nil)
@@ -184,137 +225,305 @@ func (n *hooksNotifier) setRuntime(hooks hookRuntime, agentEventNotify session.N
 }
 
 // OnSessionCreated is a no-op; lifecycle observation is handled via hook dispatch.
-func (n *hooksNotifier) OnSessionCreated(ctx context.Context, sess *session.Session) {
+func (n *hooksNotifier) OnSessionCreated(_ context.Context, _ *session.Session) {
 }
 
 // OnSessionStopped is a no-op; lifecycle observation is handled via hook dispatch.
-func (n *hooksNotifier) OnSessionStopped(ctx context.Context, sess *session.Session) {
+func (n *hooksNotifier) OnSessionStopped(_ context.Context, _ *session.Session) {
 }
 
-func (n *hooksNotifier) DispatchSessionPreCreate(ctx context.Context, payload hookspkg.SessionPreCreatePayload) (hookspkg.SessionPreCreatePayload, error) {
-	return dispatchRuntime(n, ctx, hookspkg.HookSessionPreCreate, payload, true, func(hooks hookRuntime, callCtx context.Context, item hookspkg.SessionPreCreatePayload) (hookspkg.SessionPreCreatePayload, error) {
-		return hooks.DispatchSessionPreCreate(callCtx, item)
-	})
+func (n *hooksNotifier) DispatchSessionPreCreate(
+	ctx context.Context,
+	payload hookspkg.SessionPreCreatePayload,
+) (hookspkg.SessionPreCreatePayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookSessionPreCreate,
+		payload,
+		true,
+		hookRuntime.DispatchSessionPreCreate,
+	)
 }
 
-func (n *hooksNotifier) DispatchSessionPostCreate(ctx context.Context, payload hookspkg.SessionPostCreatePayload) (hookspkg.SessionPostCreatePayload, error) {
-	return dispatchRuntime(n, ctx, hookspkg.HookSessionPostCreate, payload, true, func(hooks hookRuntime, callCtx context.Context, item hookspkg.SessionPostCreatePayload) (hookspkg.SessionPostCreatePayload, error) {
-		return hooks.DispatchSessionPostCreate(callCtx, item)
-	})
+func (n *hooksNotifier) DispatchSessionPostCreate(
+	ctx context.Context,
+	payload hookspkg.SessionPostCreatePayload,
+) (hookspkg.SessionPostCreatePayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookSessionPostCreate,
+		payload,
+		true,
+		hookRuntime.DispatchSessionPostCreate,
+	)
 }
 
-func (n *hooksNotifier) DispatchSessionPreResume(ctx context.Context, payload hookspkg.SessionPreResumePayload) (hookspkg.SessionPreResumePayload, error) {
-	return dispatchRuntime(n, ctx, hookspkg.HookSessionPreResume, payload, true, func(hooks hookRuntime, callCtx context.Context, item hookspkg.SessionPreResumePayload) (hookspkg.SessionPreResumePayload, error) {
-		return hooks.DispatchSessionPreResume(callCtx, item)
-	})
+func (n *hooksNotifier) DispatchSessionPreResume(
+	ctx context.Context,
+	payload hookspkg.SessionPreResumePayload,
+) (hookspkg.SessionPreResumePayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookSessionPreResume,
+		payload,
+		true,
+		hookRuntime.DispatchSessionPreResume,
+	)
 }
 
-func (n *hooksNotifier) DispatchSessionPostResume(ctx context.Context, payload hookspkg.SessionPostResumePayload) (hookspkg.SessionPostResumePayload, error) {
-	return dispatchRuntime(n, ctx, hookspkg.HookSessionPostResume, payload, true, func(hooks hookRuntime, callCtx context.Context, item hookspkg.SessionPostResumePayload) (hookspkg.SessionPostResumePayload, error) {
-		return hooks.DispatchSessionPostResume(callCtx, item)
-	})
+func (n *hooksNotifier) DispatchSessionPostResume(
+	ctx context.Context,
+	payload hookspkg.SessionPostResumePayload,
+) (hookspkg.SessionPostResumePayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookSessionPostResume,
+		payload,
+		true,
+		hookRuntime.DispatchSessionPostResume,
+	)
 }
 
-func (n *hooksNotifier) DispatchSessionPreStop(ctx context.Context, payload hookspkg.SessionPreStopPayload) (hookspkg.SessionPreStopPayload, error) {
-	return dispatchRuntime(n, ctx, hookspkg.HookSessionPreStop, payload, true, func(hooks hookRuntime, callCtx context.Context, item hookspkg.SessionPreStopPayload) (hookspkg.SessionPreStopPayload, error) {
-		return hooks.DispatchSessionPreStop(callCtx, item)
-	})
+func (n *hooksNotifier) DispatchSessionPreStop(
+	ctx context.Context,
+	payload hookspkg.SessionPreStopPayload,
+) (hookspkg.SessionPreStopPayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookSessionPreStop,
+		payload,
+		true,
+		hookRuntime.DispatchSessionPreStop,
+	)
 }
 
-func (n *hooksNotifier) DispatchSessionPostStop(ctx context.Context, payload hookspkg.SessionPostStopPayload) (hookspkg.SessionPostStopPayload, error) {
-	return dispatchRuntime(n, ctx, hookspkg.HookSessionPostStop, payload, true, func(hooks hookRuntime, callCtx context.Context, item hookspkg.SessionPostStopPayload) (hookspkg.SessionPostStopPayload, error) {
-		return hooks.DispatchSessionPostStop(callCtx, item)
-	})
+func (n *hooksNotifier) DispatchSessionPostStop(
+	ctx context.Context,
+	payload hookspkg.SessionPostStopPayload,
+) (hookspkg.SessionPostStopPayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookSessionPostStop,
+		payload,
+		true,
+		hookRuntime.DispatchSessionPostStop,
+	)
 }
 
-func (n *hooksNotifier) DispatchInputPreSubmit(ctx context.Context, payload hookspkg.InputPreSubmitPayload) (hookspkg.InputPreSubmitPayload, error) {
-	return dispatchRuntime(n, ctx, hookspkg.HookInputPreSubmit, payload, false, func(hooks hookRuntime, callCtx context.Context, item hookspkg.InputPreSubmitPayload) (hookspkg.InputPreSubmitPayload, error) {
-		return hooks.DispatchInputPreSubmit(callCtx, item)
-	})
+func (n *hooksNotifier) DispatchInputPreSubmit(
+	ctx context.Context,
+	payload hookspkg.InputPreSubmitPayload,
+) (hookspkg.InputPreSubmitPayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookInputPreSubmit,
+		payload,
+		false,
+		hookRuntime.DispatchInputPreSubmit,
+	)
 }
 
-func (n *hooksNotifier) DispatchPromptPostAssemble(ctx context.Context, payload hookspkg.PromptPayload) (hookspkg.PromptPayload, error) {
-	return dispatchRuntime(n, ctx, hookspkg.HookPromptPostAssemble, payload, false, func(hooks hookRuntime, callCtx context.Context, item hookspkg.PromptPayload) (hookspkg.PromptPayload, error) {
-		return hooks.DispatchPromptPostAssemble(callCtx, item)
-	})
+func (n *hooksNotifier) DispatchPromptPostAssemble(
+	ctx context.Context,
+	payload hookspkg.PromptPayload,
+) (hookspkg.PromptPayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookPromptPostAssemble,
+		payload,
+		false,
+		hookRuntime.DispatchPromptPostAssemble,
+	)
 }
 
-func (n *hooksNotifier) DispatchEventPreRecord(ctx context.Context, payload hookspkg.EventPreRecordPayload) (hookspkg.EventPreRecordPayload, error) {
-	return dispatchRuntime(n, ctx, hookspkg.HookEventPreRecord, payload, false, func(hooks hookRuntime, callCtx context.Context, item hookspkg.EventPreRecordPayload) (hookspkg.EventPreRecordPayload, error) {
-		return hooks.DispatchEventPreRecord(callCtx, item)
-	})
+func (n *hooksNotifier) DispatchEventPreRecord(
+	ctx context.Context,
+	payload hookspkg.EventPreRecordPayload,
+) (hookspkg.EventPreRecordPayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookEventPreRecord,
+		payload,
+		false,
+		hookRuntime.DispatchEventPreRecord,
+	)
 }
 
-func (n *hooksNotifier) DispatchEventPostRecord(ctx context.Context, payload hookspkg.EventPostRecordPayload) (hookspkg.EventPostRecordPayload, error) {
-	return dispatchRuntime(n, ctx, hookspkg.HookEventPostRecord, payload, false, func(hooks hookRuntime, callCtx context.Context, item hookspkg.EventPostRecordPayload) (hookspkg.EventPostRecordPayload, error) {
-		return hooks.DispatchEventPostRecord(callCtx, item)
-	})
+func (n *hooksNotifier) DispatchEventPostRecord(
+	ctx context.Context,
+	payload hookspkg.EventPostRecordPayload,
+) (hookspkg.EventPostRecordPayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookEventPostRecord,
+		payload,
+		false,
+		hookRuntime.DispatchEventPostRecord,
+	)
 }
 
-func (n *hooksNotifier) DispatchAgentPreStart(ctx context.Context, payload hookspkg.AgentPreStartPayload) (hookspkg.AgentPreStartPayload, error) {
-	return dispatchRuntime(n, ctx, hookspkg.HookAgentPreStart, payload, true, func(hooks hookRuntime, callCtx context.Context, item hookspkg.AgentPreStartPayload) (hookspkg.AgentPreStartPayload, error) {
-		return hooks.DispatchAgentPreStart(callCtx, item)
-	})
+func (n *hooksNotifier) DispatchAgentPreStart(
+	ctx context.Context,
+	payload hookspkg.AgentPreStartPayload,
+) (hookspkg.AgentPreStartPayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookAgentPreStart,
+		payload,
+		true,
+		hookRuntime.DispatchAgentPreStart,
+	)
 }
 
-func (n *hooksNotifier) DispatchAgentSpawned(ctx context.Context, payload hookspkg.AgentSpawnedPayload) (hookspkg.AgentSpawnedPayload, error) {
-	return dispatchRuntime(n, ctx, hookspkg.HookAgentSpawned, payload, true, func(hooks hookRuntime, callCtx context.Context, item hookspkg.AgentSpawnedPayload) (hookspkg.AgentSpawnedPayload, error) {
-		return hooks.DispatchAgentSpawned(callCtx, item)
-	})
+func (n *hooksNotifier) DispatchAgentSpawned(
+	ctx context.Context,
+	payload hookspkg.AgentSpawnedPayload,
+) (hookspkg.AgentSpawnedPayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookAgentSpawned,
+		payload,
+		true,
+		hookRuntime.DispatchAgentSpawned,
+	)
 }
 
-func (n *hooksNotifier) DispatchAgentCrashed(ctx context.Context, payload hookspkg.AgentCrashedPayload) (hookspkg.AgentCrashedPayload, error) {
-	return dispatchRuntime(n, ctx, hookspkg.HookAgentCrashed, payload, true, func(hooks hookRuntime, callCtx context.Context, item hookspkg.AgentCrashedPayload) (hookspkg.AgentCrashedPayload, error) {
-		return hooks.DispatchAgentCrashed(callCtx, item)
-	})
+func (n *hooksNotifier) DispatchAgentCrashed(
+	ctx context.Context,
+	payload hookspkg.AgentCrashedPayload,
+) (hookspkg.AgentCrashedPayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookAgentCrashed,
+		payload,
+		true,
+		hookRuntime.DispatchAgentCrashed,
+	)
 }
 
-func (n *hooksNotifier) DispatchAgentStopped(ctx context.Context, payload hookspkg.AgentStoppedPayload) (hookspkg.AgentStoppedPayload, error) {
-	return dispatchRuntime(n, ctx, hookspkg.HookAgentStopped, payload, true, func(hooks hookRuntime, callCtx context.Context, item hookspkg.AgentStoppedPayload) (hookspkg.AgentStoppedPayload, error) {
-		return hooks.DispatchAgentStopped(callCtx, item)
-	})
+func (n *hooksNotifier) DispatchAgentStopped(
+	ctx context.Context,
+	payload hookspkg.AgentStoppedPayload,
+) (hookspkg.AgentStoppedPayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookAgentStopped,
+		payload,
+		true,
+		hookRuntime.DispatchAgentStopped,
+	)
 }
 
-func (n *hooksNotifier) DispatchTurnStart(ctx context.Context, payload hookspkg.TurnStartPayload) (hookspkg.TurnStartPayload, error) {
-	return dispatchRuntime(n, ctx, hookspkg.HookTurnStart, payload, false, func(hooks hookRuntime, callCtx context.Context, item hookspkg.TurnStartPayload) (hookspkg.TurnStartPayload, error) {
-		return hooks.DispatchTurnStart(callCtx, item)
-	})
+func (n *hooksNotifier) DispatchTurnStart(
+	ctx context.Context,
+	payload hookspkg.TurnStartPayload,
+) (hookspkg.TurnStartPayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookTurnStart,
+		payload,
+		false,
+		hookRuntime.DispatchTurnStart,
+	)
 }
 
-func (n *hooksNotifier) DispatchTurnEnd(ctx context.Context, payload hookspkg.TurnEndPayload) (hookspkg.TurnEndPayload, error) {
-	return dispatchRuntime(n, ctx, hookspkg.HookTurnEnd, payload, false, func(hooks hookRuntime, callCtx context.Context, item hookspkg.TurnEndPayload) (hookspkg.TurnEndPayload, error) {
-		return hooks.DispatchTurnEnd(callCtx, item)
-	})
+func (n *hooksNotifier) DispatchTurnEnd(
+	ctx context.Context,
+	payload hookspkg.TurnEndPayload,
+) (hookspkg.TurnEndPayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookTurnEnd,
+		payload,
+		false,
+		hookRuntime.DispatchTurnEnd,
+	)
 }
 
-func (n *hooksNotifier) DispatchMessageStart(ctx context.Context, payload hookspkg.MessageStartPayload) (hookspkg.MessageStartPayload, error) {
-	return dispatchRuntime(n, ctx, hookspkg.HookMessageStart, payload, false, func(hooks hookRuntime, callCtx context.Context, item hookspkg.MessageStartPayload) (hookspkg.MessageStartPayload, error) {
-		return hooks.DispatchMessageStart(callCtx, item)
-	})
+func (n *hooksNotifier) DispatchMessageStart(
+	ctx context.Context,
+	payload hookspkg.MessageStartPayload,
+) (hookspkg.MessageStartPayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookMessageStart,
+		payload,
+		false,
+		hookRuntime.DispatchMessageStart,
+	)
 }
 
-func (n *hooksNotifier) DispatchMessageDelta(ctx context.Context, payload hookspkg.MessageDeltaPayload) (hookspkg.MessageDeltaPayload, error) {
-	return dispatchRuntime(n, ctx, hookspkg.HookMessageDelta, payload, false, func(hooks hookRuntime, callCtx context.Context, item hookspkg.MessageDeltaPayload) (hookspkg.MessageDeltaPayload, error) {
-		return hooks.DispatchMessageDelta(callCtx, item)
-	})
+func (n *hooksNotifier) DispatchMessageDelta(
+	ctx context.Context,
+	payload hookspkg.MessageDeltaPayload,
+) (hookspkg.MessageDeltaPayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookMessageDelta,
+		payload,
+		false,
+		hookRuntime.DispatchMessageDelta,
+	)
 }
 
-func (n *hooksNotifier) DispatchMessageEnd(ctx context.Context, payload hookspkg.MessageEndPayload) (hookspkg.MessageEndPayload, error) {
-	return dispatchRuntime(n, ctx, hookspkg.HookMessageEnd, payload, false, func(hooks hookRuntime, callCtx context.Context, item hookspkg.MessageEndPayload) (hookspkg.MessageEndPayload, error) {
-		return hooks.DispatchMessageEnd(callCtx, item)
-	})
+func (n *hooksNotifier) DispatchMessageEnd(
+	ctx context.Context,
+	payload hookspkg.MessageEndPayload,
+) (hookspkg.MessageEndPayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookMessageEnd,
+		payload,
+		false,
+		hookRuntime.DispatchMessageEnd,
+	)
 }
 
-func (n *hooksNotifier) DispatchContextPreCompact(ctx context.Context, payload hookspkg.ContextPreCompactPayload) (hookspkg.ContextPreCompactPayload, error) {
-	return dispatchRuntime(n, ctx, hookspkg.HookContextPreCompact, payload, false, func(hooks hookRuntime, callCtx context.Context, item hookspkg.ContextPreCompactPayload) (hookspkg.ContextPreCompactPayload, error) {
-		return hooks.DispatchContextPreCompact(callCtx, item)
-	})
+func (n *hooksNotifier) DispatchContextPreCompact(
+	ctx context.Context,
+	payload hookspkg.ContextPreCompactPayload,
+) (hookspkg.ContextPreCompactPayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookContextPreCompact,
+		payload,
+		false,
+		hookRuntime.DispatchContextPreCompact,
+	)
 }
 
-func (n *hooksNotifier) DispatchContextPostCompact(ctx context.Context, payload hookspkg.ContextPostCompactPayload) (hookspkg.ContextPostCompactPayload, error) {
-	return dispatchRuntime(n, ctx, hookspkg.HookContextPostCompact, payload, false, func(hooks hookRuntime, callCtx context.Context, item hookspkg.ContextPostCompactPayload) (hookspkg.ContextPostCompactPayload, error) {
-		return hooks.DispatchContextPostCompact(callCtx, item)
-	})
+func (n *hooksNotifier) DispatchContextPostCompact(
+	ctx context.Context,
+	payload hookspkg.ContextPostCompactPayload,
+) (hookspkg.ContextPostCompactPayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookContextPostCompact,
+		payload,
+		false,
+		hookRuntime.DispatchContextPostCompact,
+	)
 }
 
 func (n *hooksNotifier) OnAgentEvent(ctx context.Context, sessionID string, event any) {
@@ -343,7 +552,14 @@ func (n *hooksNotifier) timestamp() time.Time {
 
 type runtimeDispatchFunc[P any] func(hookRuntime, context.Context, P) (P, error)
 
-func dispatchRuntime[P any](n *hooksNotifier, ctx context.Context, event hookspkg.HookEvent, payload P, rebuild bool, dispatch runtimeDispatchFunc[P]) (P, error) {
+func dispatchRuntime[P any](
+	ctx context.Context,
+	n *hooksNotifier,
+	event hookspkg.HookEvent,
+	payload P,
+	rebuild bool,
+	dispatch runtimeDispatchFunc[P],
+) (P, error) {
 	hooks, _ := n.runtime()
 	if hooks == nil {
 		return payload, nil
@@ -364,7 +580,11 @@ func dispatchRuntime[P any](n *hooksNotifier, ctx context.Context, event hookspk
 	return dispatch(hooks, ctx, payload)
 }
 
-func hookSessionLifecyclePayload(sess *session.Session, event hookspkg.HookEvent, timestamp time.Time) hookspkg.SessionLifecyclePayload {
+func hookSessionLifecyclePayload(
+	sess *session.Session,
+	event hookspkg.HookEvent,
+	timestamp time.Time,
+) hookspkg.SessionLifecyclePayload {
 	return hookspkg.SessionLifecyclePayload{
 		PayloadBase: hookspkg.PayloadBase{
 			Event:     event,
@@ -405,15 +625,62 @@ func sessionFromHookPayload(payload hookspkg.SessionLifecyclePayload) *session.S
 		AgentName:    strings.TrimSpace(payload.AgentName),
 		WorkspaceID:  strings.TrimSpace(payload.WorkspaceID),
 		Workspace:    strings.TrimSpace(payload.Workspace),
-		Type:         session.SessionType(strings.TrimSpace(payload.SessionType)),
-		State:        session.SessionState(strings.TrimSpace(payload.State)),
+		Type:         session.Type(strings.TrimSpace(payload.SessionType)),
+		State:        session.State(strings.TrimSpace(payload.State)),
 		ACPSessionID: strings.TrimSpace(payload.ACPSessionID),
 		CreatedAt:    payload.CreatedAt,
 		UpdatedAt:    payload.UpdatedAt,
 	}
 }
 
-func daemonNativeHooks(observer sessionLifecycleObserver, dreamRuntime dreamCheckEnqueuer) ([]hookspkg.HookDecl, map[string]hookspkg.Executor) {
+func observeSessionCreateExecutor(observer sessionLifecycleObserver) hookspkg.Executor {
+	return hookspkg.NewTypedNativeExecutor(
+		func(
+			ctx context.Context,
+			_ hookspkg.RegisteredHook,
+			payload hookspkg.SessionLifecyclePayload,
+		) (hookspkg.SessionPostCreatePatch, error) {
+			observer.OnSessionCreated(ctx, sessionFromHookPayload(payload))
+			return hookspkg.SessionPostCreatePatch{}, nil
+		},
+	)
+}
+
+func observeSessionStopExecutor(observer sessionLifecycleObserver) hookspkg.Executor {
+	return hookspkg.NewTypedNativeExecutor(
+		func(
+			ctx context.Context,
+			_ hookspkg.RegisteredHook,
+			payload hookspkg.SessionLifecyclePayload,
+		) (hookspkg.SessionPostStopPatch, error) {
+			observer.OnSessionStopped(ctx, sessionFromHookPayload(payload))
+			return hookspkg.SessionPostStopPatch{}, nil
+		},
+	)
+}
+
+func dreamSessionStopExecutor(dreamRuntime dreamCheckEnqueuer) hookspkg.Executor {
+	return hookspkg.NewTypedNativeExecutor(
+		func(
+			_ context.Context,
+			_ hookspkg.RegisteredHook,
+			payload hookspkg.SessionLifecyclePayload,
+		) (hookspkg.SessionPostStopPatch, error) {
+			if strings.TrimSpace(payload.WorkspaceID) == "" ||
+				session.Type(strings.TrimSpace(payload.SessionType)) == session.SessionTypeDream {
+				return hookspkg.SessionPostStopPatch{}, nil
+			}
+
+			dreamRuntime.EnqueueCheck("session_stop", strings.TrimSpace(payload.WorkspaceID))
+			return hookspkg.SessionPostStopPatch{}, nil
+		},
+	)
+}
+
+func daemonNativeHooks(
+	observer sessionLifecycleObserver,
+	dreamRuntime dreamCheckEnqueuer,
+) ([]hookspkg.HookDecl, map[string]hookspkg.Executor) {
 	decls := make([]hookspkg.HookDecl, 0, 3)
 	executors := make(map[string]hookspkg.Executor, 3)
 
@@ -441,14 +708,8 @@ func daemonNativeHooks(observer sessionLifecycleObserver, dreamRuntime dreamChec
 				ExecutorKind: hookspkg.HookExecutorNative,
 			},
 		)
-		executors[createName] = hookspkg.NewTypedNativeExecutor(func(ctx context.Context, _ hookspkg.RegisteredHook, payload hookspkg.SessionLifecyclePayload) (hookspkg.SessionPostCreatePatch, error) {
-			observer.OnSessionCreated(ctx, sessionFromHookPayload(payload))
-			return hookspkg.SessionPostCreatePatch{}, nil
-		})
-		executors[stopName] = hookspkg.NewTypedNativeExecutor(func(ctx context.Context, _ hookspkg.RegisteredHook, payload hookspkg.SessionLifecyclePayload) (hookspkg.SessionPostStopPatch, error) {
-			observer.OnSessionStopped(ctx, sessionFromHookPayload(payload))
-			return hookspkg.SessionPostStopPatch{}, nil
-		})
+		executors[createName] = observeSessionCreateExecutor(observer)
+		executors[stopName] = observeSessionStopExecutor(observer)
 	}
 
 	if dreamRuntime != nil {
@@ -462,14 +723,7 @@ func daemonNativeHooks(observer sessionLifecycleObserver, dreamRuntime dreamChec
 			PrioritySet:  true,
 			ExecutorKind: hookspkg.HookExecutorNative,
 		})
-		executors[dreamName] = hookspkg.NewTypedNativeExecutor(func(_ context.Context, _ hookspkg.RegisteredHook, payload hookspkg.SessionLifecyclePayload) (hookspkg.SessionPostStopPatch, error) {
-			if strings.TrimSpace(payload.WorkspaceID) == "" || session.SessionType(strings.TrimSpace(payload.SessionType)) == session.SessionTypeDream {
-				return hookspkg.SessionPostStopPatch{}, nil
-			}
-
-			dreamRuntime.EnqueueCheck("session_stop", strings.TrimSpace(payload.WorkspaceID))
-			return hookspkg.SessionPostStopPatch{}, nil
-		})
+		executors[dreamName] = dreamSessionStopExecutor(dreamRuntime)
 	}
 
 	return decls, executors
@@ -549,7 +803,11 @@ func extensionDeclarationProvider(getRuntime func() extensionRuntime) hookspkg.D
 	}
 }
 
-func configDeclarationProvider(registry Registry, workspaceResolver workspacepkg.WorkspaceResolver, logger *slog.Logger) hookspkg.DeclarationProvider {
+func configDeclarationProvider(
+	registry Registry,
+	workspaceResolver workspacepkg.RuntimeResolver,
+	logger *slog.Logger,
+) hookspkg.DeclarationProvider {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -562,7 +820,11 @@ func configDeclarationProvider(registry Registry, workspaceResolver workspacepkg
 	}
 }
 
-func agentDeclarationProvider(registry Registry, workspaceResolver workspacepkg.WorkspaceResolver, logger *slog.Logger) hookspkg.DeclarationProvider {
+func agentDeclarationProvider(
+	registry Registry,
+	workspaceResolver workspacepkg.RuntimeResolver,
+	logger *slog.Logger,
+) hookspkg.DeclarationProvider {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -575,7 +837,13 @@ func agentDeclarationProvider(registry Registry, workspaceResolver workspacepkg.
 	}
 }
 
-func skillDeclarationProvider(skillsRegistry *skills.Registry, registry Registry, workspaceResolver workspacepkg.WorkspaceResolver, allowedMarketplaceHooks []string, logger *slog.Logger) hookspkg.DeclarationProvider {
+func skillDeclarationProvider(
+	skillsRegistry *skills.Registry,
+	registry Registry,
+	workspaceResolver workspacepkg.RuntimeResolver,
+	allowedMarketplaceHooks []string,
+	logger *slog.Logger,
+) hookspkg.DeclarationProvider {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -592,7 +860,8 @@ func skillDeclarationProvider(skillsRegistry *skills.Registry, registry Registry
 		}
 
 		decls := make([]hookspkg.HookDecl, 0, len(workspaces))
-		for _, resolved := range workspaces {
+		for idx := range workspaces {
+			resolved := &workspaces[idx]
 			activeSkills, err := skillsRegistry.ForWorkspace(ctx, resolved)
 			if err != nil {
 				return nil, fmt.Errorf("daemon: resolve active skills for workspace %q: %w", resolved.ID, err)
@@ -616,15 +885,21 @@ func skillDeclarationProvider(skillsRegistry *skills.Registry, registry Registry
 	}
 }
 
-func workspaceHookDeclarations(ctx context.Context, registry Registry, workspaceResolver workspacepkg.WorkspaceResolver, logger *slog.Logger) ([]hookspkg.HookDecl, error) {
+func workspaceHookDeclarations(
+	ctx context.Context,
+	registry Registry,
+	workspaceResolver workspacepkg.RuntimeResolver,
+	logger *slog.Logger,
+) ([]hookspkg.HookDecl, error) {
 	workspaces, err := registeredWorkspaces(ctx, registry, workspaceResolver, logger)
 	if err != nil {
 		return nil, err
 	}
 
 	decls := make([]hookspkg.HookDecl, 0, len(workspaces))
-	for _, resolved := range workspaces {
-		workspaceDecls, err := aghconfig.HookDeclarations(resolved.Config, resolved.Agents)
+	for idx := range workspaces {
+		resolved := &workspaces[idx]
+		workspaceDecls, err := aghconfig.HookDeclarations(resolved.Config.Hooks, resolved.Agents)
 		if err != nil {
 			return nil, fmt.Errorf("daemon: load hook declarations for workspace %q: %w", resolved.ID, err)
 		}
@@ -634,7 +909,12 @@ func workspaceHookDeclarations(ctx context.Context, registry Registry, workspace
 	return decls, nil
 }
 
-func registeredWorkspaces(ctx context.Context, registry Registry, workspaceResolver workspacepkg.WorkspaceResolver, logger *slog.Logger) ([]workspacepkg.ResolvedWorkspace, error) {
+func registeredWorkspaces(
+	ctx context.Context,
+	registry Registry,
+	workspaceResolver workspacepkg.RuntimeResolver,
+	logger *slog.Logger,
+) ([]workspacepkg.ResolvedWorkspace, error) {
 	if registry == nil || workspaceResolver == nil {
 		return nil, nil
 	}
@@ -681,12 +961,17 @@ func filterHookDeclsBySource(decls []hookspkg.HookDecl, source hookspkg.HookSour
 	return filtered
 }
 
-func scopeWorkspaceHookDecls(decls []hookspkg.HookDecl, resolved workspacepkg.ResolvedWorkspace) []hookspkg.HookDecl {
+func scopeWorkspaceHookDecls(
+	decls []hookspkg.HookDecl,
+	resolved *workspacepkg.ResolvedWorkspace,
+) []hookspkg.HookDecl {
 	scoped := make([]hookspkg.HookDecl, 0, len(decls))
 	for _, decl := range decls {
 		cloned := cloneDaemonHookDecl(decl)
-		cloned.Matcher.WorkspaceID = strings.TrimSpace(resolved.ID)
-		cloned.Matcher.WorkspaceRoot = strings.TrimSpace(resolved.RootDir)
+		if resolved != nil {
+			cloned.Matcher.WorkspaceID = strings.TrimSpace(resolved.ID)
+			cloned.Matcher.WorkspaceRoot = strings.TrimSpace(resolved.RootDir)
+		}
 		scoped = append(scoped, cloned)
 	}
 	return scoped
@@ -710,9 +995,7 @@ func cloneStringMap(src map[string]string) map[string]string {
 	}
 
 	cloned := make(map[string]string, len(src))
-	for key, value := range src {
-		cloned[key] = value
-	}
+	maps.Copy(cloned, src)
 	return cloned
 }
 

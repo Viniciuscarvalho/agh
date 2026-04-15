@@ -29,7 +29,9 @@ const (
 	githubListenAddrEnv = "AGH_BRIDGE_GITHUB_LISTEN_ADDR"
 	githubAPIBaseEnv    = "AGH_BRIDGE_GITHUB_API_BASE_URL"
 
-	githubDefaultAPIBaseURL = "https://api.github.com"
+	githubDefaultAPIBaseURL        = "https://api.github.com"
+	githubWebhookReadHeaderTimeout = 10 * time.Second
+	githubWebhookIdleTimeout       = 2 * time.Minute
 
 	githubModePAT = "pat"
 	githubModeApp = "app"
@@ -85,12 +87,12 @@ type githubProviderConfig struct {
 	Webhook        struct {
 		ListenAddr string `json:"listen_addr,omitempty"`
 		Path       string `json:"path,omitempty"`
-	} `json:"webhook,omitempty"`
+	} `json:"webhook"`
 	Repository struct {
 		Owner    string `json:"owner,omitempty"`
 		Name     string `json:"name,omitempty"`
 		FullName string `json:"full_name,omitempty"`
-	} `json:"repository,omitempty"`
+	} `json:"repository"`
 }
 
 type resolvedInstanceConfig struct {
@@ -251,7 +253,10 @@ func newGitHubProvider(stderr io.Writer) (*githubProvider, error) {
 }
 
 func (p *githubProvider) serve(stdin io.Reader, stdout io.Writer) error {
-	p.reportSideEffectError("write start marker", appendMarkerLine(p.env.startsPath, fmt.Sprintf("pid=%d", os.Getpid())))
+	p.reportSideEffectError(
+		"write start marker",
+		appendMarkerLine(p.env.startsPath, fmt.Sprintf("pid=%d", os.Getpid())),
+	)
 	return p.sdk.Serve(context.Background(), stdin, stdout)
 }
 
@@ -267,11 +272,9 @@ func (p *githubProvider) handleInitialize(_ context.Context, session *bridgesdk.
 	p.reportSideEffectError("write initialize marker", writeJSONFile(p.env.handshakePath, marker))
 	p.clearLastError()
 
-	p.wg.Add(1)
-	go func() {
-		defer p.wg.Done()
+	p.wg.Go(func() {
 		p.afterInitialize(session)
-	}()
+	})
 
 	return nil
 }
@@ -308,17 +311,22 @@ func (p *githubProvider) afterInitialize(session *bridgesdk.Session) {
 	}
 	p.reportSideEffectError("write ownership marker", writeJSONFile(p.env.ownershipPath, ownership))
 
-	configs, reconcileErr := p.reconcileInstanceConfigs(ctx, session, listed)
-	if reconcileErr != nil && ownershipErr == nil {
-		ownershipErr = reconcileErr
-	}
-	for _, cfg := range configs {
+	configs := p.reconcileInstanceConfigs(ctx, session, listed)
+	for idx := range configs {
+		cfg := configs[idx]
 		status := cfg.initialStatus
 		degradation := cfg.initialDegradation
 		if status == "" {
 			status = bridgepkg.BridgeStatusReady
 		}
-		if _, err := p.reportState(ctx, session, cfg.instanceID, status, degradation); err != nil && ownershipErr == nil {
+		if err := p.reportState(
+			ctx,
+			session,
+			cfg.instanceID,
+			status,
+			degradation,
+		); err != nil &&
+			ownershipErr == nil {
 			ownershipErr = err
 		}
 	}
@@ -358,7 +366,7 @@ func (p *githubProvider) handleBridgesDeliver(
 		os.Exit(23)
 	}
 
-	installationID, err := p.resolveDeliveryInstallationID(cfg, request)
+	installationID, err := p.resolveDeliveryInstallationID(&cfg, request)
 	if err != nil {
 		marker.Error = err.Error()
 		p.reportSideEffectError("write failed delivery marker", appendJSONLine(p.env.deliveryPath, marker))
@@ -367,7 +375,14 @@ func (p *githubProvider) handleBridgesDeliver(
 	}
 
 	api := p.apiFactory(cfg)
-	ack, state, err := executeGitHubDelivery(ctx, api, cfg, request, p.deliveryState(cfg.instanceID, request.Event.DeliveryID), installationID)
+	ack, state, err := executeGitHubDelivery(
+		ctx,
+		api,
+		&cfg,
+		request,
+		p.deliveryState(cfg.instanceID, request.Event.DeliveryID),
+		installationID,
+	)
 	if err != nil {
 		marker.Error = err.Error()
 		p.reportSideEffectError("write failed delivery marker", appendJSONLine(p.env.deliveryPath, marker))
@@ -409,7 +424,10 @@ func (p *githubProvider) handleShutdown(
 	shutdownCtx := context.Background()
 	if request.DeadlineMS > 0 {
 		var cancel context.CancelFunc
-		shutdownCtx, cancel = context.WithTimeout(context.Background(), time.Duration(request.DeadlineMS)*time.Millisecond)
+		shutdownCtx, cancel = context.WithTimeout(
+			context.Background(),
+			time.Duration(request.DeadlineMS)*time.Millisecond,
+		)
 		defer cancel()
 	}
 
@@ -417,7 +435,10 @@ func (p *githubProvider) handleShutdown(
 	server := p.server
 	p.mu.Unlock()
 	if server != nil {
-		_ = server.Shutdown(shutdownCtx)
+		if err := server.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			p.reportSideEffectError("shutdown github webhook server", err)
+			p.setLastError(err)
+		}
 	}
 
 	done := make(chan struct{})
@@ -431,7 +452,10 @@ func (p *githubProvider) handleShutdown(
 	case <-shutdownCtx.Done():
 	}
 
-	p.reportSideEffectError("write shutdown marker", appendMarkerLine(p.env.shutdownPath, fmt.Sprintf("pid=%d", os.Getpid())))
+	p.reportSideEffectError(
+		"write shutdown marker",
+		appendMarkerLine(p.env.shutdownPath, fmt.Sprintf("pid=%d", os.Getpid())),
+	)
 	return nil
 }
 
@@ -478,14 +502,15 @@ func (p *githubProvider) reportState(
 	bridgeInstanceID string,
 	status bridgepkg.BridgeStatus,
 	degradation *bridgepkg.BridgeDegradation,
-) (*bridgepkg.BridgeInstance, error) {
+) error {
 	var result *bridgepkg.BridgeInstance
 	err := p.retryHostCall(ctx, func(callCtx context.Context) error {
-		instance, callErr := session.HostAPI().ReportBridgeInstanceState(callCtx, extensioncontract.BridgesInstancesReportStateParams{
-			BridgeInstanceID: strings.TrimSpace(bridgeInstanceID),
-			Status:           status,
-			Degradation:      cloneDegradation(degradation),
-		})
+		instance, callErr := session.HostAPI().
+			ReportBridgeInstanceState(callCtx, extensioncontract.BridgesInstancesReportStateParams{
+				BridgeInstanceID: strings.TrimSpace(bridgeInstanceID),
+				Status:           status,
+				Degradation:      cloneDegradation(degradation),
+			})
 		if callErr == nil {
 			result = instance
 		}
@@ -497,7 +522,7 @@ func (p *githubProvider) reportState(
 			Status:           status,
 			Error:            err.Error(),
 		}))
-		return nil, err
+		return err
 	}
 
 	p.mu.Lock()
@@ -508,7 +533,7 @@ func (p *githubProvider) reportState(
 		Status:           result.Status,
 		Instance:         *result,
 	}))
-	return result, nil
+	return nil
 }
 
 func (p *githubProvider) reportReadyIfNeeded(ctx context.Context, session *bridgesdk.Session, bridgeInstanceID string) {
@@ -518,7 +543,9 @@ func (p *githubProvider) reportReadyIfNeeded(ctx context.Context, session *bridg
 	if status == bridgepkg.BridgeStatusReady {
 		return
 	}
-	_, _ = p.reportState(ctx, session, bridgeInstanceID, bridgepkg.BridgeStatusReady, nil)
+	if err := p.reportState(ctx, session, bridgeInstanceID, bridgepkg.BridgeStatusReady, nil); err != nil {
+		p.setLastError(err)
+	}
 }
 
 func (p *githubProvider) ingestBridgeMessage(
@@ -544,7 +571,7 @@ func (p *githubProvider) retryHostCall(ctx context.Context, fn func(context.Cont
 
 	delay := 10 * time.Millisecond
 	var lastErr error
-	for attempt := 0; attempt < 6; attempt++ {
+	for range 6 {
 		err := fn(ctx)
 		if err == nil {
 			return nil
@@ -587,16 +614,31 @@ func (p *githubProvider) reconcileInstanceConfigs(
 	ctx context.Context,
 	session *bridgesdk.Session,
 	managed []subprocess.InitializeBridgeManagedInstance,
-) ([]resolvedInstanceConfig, error) {
+) []resolvedInstanceConfig {
 	if len(managed) == 0 {
 		p.mu.Lock()
 		p.routes = make(map[string]resolvedInstanceConfig)
 		p.installationCache = make(map[string]int64)
 		p.apiClients = make(map[string]githubAPI)
 		p.mu.Unlock()
-		return nil, nil
+		return nil
 	}
 
+	configs, requestedListen := p.collectGitHubConfigs(session, managed)
+	p.applyGitHubListenErrors(configs, requestedListen)
+	nextRoutes := buildGitHubRouteMap(configs)
+	p.storeGitHubRoutes(nextRoutes, requestedListen)
+	p.markInitializationReady()
+	p.populateGitHubInitialState(ctx, configs, nextRoutes)
+	p.storeGitHubFinalRoutes(nextRoutes)
+
+	return configs
+}
+
+func (p *githubProvider) collectGitHubConfigs(
+	session *bridgesdk.Session,
+	managed []subprocess.InitializeBridgeManagedInstance,
+) ([]resolvedInstanceConfig, string) {
 	configs := make([]resolvedInstanceConfig, 0, len(managed))
 	requestedListen := strings.TrimSpace(os.Getenv(githubListenAddrEnv))
 	seenRepos := make(map[string]string, len(managed))
@@ -604,70 +646,118 @@ func (p *githubProvider) reconcileInstanceConfigs(
 
 	for _, item := range managed {
 		cfg := p.resolveInstanceConfig(session, item)
-		if cfg.listenAddr != "" {
-			if requestedListen == "" {
-				requestedListen = cfg.listenAddr
-			} else if requestedListen != cfg.listenAddr && cfg.configError == nil {
-				cfg.configError = fmt.Errorf("github: instance %q configured incompatible listen_addr %q (runtime uses %q)", cfg.instanceID, cfg.listenAddr, requestedListen)
-			}
-		}
-		if owner, ok := seenRepos[cfg.repoFullName]; ok && cfg.repoFullName != "" && cfg.configError == nil {
-			cfg.configError = fmt.Errorf("github: repository %q is already owned by %q and cannot also belong to %q", cfg.repoFullName, owner, cfg.instanceID)
-		}
-		if cfg.repoFullName != "" {
-			seenRepos[cfg.repoFullName] = cfg.instanceID
-		}
-		if owner, ok := seenWebhookPaths[cfg.webhookPath]; ok && cfg.webhookPath != "" && cfg.configError == nil {
-			cfg.configError = fmt.Errorf("github: webhook path %q is already owned by %q and cannot also belong to %q", cfg.webhookPath, owner, cfg.instanceID)
-		}
-		if cfg.webhookPath != "" {
-			seenWebhookPaths[cfg.webhookPath] = cfg.instanceID
-		}
+		requestedListen = applyGitHubListenConstraint(&cfg, requestedListen)
+		applyGitHubRepoConflict(&cfg, seenRepos)
+		applyGitHubWebhookPathConflict(&cfg, seenWebhookPaths)
 		configs = append(configs, cfg)
 	}
 
+	return configs, requestedListen
+}
+
+func applyGitHubListenConstraint(cfg *resolvedInstanceConfig, requestedListen string) string {
+	if cfg == nil || cfg.listenAddr == "" {
+		return requestedListen
+	}
+	if requestedListen == "" {
+		return cfg.listenAddr
+	}
+	if requestedListen != cfg.listenAddr && cfg.configError == nil {
+		cfg.configError = fmt.Errorf(
+			"github: instance %q configured incompatible listen_addr %q (runtime uses %q)",
+			cfg.instanceID,
+			cfg.listenAddr,
+			requestedListen,
+		)
+	}
+	return requestedListen
+}
+
+func applyGitHubRepoConflict(cfg *resolvedInstanceConfig, seenRepos map[string]string) {
+	if cfg == nil || cfg.repoFullName == "" {
+		return
+	}
+	if owner, ok := seenRepos[cfg.repoFullName]; ok && cfg.configError == nil {
+		cfg.configError = fmt.Errorf(
+			"github: repository %q is already owned by %q and cannot also belong to %q",
+			cfg.repoFullName,
+			owner,
+			cfg.instanceID,
+		)
+	}
+	seenRepos[cfg.repoFullName] = cfg.instanceID
+}
+
+func applyGitHubWebhookPathConflict(cfg *resolvedInstanceConfig, seenWebhookPaths map[string]string) {
+	if cfg == nil || cfg.webhookPath == "" {
+		return
+	}
+	if owner, ok := seenWebhookPaths[cfg.webhookPath]; ok && cfg.configError == nil {
+		cfg.configError = fmt.Errorf(
+			"github: webhook path %q is already owned by %q and cannot also belong to %q",
+			cfg.webhookPath,
+			owner,
+			cfg.instanceID,
+		)
+	}
+	seenWebhookPaths[cfg.webhookPath] = cfg.instanceID
+}
+
+func (p *githubProvider) applyGitHubListenErrors(configs []resolvedInstanceConfig, requestedListen string) {
 	if requestedListen == "" {
 		for idx := range configs {
 			if configs[idx].configError == nil {
 				configs[idx].configError = errors.New("github: webhook listen address is required")
 			}
 		}
-	} else if err := p.startServer(requestedListen); err != nil {
+		return
+	}
+	if err := p.startServer(requestedListen); err != nil {
 		for idx := range configs {
 			if configs[idx].configError == nil {
 				configs[idx].configError = err
 			}
 		}
 	}
+}
 
+func buildGitHubRouteMap(configs []resolvedInstanceConfig) map[string]resolvedInstanceConfig {
 	nextRoutes := make(map[string]resolvedInstanceConfig, len(configs))
-	for _, cfg := range configs {
+	for idx := range configs {
+		cfg := configs[idx]
 		nextRoutes[cfg.instanceID] = cfg
 	}
+	return nextRoutes
+}
 
+func (p *githubProvider) storeGitHubRoutes(nextRoutes map[string]resolvedInstanceConfig, requestedListen string) {
 	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.routes = nextRoutes
 	p.listenAddr = requestedListen
 	p.apiClients = make(map[string]githubAPI, len(nextRoutes))
-	p.mu.Unlock()
-	p.markInitializationReady()
+}
 
+func (p *githubProvider) populateGitHubInitialState(
+	ctx context.Context,
+	configs []resolvedInstanceConfig,
+	nextRoutes map[string]resolvedInstanceConfig,
+) {
 	for idx := range configs {
-		updated, status, degradation, err := p.determineInitialState(ctx, configs[idx])
+		updated, status, degradation, err := p.determineInitialState(ctx, &configs[idx])
 		if err != nil {
 			p.setLastError(err)
 		}
 		updated.initialStatus = status
 		updated.initialDegradation = degradation
-		configs[idx] = updated
-		nextRoutes[updated.instanceID] = updated
+		nextRoutes[updated.instanceID] = *updated
 	}
+}
 
+func (p *githubProvider) storeGitHubFinalRoutes(nextRoutes map[string]resolvedInstanceConfig) {
 	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.routes = nextRoutes
-	p.mu.Unlock()
-
-	return configs, nil
 }
 
 func (p *githubProvider) resolveInstanceConfig(
@@ -692,7 +782,9 @@ func (p *githubProvider) resolveInstanceConfig(
 
 	listenAddr := firstNonEmpty(cfg.Webhook.ListenAddr, strings.TrimSpace(os.Getenv(githubListenAddrEnv)))
 	webhookPath := normalizeWebhookPath(firstNonEmpty(cfg.Webhook.Path, "/github"))
-	apiBaseURL := normalizeURL(firstNonEmpty(cfg.APIBaseURL, strings.TrimSpace(os.Getenv(githubAPIBaseEnv)), githubDefaultAPIBaseURL))
+	apiBaseURL := normalizeURL(
+		firstNonEmpty(cfg.APIBaseURL, strings.TrimSpace(os.Getenv(githubAPIBaseEnv)), githubDefaultAPIBaseURL),
+	)
 	mode := strings.ToLower(strings.TrimSpace(cfg.Mode))
 	if mode == "" {
 		switch {
@@ -703,7 +795,11 @@ func (p *githubProvider) resolveInstanceConfig(
 		}
 	}
 
-	repoOwner, repoName, repoFullName, repoErr := normalizeGitHubRepository(cfg.Repository.Owner, cfg.Repository.Name, cfg.Repository.FullName)
+	repoOwner, repoName, repoFullName, repoErr := normalizeGitHubRepository(
+		cfg.Repository.Owner,
+		cfg.Repository.Name,
+		cfg.Repository.FullName,
+	)
 	resolved := resolvedInstanceConfig{
 		managed:        managed,
 		instanceID:     strings.TrimSpace(managed.Instance.ID),
@@ -738,8 +834,12 @@ func (p *githubProvider) resolveInstanceConfig(
 
 func (p *githubProvider) determineInitialState(
 	ctx context.Context,
-	cfg resolvedInstanceConfig,
-) (resolvedInstanceConfig, bridgepkg.BridgeStatus, *bridgepkg.BridgeDegradation, error) {
+	cfg *resolvedInstanceConfig,
+) (*resolvedInstanceConfig, bridgepkg.BridgeStatus, *bridgepkg.BridgeDegradation, error) {
+	if cfg == nil {
+		err := errors.New("github: config is required")
+		return nil, bridgepkg.BridgeStatusError, nil, err
+	}
 	if cfg.configError != nil {
 		return cfg, bridgepkg.BridgeStatusDegraded, &bridgepkg.BridgeDegradation{
 			Reason:  bridgepkg.BridgeDegradationReasonTenantConfigInvalid,
@@ -783,7 +883,7 @@ func (p *githubProvider) determineInitialState(
 		return cfg, bridgepkg.BridgeStatusReady, nil, nil
 	}
 
-	viewer, err := p.apiFactory(cfg).ValidateAuth(ctx, cfg.installationID)
+	viewer, err := p.apiFactory(*cfg).ValidateAuth(ctx, cfg.installationID)
 	if err != nil {
 		classified := bridgesdk.ClassifyError(err)
 		recovery := classified.Recovery()
@@ -817,13 +917,15 @@ func (p *githubProvider) startServer(listenAddr string) error {
 		return nil
 	}
 
-	ln, err := net.Listen("tcp", strings.TrimSpace(listenAddr))
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", strings.TrimSpace(listenAddr))
 	if err != nil {
 		return fmt.Errorf("github: listen %q: %w", listenAddr, err)
 	}
 
 	httpServer := &http.Server{
-		Handler: http.HandlerFunc(p.serveWebhookHTTP),
+		Handler:           http.HandlerFunc(p.serveWebhookHTTP),
+		ReadHeaderTimeout: githubWebhookReadHeaderTimeout,
+		IdleTimeout:       githubWebhookIdleTimeout,
 	}
 
 	actualAddr := ln.Addr().String()
@@ -833,15 +935,16 @@ func (p *githubProvider) startServer(listenAddr string) error {
 	p.listenAddr = strings.TrimSpace(listenAddr)
 	p.mu.Unlock()
 
-	p.reportSideEffectError("write start marker", appendMarkerLine(p.env.startsPath, fmt.Sprintf("listen=%s", actualAddr)))
+	p.reportSideEffectError(
+		"write start marker",
+		appendMarkerLine(p.env.startsPath, fmt.Sprintf("listen=%s", actualAddr)),
+	)
 
-	p.wg.Add(1)
-	go func() {
-		defer p.wg.Done()
+	p.wg.Go(func() {
 		if serveErr := httpServer.Serve(ln); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			p.setLastError(serveErr)
 		}
-	}()
+	})
 	return nil
 }
 
@@ -885,77 +988,91 @@ func (p *githubProvider) handleWebhookRequest(
 	eventType := strings.ToLower(strings.TrimSpace(r.Header.Get("X-GitHub-Event")))
 	switch eventType {
 	case "ping":
-		return writeWebhookText(w, http.StatusOK, "pong")
+		return writeWebhookText(w, "pong")
 	case "issue_comment":
-		payload := githubIssuePayload{}
-		if err := json.Unmarshal(request.Body, &payload); err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: "invalid github webhook payload"}
-		}
-		cfg, ok, err := selectGitHubIssueConfig(candidates, payload)
-		if err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
-		}
-		if !ok {
-			return writeWebhookText(w, http.StatusOK, "ignored")
-		}
-		if strings.TrimSpace(payload.Action) != "created" {
-			return writeWebhookText(w, http.StatusOK, "ok")
-		}
-		item, err := mapGitHubIssueComment(payload, cfg.managed, request.ReceivedAt)
-		if err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
-		}
-		if item.InstallationID > 0 {
-			p.storeInstallationID(cfg.repoFullName, item.InstallationID)
-		}
-		if cfg.dedup.Mark(item.Envelope.IdempotencyKey) {
-			return writeWebhookText(w, http.StatusOK, "ok")
-		}
-		if isGitHubSelfMessage(cfg, payload.Sender) {
-			return writeWebhookText(w, http.StatusOK, "ok")
-		}
-		if err := p.dispatchInboundEnvelope(context.Background(), cfg.instanceID, item.Envelope); err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusInternalServerError, Message: err.Error()}
-		}
-		return writeWebhookText(w, http.StatusOK, "ok")
+		return p.handleIssueCommentWebhook(w, candidates, request)
 	case "pull_request_review_comment":
-		payload := githubReviewPayload{}
-		if err := json.Unmarshal(request.Body, &payload); err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: "invalid github webhook payload"}
-		}
-		cfg, ok, err := selectGitHubReviewConfig(candidates, payload)
-		if err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
-		}
-		if !ok {
-			return writeWebhookText(w, http.StatusOK, "ignored")
-		}
-		if strings.TrimSpace(payload.Action) != "created" {
-			return writeWebhookText(w, http.StatusOK, "ok")
-		}
-		item, err := mapGitHubReviewComment(payload, cfg.managed, request.ReceivedAt)
-		if err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
-		}
-		if item.InstallationID > 0 {
-			p.storeInstallationID(cfg.repoFullName, item.InstallationID)
-		}
-		if cfg.dedup.Mark(item.Envelope.IdempotencyKey) {
-			return writeWebhookText(w, http.StatusOK, "ok")
-		}
-		if isGitHubSelfMessage(cfg, payload.Sender) {
-			return writeWebhookText(w, http.StatusOK, "ok")
-		}
-		if err := p.dispatchInboundEnvelope(context.Background(), cfg.instanceID, item.Envelope); err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusInternalServerError, Message: err.Error()}
-		}
-		return writeWebhookText(w, http.StatusOK, "ok")
+		return p.handleReviewCommentWebhook(w, candidates, request)
 	default:
-		return writeWebhookText(w, http.StatusOK, "ok")
+		return writeWebhookText(w, "ok")
 	}
 }
 
-func (p *githubProvider) dispatchInboundEnvelope(ctx context.Context, bridgeInstanceID string, envelope bridgepkg.InboundMessageEnvelope) error {
+func (p *githubProvider) handleIssueCommentWebhook(
+	w http.ResponseWriter,
+	candidates []resolvedInstanceConfig,
+	request bridgesdk.WebhookRequest,
+) error {
+	payload := githubIssuePayload{}
+	if err := json.Unmarshal(request.Body, &payload); err != nil {
+		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: "invalid github webhook payload"}
+	}
+	cfg, ok, err := selectGitHubIssueConfig(candidates, payload)
+	if err != nil {
+		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
+	}
+	if !ok {
+		return writeWebhookText(w, "ignored")
+	}
+	if strings.TrimSpace(payload.Action) != "created" {
+		return writeWebhookText(w, "ok")
+	}
+	item, err := mapGitHubIssueComment(payload, cfg.managed, request.ReceivedAt)
+	if err != nil {
+		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
+	}
+	if item.InstallationID > 0 {
+		p.storeInstallationID(cfg.repoFullName, item.InstallationID)
+	}
+	if cfg.dedup.Mark(item.Envelope.IdempotencyKey) || isGitHubSelfMessage(&cfg, payload.Sender) {
+		return writeWebhookText(w, "ok")
+	}
+	if err := p.dispatchInboundEnvelope(context.Background(), cfg.instanceID, item.Envelope); err != nil {
+		return &bridgesdk.HTTPError{StatusCode: http.StatusInternalServerError, Message: err.Error()}
+	}
+	return writeWebhookText(w, "ok")
+}
+
+func (p *githubProvider) handleReviewCommentWebhook(
+	w http.ResponseWriter,
+	candidates []resolvedInstanceConfig,
+	request bridgesdk.WebhookRequest,
+) error {
+	payload := githubReviewPayload{}
+	if err := json.Unmarshal(request.Body, &payload); err != nil {
+		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: "invalid github webhook payload"}
+	}
+	cfg, ok, err := selectGitHubReviewConfig(candidates, payload)
+	if err != nil {
+		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
+	}
+	if !ok {
+		return writeWebhookText(w, "ignored")
+	}
+	if strings.TrimSpace(payload.Action) != "created" {
+		return writeWebhookText(w, "ok")
+	}
+	item, err := mapGitHubReviewComment(payload, cfg.managed, request.ReceivedAt)
+	if err != nil {
+		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
+	}
+	if item.InstallationID > 0 {
+		p.storeInstallationID(cfg.repoFullName, item.InstallationID)
+	}
+	if cfg.dedup.Mark(item.Envelope.IdempotencyKey) || isGitHubSelfMessage(&cfg, payload.Sender) {
+		return writeWebhookText(w, "ok")
+	}
+	if err := p.dispatchInboundEnvelope(context.Background(), cfg.instanceID, item.Envelope); err != nil {
+		return &bridgesdk.HTTPError{StatusCode: http.StatusInternalServerError, Message: err.Error()}
+	}
+	return writeWebhookText(w, "ok")
+}
+
+func (p *githubProvider) dispatchInboundEnvelope(
+	ctx context.Context,
+	bridgeInstanceID string,
+	envelope bridgepkg.InboundMessageEnvelope,
+) error {
 	session := p.currentSession()
 	if session == nil {
 		return errors.New("github: runtime session is not initialized")
@@ -1040,7 +1157,8 @@ func (p *githubProvider) configsForPath(path string) []resolvedInstanceConfig {
 	defer p.mu.RUnlock()
 
 	configs := make([]resolvedInstanceConfig, 0, len(p.routes))
-	for _, cfg := range p.routes {
+	for instanceID := range p.routes {
+		cfg := p.routes[instanceID]
 		if cfg.webhookPath == normalizedPath {
 			configs = append(configs, cfg)
 		}
@@ -1060,7 +1178,12 @@ func (p *githubProvider) deliveryState(instanceID string, deliveryID string) del
 	return p.deliveries[deliveryStateKey(instanceID, deliveryID)]
 }
 
-func (p *githubProvider) storeDeliveryState(instanceID string, deliveryID string, event bridgepkg.DeliveryEvent, state deliveryState) {
+func (p *githubProvider) storeDeliveryState(
+	instanceID string,
+	deliveryID string,
+	event bridgepkg.DeliveryEvent,
+	state deliveryState,
+) {
 	key := deliveryStateKey(instanceID, deliveryID)
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -1103,7 +1226,13 @@ func (p *githubProvider) cachedInstallationID(repoFullName string) int64 {
 	return p.installationCache[strings.ToLower(strings.TrimSpace(repoFullName))]
 }
 
-func (p *githubProvider) resolveDeliveryInstallationID(cfg resolvedInstanceConfig, request bridgepkg.DeliveryRequest) (int64, error) {
+func (p *githubProvider) resolveDeliveryInstallationID(
+	cfg *resolvedInstanceConfig,
+	request bridgepkg.DeliveryRequest,
+) (int64, error) {
+	if cfg == nil {
+		return 0, errors.New("github: config is required")
+	}
 	if cfg.mode != githubModeApp {
 		return 0, nil
 	}
@@ -1123,7 +1252,9 @@ func (p *githubProvider) resolveDeliveryInstallationID(cfg resolvedInstanceConfi
 	if installationID := p.cachedInstallationID(cfg.repoFullName); installationID > 0 {
 		return installationID, nil
 	}
-	return 0, &bridgesdk.PermanentError{Err: fmt.Errorf("github: installation id is required for app-mode delivery on %q", cfg.repoFullName)}
+	return 0, &bridgesdk.PermanentError{
+		Err: fmt.Errorf("github: installation id is required for app-mode delivery on %q", cfg.repoFullName),
+	}
 }
 
 func (p *githubProvider) setLastError(err error) {
@@ -1148,44 +1279,22 @@ func (p *githubProvider) reportSideEffectError(action string, err error) {
 func executeGitHubDelivery(
 	ctx context.Context,
 	api githubAPI,
-	cfg resolvedInstanceConfig,
+	cfg *resolvedInstanceConfig,
 	request bridgepkg.DeliveryRequest,
 	state deliveryState,
 	installationID int64,
 ) (bridgepkg.DeliveryAck, deliveryState, error) {
 	event := request.Event
 	if event.Seq <= state.LastSeq {
-		return bridgepkg.DeliveryAck{}, state, fmt.Errorf("github: out-of-order delivery seq %d after %d", event.Seq, state.LastSeq)
+		return bridgepkg.DeliveryAck{}, state, fmt.Errorf(
+			"github: out-of-order delivery seq %d after %d",
+			event.Seq,
+			state.LastSeq,
+		)
 	}
 
-	if event.Operation.Normalize() == bridgepkg.DeliveryOperationDelete || normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeDelete {
-		remoteID := firstNonEmpty(referenceRemoteMessageID(event.Reference), state.RemoteMessageID)
-		if remoteID == "" && request.Snapshot != nil {
-			remoteID = strings.TrimSpace(request.Snapshot.RemoteMessageID)
-		}
-		ref, err := parseGitHubRemoteCommentRef(remoteID)
-		if err != nil {
-			return bridgepkg.DeliveryAck{}, state, err
-		}
-		switch ref.Kind {
-		case "review":
-			if err := api.DeleteReviewComment(ctx, ref.CommentID, installationID); err != nil {
-				return bridgepkg.DeliveryAck{}, state, err
-			}
-		default:
-			if err := api.DeleteIssueComment(ctx, ref.CommentID, installationID); err != nil {
-				return bridgepkg.DeliveryAck{}, state, err
-			}
-		}
-		state.LastSeq = event.Seq
-		state.ReplaceRemoteMessageID = remoteID
-		ack := bridgepkg.DeliveryAck{
-			DeliveryID:             event.DeliveryID,
-			Seq:                    event.Seq,
-			RemoteMessageID:        remoteID,
-			ReplaceRemoteMessageID: remoteID,
-		}
-		return ack, state, ack.ValidateFor(event)
+	if isGitHubDeleteEvent(event) {
+		return executeGitHubDelete(ctx, api, request, state, installationID)
 	}
 
 	target, err := resolveGitHubDeliveryTarget(cfg, event)
@@ -1193,70 +1302,171 @@ func executeGitHubDelivery(
 		return bridgepkg.DeliveryAck{}, state, err
 	}
 	if shouldPostGitHubMessage(event, state, request) {
-		var remote string
-		if target.ReviewCommentID > 0 {
-			comment, postErr := api.CreateReviewCommentReply(ctx, target.Number, target.ReviewCommentID, event.Content.Text, installationID)
-			if postErr != nil {
-				return bridgepkg.DeliveryAck{}, state, postErr
-			}
-			remote = encodeGitHubRemoteCommentRef(githubRemoteCommentRef{Kind: "review", CommentID: comment.ID})
-		} else {
-			comment, postErr := api.CreateIssueComment(ctx, target.Number, event.Content.Text, installationID)
-			if postErr != nil {
-				return bridgepkg.DeliveryAck{}, state, postErr
-			}
-			remote = encodeGitHubRemoteCommentRef(githubRemoteCommentRef{Kind: "issue", CommentID: comment.ID})
-		}
-
-		state.LastSeq = event.Seq
-		state.RemoteMessageID = remote
-		if event.Seq > 1 {
-			state.ReplaceRemoteMessageID = remote
-		}
-		ack := bridgepkg.DeliveryAck{
-			DeliveryID:             event.DeliveryID,
-			Seq:                    event.Seq,
-			RemoteMessageID:        state.RemoteMessageID,
-			ReplaceRemoteMessageID: state.ReplaceRemoteMessageID,
-		}
-		return ack, state, ack.ValidateFor(event)
+		return executeGitHubCreate(ctx, api, event, target, state, installationID)
 	}
 
-	remoteID := firstNonEmpty(referenceRemoteMessageID(event.Reference), state.RemoteMessageID)
-	if remoteID == "" && request.Snapshot != nil {
-		remoteID = strings.TrimSpace(request.Snapshot.RemoteMessageID)
-	}
+	return executeGitHubUpdate(ctx, api, request, state, installationID)
+}
+
+func isGitHubDeleteEvent(event bridgepkg.DeliveryEvent) bool {
+	return event.Operation.Normalize() == bridgepkg.DeliveryOperationDelete ||
+		normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeDelete
+}
+
+func executeGitHubDelete(
+	ctx context.Context,
+	api githubAPI,
+	request bridgepkg.DeliveryRequest,
+	state deliveryState,
+	installationID int64,
+) (bridgepkg.DeliveryAck, deliveryState, error) {
+	event := request.Event
+	remoteID := gitHubRemoteIDFromRequest(request, state)
 	ref, err := parseGitHubRemoteCommentRef(remoteID)
 	if err != nil {
 		return bridgepkg.DeliveryAck{}, state, err
 	}
-	switch ref.Kind {
-	case "review":
-		comment, updateErr := api.UpdateReviewComment(ctx, ref.CommentID, event.Content.Text, installationID)
-		if updateErr != nil {
-			return bridgepkg.DeliveryAck{}, state, updateErr
-		}
-		remoteID = encodeGitHubRemoteCommentRef(githubRemoteCommentRef{Kind: "review", CommentID: comment.ID})
-	default:
-		comment, updateErr := api.UpdateIssueComment(ctx, ref.CommentID, event.Content.Text, installationID)
-		if updateErr != nil {
-			return bridgepkg.DeliveryAck{}, state, updateErr
-		}
-		remoteID = encodeGitHubRemoteCommentRef(githubRemoteCommentRef{Kind: "issue", CommentID: comment.ID})
+	if err := deleteGitHubComment(ctx, api, ref, installationID); err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
 	}
 	state.LastSeq = event.Seq
-	state.RemoteMessageID = remoteID
 	state.ReplaceRemoteMessageID = remoteID
 	ack := bridgepkg.DeliveryAck{
 		DeliveryID:             event.DeliveryID,
 		Seq:                    event.Seq,
 		RemoteMessageID:        remoteID,
+		ReplaceRemoteMessageID: remoteID,
+	}
+	return ack, state, ack.ValidateFor(event)
+}
+
+func deleteGitHubComment(ctx context.Context, api githubAPI, ref githubRemoteCommentRef, installationID int64) error {
+	switch ref.Kind {
+	case "review":
+		return api.DeleteReviewComment(ctx, ref.CommentID, installationID)
+	default:
+		return api.DeleteIssueComment(ctx, ref.CommentID, installationID)
+	}
+}
+
+func executeGitHubCreate(
+	ctx context.Context,
+	api githubAPI,
+	event bridgepkg.DeliveryEvent,
+	target githubThreadRef,
+	state deliveryState,
+	installationID int64,
+) (bridgepkg.DeliveryAck, deliveryState, error) {
+	remoteID, err := createGitHubComment(ctx, api, target, event.Content.Text, installationID)
+	if err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
+	}
+	state.LastSeq = event.Seq
+	state.RemoteMessageID = remoteID
+	if event.Seq > 1 {
+		state.ReplaceRemoteMessageID = remoteID
+	}
+	ack := bridgepkg.DeliveryAck{
+		DeliveryID:             event.DeliveryID,
+		Seq:                    event.Seq,
+		RemoteMessageID:        state.RemoteMessageID,
 		ReplaceRemoteMessageID: state.ReplaceRemoteMessageID,
 	}
 	return ack, state, ack.ValidateFor(event)
 }
 
-func shouldPostGitHubMessage(event bridgepkg.DeliveryEvent, state deliveryState, request bridgepkg.DeliveryRequest) bool {
+func createGitHubComment(
+	ctx context.Context,
+	api githubAPI,
+	target githubThreadRef,
+	body string,
+	installationID int64,
+) (string, error) {
+	if target.ReviewCommentID > 0 {
+		comment, err := api.CreateReviewCommentReply(
+			ctx,
+			target.Number,
+			target.ReviewCommentID,
+			body,
+			installationID,
+		)
+		if err != nil {
+			return "", err
+		}
+		return encodeGitHubRemoteCommentRef(githubRemoteCommentRef{Kind: "review", CommentID: comment.ID}), nil
+	}
+	comment, err := api.CreateIssueComment(ctx, target.Number, body, installationID)
+	if err != nil {
+		return "", err
+	}
+	return encodeGitHubRemoteCommentRef(githubRemoteCommentRef{Kind: "issue", CommentID: comment.ID}), nil
+}
+
+func executeGitHubUpdate(
+	ctx context.Context,
+	api githubAPI,
+	request bridgepkg.DeliveryRequest,
+	state deliveryState,
+	installationID int64,
+) (bridgepkg.DeliveryAck, deliveryState, error) {
+	event := request.Event
+	remoteID := gitHubRemoteIDFromRequest(request, state)
+	ref, err := parseGitHubRemoteCommentRef(remoteID)
+	if err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
+	}
+	updatedRemoteID, err := updateGitHubComment(ctx, api, ref, event.Content.Text, installationID)
+	if err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
+	}
+	state.LastSeq = event.Seq
+	state.RemoteMessageID = updatedRemoteID
+	state.ReplaceRemoteMessageID = updatedRemoteID
+	ack := bridgepkg.DeliveryAck{
+		DeliveryID:             event.DeliveryID,
+		Seq:                    event.Seq,
+		RemoteMessageID:        updatedRemoteID,
+		ReplaceRemoteMessageID: state.ReplaceRemoteMessageID,
+	}
+	return ack, state, ack.ValidateFor(event)
+}
+
+func updateGitHubComment(
+	ctx context.Context,
+	api githubAPI,
+	ref githubRemoteCommentRef,
+	body string,
+	installationID int64,
+) (string, error) {
+	switch ref.Kind {
+	case "review":
+		comment, err := api.UpdateReviewComment(ctx, ref.CommentID, body, installationID)
+		if err != nil {
+			return "", err
+		}
+		return encodeGitHubRemoteCommentRef(githubRemoteCommentRef{Kind: "review", CommentID: comment.ID}), nil
+	default:
+		comment, err := api.UpdateIssueComment(ctx, ref.CommentID, body, installationID)
+		if err != nil {
+			return "", err
+		}
+		return encodeGitHubRemoteCommentRef(githubRemoteCommentRef{Kind: "issue", CommentID: comment.ID}), nil
+	}
+}
+
+func gitHubRemoteIDFromRequest(request bridgepkg.DeliveryRequest, state deliveryState) string {
+	remoteID := firstNonEmpty(referenceRemoteMessageID(request.Event.Reference), state.RemoteMessageID)
+	if remoteID == "" && request.Snapshot != nil {
+		return strings.TrimSpace(request.Snapshot.RemoteMessageID)
+	}
+	return remoteID
+}
+
+func shouldPostGitHubMessage(
+	event bridgepkg.DeliveryEvent,
+	state deliveryState,
+	request bridgepkg.DeliveryRequest,
+) bool {
 	switch normalizeDeliveryEventType(event.EventType) {
 	case bridgepkg.DeliveryEventTypeStart:
 		return true
@@ -1362,11 +1572,17 @@ func mapGitHubReviewComment(
 	return item, item.Envelope.Validate()
 }
 
-func selectGitHubIssueConfig(candidates []resolvedInstanceConfig, payload githubIssuePayload) (resolvedInstanceConfig, bool, error) {
+func selectGitHubIssueConfig(
+	candidates []resolvedInstanceConfig,
+	payload githubIssuePayload,
+) (resolvedInstanceConfig, bool, error) {
 	return selectGitHubRoute(candidates, payload.Repository.FullName)
 }
 
-func selectGitHubReviewConfig(candidates []resolvedInstanceConfig, payload githubReviewPayload) (resolvedInstanceConfig, bool, error) {
+func selectGitHubReviewConfig(
+	candidates []resolvedInstanceConfig,
+	payload githubReviewPayload,
+) (resolvedInstanceConfig, bool, error) {
 	return selectGitHubRoute(candidates, payload.Repository.FullName)
 }
 
@@ -1375,7 +1591,8 @@ func selectGitHubRoute(candidates []resolvedInstanceConfig, fullName string) (re
 	if normalized == "" {
 		return resolvedInstanceConfig{}, false, errors.New("github: webhook repository full_name is required")
 	}
-	for _, cfg := range candidates {
+	for idx := range candidates {
+		cfg := candidates[idx]
 		if strings.ToLower(strings.TrimSpace(cfg.repoFullName)) == normalized {
 			return cfg, true, nil
 		}
@@ -1383,8 +1600,14 @@ func selectGitHubRoute(candidates []resolvedInstanceConfig, fullName string) (re
 	return resolvedInstanceConfig{}, false, nil
 }
 
-func resolveGitHubDeliveryTarget(cfg resolvedInstanceConfig, event bridgepkg.DeliveryEvent) (githubThreadRef, error) {
-	threadID := firstNonEmpty(strings.TrimSpace(event.DeliveryTarget.ThreadID), strings.TrimSpace(event.RoutingKey.ThreadID))
+func resolveGitHubDeliveryTarget(cfg *resolvedInstanceConfig, event bridgepkg.DeliveryEvent) (githubThreadRef, error) {
+	if cfg == nil {
+		return githubThreadRef{}, errors.New("github: config is required")
+	}
+	threadID := firstNonEmpty(
+		strings.TrimSpace(event.DeliveryTarget.ThreadID),
+		strings.TrimSpace(event.RoutingKey.ThreadID),
+	)
 	if threadID == "" {
 		return githubThreadRef{}, errors.New("github: delivery target requires thread_id")
 	}
@@ -1394,12 +1617,22 @@ func resolveGitHubDeliveryTarget(cfg resolvedInstanceConfig, event bridgepkg.Del
 	}
 	if !strings.EqualFold(strings.TrimSpace(cfg.repoOwner), strings.TrimSpace(target.Owner)) ||
 		!strings.EqualFold(strings.TrimSpace(cfg.repoName), strings.TrimSpace(target.Repo)) {
-		return githubThreadRef{}, fmt.Errorf("github: delivery target repo %q/%q does not match instance repo %q", target.Owner, target.Repo, cfg.repoFullName)
+		return githubThreadRef{}, fmt.Errorf(
+			"github: delivery target repo %q/%q does not match instance repo %q",
+			target.Owner,
+			target.Repo,
+			cfg.repoFullName,
+		)
 	}
 	return target, nil
 }
 
-func verifyGitHubWebhookSignature(_ context.Context, req *http.Request, body []byte, candidates []resolvedInstanceConfig) error {
+func verifyGitHubWebhookSignature(
+	_ context.Context,
+	req *http.Request,
+	body []byte,
+	candidates []resolvedInstanceConfig,
+) error {
 	if req == nil {
 		return errors.New("github: webhook request is required")
 	}
@@ -1417,7 +1650,8 @@ func verifyGitHubWebhookSignature(_ context.Context, req *http.Request, body []b
 	}
 
 	seen := make(map[string]struct{}, len(candidates))
-	for _, cfg := range candidates {
+	for idx := range candidates {
+		cfg := candidates[idx]
 		secret := strings.TrimSpace(cfg.webhookSecret)
 		if secret == "" {
 			continue
@@ -1435,7 +1669,10 @@ func verifyGitHubWebhookSignature(_ context.Context, req *http.Request, body []b
 	return errors.New("github: invalid webhook signature")
 }
 
-func isGitHubSelfMessage(cfg resolvedInstanceConfig, sender githubUser) bool {
+func isGitHubSelfMessage(cfg *resolvedInstanceConfig, sender githubUser) bool {
+	if cfg == nil {
+		return false
+	}
 	if strings.TrimSpace(cfg.botLogin) == "" {
 		return false
 	}
@@ -1499,8 +1736,14 @@ func encodeGitHubThreadID(ref githubThreadRef) string {
 func decodeGitHubThreadID(value string) (githubThreadRef, error) {
 	trimmed := strings.TrimSpace(value)
 	if matches := githubReviewThreadPattern.FindStringSubmatch(trimmed); len(matches) == 5 {
-		number, _ := strconv.ParseInt(matches[3], 10, 64)
-		reviewCommentID, _ := strconv.ParseInt(matches[4], 10, 64)
+		number, err := strconv.ParseInt(matches[3], 10, 64)
+		if err != nil {
+			return githubThreadRef{}, fmt.Errorf("github: parse pull number: %w", err)
+		}
+		reviewCommentID, err := strconv.ParseInt(matches[4], 10, 64)
+		if err != nil {
+			return githubThreadRef{}, fmt.Errorf("github: parse review comment id: %w", err)
+		}
 		return githubThreadRef{
 			Owner:           matches[1],
 			Repo:            matches[2],
@@ -1510,7 +1753,10 @@ func decodeGitHubThreadID(value string) (githubThreadRef, error) {
 		}, nil
 	}
 	if matches := githubIssueThreadPattern.FindStringSubmatch(trimmed); len(matches) == 4 {
-		number, _ := strconv.ParseInt(matches[3], 10, 64)
+		number, err := strconv.ParseInt(matches[3], 10, 64)
+		if err != nil {
+			return githubThreadRef{}, fmt.Errorf("github: parse issue number: %w", err)
+		}
 		return githubThreadRef{
 			Owner:  matches[1],
 			Repo:   matches[2],
@@ -1519,7 +1765,10 @@ func decodeGitHubThreadID(value string) (githubThreadRef, error) {
 		}, nil
 	}
 	if matches := githubPRThreadPattern.FindStringSubmatch(trimmed); len(matches) == 4 {
-		number, _ := strconv.ParseInt(matches[3], 10, 64)
+		number, err := strconv.ParseInt(matches[3], 10, 64)
+		if err != nil {
+			return githubThreadRef{}, fmt.Errorf("github: parse pull number: %w", err)
+		}
 		return githubThreadRef{
 			Owner:  matches[1],
 			Repo:   matches[2],
@@ -1574,7 +1823,15 @@ func normalizeGitHubRepository(owner string, name string, fullName string) (stri
 		if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
 			return "", "", "", fmt.Errorf("github: repository full_name %q must be owner/repo", trimmedFull)
 		}
-		return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), strings.TrimSpace(parts[0]) + "/" + strings.TrimSpace(parts[1]), nil
+		return strings.TrimSpace(
+				parts[0],
+			), strings.TrimSpace(
+				parts[1],
+			), strings.TrimSpace(
+				parts[0],
+			) + "/" + strings.TrimSpace(
+				parts[1],
+			), nil
 	}
 	trimmedOwner := strings.TrimSpace(owner)
 	trimmedName := strings.TrimSpace(name)
@@ -1627,8 +1884,8 @@ func managedInstancesToInstances(items []subprocess.InitializeBridgeManagedInsta
 	return result
 }
 
-func writeWebhookText(w http.ResponseWriter, statusCode int, body string) error {
-	w.WriteHeader(statusCode)
+func writeWebhookText(w http.ResponseWriter, body string) error {
+	w.WriteHeader(http.StatusOK)
 	_, err := io.WriteString(w, body)
 	return err
 }

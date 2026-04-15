@@ -14,7 +14,12 @@ import (
 
 func (h *Handlers) ListExtensions(c *gin.Context) {
 	if h == nil || h.Extensions == nil {
-		core.RespondError(c, http.StatusServiceUnavailable, errors.New("udsapi: extension service is not configured"), false)
+		core.RespondError(
+			c,
+			http.StatusServiceUnavailable,
+			errors.New("udsapi: extension service is not configured"),
+			false,
+		)
 		return
 	}
 
@@ -28,7 +33,12 @@ func (h *Handlers) ListExtensions(c *gin.Context) {
 
 func (h *Handlers) InstallExtension(c *gin.Context) {
 	if h == nil || h.Extensions == nil {
-		core.RespondError(c, http.StatusServiceUnavailable, errors.New("udsapi: extension service is not configured"), false)
+		core.RespondError(
+			c,
+			http.StatusServiceUnavailable,
+			errors.New("udsapi: extension service is not configured"),
+			false,
+		)
 		return
 	}
 
@@ -66,7 +76,12 @@ func (h *Handlers) DisableExtension(c *gin.Context) {
 
 func (h *Handlers) ExtensionStatus(c *gin.Context) {
 	if h == nil || h.Extensions == nil {
-		core.RespondError(c, http.StatusServiceUnavailable, errors.New("udsapi: extension service is not configured"), false)
+		core.RespondError(
+			c,
+			http.StatusServiceUnavailable,
+			errors.New("udsapi: extension service is not configured"),
+			false,
+		)
 		return
 	}
 
@@ -86,7 +101,12 @@ func (h *Handlers) ExtensionStatus(c *gin.Context) {
 
 func (h *Handlers) mutateExtensionEnabled(c *gin.Context, enabled bool) {
 	if h == nil || h.Extensions == nil {
-		core.RespondError(c, http.StatusServiceUnavailable, errors.New("udsapi: extension service is not configured"), false)
+		core.RespondError(
+			c,
+			http.StatusServiceUnavailable,
+			errors.New("udsapi: extension service is not configured"),
+			false,
+		)
 		return
 	}
 

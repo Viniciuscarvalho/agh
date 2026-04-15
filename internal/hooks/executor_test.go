@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"runtime"
@@ -90,7 +91,7 @@ func TestSubprocessExecutorExecutePassesPayloadViaStdin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute() error = %v, want nil", err)
 	}
-	if string(output) != string(payload) {
+	if !bytes.Equal(output, payload) {
 		t.Fatalf("output = %q, want %q", string(output), string(payload))
 	}
 }
@@ -149,7 +150,10 @@ func TestSubprocessExecutorExecuteCapturesStderrOnFailure(t *testing.T) {
 		t.Skip("subprocess shell test requires POSIX shell")
 	}
 
-	executor := NewSubprocessExecutor("/bin/sh", []string{"-c", "printf 'partial-stdout'; printf 'problem' >&2; exit 7"})
+	executor := NewSubprocessExecutor(
+		"/bin/sh",
+		[]string{"-c", "printf 'partial-stdout'; printf 'problem' >&2; exit 7"},
+	)
 
 	output, err := executor.Execute(t.Context(), RegisteredHook{Name: "stderr-hook"}, nil)
 	if err == nil {

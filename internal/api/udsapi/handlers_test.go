@@ -36,7 +36,10 @@ func (s stubExtensionService) List(ctx context.Context) ([]contract.ExtensionPay
 	return s.ListFn(ctx)
 }
 
-func (s stubExtensionService) Install(ctx context.Context, req contract.InstallExtensionRequest) (contract.ExtensionPayload, error) {
+func (s stubExtensionService) Install(
+	ctx context.Context,
+	req contract.InstallExtensionRequest,
+) (contract.ExtensionPayload, error) {
 	if s.InstallFn == nil {
 		return contract.ExtensionPayload{}, nil
 	}
@@ -197,7 +200,9 @@ func TestCreateSessionHandlerReturnsSessionID(t *testing.T) {
 	homePaths := newTestHomePaths(t)
 	manager := stubSessionManager{
 		CreateFn: func(_ context.Context, opts session.CreateOpts) (*session.Session, error) {
-			if opts.AgentName != "coder" || opts.Name != "demo" || opts.Workspace != "alpha" || opts.WorkspacePath != "" || opts.Channel != "builders" {
+			if opts.AgentName != "coder" || opts.Name != "demo" || opts.Workspace != "alpha" ||
+				opts.WorkspacePath != "" ||
+				opts.Channel != "builders" {
 				t.Fatalf("Create() opts = %#v", opts)
 			}
 			sess := newSession("sess-123")
@@ -208,7 +213,13 @@ func TestCreateSessionHandlerReturnsSessionID(t *testing.T) {
 	handlers := newTestHandlers(t, manager, stubObserver{}, homePaths)
 	engine := newTestRouter(t, handlers)
 
-	recorder := performRequest(t, engine, http.MethodPost, "/api/sessions", []byte(`{"agent_name":"coder","name":"demo","workspace":"alpha","channel":"builders"}`))
+	recorder := performRequest(
+		t,
+		engine,
+		http.MethodPost,
+		"/api/sessions",
+		[]byte(`{"agent_name":"coder","name":"demo","workspace":"alpha","channel":"builders"}`),
+	)
 	if recorder.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusCreated, recorder.Body.String())
 	}
@@ -243,7 +254,13 @@ func TestCreateSessionHandlerAllowsMissingAgent(t *testing.T) {
 	}
 	engine := newTestRouter(t, newTestHandlers(t, manager, stubObserver{}, homePaths))
 
-	recorder := performRequest(t, engine, http.MethodPost, "/api/sessions", []byte(`{"name":"demo","workspace_path":"/workspace"}`))
+	recorder := performRequest(
+		t,
+		engine,
+		http.MethodPost,
+		"/api/sessions",
+		[]byte(`{"name":"demo","workspace_path":"/workspace"}`),
+	)
 	if recorder.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusCreated, recorder.Body.String())
 	}
@@ -252,8 +269,8 @@ func TestCreateSessionHandlerAllowsMissingAgent(t *testing.T) {
 func TestListSessionsHandlerReturnsAllSessions(t *testing.T) {
 	homePaths := newTestHomePaths(t)
 	manager := stubSessionManager{
-		ListAllFn: func(context.Context) ([]*session.SessionInfo, error) {
-			return []*session.SessionInfo{newSessionInfo("sess-a"), newSessionInfo("sess-b")}, nil
+		ListAllFn: func(context.Context) ([]*session.Info, error) {
+			return []*session.Info{newSessionInfo("sess-a"), newSessionInfo("sess-b")}, nil
 		},
 	}
 	handlers := newTestHandlers(t, manager, stubObserver{}, homePaths)
@@ -281,8 +298,8 @@ func TestListSessionsHandlerFiltersByWorkspace(t *testing.T) {
 	infoB.Workspace = "/other"
 
 	manager := stubSessionManager{
-		ListAllFn: func(context.Context) ([]*session.SessionInfo, error) {
-			return []*session.SessionInfo{infoA, infoB}, nil
+		ListAllFn: func(context.Context) ([]*session.Info, error) {
+			return []*session.Info{infoA, infoB}, nil
 		},
 	}
 	workspaces := stubWorkspaceService{
@@ -362,7 +379,9 @@ func TestCreateWorkspaceHandlerRegistersWorkspace(t *testing.T) {
 
 	workspaces := stubWorkspaceService{
 		RegisterFn: func(_ context.Context, opts workspacepkg.RegisterOptions) (workspacepkg.Workspace, error) {
-			if opts.RootDir != rootDir || opts.Name != "alpha" || len(opts.AdditionalDirs) != 1 || opts.AdditionalDirs[0] != addDir || opts.DefaultAgent != "coder" {
+			if opts.RootDir != rootDir || opts.Name != "alpha" || len(opts.AdditionalDirs) != 1 ||
+				opts.AdditionalDirs[0] != addDir ||
+				opts.DefaultAgent != "coder" {
 				t.Fatalf("Register() opts = %#v", opts)
 			}
 			return workspacepkg.Workspace{
@@ -376,7 +395,10 @@ func TestCreateWorkspaceHandlerRegistersWorkspace(t *testing.T) {
 			}, nil
 		},
 	}
-	engine := newTestRouter(t, newTestHandlersWithWorkspace(t, stubSessionManager{}, stubObserver{}, workspaces, homePaths))
+	engine := newTestRouter(
+		t,
+		newTestHandlersWithWorkspace(t, stubSessionManager{}, stubObserver{}, workspaces, homePaths),
+	)
 
 	body := mustJSONBody(t, map[string]any{
 		"root_dir":      rootDir,
@@ -411,7 +433,10 @@ func TestListWorkspacesHandlerReturnsRows(t *testing.T) {
 			}}, nil
 		},
 	}
-	engine := newTestRouter(t, newTestHandlersWithWorkspace(t, stubSessionManager{}, stubObserver{}, workspaces, homePaths))
+	engine := newTestRouter(
+		t,
+		newTestHandlersWithWorkspace(t, stubSessionManager{}, stubObserver{}, workspaces, homePaths),
+	)
 
 	recorder := performRequest(t, engine, http.MethodGet, "/api/workspaces", nil)
 	if recorder.Code != http.StatusOK {
@@ -450,10 +475,10 @@ func TestGetWorkspaceHandlerReturnsDetail(t *testing.T) {
 		}},
 	}
 	manager := stubSessionManager{
-		ListAllFn: func(context.Context) ([]*session.SessionInfo, error) {
+		ListAllFn: func(context.Context) ([]*session.Info, error) {
 			info := newSessionInfo("sess-a")
 			info.WorkspaceID = "ws_alpha"
-			return []*session.SessionInfo{info}, nil
+			return []*session.Info{info}, nil
 		},
 	}
 	workspaces := stubWorkspaceService{
@@ -478,7 +503,8 @@ func TestGetWorkspaceHandlerReturnsDetail(t *testing.T) {
 		Skills    []workspaceSkillPayload `json:"skills"`
 	}
 	decodeJSONResponse(t, recorder, &response)
-	if response.Workspace.ID != "ws_alpha" || len(response.Sessions) != 1 || len(response.Agents) != 1 || len(response.Skills) != 1 {
+	if response.Workspace.ID != "ws_alpha" || len(response.Sessions) != 1 || len(response.Agents) != 1 ||
+		len(response.Skills) != 1 {
 		t.Fatalf("workspace detail = %#v", response)
 	}
 	if response.Skills[0].Name != "review" {
@@ -496,21 +522,34 @@ func TestUpdateWorkspaceHandlerUpdatesWorkspace(t *testing.T) {
 
 	var updated bool
 	workspaces := stubWorkspaceService{
-		GetFn: func(_ context.Context, ref string) (workspacepkg.Workspace, error) {
+		GetFn: func(_ context.Context, _ string) (workspacepkg.Workspace, error) {
 			if !updated {
 				return workspacepkg.Workspace{ID: "ws_alpha", RootDir: rootDir, Name: "alpha"}, nil
 			}
-			return workspacepkg.Workspace{ID: "ws_alpha", RootDir: rootDir, Name: "beta", AdditionalDirs: []string{addDir}, DefaultAgent: "reviewer"}, nil
+			return workspacepkg.Workspace{
+				ID:             "ws_alpha",
+				RootDir:        rootDir,
+				Name:           "beta",
+				AdditionalDirs: []string{addDir},
+				DefaultAgent:   "reviewer",
+			}, nil
 		},
 		UpdateFn: func(_ context.Context, id string, opts workspacepkg.UpdateOptions) error {
-			if id != "ws_alpha" || opts.Name == nil || *opts.Name != "beta" || opts.AdditionalDirs == nil || len(*opts.AdditionalDirs) != 1 || (*opts.AdditionalDirs)[0] != addDir || opts.DefaultAgent == nil || *opts.DefaultAgent != "reviewer" {
+			if id != "ws_alpha" || opts.Name == nil || *opts.Name != "beta" || opts.AdditionalDirs == nil ||
+				len(*opts.AdditionalDirs) != 1 ||
+				(*opts.AdditionalDirs)[0] != addDir ||
+				opts.DefaultAgent == nil ||
+				*opts.DefaultAgent != "reviewer" {
 				t.Fatalf("Update() id=%q opts=%#v", id, opts)
 			}
 			updated = true
 			return nil
 		},
 	}
-	engine := newTestRouter(t, newTestHandlersWithWorkspace(t, stubSessionManager{}, stubObserver{}, workspaces, homePaths))
+	engine := newTestRouter(
+		t,
+		newTestHandlersWithWorkspace(t, stubSessionManager{}, stubObserver{}, workspaces, homePaths),
+	)
 
 	body := mustJSONBody(t, map[string]any{
 		"name":          "beta",
@@ -544,7 +583,10 @@ func TestDeleteWorkspaceHandlerReturnsNoContent(t *testing.T) {
 			return nil
 		},
 	}
-	engine := newTestRouter(t, newTestHandlersWithWorkspace(t, stubSessionManager{}, stubObserver{}, workspaces, homePaths))
+	engine := newTestRouter(
+		t,
+		newTestHandlersWithWorkspace(t, stubSessionManager{}, stubObserver{}, workspaces, homePaths),
+	)
 
 	recorder := performRequest(t, engine, http.MethodDelete, "/api/workspaces/ws_alpha", nil)
 	if recorder.Code != http.StatusNoContent {
@@ -571,7 +613,10 @@ func TestResolveWorkspaceHandlerReturnsWorkspace(t *testing.T) {
 			}, nil
 		},
 	}
-	engine := newTestRouter(t, newTestHandlersWithWorkspace(t, stubSessionManager{}, stubObserver{}, workspaces, homePaths))
+	engine := newTestRouter(
+		t,
+		newTestHandlersWithWorkspace(t, stubSessionManager{}, stubObserver{}, workspaces, homePaths),
+	)
 
 	recorder := performRequest(
 		t,
@@ -658,7 +703,13 @@ func TestPromptSessionHandlerReturnsSSEStream(t *testing.T) {
 	handlers := newTestHandlers(t, manager, stubObserver{}, homePaths)
 	engine := newTestRouter(t, handlers)
 
-	recorder := performRequest(t, engine, http.MethodPost, "/api/sessions/sess-123/prompt", []byte(`{"message":"hello"}`))
+	recorder := performRequest(
+		t,
+		engine,
+		http.MethodPost,
+		"/api/sessions/sess-123/prompt",
+		[]byte(`{"message":"hello"}`),
+	)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
 	}
@@ -690,7 +741,7 @@ func TestSessionEventsHandlerReturnsFilteredEvents(t *testing.T) {
 	homePaths := newTestHomePaths(t)
 	var gotQuery store.EventQuery
 	manager := stubSessionManager{
-		StatusFn: func(context.Context, string) (*session.SessionInfo, error) {
+		StatusFn: func(context.Context, string) (*session.Info, error) {
 			return newSessionInfo("sess-123"), nil
 		},
 		EventsFn: func(_ context.Context, _ string, query store.EventQuery) ([]store.SessionEvent, error) {
@@ -710,11 +761,19 @@ func TestSessionEventsHandlerReturnsFilteredEvents(t *testing.T) {
 	handlers := newTestHandlers(t, manager, stubObserver{}, homePaths)
 	engine := newTestRouter(t, handlers)
 
-	recorder := performRequest(t, engine, http.MethodGet, "/api/sessions/sess-123/events?type=agent_message&agent_name=coder&turn_id=turn-1&after_sequence=5&limit=10&since=2026-04-03T12:00:00Z", nil)
+	recorder := performRequest(
+		t,
+		engine,
+		http.MethodGet,
+		"/api/sessions/sess-123/events?type=agent_message&agent_name=coder&turn_id=turn-1&after_sequence=5&limit=10&since=2026-04-03T12:00:00Z",
+		nil,
+	)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
 	}
-	if gotQuery.Type != "agent_message" || gotQuery.AgentName != "coder" || gotQuery.TurnID != "turn-1" || gotQuery.AfterSequence != 5 || gotQuery.Limit != 10 {
+	if gotQuery.Type != "agent_message" || gotQuery.AgentName != "coder" || gotQuery.TurnID != "turn-1" ||
+		gotQuery.AfterSequence != 5 ||
+		gotQuery.Limit != 10 {
 		t.Fatalf("query = %#v", gotQuery)
 	}
 
@@ -733,7 +792,7 @@ func TestSessionEventsHandlerReturnsFilteredEvents(t *testing.T) {
 func TestSessionHistoryHandlerReturnsTurns(t *testing.T) {
 	homePaths := newTestHomePaths(t)
 	manager := stubSessionManager{
-		StatusFn: func(context.Context, string) (*session.SessionInfo, error) {
+		StatusFn: func(context.Context, string) (*session.Info, error) {
 			return newSessionInfo("sess-123"), nil
 		},
 		HistoryFn: func(context.Context, string, store.EventQuery) ([]store.TurnHistory, error) {
@@ -810,7 +869,7 @@ func TestStreamSessionHandlerUsesLastEventID(t *testing.T) {
 	homePaths := newTestHomePaths(t)
 	var gotQuery store.EventQuery
 	manager := stubSessionManager{
-		StatusFn: func(context.Context, string) (*session.SessionInfo, error) {
+		StatusFn: func(context.Context, string) (*session.Info, error) {
 			return newSessionInfo("sess-123"), nil
 		},
 		EventsFn: func(_ context.Context, _ string, query store.EventQuery) ([]store.SessionEvent, error) {
@@ -833,7 +892,12 @@ func TestStreamSessionHandlerUsesLastEventID(t *testing.T) {
 	handlers.setStreamDone(done)
 	engine := newTestRouter(t, handlers)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/sessions/sess-123/stream", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"/api/sessions/sess-123/stream",
+		http.NoBody,
+	)
 	req.Header.Set("Last-Event-ID", "1")
 	recorder := httptest.NewRecorder()
 	engine.ServeHTTP(recorder, req)
@@ -856,7 +920,7 @@ func TestStreamSessionHandlerSyntheticStoppedEventIncludesWorkspaceContext(t *te
 	homePaths := newTestHomePaths(t)
 	stoppedAt := time.Date(2026, 4, 3, 12, 0, 5, 0, time.UTC)
 	manager := stubSessionManager{
-		StatusFn: func(context.Context, string) (*session.SessionInfo, error) {
+		StatusFn: func(context.Context, string) (*session.Info, error) {
 			info := newSessionInfo("sess-123")
 			info.State = session.StateStopped
 			info.UpdatedAt = stoppedAt
@@ -869,7 +933,12 @@ func TestStreamSessionHandlerSyntheticStoppedEventIncludesWorkspaceContext(t *te
 	handlers := newTestHandlers(t, manager, stubObserver{}, homePaths)
 	engine := newTestRouter(t, handlers)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/sessions/sess-123/stream", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"/api/sessions/sess-123/stream",
+		http.NoBody,
+	)
 	recorder := httptest.NewRecorder()
 	engine.ServeHTTP(recorder, req)
 
@@ -994,7 +1063,13 @@ func TestExtensionStatusHandlerRejectsBlankName(t *testing.T) {
 	t.Parallel()
 
 	homePaths := newTestHomePaths(t)
-	handlers := newTestHandlersWithExtensions(t, stubSessionManager{}, stubObserver{}, stubExtensionService{}, homePaths)
+	handlers := newTestHandlersWithExtensions(
+		t,
+		stubSessionManager{},
+		stubObserver{},
+		stubExtensionService{},
+		homePaths,
+	)
 	engine := newTestRouter(t, handlers)
 
 	recorder := performRequest(t, engine, http.MethodGet, "/api/extensions/%20%20%20", nil)
@@ -1033,8 +1108,8 @@ func TestHealthHandlerReturnsMetrics(t *testing.T) {
 func TestDaemonStatusHandlerReturnsRunningState(t *testing.T) {
 	homePaths := newTestHomePaths(t)
 	manager := stubSessionManager{
-		ListAllFn: func(context.Context) ([]*session.SessionInfo, error) {
-			return []*session.SessionInfo{newSessionInfo("sess-1")}, nil
+		ListAllFn: func(context.Context) ([]*session.Info, error) {
+			return []*session.Info{newSessionInfo("sess-1")}, nil
 		},
 	}
 	observer := stubObserver{
@@ -1086,7 +1161,7 @@ func TestHelperParsersAndPayloads(t *testing.T) {
 func TestSessionErrorMappingUsesNotFoundAndConflict(t *testing.T) {
 	homePaths := newTestHomePaths(t)
 	manager := stubSessionManager{
-		StatusFn: func(context.Context, string) (*session.SessionInfo, error) {
+		StatusFn: func(context.Context, string) (*session.Info, error) {
 			return nil, session.ErrSessionNotFound
 		},
 		CreateFn: func(context.Context, session.CreateOpts) (*session.Session, error) {
@@ -1101,7 +1176,13 @@ func TestSessionErrorMappingUsesNotFoundAndConflict(t *testing.T) {
 		t.Fatalf("GET /api/sessions/:id status = %d, want 404", getResp.Code)
 	}
 
-	postResp := performRequest(t, engine, http.MethodPost, "/api/sessions", []byte(`{"agent_name":"coder","workspace":"alpha"}`))
+	postResp := performRequest(
+		t,
+		engine,
+		http.MethodPost,
+		"/api/sessions",
+		[]byte(`{"agent_name":"coder","workspace":"alpha"}`),
+	)
 	if postResp.Code != http.StatusConflict {
 		t.Fatalf("POST /api/sessions status = %d, want 409", postResp.Code)
 	}
@@ -1113,7 +1194,14 @@ func TestObserveEventStreamUsesLastEventIDCursor(t *testing.T) {
 	observer := stubObserver{
 		QueryEventsFn: func(context.Context, store.EventSummaryQuery) ([]store.EventSummary, error) {
 			return []store.EventSummary{
-				{ID: "sum-a", SessionID: "sess-1", Sequence: 1, Type: "agent_message", AgentName: "coder", Timestamp: timestamp},
+				{
+					ID:        "sum-a",
+					SessionID: "sess-1",
+					Sequence:  1,
+					Type:      "agent_message",
+					AgentName: "coder",
+					Timestamp: timestamp,
+				},
 				{ID: "sum-b", SessionID: "sess-1", Sequence: 2, Type: "done", AgentName: "coder", Timestamp: timestamp},
 			}, nil
 		},
@@ -1124,7 +1212,12 @@ func TestObserveEventStreamUsesLastEventIDCursor(t *testing.T) {
 	handlers.setStreamDone(done)
 	engine := newTestRouter(t, handlers)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/observe/events/stream", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"/api/observe/events/stream",
+		http.NoBody,
+	)
 	req.Header.Set("Last-Event-ID", timestamp.Format(time.RFC3339Nano)+"|00000000000000000001")
 	recorder := httptest.NewRecorder()
 	engine.ServeHTTP(recorder, req)

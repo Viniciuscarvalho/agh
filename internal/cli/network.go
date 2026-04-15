@@ -30,7 +30,7 @@ func newNetworkStatusCommand(deps commandDeps) *cobra.Command {
 		Use:   "status",
 		Short: "Show network runtime status and queue metrics",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -50,7 +50,7 @@ func newNetworkPeersCommand(deps commandDeps) *cobra.Command {
 		Short: "List visible local and remote peers",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -74,7 +74,7 @@ func newNetworkChannelsCommand(deps commandDeps) *cobra.Command {
 		Use:   "channels",
 		Short: "List active runtime channels",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -108,7 +108,7 @@ func newNetworkSendCommand(deps commandDeps) *cobra.Command {
 		Use:   "send",
 		Short: "Send one envelope through the daemon-owned network runtime",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -173,7 +173,7 @@ func newNetworkInboxCommand(deps commandDeps) *cobra.Command {
 		Use:   "inbox",
 		Short: "Show queued inbound messages for one session",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -240,13 +240,21 @@ func networkStatusBundle(status NetworkStatusRecord) outputBundle {
 		human: func() (string, error) {
 			return renderHumanBlocks(
 				renderHumanSection("Network", rows),
-				renderHumanTable("Kind Metrics", []string{"Kind", "Sent", "Received", "Rejected", "Delivered"}, networkKindMetricRows(status.KindMetrics)),
+				renderHumanTable(
+					"Kind Metrics",
+					[]string{"Kind", "Sent", "Received", "Rejected", "Delivered"},
+					networkKindMetricRows(status.KindMetrics),
+				),
 			), nil
 		},
 		toon: func() (string, error) {
 			return renderHumanBlocks(
 				renderToonObject("network", fields, values),
-				renderToonArray("network_kind_metrics", []string{"kind", "sent", "received", "rejected", "delivered"}, networkKindMetricRows(status.KindMetrics)),
+				renderToonArray(
+					"network_kind_metrics",
+					[]string{"kind", "sent", "received", "rejected", "delivered"},
+					networkKindMetricRows(status.KindMetrics),
+				),
 			), nil
 		},
 	}
@@ -329,7 +337,17 @@ func networkSendBundle(message NetworkSendRecord) outputBundle {
 		},
 		toon: func() (string, error) {
 			return renderToonObject("network_message", []string{
-				"id", "session_id", "channel", "kind", "to", "interaction_id", "reply_to", "trace_id", "causation_id", "expires_at", "ext",
+				"id",
+				"session_id",
+				"channel",
+				"kind",
+				"to",
+				"interaction_id",
+				"reply_to",
+				"trace_id",
+				"causation_id",
+				"expires_at",
+				"ext",
 			}, []string{
 				message.ID,
 				message.SessionID,
@@ -354,7 +372,19 @@ func networkInboxBundle(messages []NetworkEnvelopeRecord) outputBundle {
 		"Network Inbox",
 		[]string{"ID", "Kind", "Channel", "From", "To", "Reply To", "Trace", "Workflow", "Handoff"},
 		"network_inbox",
-		[]string{"id", "kind", "channel", "from", "to", "reply_to", "trace_id", "causation_id", "workflow_id", "handoff_version", "expires_at"},
+		[]string{
+			"id",
+			"kind",
+			"channel",
+			"from",
+			"to",
+			"reply_to",
+			"trace_id",
+			"causation_id",
+			"workflow_id",
+			"handoff_version",
+			"expires_at",
+		},
 		func(message NetworkEnvelopeRecord) []string {
 			return []string{
 				stringOrDash(message.ID),

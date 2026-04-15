@@ -1,9 +1,16 @@
-package extension
+package extensionpkg
 
 import (
 	"time"
 
 	"github.com/pedronauck/agh/internal/api/contract"
+)
+
+const (
+	extensionStateEnabled    = "enabled"
+	extensionHealthUnknown   = hostAPIUnknownExtensionName
+	extensionHealthHealthy   = "healthy"
+	extensionHealthUnhealthy = "unhealthy"
 )
 
 // DescribeExtension projects one extension snapshot into the shared CLI/API payload.
@@ -14,10 +21,7 @@ func DescribeExtension(ext *Extension, daemonRunning bool, now time.Time) contra
 
 	uptimeSeconds := int64(0)
 	if ext.Status.Active && !ext.Status.LastStartedAt.IsZero() {
-		uptimeSeconds = int64(now.Sub(ext.Status.LastStartedAt).Seconds())
-		if uptimeSeconds < 0 {
-			uptimeSeconds = 0
-		}
+		uptimeSeconds = max(int64(now.Sub(ext.Status.LastStartedAt).Seconds()), 0)
 	}
 
 	return contract.ExtensionPayload{
@@ -51,7 +55,7 @@ func extensionState(info ExtensionInfo, status ExtensionStatus, daemonRunning bo
 		return "disabled"
 	}
 	if !daemonRunning {
-		return "enabled"
+		return extensionStateEnabled
 	}
 	if status.Active {
 		return "active"
@@ -62,26 +66,28 @@ func extensionState(info ExtensionInfo, status ExtensionStatus, daemonRunning bo
 	if status.Registered {
 		return "registered"
 	}
-	return "enabled"
+	return extensionStateEnabled
 }
 
 func extensionHealth(manifest *Manifest, info ExtensionInfo, status ExtensionStatus, daemonRunning bool) string {
 	if !daemonRunning {
-		return "unknown"
+		return extensionHealthUnknown
 	}
 	if status.Active {
-		if status.Healthy || (!requiresSubprocess(manifest) && len(info.Capabilities.Provides) == 0 && len(info.Actions.Requires) == 0) {
-			return "healthy"
+		if status.Healthy ||
+			(!requiresSubprocess(manifest) && len(info.Capabilities.Provides) == 0 && len(info.Actions.Requires) == 0) {
+			return extensionHealthHealthy
 		}
-		return "unhealthy"
+		return extensionHealthUnhealthy
 	}
 	if status.LastError != "" {
-		return "unhealthy"
+		return extensionHealthUnhealthy
 	}
-	if !requiresSubprocess(manifest) && len(info.Capabilities.Provides) == 0 && len(info.Actions.Requires) == 0 && status.Registered {
-		return "healthy"
+	if !requiresSubprocess(manifest) && len(info.Capabilities.Provides) == 0 && len(info.Actions.Requires) == 0 &&
+		status.Registered {
+		return extensionHealthHealthy
 	}
-	return "unknown"
+	return extensionHealthUnknown
 }
 
 func bundleSummaryPayloads(values []BundleSpec) []contract.ExtensionBundleSummaryPayload {

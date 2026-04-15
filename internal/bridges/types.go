@@ -207,7 +207,7 @@ func (r BridgeDegradationReason) Validate() error {
 
 // BridgeDegradation captures the structured degradation metadata persisted for a bridge instance.
 type BridgeDegradation struct {
-	Reason  BridgeDegradationReason `toml:"reason" json:"reason"`
+	Reason  BridgeDegradationReason `toml:"reason"            json:"reason"`
 	Message string                  `toml:"message,omitempty" json:"message,omitempty"`
 }
 
@@ -231,9 +231,9 @@ func (d BridgeDegradation) Validate() error {
 
 // BridgeSecretSlot describes one provider-declared secret requirement.
 type BridgeSecretSlot struct {
-	Name        string `toml:"name" json:"name"`
+	Name        string `toml:"name"                  json:"name"`
 	Description string `toml:"description,omitempty" json:"description,omitempty"`
-	Required    bool   `toml:"required,omitempty" json:"required,omitempty"`
+	Required    bool   `toml:"required,omitempty"    json:"required,omitempty"`
 }
 
 // Normalize returns the normalized representation of the secret slot.
@@ -252,7 +252,7 @@ func (s BridgeSecretSlot) Validate() error {
 
 // BridgeProviderConfigSchema captures static provider config schema hints from provider manifests.
 type BridgeProviderConfigSchema struct {
-	Schema  string `toml:"schema,omitempty" json:"schema,omitempty"`
+	Schema  string `toml:"schema,omitempty"  json:"schema,omitempty"`
 	Version string `toml:"version,omitempty" json:"version,omitempty"`
 }
 
@@ -673,7 +673,10 @@ func (s DeliveryResumeState) Validate() error {
 	if normalized.LatestEventType == DeliveryEventTypeResume {
 		return errors.New("bridges: delivery resume latest event type cannot itself be resume")
 	}
-	return validateDeliveryEventType(normalized.LatestEventType, isTerminalDeliveryEventType(normalized.LatestEventType))
+	return validateDeliveryEventType(
+		normalized.LatestEventType,
+		isTerminalDeliveryEventType(normalized.LatestEventType),
+	)
 }
 
 // DeliveryEvent is the daemon-owned outbound projection sent to a bridge adapter.
@@ -855,7 +858,8 @@ func (e InboundMessageEnvelope) normalize() InboundMessageEnvelope {
 	}
 	normalized.Content = MessageContent{Text: strings.TrimSpace(normalized.Content.Text)}
 	normalized.EventFamily = normalized.EventFamily.Normalize()
-	if normalized.EventFamily == "" && normalized.Command == nil && normalized.Action == nil && normalized.Reaction == nil {
+	if normalized.EventFamily == "" && normalized.Command == nil && normalized.Action == nil &&
+		normalized.Reaction == nil {
 		normalized.EventFamily = InboundEventFamilyMessage
 	}
 	normalized.IdempotencyKey = strings.TrimSpace(normalized.IdempotencyKey)
@@ -971,46 +975,69 @@ func (r InboundReaction) normalize() InboundReaction {
 func (e InboundMessageEnvelope) validatePayload() error {
 	switch e.EventFamily {
 	case InboundEventFamilyMessage:
-		if e.Command != nil || e.Action != nil || e.Reaction != nil {
-			return errors.New("bridges: inbound message family cannot include command, action, or reaction payloads")
-		}
-		return requireField(e.PlatformMessageID, "inbound message platform message id")
+		return e.validateMessagePayload()
 	case InboundEventFamilyCommand:
-		if e.Command == nil {
-			return errors.New("bridges: inbound command family requires command payload")
-		}
-		if e.Action != nil || e.Reaction != nil {
-			return errors.New("bridges: inbound command family cannot include action or reaction payloads")
-		}
-		if e.PlatformMessageID != "" || strings.TrimSpace(e.Content.Text) != "" || len(e.Attachments) > 0 {
-			return errors.New("bridges: inbound command family cannot include message payload fields")
-		}
-		return e.Command.Validate()
+		return e.validateCommandPayload()
 	case InboundEventFamilyAction:
-		if e.Action == nil {
-			return errors.New("bridges: inbound action family requires action payload")
-		}
-		if e.Command != nil || e.Reaction != nil {
-			return errors.New("bridges: inbound action family cannot include command or reaction payloads")
-		}
-		if e.PlatformMessageID != "" || strings.TrimSpace(e.Content.Text) != "" || len(e.Attachments) > 0 {
-			return errors.New("bridges: inbound action family cannot include message payload fields")
-		}
-		return e.Action.Validate()
+		return e.validateActionPayload()
 	case InboundEventFamilyReaction:
-		if e.Reaction == nil {
-			return errors.New("bridges: inbound reaction family requires reaction payload")
-		}
-		if e.Command != nil || e.Action != nil {
-			return errors.New("bridges: inbound reaction family cannot include command or action payloads")
-		}
-		if e.PlatformMessageID != "" || strings.TrimSpace(e.Content.Text) != "" || len(e.Attachments) > 0 {
-			return errors.New("bridges: inbound reaction family cannot include message payload fields")
-		}
-		return e.Reaction.Validate()
+		return e.validateReactionPayload()
 	default:
 		return errors.New("bridges: inbound event family is required")
 	}
+}
+
+func (e InboundMessageEnvelope) validateMessagePayload() error {
+	if e.Command != nil || e.Action != nil || e.Reaction != nil {
+		return errors.New("bridges: inbound message family cannot include command, action, or reaction payloads")
+	}
+	return requireField(e.PlatformMessageID, "inbound message platform message id")
+}
+
+func (e InboundMessageEnvelope) validateCommandPayload() error {
+	if e.Command == nil {
+		return errors.New("bridges: inbound command family requires command payload")
+	}
+	if e.Action != nil || e.Reaction != nil {
+		return errors.New("bridges: inbound command family cannot include action or reaction payloads")
+	}
+	if err := e.validateMessageFieldsAbsent("command"); err != nil {
+		return err
+	}
+	return e.Command.Validate()
+}
+
+func (e InboundMessageEnvelope) validateActionPayload() error {
+	if e.Action == nil {
+		return errors.New("bridges: inbound action family requires action payload")
+	}
+	if e.Command != nil || e.Reaction != nil {
+		return errors.New("bridges: inbound action family cannot include command or reaction payloads")
+	}
+	if err := e.validateMessageFieldsAbsent("action"); err != nil {
+		return err
+	}
+	return e.Action.Validate()
+}
+
+func (e InboundMessageEnvelope) validateReactionPayload() error {
+	if e.Reaction == nil {
+		return errors.New("bridges: inbound reaction family requires reaction payload")
+	}
+	if e.Command != nil || e.Action != nil {
+		return errors.New("bridges: inbound reaction family cannot include command or action payloads")
+	}
+	if err := e.validateMessageFieldsAbsent("reaction"); err != nil {
+		return err
+	}
+	return e.Reaction.Validate()
+}
+
+func (e InboundMessageEnvelope) validateMessageFieldsAbsent(family string) error {
+	if e.PlatformMessageID != "" || strings.TrimSpace(e.Content.Text) != "" || len(e.Attachments) > 0 {
+		return fmt.Errorf("bridges: inbound %s family cannot include message payload fields", family)
+	}
+	return nil
 }
 
 func (r DeliveryMessageReference) normalize() DeliveryMessageReference {

@@ -46,12 +46,12 @@ func (r *Registry) workspaceSkillTargetLocked(name string, resolved *workspacepk
 		return "", nil
 	}
 
-	paths, ok := workspaceCacheKeyPaths(*resolved)
+	paths, ok := workspaceCacheKeyPaths(resolved)
 	if !ok {
 		return "", nil
 	}
 
-	cacheKey := workspaceCacheKey(*resolved, paths)
+	cacheKey := workspaceCacheKey(resolved, paths)
 	if cacheKey == "" {
 		return "", nil
 	}
@@ -64,7 +64,14 @@ func (r *Registry) workspaceSkillTargetLocked(name string, resolved *workspacepk
 	return cacheKey, cached.skills[name]
 }
 
-func (r *Registry) workspaceLoadFromResolved(ctx context.Context, resolved workspacepkg.ResolvedWorkspace) (workspaceLoad, error) {
+func (r *Registry) workspaceLoadFromResolved(
+	ctx context.Context,
+	resolved *workspacepkg.ResolvedWorkspace,
+) (workspaceLoad, error) {
+	if resolved == nil {
+		return workspaceLoad{}, nil
+	}
+
 	load := workspaceLoad{
 		paths:     make([]workspaceSkillPath, 0, len(resolved.Skills)),
 		snapshots: make(map[string]filesnap.Snapshot, len(resolved.Skills)),
@@ -111,7 +118,10 @@ func (r *Registry) workspaceLoadFromResolved(ctx context.Context, resolved works
 	return load, nil
 }
 
-func workspaceCacheKeyPaths(resolved workspacepkg.ResolvedWorkspace) ([]workspaceSkillPath, bool) {
+func workspaceCacheKeyPaths(resolved *workspacepkg.ResolvedWorkspace) ([]workspaceSkillPath, bool) {
+	if resolved == nil {
+		return nil, true
+	}
 	paths := make([]workspaceSkillPath, 0, len(resolved.Skills))
 	for _, skillPath := range resolved.Skills {
 		path, include, err := workspaceSkillLoadPath(skillPath)
@@ -128,7 +138,11 @@ func workspaceCacheKeyPaths(resolved workspacepkg.ResolvedWorkspace) ([]workspac
 func workspaceSkillLoadPath(skillPath workspacepkg.SkillPath) (workspaceSkillPath, bool, error) {
 	source, include, err := skillSourceFromWorkspacePath(skillPath.Source)
 	if err != nil {
-		return workspaceSkillPath{}, false, fmt.Errorf("skills: resolve workspace skill source %q: %w", skillPath.Source, err)
+		return workspaceSkillPath{}, false, fmt.Errorf(
+			"skills: resolve workspace skill source %q: %w",
+			skillPath.Source,
+			err,
+		)
 	}
 	if !include {
 		return workspaceSkillPath{}, false, nil
@@ -154,7 +168,10 @@ func (r *Registry) evictExpiredWorkspaceLocked(now time.Time) {
 	}
 }
 
-func workspaceCacheKey(resolved workspacepkg.ResolvedWorkspace, paths []workspaceSkillPath) string {
+func workspaceCacheKey(resolved *workspacepkg.ResolvedWorkspace, paths []workspaceSkillPath) string {
+	if resolved == nil {
+		return ""
+	}
 	if id := strings.TrimSpace(resolved.ID); id != "" {
 		return "id:" + id
 	}

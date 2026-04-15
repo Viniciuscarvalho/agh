@@ -1491,7 +1491,7 @@ func newIntegrationHarness(t *testing.T) integrationHarness {
 		pollInterval: 10 * time.Millisecond,
 		startTimeout: 5 * time.Second,
 		stopTimeout:  5 * time.Second,
-		spawnDetached: func(aghconfig.HomePaths) (daemonProcess, error) {
+		spawnDetached: func(context.Context, aghconfig.HomePaths) (daemonProcess, error) {
 			return runner.spawnDetached()
 		},
 	}
@@ -1667,7 +1667,7 @@ func (d *integrationDaemon) Run(ctx context.Context) error {
 	manager.SetTurnEndNotifier(networkManager.OnTurnEnd)
 	server, err := udsapi.New(
 		udsapi.WithHomePaths(d.homePaths),
-		udsapi.WithConfig(d.cfg),
+		udsapi.WithConfig(&d.cfg),
 		udsapi.WithSocketPath(d.cfg.Daemon.Socket),
 		udsapi.WithLogger(discardLogger()),
 		udsapi.WithStartedAt(d.startedAt),
@@ -1792,7 +1792,10 @@ func newIntegrationDriver() *integrationDriver {
 	}
 }
 
-func (e *integrationTaskExecutor) StartTaskSession(_ context.Context, _ taskpkg.StartTaskSession) (*taskpkg.SessionRef, error) {
+func (e *integrationTaskExecutor) StartTaskSession(
+	_ context.Context,
+	_ *taskpkg.StartTaskSession,
+) (*taskpkg.SessionRef, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.next++
@@ -1829,7 +1832,7 @@ func (d *integrationDriver) Start(_ context.Context, opts acp.StartOpts) (*sessi
 		Command:   opts.Command,
 		Cwd:       opts.Cwd,
 		SessionID: sessionID,
-		Caps: acp.ACPCaps{
+		Caps: acp.Caps{
 			SupportsLoadSession: true,
 			SupportedModels:     []string{"fake-model"},
 		},

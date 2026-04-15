@@ -78,7 +78,10 @@ func (s *daemonExtensionService) List(ctx context.Context) ([]contract.Extension
 	return items, nil
 }
 
-func (s *daemonExtensionService) Install(ctx context.Context, req contract.InstallExtensionRequest) (contract.ExtensionPayload, error) {
+func (s *daemonExtensionService) Install(
+	ctx context.Context,
+	req contract.InstallExtensionRequest,
+) (contract.ExtensionPayload, error) {
 	if err := s.checkReady(ctx); err != nil {
 		return contract.ExtensionPayload{}, err
 	}
@@ -210,7 +213,13 @@ func populateExtensionManifest(logger *slog.Logger, ext *extensionpkg.Extension)
 	manifest, err := extensionpkg.LoadManifest(filepath.Dir(ext.Info.ManifestPath))
 	if err != nil {
 		if logger != nil {
-			logger.Debug("daemon: load extension manifest for status failed", "path", ext.Info.ManifestPath, "error", err)
+			logger.Debug(
+				"daemon: load extension manifest for status failed",
+				"path",
+				ext.Info.ManifestPath,
+				"error",
+				err,
+			)
 		}
 		return
 	}

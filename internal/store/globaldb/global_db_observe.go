@@ -41,7 +41,10 @@ func (g *GlobalDB) WriteEventSummary(ctx context.Context, summary store.EventSum
 }
 
 // ListEventSummaries returns global event summaries filtered by the supplied options.
-func (g *GlobalDB) ListEventSummaries(ctx context.Context, query store.EventSummaryQuery) ([]store.EventSummary, error) {
+func (g *GlobalDB) ListEventSummaries(
+	ctx context.Context,
+	query store.EventSummaryQuery,
+) ([]store.EventSummary, error) {
 	if err := g.checkReady(ctx, "list event summaries"); err != nil {
 		return nil, err
 	}

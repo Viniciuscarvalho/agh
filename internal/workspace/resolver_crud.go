@@ -24,7 +24,10 @@ func (r *Resolver) Register(ctx context.Context, opts RegisterOptions) (Workspac
 	if err != nil {
 		deleteErr := r.store.DeleteWorkspace(ctx, ws.ID)
 		if deleteErr != nil && !errors.Is(deleteErr, ErrWorkspaceNotFound) {
-			return Workspace{}, errors.Join(err, fmt.Errorf("workspace: rollback workspace registration %q: %w", ws.ID, deleteErr))
+			return Workspace{}, errors.Join(
+				err,
+				fmt.Errorf("workspace: rollback workspace registration %q: %w", ws.ID, deleteErr),
+			)
 		}
 		return Workspace{}, err
 	}

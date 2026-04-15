@@ -12,7 +12,8 @@ func configureIgnoreTermination() {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGTERM)
 	go func() {
-		for range signals {
+		for sig := range signals {
+			_ = sig
 		}
 	}()
 }

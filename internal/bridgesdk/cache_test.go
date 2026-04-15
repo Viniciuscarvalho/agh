@@ -81,7 +81,8 @@ func TestInstanceCacheSnapshotAndListReturnClones(t *testing.T) {
 	if got, want := string(fresh.Instance.DeliveryDefaults), `{"peer_id":"peer-1"}`; got != want {
 		t.Fatalf("fresh.Instance.DeliveryDefaults = %s, want %s", got, want)
 	}
-	if fresh.Instance.Degradation == nil || fresh.Instance.Degradation.Reason != bridgepkg.BridgeDegradationReasonRateLimited {
+	if fresh.Instance.Degradation == nil ||
+		fresh.Instance.Degradation.Reason != bridgepkg.BridgeDegradationReasonRateLimited {
 		t.Fatalf("fresh.Instance.Degradation = %#v, want rate_limited", fresh.Instance.Degradation)
 	}
 }

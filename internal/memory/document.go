@@ -6,14 +6,14 @@ import (
 )
 
 // ParseHeader decodes and validates memory frontmatter from a raw document.
-func ParseHeader(content []byte) (MemoryHeader, error) {
-	var header MemoryHeader
+func ParseHeader(content []byte) (Header, error) {
+	var header Header
 
 	if _, err := parseFrontmatter(content, &header); err != nil {
-		return MemoryHeader{}, fmt.Errorf("memory: parse frontmatter: %w", fmt.Errorf("%w: %v", ErrValidation, err))
+		return Header{}, fmt.Errorf("memory: parse frontmatter: %w", fmt.Errorf("%w: %v", ErrValidation, err))
 	}
 	if err := header.Validate(); err != nil {
-		return MemoryHeader{}, fmt.Errorf("memory: validate frontmatter: %w", fmt.Errorf("%w: %v", ErrValidation, err))
+		return Header{}, fmt.Errorf("memory: validate frontmatter: %w", fmt.Errorf("%w: %v", ErrValidation, err))
 	}
 
 	return header, nil

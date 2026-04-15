@@ -5,11 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/pedronauck/agh/internal/testutil"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/pedronauck/agh/internal/testutil"
 
 	"github.com/pedronauck/agh/internal/memory"
 	"github.com/spf13/cobra"
@@ -19,7 +20,7 @@ func TestMemoryListCommandFormatsAndScope(t *testing.T) {
 	t.Parallel()
 
 	var seenScope memory.Scope
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		listMemoryFn: func(_ context.Context, scope memory.Scope, workspace string) ([]MemoryHeaderRecord, error) {
 			seenScope = scope
 			if scope != memory.ScopeGlobal {
@@ -52,8 +53,8 @@ func TestMemoryListCommandFormatsAndScope(t *testing.T) {
 func TestMemoryReadCommandOutputsContent(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{
-		listMemoryFn: func(_ context.Context, scope memory.Scope, workspace string) ([]MemoryHeaderRecord, error) {
+	deps := newTestDeps(t, &stubClient{
+		listMemoryFn: func(_ context.Context, scope memory.Scope, _ string) ([]MemoryHeaderRecord, error) {
 			if scope == memory.ScopeGlobal {
 				return []MemoryHeaderRecord{{Filename: "prefs.md", Type: memory.MemoryTypeUser}}, nil
 			}
@@ -80,7 +81,7 @@ func TestMemoryWriteCommandBuildsDocumentAndUsesContentFlag(t *testing.T) {
 	t.Parallel()
 
 	var seenRequest MemoryWriteRequest
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		writeMemoryFn: func(_ context.Context, filename string, request MemoryWriteRequest) (MemoryMutationRecord, error) {
 			if filename != "prefs.md" {
 				t.Fatalf("filename = %q, want prefs.md", filename)
@@ -90,14 +91,30 @@ func TestMemoryWriteCommandBuildsDocumentAndUsesContentFlag(t *testing.T) {
 		},
 	})
 
-	stdout, _, err := executeRootCommand(t, deps, "memory", "write", "prefs.md", "--type", "user", "--description", "remember this", "--content", "body text", "-o", "json")
+	stdout, _, err := executeRootCommand(
+		t,
+		deps,
+		"memory",
+		"write",
+		"prefs.md",
+		"--type",
+		"user",
+		"--description",
+		"remember this",
+		"--content",
+		"body text",
+		"-o",
+		"json",
+	)
 	if err != nil {
 		t.Fatalf("memory write error = %v", err)
 	}
 	if seenRequest.Scope != "global" || seenRequest.Workspace != "" {
 		t.Fatalf("request scope/workspace = %#v", seenRequest)
 	}
-	if !strings.Contains(seenRequest.Content, "type: user") || !strings.Contains(seenRequest.Content, "description: remember this") || !strings.Contains(seenRequest.Content, "body text") {
+	if !strings.Contains(seenRequest.Content, "type: user") ||
+		!strings.Contains(seenRequest.Content, "description: remember this") ||
+		!strings.Contains(seenRequest.Content, "body text") {
 		t.Fatalf("request content = %q", seenRequest.Content)
 	}
 
@@ -110,7 +127,7 @@ func TestMemoryWriteCommandBuildsDocumentAndUsesContentFlag(t *testing.T) {
 	}
 
 	var workspaceRequest MemoryWriteRequest
-	cmd := newRootCommand(newTestDeps(t, stubClient{
+	cmd := newRootCommand(newTestDeps(t, &stubClient{
 		writeMemoryFn: func(_ context.Context, filename string, request MemoryWriteRequest) (MemoryMutationRecord, error) {
 			if filename != "project.md" {
 				t.Fatalf("filename = %q, want project.md", filename)
@@ -124,7 +141,9 @@ func TestMemoryWriteCommandBuildsDocumentAndUsesContentFlag(t *testing.T) {
 	cmd.SetOut(&stdoutBuf)
 	cmd.SetErr(&stderrBuf)
 	cmd.SetIn(strings.NewReader("stdin body"))
-	cmd.SetArgs([]string{"memory", "write", "project.md", "--type", "project", "--description", "project memory", "-o", "json"})
+	cmd.SetArgs(
+		[]string{"memory", "write", "project.md", "--type", "project", "--description", "project memory", "-o", "json"},
+	)
 	if err := cmd.ExecuteContext(testutil.Context(t)); err != nil {
 		t.Fatalf("memory write from stdin error = %v; stderr=%s", err, stderrBuf.String())
 	}
@@ -138,8 +157,8 @@ func TestMemoryDeleteAndConsolidateCommands(t *testing.T) {
 
 	var deleted bool
 	var consolidated bool
-	deps := newTestDeps(t, stubClient{
-		listMemoryFn: func(_ context.Context, scope memory.Scope, workspace string) ([]MemoryHeaderRecord, error) {
+	deps := newTestDeps(t, &stubClient{
+		listMemoryFn: func(_ context.Context, scope memory.Scope, _ string) ([]MemoryHeaderRecord, error) {
 			switch scope {
 			case memory.ScopeGlobal:
 				return nil, nil
@@ -185,8 +204,8 @@ func TestMemoryDeleteAndConsolidateCommands(t *testing.T) {
 func TestMemoryJSONOutputForListAndRead(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{
-		listMemoryFn: func(_ context.Context, scope memory.Scope, workspace string) ([]MemoryHeaderRecord, error) {
+	deps := newTestDeps(t, &stubClient{
+		listMemoryFn: func(_ context.Context, scope memory.Scope, _ string) ([]MemoryHeaderRecord, error) {
 			switch scope {
 			case memory.ScopeGlobal:
 				return []MemoryHeaderRecord{{Filename: "prefs.md", Name: "Prefs", Type: memory.MemoryTypeUser}}, nil
@@ -232,7 +251,7 @@ func TestMemoryHelperLocationResolutionAndSorting(t *testing.T) {
 	recent := fixedTestNow.Add(-time.Minute)
 	older := fixedTestNow.Add(-time.Hour)
 	var seenWorkspace string
-	client := stubClient{
+	client := &stubClient{
 		listMemoryFn: func(_ context.Context, scope memory.Scope, workspace string) ([]MemoryHeaderRecord, error) {
 			switch scope {
 			case memory.ScopeGlobal:
@@ -243,7 +262,12 @@ func TestMemoryHelperLocationResolutionAndSorting(t *testing.T) {
 				seenWorkspace = workspace
 				return []MemoryHeaderRecord{
 					{Filename: "project.md", Name: "Project", Type: memory.MemoryTypeProject, ModTime: recent},
-					{Filename: "shared.md", Name: "Shared", Type: memory.MemoryTypeProject, ModTime: recent.Add(-time.Minute)},
+					{
+						Filename: "shared.md",
+						Name:     "Shared",
+						Type:     memory.MemoryTypeProject,
+						ModTime:  recent.Add(-time.Minute),
+					},
 				}, nil
 			default:
 				return nil, nil
@@ -339,7 +363,8 @@ func TestMemoryHelperContentScopeAndFormatting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("formatMemoryDocument() error = %v", err)
 	}
-	if !strings.Contains(document, "name: My Project Notes") || !strings.Contains(document, "description: desc") || !strings.Contains(document, "body") {
+	if !strings.Contains(document, "name: My Project Notes") || !strings.Contains(document, "description: desc") ||
+		!strings.Contains(document, "body") {
 		t.Fatalf("document = %q, want formatted frontmatter and body", document)
 	}
 	if _, err := formatMemoryDocument("", memory.MemoryTypeUser, "desc", "body"); err == nil {

@@ -211,12 +211,28 @@ var globalSchemaStatements = []string{
 		network_channel TEXT,
 		title           TEXT NOT NULL,
 		description     TEXT,
-		status          TEXT NOT NULL CHECK (status IN ('pending', 'blocked', 'ready', 'in_progress', 'completed', 'failed', 'cancelled')),
-		owner_kind      TEXT CHECK (owner_kind IS NULL OR owner_kind IN ('human', 'agent_session', 'automation', 'extension', 'network_peer', 'pool')),
+		status          TEXT NOT NULL CHECK (
+			status IN (
+				'pending', 'blocked', 'ready', 'in_progress', 'completed', 'failed', 'canceled'
+			)
+		),
+		owner_kind      TEXT CHECK (
+			owner_kind IS NULL OR owner_kind IN (
+				'human', 'agent_session', 'automation', 'extension', 'network_peer', 'pool'
+			)
+		),
 		owner_ref       TEXT,
-		created_by_kind TEXT NOT NULL CHECK (created_by_kind IN ('human', 'agent_session', 'automation', 'extension', 'network_peer', 'daemon')),
+		created_by_kind TEXT NOT NULL CHECK (
+			created_by_kind IN (
+				'human', 'agent_session', 'automation', 'extension', 'network_peer', 'daemon'
+			)
+		),
 		created_by_ref  TEXT NOT NULL,
-		origin_kind     TEXT NOT NULL CHECK (origin_kind IN ('cli', 'web', 'uds', 'http', 'automation', 'extension', 'network', 'agent_session', 'daemon')),
+		origin_kind     TEXT NOT NULL CHECK (
+			origin_kind IN (
+				'cli', 'web', 'uds', 'http', 'automation', 'extension', 'network', 'agent_session', 'daemon'
+			)
+		),
 		origin_ref      TEXT NOT NULL,
 		created_at      TEXT NOT NULL,
 		updated_at      TEXT NOT NULL,
@@ -241,12 +257,24 @@ var globalSchemaStatements = []string{
 	`CREATE TABLE IF NOT EXISTS task_runs (
 		id              TEXT PRIMARY KEY,
 		task_id         TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-		status          TEXT NOT NULL CHECK (status IN ('queued', 'claimed', 'starting', 'running', 'completed', 'failed', 'cancelled')),
+		status          TEXT NOT NULL CHECK (
+			status IN (
+				'queued', 'claimed', 'starting', 'running', 'completed', 'failed', 'canceled'
+			)
+		),
 		attempt         INTEGER NOT NULL CHECK (attempt > 0),
-		claimed_by_kind TEXT CHECK (claimed_by_kind IS NULL OR claimed_by_kind IN ('human', 'agent_session', 'automation', 'extension', 'network_peer', 'daemon')),
+		claimed_by_kind TEXT CHECK (
+			claimed_by_kind IS NULL OR claimed_by_kind IN (
+				'human', 'agent_session', 'automation', 'extension', 'network_peer', 'daemon'
+			)
+		),
 		claimed_by_ref  TEXT,
 		session_id      TEXT,
-		origin_kind     TEXT NOT NULL CHECK (origin_kind IN ('cli', 'web', 'uds', 'http', 'automation', 'extension', 'network', 'agent_session', 'daemon')),
+		origin_kind     TEXT NOT NULL CHECK (
+			origin_kind IN (
+				'cli', 'web', 'uds', 'http', 'automation', 'extension', 'network', 'agent_session', 'daemon'
+			)
+		),
 		origin_ref      TEXT NOT NULL,
 		idempotency_key TEXT,
 		network_channel TEXT,
@@ -282,9 +310,17 @@ var globalSchemaStatements = []string{
 		task_id     TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
 		run_id      TEXT REFERENCES task_runs(id) ON DELETE SET NULL,
 		event_type  TEXT NOT NULL,
-		actor_kind  TEXT NOT NULL CHECK (actor_kind IN ('human', 'agent_session', 'automation', 'extension', 'network_peer', 'daemon')),
+		actor_kind  TEXT NOT NULL CHECK (
+			actor_kind IN (
+				'human', 'agent_session', 'automation', 'extension', 'network_peer', 'daemon'
+			)
+		),
 		actor_ref   TEXT NOT NULL,
-		origin_kind TEXT NOT NULL CHECK (origin_kind IN ('cli', 'web', 'uds', 'http', 'automation', 'extension', 'network', 'agent_session', 'daemon')),
+		origin_kind TEXT NOT NULL CHECK (
+			origin_kind IN (
+				'cli', 'web', 'uds', 'http', 'automation', 'extension', 'network', 'agent_session', 'daemon'
+			)
+		),
 		origin_ref  TEXT NOT NULL,
 		payload_json TEXT,
 		timestamp   TEXT NOT NULL
@@ -294,7 +330,11 @@ var globalSchemaStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_task_events_type ON task_events(event_type, timestamp DESC, id DESC);`,
 	`CREATE TABLE IF NOT EXISTS task_run_idempotency (
 		idempotency_key TEXT NOT NULL,
-		origin_kind     TEXT NOT NULL CHECK (origin_kind IN ('cli', 'web', 'uds', 'http', 'automation', 'extension', 'network', 'agent_session', 'daemon')),
+		origin_kind     TEXT NOT NULL CHECK (
+			origin_kind IN (
+				'cli', 'web', 'uds', 'http', 'automation', 'extension', 'network', 'agent_session', 'daemon'
+			)
+		),
 		origin_ref      TEXT NOT NULL,
 		run_id          TEXT NOT NULL REFERENCES task_runs(id) ON DELETE CASCADE,
 		created_at      TEXT NOT NULL,
@@ -392,7 +432,7 @@ type GlobalDB struct {
 }
 
 var _ store.SessionRegistry = (*GlobalDB)(nil)
-var _ aghworkspace.WorkspaceStore = (*GlobalDB)(nil)
+var _ aghworkspace.Store = (*GlobalDB)(nil)
 
 // OpenGlobalDB opens or creates the global AGH index database.
 func OpenGlobalDB(ctx context.Context, path string) (*GlobalDB, error) {

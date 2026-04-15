@@ -14,13 +14,21 @@ import (
 // ListSkills returns skills for a workspace.
 func (h *BaseHandlers) ListSkills(c *gin.Context) {
 	if h.SkillsRegistry == nil {
-		h.respondError(c, http.StatusServiceUnavailable, fmt.Errorf("%s: skills registry is not configured", h.transportName()))
+		h.respondError(
+			c,
+			http.StatusServiceUnavailable,
+			fmt.Errorf("%s: skills registry is not configured", h.transportName()),
+		)
 		return
 	}
 
 	workspace := strings.TrimSpace(c.Query("workspace"))
 	if workspace == "" {
-		h.respondError(c, http.StatusBadRequest, fmt.Errorf("%w: workspace query parameter is required", ErrSkillValidation))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			fmt.Errorf("%w: workspace query parameter is required", ErrSkillValidation),
+		)
 		return
 	}
 
@@ -30,7 +38,7 @@ func (h *BaseHandlers) ListSkills(c *gin.Context) {
 		return
 	}
 
-	skillList, err := h.SkillsRegistry.ForWorkspace(c.Request.Context(), resolved)
+	skillList, err := h.SkillsRegistry.ForWorkspace(c.Request.Context(), &resolved)
 	if err != nil {
 		h.respondError(c, StatusForSkillError(err), err)
 		return
@@ -42,7 +50,11 @@ func (h *BaseHandlers) ListSkills(c *gin.Context) {
 // GetSkill returns one skill by name.
 func (h *BaseHandlers) GetSkill(c *gin.Context) {
 	if h.SkillsRegistry == nil {
-		h.respondError(c, http.StatusServiceUnavailable, fmt.Errorf("%s: skills registry is not configured", h.transportName()))
+		h.respondError(
+			c,
+			http.StatusServiceUnavailable,
+			fmt.Errorf("%s: skills registry is not configured", h.transportName()),
+		)
 		return
 	}
 
@@ -64,7 +76,11 @@ func (h *BaseHandlers) GetSkill(c *gin.Context) {
 // GetSkillContent returns the explicit body for one skill.
 func (h *BaseHandlers) GetSkillContent(c *gin.Context) {
 	if h.SkillsRegistry == nil {
-		h.respondError(c, http.StatusServiceUnavailable, fmt.Errorf("%s: skills registry is not configured", h.transportName()))
+		h.respondError(
+			c,
+			http.StatusServiceUnavailable,
+			fmt.Errorf("%s: skills registry is not configured", h.transportName()),
+		)
 		return
 	}
 
@@ -92,7 +108,11 @@ func (h *BaseHandlers) GetSkillContent(c *gin.Context) {
 // EnableSkill enables a skill by name.
 func (h *BaseHandlers) EnableSkill(c *gin.Context) {
 	if h.SkillsRegistry == nil {
-		h.respondError(c, http.StatusServiceUnavailable, fmt.Errorf("%s: skills registry is not configured", h.transportName()))
+		h.respondError(
+			c,
+			http.StatusServiceUnavailable,
+			fmt.Errorf("%s: skills registry is not configured", h.transportName()),
+		)
 		return
 	}
 
@@ -125,7 +145,11 @@ func (h *BaseHandlers) EnableSkill(c *gin.Context) {
 // DisableSkill disables a skill by name.
 func (h *BaseHandlers) DisableSkill(c *gin.Context) {
 	if h.SkillsRegistry == nil {
-		h.respondError(c, http.StatusServiceUnavailable, fmt.Errorf("%s: skills registry is not configured", h.transportName()))
+		h.respondError(
+			c,
+			http.StatusServiceUnavailable,
+			fmt.Errorf("%s: skills registry is not configured", h.transportName()),
+		)
 		return
 	}
 
@@ -155,7 +179,10 @@ func (h *BaseHandlers) DisableSkill(c *gin.Context) {
 	c.JSON(http.StatusOK, contract.SkillActionResponse{OK: true})
 }
 
-func (h *BaseHandlers) resolveSkill(c *gin.Context, name string) (*skills.Skill, *workspacepkg.ResolvedWorkspace, error) {
+func (h *BaseHandlers) resolveSkill(
+	c *gin.Context,
+	name string,
+) (*skills.Skill, *workspacepkg.ResolvedWorkspace, error) {
 	workspace := strings.TrimSpace(c.Query("workspace"))
 	if workspace == "" {
 		skill, ok := h.SkillsRegistry.Get(name)
@@ -170,7 +197,7 @@ func (h *BaseHandlers) resolveSkill(c *gin.Context, name string) (*skills.Skill,
 		return nil, nil, err
 	}
 
-	skillList, err := h.SkillsRegistry.ForWorkspace(c.Request.Context(), resolved)
+	skillList, err := h.SkillsRegistry.ForWorkspace(c.Request.Context(), &resolved)
 	if err != nil {
 		return nil, nil, err
 	}

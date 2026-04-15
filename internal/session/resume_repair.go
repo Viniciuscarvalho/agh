@@ -79,7 +79,11 @@ func (m *Manager) repairInactiveMeta(metaPath string, meta store.SessionMeta) (s
 	return m.persistResumeCrashClassification(metaPath, classified)
 }
 
-func (m *Manager) restoreFailedResumeStart(metaPath string, meta store.SessionMeta, clearACP bool) (store.SessionMeta, error) {
+func (m *Manager) restoreFailedResumeStart(
+	metaPath string,
+	meta store.SessionMeta,
+	clearACP bool,
+) (store.SessionMeta, error) {
 	restored := meta
 	restored.State = string(StateStopped)
 	if clearACP {
@@ -141,7 +145,7 @@ func (m *Manager) validateInfrastructure(ctx context.Context, meta store.Session
 				})
 			}
 
-			if agentErr := validateResumeAgent(meta.AgentName, resolvedWorkspace); agentErr != nil {
+			if agentErr := validateResumeAgent(meta.AgentName, &resolvedWorkspace); agentErr != nil {
 				errs = append(errs, resumeValidationError{
 					check: resumeValidationCheckAgent,
 					err: fmt.Errorf(
@@ -181,7 +185,7 @@ func validateWorkspaceRoot(path string) error {
 	return nil
 }
 
-func validateResumeAgent(agentName string, resolvedWorkspace workspacepkg.ResolvedWorkspace) error {
+func validateResumeAgent(agentName string, resolvedWorkspace *workspacepkg.ResolvedWorkspace) error {
 	agentDef, err := resolveWorkspaceAgent(agentName, resolvedWorkspace)
 	if err != nil {
 		return err
@@ -213,7 +217,11 @@ func (m *Manager) persistResumeCrashClassification(metaPath string, meta store.S
 	classified := meta
 	classified.UpdatedAt = m.now()
 	if err := store.WriteSessionMeta(metaPath, classified); err != nil {
-		return store.SessionMeta{}, fmt.Errorf("session: persist crash classification for %q: %w", strings.TrimSpace(meta.ID), err)
+		return store.SessionMeta{}, fmt.Errorf(
+			"session: persist crash classification for %q: %w",
+			strings.TrimSpace(meta.ID),
+			err,
+		)
 	}
 
 	reason := ""

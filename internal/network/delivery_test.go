@@ -1,6 +1,7 @@
 package network
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -30,7 +31,12 @@ func TestInboundQueuePreservesFIFOAndDropsOldestOnOverflow(t *testing.T) {
 	if result := queue.enqueue(second, now.Add(time.Second), false); result.Dropped != nil || result.Depth != 2 {
 		t.Fatalf("enqueue(second) = %#v, want depth=2 with no drop", result)
 	}
-	if result := queue.enqueue(third, now.Add(2*time.Second), true); result.Dropped == nil || result.Dropped.ID != first.ID || result.Depth != 2 {
+	if result := queue.enqueue(
+		third,
+		now.Add(2*time.Second),
+		true,
+	); result.Dropped == nil || result.Dropped.ID != first.ID ||
+		result.Depth != 2 {
 		t.Fatalf("enqueue(third) = %#v, want drop=%q depth=2", result, first.ID)
 	}
 
@@ -147,7 +153,7 @@ func TestFormatNetworkMessageEscapesPreviewAndPreservesCanonicalBody(t *testing.
 	if err != nil {
 		t.Fatalf("json.Marshal(wantBody) error = %v", err)
 	}
-	if string(decodedBody) != string(wantBody) {
+	if !bytes.Equal(decodedBody, wantBody) {
 		t.Fatalf("decoded body = %s, want %s", string(decodedBody), string(wantBody))
 	}
 }
@@ -267,8 +273,7 @@ func TestDeliveryCoordinatorIdleAndBusyBehavior(t *testing.T) {
 	t.Run("idle delivery triggers immediately", func(t *testing.T) {
 		t.Parallel()
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		prompter := newFakeDeliveryPrompter()
 		coordinator, err := newDeliveryCoordinator(ctx, 4, prompter)
@@ -299,8 +304,7 @@ func TestDeliveryCoordinatorIdleAndBusyBehavior(t *testing.T) {
 	t.Run("busy delivery waits for turn end", func(t *testing.T) {
 		t.Parallel()
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		prompter := newFakeDeliveryPrompter()
 		prompter.setPrompting("sess-busy", true)
@@ -405,7 +409,8 @@ func TestDeliveryCoordinatorCancelsInFlightDeliveryWithoutCountingItAsDelivered(
 
 	prompter.waitForCalls(t, 1)
 	stats := coordinator.stats()
-	if stats.QueuedMessages != 0 || stats.QueuedSessions != 0 || stats.DeliveryWorkers != 1 || stats.InFlightMessages != 1 {
+	if stats.QueuedMessages != 0 || stats.QueuedSessions != 0 || stats.DeliveryWorkers != 1 ||
+		stats.InFlightMessages != 1 {
 		t.Fatalf("stats(before cancel) = %#v, want inflight=1 worker=1 with no queued messages", stats)
 	}
 
@@ -427,8 +432,7 @@ func TestDeliveryCoordinatorCancelsInFlightDeliveryWithoutCountingItAsDelivered(
 func TestDeliveryCoordinatorRetriesPromptFailuresAfterWorkerExit(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	prompter := newFakeDeliveryPrompter()
 	prompter.queuePromptResult(errors.New("temporary prompt failure"))
@@ -476,8 +480,7 @@ func TestNewDeliveryCoordinatorOptionsAndBatchAccept(t *testing.T) {
 		t.Fatal("newDeliveryCoordinator(nil prompter) error = nil, want non-nil")
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	fixedNow := time.Date(2026, 4, 11, 15, 0, 0, 0, time.UTC)
@@ -533,8 +536,7 @@ func TestNewDeliveryCoordinatorOptionsAndBatchAccept(t *testing.T) {
 func TestDeliveryCoordinatorDeliversSemanticallyInvalidBodiesUsingRawFallback(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	prompter := newFakeDeliveryPrompter()
 	coordinator, err := newDeliveryCoordinator(ctx, 2, prompter)
@@ -613,7 +615,6 @@ func TestPreviewForBodyVariants(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			if got := previewForBody(tc.body); got != tc.want {
@@ -644,7 +645,11 @@ func newFakeDeliveryPrompter() *fakeDeliveryPrompter {
 	}
 }
 
-func (p *fakeDeliveryPrompter) PromptNetwork(_ context.Context, sessionID string, message string) (<-chan acp.AgentEvent, error) {
+func (p *fakeDeliveryPrompter) PromptNetwork(
+	_ context.Context,
+	sessionID string,
+	message string,
+) (<-chan acp.AgentEvent, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

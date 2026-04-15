@@ -25,7 +25,12 @@ func TestHookParsersAndPayloadConverters(t *testing.T) {
 		t.Helper()
 		recorder := httptest.NewRecorder()
 		ginCtx, _ := gin.CreateTestContext(recorder)
-		ginCtx.Request = httptest.NewRequest(http.MethodGet, rawURL, nil)
+		ginCtx.Request = httptest.NewRequestWithContext(
+			context.Background(),
+			http.MethodGet,
+			rawURL,
+			http.NoBody,
+		)
 		return ginCtx
 	}
 
@@ -36,19 +41,27 @@ func TestHookParsersAndPayloadConverters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseHookCatalogFilter() error = %v", err)
 	}
-	if catalogFilter.AgentName != "coder" || catalogFilter.Event != hookspkg.HookToolPreCall || catalogFilter.Source == nil || *catalogFilter.Source != hookspkg.HookSourceSkill || catalogFilter.Mode != hookspkg.HookModeSync {
+	if catalogFilter.AgentName != "coder" || catalogFilter.Event != hookspkg.HookToolPreCall ||
+		catalogFilter.Source == nil ||
+		*catalogFilter.Source != hookspkg.HookSourceSkill ||
+		catalogFilter.Mode != hookspkg.HookModeSync {
 		t.Fatalf("catalog filter = %#v", catalogFilter)
 	}
 	if _, err := core.ParseHookCatalogFilter(newContext("/hooks/catalog?source=bogus")); err == nil {
 		t.Fatal("ParseHookCatalogFilter(invalid source) error = nil, want non-nil")
 	}
 
-	runsCtx := newContext("/hooks/runs?session=sess-1&event=" + eventValue + "&outcome=applied&since=2026-04-03T12:00:00Z&last=2")
+	runsCtx := newContext(
+		"/hooks/runs?session=sess-1&event=" + eventValue + "&outcome=applied&since=2026-04-03T12:00:00Z&last=2",
+	)
 	runsQuery, err := core.ParseHookRunsQuery(runsCtx)
 	if err != nil {
 		t.Fatalf("ParseHookRunsQuery() error = %v", err)
 	}
-	if runsQuery.SessionID != "sess-1" || runsQuery.Event != hookspkg.HookToolPreCall.String() || runsQuery.Outcome != hookspkg.HookRunOutcomeApplied || runsQuery.Limit != 2 || runsQuery.Since.IsZero() {
+	if runsQuery.SessionID != "sess-1" || runsQuery.Event != hookspkg.HookToolPreCall.String() ||
+		runsQuery.Outcome != hookspkg.HookRunOutcomeApplied ||
+		runsQuery.Limit != 2 ||
+		runsQuery.Since.IsZero() {
 		t.Fatalf("hook run query = %#v", runsQuery)
 	}
 	if _, err := core.ParseHookRunsQuery(newContext("/hooks/runs?session=sess-1&outcome=bogus")); err == nil {
@@ -90,7 +103,9 @@ func TestHookParsersAndPayloadConverters(t *testing.T) {
 	if got, want := len(catalogPayloads), 1; got != want {
 		t.Fatalf("len(catalogPayloads) = %d, want %d", got, want)
 	}
-	if catalogPayloads[0].SkillSource != string(hookspkg.HookSkillSourceWorkspace) || catalogPayloads[0].TimeoutMS != 1500 || catalogPayloads[0].Metadata["origin"] != "workspace" {
+	if catalogPayloads[0].SkillSource != string(hookspkg.HookSkillSourceWorkspace) ||
+		catalogPayloads[0].TimeoutMS != 1500 ||
+		catalogPayloads[0].Metadata["origin"] != "workspace" {
 		t.Fatalf("catalog payload = %#v", catalogPayloads[0])
 	}
 	metadata["origin"] = "mutated"
@@ -141,7 +156,7 @@ func TestHookHandlers(t *testing.T) {
 	t.Parallel()
 
 	manager := testutil.StubSessionManager{
-		StatusFn: func(_ context.Context, id string) (*session.SessionInfo, error) {
+		StatusFn: func(_ context.Context, id string) (*session.Info, error) {
 			if id != "sess-1" {
 				t.Fatalf("Status() id = %q, want sess-1", id)
 			}
@@ -150,7 +165,12 @@ func TestHookHandlers(t *testing.T) {
 	}
 	observer := testutil.StubObserver{
 		QueryHookCatalogFn: func(_ context.Context, filter hookspkg.CatalogFilter) ([]hookspkg.CatalogEntry, error) {
-			if filter.WorkspaceID != "ws-alpha" || filter.WorkspaceRoot != "/workspace/alpha" || filter.AgentName != "coder" || filter.Event != hookspkg.HookToolPreCall || filter.Source == nil || *filter.Source != hookspkg.HookSourceSkill || filter.Mode != hookspkg.HookModeSync {
+			if filter.WorkspaceID != "ws-alpha" || filter.WorkspaceRoot != "/workspace/alpha" ||
+				filter.AgentName != "coder" ||
+				filter.Event != hookspkg.HookToolPreCall ||
+				filter.Source == nil ||
+				*filter.Source != hookspkg.HookSourceSkill ||
+				filter.Mode != hookspkg.HookModeSync {
 				t.Fatalf("QueryHookCatalog() filter = %#v", filter)
 			}
 			return []hookspkg.CatalogEntry{{
@@ -168,7 +188,10 @@ func TestHookHandlers(t *testing.T) {
 			}}, nil
 		},
 		QueryHookRunsFn: func(_ context.Context, query store.HookRunQuery) ([]hookspkg.HookRunRecord, error) {
-			if query.SessionID != "sess-1" || query.Event != hookspkg.HookToolPreCall.String() || query.Outcome != hookspkg.HookRunOutcomeApplied || query.Limit != 2 || query.Since.IsZero() {
+			if query.SessionID != "sess-1" || query.Event != hookspkg.HookToolPreCall.String() ||
+				query.Outcome != hookspkg.HookRunOutcomeApplied ||
+				query.Limit != 2 ||
+				query.Since.IsZero() {
 				t.Fatalf("QueryHookRuns() query = %#v", query)
 			}
 			return []hookspkg.HookRunRecord{{
@@ -215,7 +238,13 @@ func TestHookHandlers(t *testing.T) {
 
 	eventValue := hookspkg.HookToolPreCall.String()
 
-	catalogResp := performRequest(t, fixture.Engine, http.MethodGet, "/hooks/catalog?workspace=alpha&agent=coder&event="+eventValue+"&source=skill&mode=sync", nil)
+	catalogResp := performRequest(
+		t,
+		fixture.Engine,
+		http.MethodGet,
+		"/hooks/catalog?workspace=alpha&agent=coder&event="+eventValue+"&source=skill&mode=sync",
+		nil,
+	)
 	if catalogResp.Code != http.StatusOK {
 		t.Fatalf("catalog status = %d, want %d; body=%s", catalogResp.Code, http.StatusOK, catalogResp.Body.String())
 	}
@@ -224,11 +253,18 @@ func TestHookHandlers(t *testing.T) {
 	if got, want := len(catalog.Hooks), 1; got != want {
 		t.Fatalf("len(catalog.Hooks) = %d, want %d", got, want)
 	}
-	if catalog.Hooks[0].SkillSource != string(hookspkg.HookSkillSourceWorkspace) || catalog.Hooks[0].Metadata["origin"] != "workspace" {
+	if catalog.Hooks[0].SkillSource != string(hookspkg.HookSkillSourceWorkspace) ||
+		catalog.Hooks[0].Metadata["origin"] != "workspace" {
 		t.Fatalf("catalog hook = %#v", catalog.Hooks[0])
 	}
 
-	runsResp := performRequest(t, fixture.Engine, http.MethodGet, "/hooks/runs?session=sess-1&event="+eventValue+"&outcome=applied&since=2026-04-03T12:00:00Z&last=2", nil)
+	runsResp := performRequest(
+		t,
+		fixture.Engine,
+		http.MethodGet,
+		"/hooks/runs?session=sess-1&event="+eventValue+"&outcome=applied&since=2026-04-03T12:00:00Z&last=2",
+		nil,
+	)
 	if runsResp.Code != http.StatusOK {
 		t.Fatalf("runs status = %d, want %d; body=%s", runsResp.Code, http.StatusOK, runsResp.Body.String())
 	}
@@ -258,7 +294,14 @@ func TestHookHandlers(t *testing.T) {
 func TestHookHandlersRejectInvalidRequests(t *testing.T) {
 	t.Parallel()
 
-	fixture := newHandlerFixture(t, testutil.StubSessionManager{}, testutil.StubObserver{}, testutil.StubWorkspaceService{}, nil, nil)
+	fixture := newHandlerFixture(
+		t,
+		testutil.StubSessionManager{},
+		testutil.StubObserver{},
+		testutil.StubWorkspaceService{},
+		nil,
+		nil,
+	)
 
 	tests := []struct {
 		name string
@@ -283,7 +326,6 @@ func TestHookHandlersRejectInvalidRequests(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			resp := performRequest(t, fixture.Engine, http.MethodGet, tt.path, nil)

@@ -54,8 +54,8 @@ type CreateInstanceRequest struct {
 	ProviderConfig   json.RawMessage      `json:"provider_config,omitempty"`
 	DeliveryDefaults json.RawMessage      `json:"delivery_defaults,omitempty"`
 	Degradation      *BridgeDegradation   `json:"degradation,omitempty"`
-	CreatedAt        time.Time            `json:"created_at,omitempty"`
-	UpdatedAt        time.Time            `json:"updated_at,omitempty"`
+	CreatedAt        time.Time            `json:"created_at"`
+	UpdatedAt        time.Time            `json:"updated_at"`
 }
 
 // Validate reports whether the creation request contains a valid instance definition.
@@ -75,7 +75,7 @@ type UpdateInstanceRequest struct {
 	DeliveryDefaults *json.RawMessage   `json:"delivery_defaults,omitempty"`
 	Degradation      *BridgeDegradation `json:"degradation,omitempty"`
 	ClearDegradation bool               `json:"clear_degradation,omitempty"`
-	UpdatedAt        time.Time          `json:"updated_at,omitempty"`
+	UpdatedAt        time.Time          `json:"updated_at"`
 }
 
 // Validate reports whether the request contains at least one mutable field and
@@ -84,9 +84,23 @@ func (r UpdateInstanceRequest) Validate() error {
 	if err := requireField(strings.TrimSpace(r.ID), "bridge instance id"); err != nil {
 		return err
 	}
-	if r.DisplayName == nil && r.DMPolicy == nil && r.RoutingPolicy == nil && r.ProviderConfig == nil && r.DeliveryDefaults == nil && r.Degradation == nil && !r.ClearDegradation {
+	if !r.hasMutableField() {
 		return errors.New("bridges: bridge instance update requires at least one mutable field")
 	}
+	return r.validateOptionalFields()
+}
+
+func (r UpdateInstanceRequest) hasMutableField() bool {
+	return r.DisplayName != nil ||
+		r.DMPolicy != nil ||
+		r.RoutingPolicy != nil ||
+		r.ProviderConfig != nil ||
+		r.DeliveryDefaults != nil ||
+		r.Degradation != nil ||
+		r.ClearDegradation
+}
+
+func (r UpdateInstanceRequest) validateOptionalFields() error {
 	if r.DisplayName != nil {
 		if err := requireField(strings.TrimSpace(*r.DisplayName), "bridge instance display name"); err != nil {
 			return err
@@ -127,7 +141,7 @@ type UpdateInstanceStateRequest struct {
 	Status           BridgeStatus       `json:"status"`
 	Degradation      *BridgeDegradation `json:"degradation,omitempty"`
 	ClearDegradation bool               `json:"clear_degradation,omitempty"`
-	UpdatedAt        time.Time          `json:"updated_at,omitempty"`
+	UpdatedAt        time.Time          `json:"updated_at"`
 }
 
 // Validate reports whether the request contains the fields needed for a lifecycle update.
@@ -240,7 +254,11 @@ func (s *Service) UpdateInstance(ctx context.Context, req UpdateInstanceRequest)
 		return nil, err
 	}
 	if err := req.Validate(); err != nil {
-		return nil, fmt.Errorf("bridges: update bridge instance %q: validate request: %w", strings.TrimSpace(req.ID), err)
+		return nil, fmt.Errorf(
+			"bridges: update bridge instance %q: validate request: %w",
+			strings.TrimSpace(req.ID),
+			err,
+		)
 	}
 
 	trimmedID := strings.TrimSpace(req.ID)
@@ -270,7 +288,11 @@ func (s *Service) UpdateInstance(ctx context.Context, req UpdateInstanceRequest)
 	if req.DeliveryDefaults != nil {
 		normalized, err := normalizeRawJSON(*req.DeliveryDefaults, "bridge instance delivery defaults")
 		if err != nil {
-			return nil, fmt.Errorf("bridges: update bridge instance %q: normalize delivery defaults: %w", trimmedID, err)
+			return nil, fmt.Errorf(
+				"bridges: update bridge instance %q: normalize delivery defaults: %w",
+				trimmedID,
+				err,
+			)
 		}
 		instance.DeliveryDefaults = normalized
 	}
@@ -304,7 +326,11 @@ func (s *Service) UpdateInstanceState(ctx context.Context, req UpdateInstanceSta
 		return nil, err
 	}
 	if err := req.Validate(); err != nil {
-		return nil, fmt.Errorf("bridges: update bridge instance state %q: validate request: %w", strings.TrimSpace(req.ID), err)
+		return nil, fmt.Errorf(
+			"bridges: update bridge instance state %q: validate request: %w",
+			strings.TrimSpace(req.ID),
+			err,
+		)
 	}
 
 	trimmedID := strings.TrimSpace(req.ID)
@@ -399,12 +425,20 @@ func (s *Service) ResolveOrCreateRoute(ctx context.Context, route BridgeRoute) (
 	trimmedID := strings.TrimSpace(route.BridgeInstanceID)
 	instance, err := s.loadRoutableInstance(ctx, trimmedID)
 	if err != nil {
-		return nil, false, fmt.Errorf("bridges: resolve or create bridge route for %q: load bridge instance: %w", trimmedID, err)
+		return nil, false, fmt.Errorf(
+			"bridges: resolve or create bridge route for %q: load bridge instance: %w",
+			trimmedID,
+			err,
+		)
 	}
 
 	canonicalRoute, err := CanonicalizeRoute(instance, route)
 	if err != nil {
-		return nil, false, fmt.Errorf("bridges: resolve or create bridge route for %q: canonicalize route: %w", trimmedID, err)
+		return nil, false, fmt.Errorf(
+			"bridges: resolve or create bridge route for %q: canonicalize route: %w",
+			trimmedID,
+			err,
+		)
 	}
 
 	existing, err := s.store.ResolveBridgeRoute(ctx, canonicalRoute.RoutingKey())
@@ -414,17 +448,29 @@ func (s *Service) ResolveOrCreateRoute(ctx context.Context, route BridgeRoute) (
 		refreshed.UpdatedAt = canonicalRoute.UpdatedAt
 		refreshed = s.prepareRouteForWrite(refreshed, &existing)
 		if err := s.store.PutBridgeRoute(ctx, refreshed); err != nil {
-			return nil, false, fmt.Errorf("bridges: resolve or create bridge route for %q: refresh route: %w", trimmedID, err)
+			return nil, false, fmt.Errorf(
+				"bridges: resolve or create bridge route for %q: refresh route: %w",
+				trimmedID,
+				err,
+			)
 		}
 		return cloneBridgeRoute(refreshed), false, nil
 	}
 	if !errors.Is(err, ErrBridgeRouteNotFound) {
-		return nil, false, fmt.Errorf("bridges: resolve or create bridge route for %q: lookup route: %w", trimmedID, err)
+		return nil, false, fmt.Errorf(
+			"bridges: resolve or create bridge route for %q: lookup route: %w",
+			trimmedID,
+			err,
+		)
 	}
 
 	canonicalRoute = s.prepareRouteForWrite(canonicalRoute, nil)
 	if err := s.store.PutBridgeRoute(ctx, canonicalRoute); err != nil {
-		return nil, false, fmt.Errorf("bridges: resolve or create bridge route for %q: create route: %w", trimmedID, err)
+		return nil, false, fmt.Errorf(
+			"bridges: resolve or create bridge route for %q: create route: %w",
+			trimmedID,
+			err,
+		)
 	}
 
 	return cloneBridgeRoute(canonicalRoute), true, nil

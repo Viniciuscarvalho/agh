@@ -2,6 +2,7 @@ package skills
 
 import (
 	"errors"
+	"maps"
 	"slices"
 	"strings"
 )
@@ -97,9 +98,7 @@ func (r *Registry) externalSkillSetLocked() map[string]*Skill {
 
 	merged := make(map[string]*Skill)
 	for _, owner := range owners {
-		for name, skill := range r.externalSkills[owner] {
-			merged[name] = skill
-		}
+		maps.Copy(merged, r.externalSkills[owner])
 	}
 	return merged
 }
@@ -115,11 +114,7 @@ func mergeSkillMaps(base map[string]*Skill, overlay map[string]*Skill) map[strin
 	}
 
 	merged := make(map[string]*Skill, len(base)+len(overlay))
-	for name, skill := range base {
-		merged[name] = skill
-	}
-	for name, skill := range overlay {
-		merged[name] = skill
-	}
+	maps.Copy(merged, base)
+	maps.Copy(merged, overlay)
 	return merged
 }

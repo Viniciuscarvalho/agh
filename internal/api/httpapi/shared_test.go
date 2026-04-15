@@ -44,7 +44,7 @@ func observeEventAfterCursor(event store.EventSummary, cursor observeCursor) boo
 	return core.ObserveEventAfterCursor(event, cursor)
 }
 
-func acpCapsPayloadFromInfo(caps acp.ACPCaps) *contract.ACPCapsPayload {
+func acpCapsPayloadFromInfo(caps acp.Caps) *contract.ACPCapsPayload {
 	return core.ACPCapsPayloadFromInfo(caps)
 }
 
@@ -60,7 +60,11 @@ func resolveMemoryWorkspace(raw string) (string, error) {
 	return core.ResolveMemoryWorkspace(raw)
 }
 
-func (h *Handlers) resolveMemoryLocation(filename string, rawScope string, rawWorkspace string) (memoryLocation, error) {
+func (h *Handlers) resolveMemoryLocation(
+	filename string,
+	rawScope string,
+	rawWorkspace string,
+) (memoryLocation, error) {
 	return h.ResolveMemoryLocation(filename, rawScope, rawWorkspace)
 }
 

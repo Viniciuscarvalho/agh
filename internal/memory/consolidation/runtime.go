@@ -30,7 +30,7 @@ type ServiceFactory func(opts ...memory.Option) Service
 // SessionManager is the session lifecycle surface needed to spawn dream sessions.
 type SessionManager interface {
 	Create(ctx context.Context, opts session.CreateOpts) (*session.Session, error)
-	ListAll(ctx context.Context) ([]*session.SessionInfo, error)
+	ListAll(ctx context.Context) ([]*session.Info, error)
 	Prompt(ctx context.Context, id string, msg string) (<-chan acp.AgentEvent, error)
 	Stop(ctx context.Context, id string) error
 }
@@ -200,7 +200,14 @@ func (r *Runtime) Shutdown() {
 	}
 }
 
-func (r *Runtime) runCheck(ctx context.Context, logger *slog.Logger, service Service, spawner memory.SessionSpawner, reason string, workspaceRef string) {
+func (r *Runtime) runCheck(
+	ctx context.Context,
+	logger *slog.Logger,
+	service Service,
+	spawner memory.SessionSpawner,
+	reason string,
+	workspaceRef string,
+) {
 	if service == nil || spawner == nil {
 		return
 	}
@@ -211,7 +218,15 @@ func (r *Runtime) runCheck(ctx context.Context, logger *slog.Logger, service Ser
 	logger.Debug("daemon: evaluating dream consolidation gates", "reason", reason, "workspace_ref", workspaceRef)
 	shouldRun, err := service.ShouldRun()
 	if err != nil {
-		logger.Warn("daemon: dream gate evaluation failed", "reason", reason, "workspace_ref", workspaceRef, "error", err)
+		logger.Warn(
+			"daemon: dream gate evaluation failed",
+			"reason",
+			reason,
+			"workspace_ref",
+			workspaceRef,
+			"error",
+			err,
+		)
 		return
 	}
 	if !shouldRun {
@@ -234,13 +249,14 @@ func (r *Runtime) runCheck(ctx context.Context, logger *slog.Logger, service Ser
 // NewSessionSpawner creates dream sessions against one or more eligible workspaces.
 func NewSessionSpawner(
 	sessions SessionManager,
-	resolver workspacepkg.WorkspaceResolver,
-	cfg aghconfig.Config,
+	resolver workspacepkg.RuntimeResolver,
+	cfg *aghconfig.Config,
 	globalMemoryDir string,
 ) memory.SessionSpawner {
-	if !cfg.Memory.Enabled || !cfg.Memory.Dream.Enabled || sessions == nil || resolver == nil {
+	if cfg == nil || !cfg.Memory.Enabled || !cfg.Memory.Dream.Enabled || sessions == nil || resolver == nil {
 		return nil
 	}
+	agentName := strings.TrimSpace(cfg.Memory.Dream.Agent)
 
 	return func(ctx context.Context, goal, prompt, workspace string) error {
 		workspaces, err := resolveWorkspaces(ctx, sessions, resolver, globalMemoryDir, workspace)
@@ -249,7 +265,15 @@ func NewSessionSpawner(
 		}
 
 		for _, workspaceID := range workspaces {
-			if err := spawnSession(ctx, sessions, cfg.Memory.Dream.Agent, goal, prompt, workspaceID, defaultSessionStopTimeout); err != nil {
+			if err := spawnSession(
+				ctx,
+				sessions,
+				agentName,
+				goal,
+				prompt,
+				workspaceID,
+				defaultSessionStopTimeout,
+			); err != nil {
 				return err
 			}
 		}
@@ -261,7 +285,7 @@ func NewSessionSpawner(
 func resolveWorkspaces(
 	ctx context.Context,
 	sessions SessionManager,
-	resolver workspacepkg.WorkspaceResolver,
+	resolver workspacepkg.RuntimeResolver,
 	globalMemoryDir string,
 	explicitWorkspace string,
 ) ([]string, error) {
@@ -339,7 +363,11 @@ func resolveWorkspaces(
 	return workspaces, nil
 }
 
-func resolveWorkspaceRef(ctx context.Context, resolver workspacepkg.WorkspaceResolver, workspaceRef string) (string, error) {
+func resolveWorkspaceRef(
+	ctx context.Context,
+	resolver workspacepkg.RuntimeResolver,
+	workspaceRef string,
+) (string, error) {
 	trimmedRef := strings.TrimSpace(workspaceRef)
 	if trimmedRef == "" {
 		return "", errors.New("daemon: dream workspace is required")
@@ -379,7 +407,15 @@ func isPathLikeWorkspaceRef(ref string) bool {
 		strings.ContainsAny(trimmedRef, "/\\")
 }
 
-func spawnSession(ctx context.Context, sessions SessionManager, agentName string, goal string, prompt string, workspace string, stopTimeout time.Duration) (err error) {
+func spawnSession(
+	ctx context.Context,
+	sessions SessionManager,
+	agentName string,
+	goal string,
+	prompt string,
+	workspace string,
+	stopTimeout time.Duration,
+) (err error) {
 	if ctx == nil {
 		return errors.New("daemon: dream session context is required")
 	}
@@ -417,7 +453,11 @@ func spawnSession(ctx context.Context, sessions SessionManager, agentName string
 		}
 	}
 	if len(eventErrs) > 0 {
-		return fmt.Errorf("daemon: dream session %q reported prompt errors: %w", dreamSession.ID, errors.Join(eventErrs...))
+		return fmt.Errorf(
+			"daemon: dream session %q reported prompt errors: %w",
+			dreamSession.ID,
+			errors.Join(eventErrs...),
+		)
 	}
 	return nil
 }

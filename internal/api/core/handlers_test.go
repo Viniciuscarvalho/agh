@@ -25,8 +25,8 @@ func TestBaseHandlersSessionEndpoints(t *testing.T) {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	var createCalled atomic.Bool
 	manager := testutil.StubSessionManager{
-		ListAllFn: func(context.Context) ([]*session.SessionInfo, error) {
-			return []*session.SessionInfo{testutil.NewSessionInfo("sess-a")}, nil
+		ListAllFn: func(context.Context) ([]*session.Info, error) {
+			return []*session.Info{testutil.NewSessionInfo("sess-a")}, nil
 		},
 		CreateFn: func(_ context.Context, opts session.CreateOpts) (*session.Session, error) {
 			createCalled.Store(true)
@@ -37,7 +37,7 @@ func TestBaseHandlersSessionEndpoints(t *testing.T) {
 			created.AgentName = opts.AgentName
 			return created, nil
 		},
-		StatusFn: func(_ context.Context, id string) (*session.SessionInfo, error) {
+		StatusFn: func(_ context.Context, id string) (*session.Info, error) {
 			if id == "missing" {
 				return nil, session.ErrSessionNotFound
 			}
@@ -107,7 +107,13 @@ func TestBaseHandlersSessionEndpoints(t *testing.T) {
 	})
 
 	t.Run("ShouldCreateSession", func(t *testing.T) {
-		createResp := performRequest(t, fixture.Engine, http.MethodPost, "/sessions", []byte(`{"agent_name":"coder","workspace":"alpha"}`))
+		createResp := performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPost,
+			"/sessions",
+			[]byte(`{"agent_name":"coder","workspace":"alpha"}`),
+		)
 		if createResp.Code != http.StatusCreated || !createCalled.Load() {
 			t.Fatalf("create status = %d, called=%v", createResp.Code, createCalled.Load())
 		}
@@ -145,7 +151,13 @@ func TestBaseHandlersSessionEndpoints(t *testing.T) {
 	})
 
 	t.Run("ShouldReturnSessionEvents", func(t *testing.T) {
-		eventsResp := performRequest(t, fixture.Engine, http.MethodGet, "/sessions/sess-a/events?limit=10&after_sequence=5", nil)
+		eventsResp := performRequest(
+			t,
+			fixture.Engine,
+			http.MethodGet,
+			"/sessions/sess-a/events?limit=10&after_sequence=5",
+			nil,
+		)
 		if eventsResp.Code != http.StatusOK {
 			t.Fatalf("events status = %d, want %d", eventsResp.Code, http.StatusOK)
 		}
@@ -173,7 +185,7 @@ func TestBaseHandlersStreamingAndObserveEndpoints(t *testing.T) {
 	var sessionCalls atomic.Int32
 	var observeCalls atomic.Int32
 	manager := testutil.StubSessionManager{
-		StatusFn: func(_ context.Context, id string) (*session.SessionInfo, error) {
+		StatusFn: func(_ context.Context, id string) (*session.Info, error) {
 			return testutil.NewSessionInfo(id), nil
 		},
 		EventsFn: func(_ context.Context, id string, _ store.EventQuery) ([]store.SessionEvent, error) {
@@ -205,8 +217,8 @@ func TestBaseHandlersStreamingAndObserveEndpoints(t *testing.T) {
 				return nil, nil
 			}
 		},
-		ListAllFn: func(context.Context) ([]*session.SessionInfo, error) {
-			return []*session.SessionInfo{testutil.NewSessionInfo("sess-a")}, nil
+		ListAllFn: func(context.Context) ([]*session.Info, error) {
+			return []*session.Info{testutil.NewSessionInfo("sess-a")}, nil
 		},
 	}
 	observer := testutil.StubObserver{
@@ -215,9 +227,19 @@ func TestBaseHandlersStreamingAndObserveEndpoints(t *testing.T) {
 			ts := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 			switch call {
 			case 1:
-				return []store.EventSummary{{ID: "sum-1", SessionID: "sess-a", Type: "agent_message", AgentName: "coder", Timestamp: ts}}, nil
+				return []store.EventSummary{
+					{ID: "sum-1", SessionID: "sess-a", Type: "agent_message", AgentName: "coder", Timestamp: ts},
+				}, nil
 			case 2:
-				return []store.EventSummary{{ID: "sum-2", SessionID: "sess-a", Type: "done", AgentName: "coder", Timestamp: ts.Add(time.Second)}}, nil
+				return []store.EventSummary{
+					{
+						ID:        "sum-2",
+						SessionID: "sess-a",
+						Type:      "done",
+						AgentName: "coder",
+						Timestamp: ts.Add(time.Second),
+					},
+				}, nil
 			default:
 				return nil, nil
 			}
@@ -257,7 +279,14 @@ func TestBaseHandlersStreamingAndObserveEndpoints(t *testing.T) {
 func TestBaseHandlersAgentEndpoints(t *testing.T) {
 	t.Parallel()
 
-	fixture := newHandlerFixture(t, testutil.StubSessionManager{}, testutil.StubObserver{}, testutil.StubWorkspaceService{}, nil, nil)
+	fixture := newHandlerFixture(
+		t,
+		testutil.StubSessionManager{},
+		testutil.StubObserver{},
+		testutil.StubWorkspaceService{},
+		nil,
+		nil,
+	)
 	testutil.WriteAgentDef(t, fixture.HomePaths, "coder")
 
 	getResp := performRequest(t, fixture.Engine, http.MethodGet, "/agents/coder", nil)
@@ -283,8 +312,8 @@ func TestDaemonStatusIncludesNetworkDiagnosticsWithoutCredentials(t *testing.T) 
 	t.Parallel()
 
 	manager := testutil.StubSessionManager{
-		ListAllFn: func(context.Context) ([]*session.SessionInfo, error) {
-			return []*session.SessionInfo{{ID: "sess-1"}}, nil
+		ListAllFn: func(context.Context) ([]*session.Info, error) {
+			return []*session.Info{{ID: "sess-1"}}, nil
 		},
 	}
 	observer := testutil.StubObserver{
@@ -295,8 +324,8 @@ func TestDaemonStatusIncludesNetworkDiagnosticsWithoutCredentials(t *testing.T) 
 	fixture := newHandlerFixture(t, manager, observer, testutil.StubWorkspaceService{}, nil, nil)
 	fixture.Handlers.Config.Network.Enabled = true
 	fixture.Handlers.Network = testutil.StubNetworkService{
-		StatusFn: func(context.Context) (*network.NetworkStatus, error) {
-			return &network.NetworkStatus{
+		StatusFn: func(context.Context) (*network.Status, error) {
+			return &network.Status{
 				Enabled:      true,
 				Status:       network.StatusRunning,
 				ListenerHost: "127.0.0.1",

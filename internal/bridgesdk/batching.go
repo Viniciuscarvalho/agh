@@ -53,6 +53,7 @@ type InboundBatcher struct {
 	closed  bool
 	pending map[string]*pendingInboundBatch
 	wg      sync.WaitGroup
+	err     error
 }
 
 // NewInboundBatcher constructs the debounce-based inbound batcher.
@@ -117,6 +118,9 @@ func (b *InboundBatcher) Enqueue(envelope bridgepkg.InboundMessageEnvelope) erro
 	if b.closed {
 		return errors.New("bridgesdk: inbound batcher is closed")
 	}
+	if b.err != nil {
+		return b.err
+	}
 
 	now := b.now()
 	itemCopy := cloneInboundEnvelope(envelope)
@@ -161,6 +165,11 @@ func (b *InboundBatcher) FlushAll(ctx context.Context) error {
 	}
 
 	b.mu.Lock()
+	if b.err != nil {
+		err := b.err
+		b.mu.Unlock()
+		return err
+	}
 	pending := make([]InboundBatch, 0, len(b.pending))
 	for key, entry := range b.pending {
 		if entry.timer != nil {
@@ -232,7 +241,13 @@ func (b *InboundBatcher) flushKey(key string) {
 
 	b.wg.Add(1)
 	defer b.wg.Done()
-	_ = b.dispatch(b.ctx, cloneInboundBatch(entry.batch))
+	if err := b.dispatch(b.ctx, cloneInboundBatch(entry.batch)); err != nil && !errors.Is(err, context.Canceled) {
+		b.mu.Lock()
+		if b.err == nil {
+			b.err = err
+		}
+		b.mu.Unlock()
+	}
 }
 
 func cloneInboundBatch(src InboundBatch) InboundBatch {

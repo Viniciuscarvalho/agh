@@ -38,7 +38,7 @@ func TestCommandPathsAndHelpers(t *testing.T) {
 
 	getCalls := 0
 	networkChannelsCalled := false
-	client := stubClient{
+	client := &stubClient{
 		getAgentFn: func(context.Context, string) (AgentRecord, error) {
 			return AgentRecord{Name: "coder", Provider: "fake", Prompt: "hi"}, nil
 		},
@@ -56,7 +56,8 @@ func TestCommandPathsAndHelpers(t *testing.T) {
 			return []NetworkChannelRecord{{Channel: "builders", PeerCount: 1}}, nil
 		},
 		networkSendFn: func(_ context.Context, request NetworkSendRequest) (NetworkSendRecord, error) {
-			if request.SessionID != "sess-1" || request.Channel != "builders" || request.Kind != "say" || string(request.Body) != `{"text":"hello"}` {
+			if request.SessionID != "sess-1" || request.Channel != "builders" || request.Kind != "say" ||
+				string(request.Body) != `{"text":"hello"}` {
 				t.Fatalf("NetworkSend() request = %#v, want session/channel/kind/body", request)
 			}
 			return NetworkSendRecord{ID: "msg-1", SessionID: "sess-1", Channel: "builders", Kind: "say"}, nil
@@ -65,13 +66,31 @@ func TestCommandPathsAndHelpers(t *testing.T) {
 			if sessionID != "sess-1" {
 				t.Fatalf("NetworkInbox() sessionID = %q, want sess-1", sessionID)
 			}
-			return []NetworkEnvelopeRecord{{ID: "msg-1", Kind: "say", Channel: "builders", From: "reviewer.sess-1"}}, nil
+			return []NetworkEnvelopeRecord{
+				{ID: "msg-1", Kind: "say", Channel: "builders", From: "reviewer.sess-1"},
+			}, nil
 		},
 		observeEventsFn: func(context.Context, ObserveEventQuery) ([]ObserveEventRecord, error) {
-			return []ObserveEventRecord{{ID: "sum-1", SessionID: "sess-1", Type: "done", AgentName: "coder", Timestamp: fixedTestNow}}, nil
+			return []ObserveEventRecord{
+				{ID: "sum-1", SessionID: "sess-1", Type: "done", AgentName: "coder", Timestamp: fixedTestNow},
+			}, nil
 		},
 		streamObserveEventsFn: func(_ context.Context, _ ObserveEventQuery, _ string, handler SSEHandler) error {
-			return handler(SSEEvent{Event: "done", Data: mustJSON(t, ObserveEventRecord{ID: "sum-1", SessionID: "sess-1", Type: "done", AgentName: "coder", Timestamp: fixedTestNow})})
+			return handler(
+				SSEEvent{
+					Event: "done",
+					Data: mustJSON(
+						t,
+						ObserveEventRecord{
+							ID:        "sum-1",
+							SessionID: "sess-1",
+							Type:      "done",
+							AgentName: "coder",
+							Timestamp: fixedTestNow,
+						},
+					),
+				},
+			)
 		},
 		observeHealthFn: func(context.Context) (HealthStatus, error) {
 			return HealthStatus{Status: "ok", UptimeSeconds: 10}, nil
@@ -98,13 +117,34 @@ func TestCommandPathsAndHelpers(t *testing.T) {
 			return DaemonStatus{Status: "running", PID: 10, StartedAt: fixedTestNow}, nil
 		},
 		getBridgeFn: func(context.Context, string) (BridgeRecord, error) {
-			return BridgeRecord{ID: "brg-1", Scope: "global", Platform: "telegram", ExtensionName: "ext-telegram", DisplayName: "Support", Enabled: true, Status: "ready"}, nil
+			return BridgeRecord{
+				ID:            "brg-1",
+				Scope:         "global",
+				Platform:      "telegram",
+				ExtensionName: "ext-telegram",
+				DisplayName:   "Support",
+				Enabled:       true,
+				Status:        "ready",
+			}, nil
 		},
 		bridgeRoutesFn: func(context.Context, string) ([]BridgeRouteRecord, error) {
-			return []BridgeRouteRecord{{RoutingKeyHash: "hash-1", Scope: "global", BridgeInstanceID: "brg-1", PeerID: "peer-1", SessionID: "sess-1", AgentName: "coder", LastActivityAt: fixedTestNow}}, nil
+			return []BridgeRouteRecord{
+				{
+					RoutingKeyHash:   "hash-1",
+					Scope:            "global",
+					BridgeInstanceID: "brg-1",
+					PeerID:           "peer-1",
+					SessionID:        "sess-1",
+					AgentName:        "coder",
+					LastActivityAt:   fixedTestNow,
+				},
+			}, nil
 		},
 		testBridgeDeliveryFn: func(context.Context, string, BridgeTestDeliveryRequest) (BridgeTestDeliveryRecord, error) {
-			return BridgeTestDeliveryRecord{Status: "resolved", DeliveryTarget: DeliveryTargetRecord{BridgeInstanceID: "brg-1", PeerID: "peer-1", Mode: "reply"}}, nil
+			return BridgeTestDeliveryRecord{
+				Status:         "resolved",
+				DeliveryTarget: DeliveryTargetRecord{BridgeInstanceID: "brg-1", PeerID: "peer-1", Mode: "reply"},
+			}, nil
 		},
 	}
 	deps := newTestDeps(t, client)
@@ -116,7 +156,20 @@ func TestCommandPathsAndHelpers(t *testing.T) {
 		{"network", "status", "-o", "json"},
 		{"network", "peers", "builders", "-o", "json"},
 		{"network", "channels", "-o", "json"},
-		{"network", "send", "--session", "sess-1", "--channel", "builders", "--kind", "say", "--body", `{"text":"hello"}`, "-o", "json"},
+		{
+			"network",
+			"send",
+			"--session",
+			"sess-1",
+			"--channel",
+			"builders",
+			"--kind",
+			"say",
+			"--body",
+			`{"text":"hello"}`,
+			"-o",
+			"json",
+		},
 		{"network", "inbox", "--session", "sess-1", "-o", "json"},
 		{"observe", "events", "-o", "json"},
 		{"observe", "events", "--follow", "-o", "json"},
@@ -180,7 +233,7 @@ func TestExecuteContextVersion(t *testing.T) {
 func TestDaemonStatusFallbackStartingAndStopped(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		daemonStatusFn: func(context.Context) (DaemonStatus, error) {
 			return DaemonStatus{}, os.ErrNotExist
 		},
@@ -218,7 +271,14 @@ func TestDaemonStatusFallbackStartingAndStopped(t *testing.T) {
 func TestWriteCommandOutputErrors(t *testing.T) {
 	t.Parallel()
 
-	if _, _, err := executeRootCommand(t, newTestDeps(t, stubClient{}), "version", "-o", "bogus"); err == nil || !strings.Contains(err.Error(), "invalid output format") {
+	if _, _, err := executeRootCommand(
+		t,
+		newTestDeps(t, &stubClient{}),
+		"version",
+		"-o",
+		"bogus",
+	); err == nil ||
+		!strings.Contains(err.Error(), "invalid output format") {
 		t.Fatalf("invalid output error = %v, want invalid output format", err)
 	}
 }
@@ -226,12 +286,20 @@ func TestWriteCommandOutputErrors(t *testing.T) {
 func TestDaemonStartRejectsNilDetachedProcess(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{})
-	deps.spawnDetached = func(aghconfig.HomePaths) (daemonProcess, error) {
+	deps := newTestDeps(t, &stubClient{})
+	deps.spawnDetached = func(context.Context, aghconfig.HomePaths) (daemonProcess, error) {
 		return nil, nil
 	}
 
-	if _, _, err := executeRootCommand(t, deps, "daemon", "start", "-o", "json"); err == nil || !strings.Contains(err.Error(), "detached daemon process is required") {
+	if _, _, err := executeRootCommand(
+		t,
+		deps,
+		"daemon",
+		"start",
+		"-o",
+		"json",
+	); err == nil ||
+		!strings.Contains(err.Error(), "detached daemon process is required") {
 		t.Fatalf("daemon start nil detached process error = %v, want detached daemon process is required", err)
 	}
 }

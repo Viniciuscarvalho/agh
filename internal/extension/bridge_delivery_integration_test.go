@@ -1,6 +1,6 @@
 //go:build integration
 
-package extension
+package extensionpkg
 
 import (
 	"context"
@@ -261,7 +261,7 @@ func newDeliveryIntegrationEnv(
 		ResolvedAt: baseNow,
 	}
 
-	workspaces := newHostAPIFakeWorkspaceResolver(resolvedWorkspace)
+	workspaces := newHostAPIFakeWorkspaceResolver(&resolvedWorkspace)
 	globalDB, err := globaldb.OpenGlobalDB(testutil.Context(t), homePaths.DatabaseFile)
 	if err != nil {
 		t.Fatalf("globaldb.OpenGlobalDB() error = %v", err)

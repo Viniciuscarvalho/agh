@@ -7,18 +7,18 @@ import (
 	"time"
 )
 
-// MemoryType identifies the closed persistent-memory taxonomy.
-type MemoryType string
+// Type identifies the closed persistent-memory taxonomy.
+type Type string
 
 const (
 	// MemoryTypeUser stores user-level preferences and recurring facts.
-	MemoryTypeUser MemoryType = "user"
+	MemoryTypeUser Type = "user"
 	// MemoryTypeFeedback stores recurring quality and review feedback.
-	MemoryTypeFeedback MemoryType = "feedback"
+	MemoryTypeFeedback Type = "feedback"
 	// MemoryTypeProject stores workspace-specific project knowledge.
-	MemoryTypeProject MemoryType = "project"
+	MemoryTypeProject Type = "project"
 	// MemoryTypeReference stores workspace-specific external references.
-	MemoryTypeReference MemoryType = "reference"
+	MemoryTypeReference Type = "reference"
 )
 
 // Scope identifies which memory directory a file belongs to.
@@ -31,24 +31,24 @@ const (
 	ScopeWorkspace Scope = "workspace"
 )
 
-// MemoryHeader contains validated metadata parsed from a memory file frontmatter.
-type MemoryHeader struct {
-	Filename    string     `json:"filename" yaml:"-"`
-	FilePath    string     `json:"-" yaml:"-"`
-	ModTime     time.Time  `json:"mod_time" yaml:"-"`
-	Name        string     `json:"name" yaml:"name"`
-	Description string     `json:"description,omitempty" yaml:"description,omitempty"`
-	Type        MemoryType `json:"type" yaml:"type"`
-	AgentName   string     `json:"agent_name,omitempty" yaml:"agent_name,omitempty"`
+// Header contains validated metadata parsed from a memory file frontmatter.
+type Header struct {
+	Filename    string    `json:"filename"              yaml:"-"`
+	FilePath    string    `json:"-"                     yaml:"-"`
+	ModTime     time.Time `json:"mod_time"              yaml:"-"`
+	Name        string    `json:"name"                  yaml:"name"`
+	Description string    `json:"description,omitempty" yaml:"description,omitempty"`
+	Type        Type      `json:"type"                  yaml:"type"`
+	AgentName   string    `json:"agent_name,omitempty"  yaml:"agent_name,omitempty"`
 }
 
 // Normalize returns the normalized representation of the memory type.
-func (t MemoryType) Normalize() MemoryType {
-	return MemoryType(strings.ToLower(strings.TrimSpace(string(t))))
+func (t Type) Normalize() Type {
+	return Type(strings.ToLower(strings.TrimSpace(string(t))))
 }
 
 // Validate reports whether the memory type belongs to the closed taxonomy.
-func (t MemoryType) Validate() error {
+func (t Type) Validate() error {
 	switch t.Normalize() {
 	case MemoryTypeUser, MemoryTypeFeedback, MemoryTypeProject, MemoryTypeReference:
 		return nil
@@ -60,7 +60,7 @@ func (t MemoryType) Validate() error {
 }
 
 // DefaultScopeForType resolves the default persistence scope for a memory type.
-func DefaultScopeForType(t MemoryType) (Scope, error) {
+func DefaultScopeForType(t Type) (Scope, error) {
 	switch t.Normalize() {
 	case MemoryTypeUser, MemoryTypeFeedback:
 		return ScopeGlobal, nil
@@ -91,7 +91,7 @@ func (s Scope) Validate() error {
 }
 
 // Normalize trims and normalizes the parsed memory header metadata in place.
-func (h *MemoryHeader) Normalize() {
+func (h *Header) Normalize() {
 	h.Name = strings.TrimSpace(h.Name)
 	h.Description = strings.TrimSpace(h.Description)
 	h.Type = h.Type.Normalize()
@@ -99,7 +99,7 @@ func (h *MemoryHeader) Normalize() {
 }
 
 // Validate reports whether the parsed memory header is complete and valid.
-func (h *MemoryHeader) Validate() error {
+func (h *Header) Validate() error {
 	h.Normalize()
 
 	if h.Name == "" {

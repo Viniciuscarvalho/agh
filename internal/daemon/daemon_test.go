@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -100,7 +101,7 @@ func TestAcquireLockReclaimsStalePID(t *testing.T) {
 
 	lock, err := acquireLock(lockPath, 1234, lockDeps{
 		newFlock:     func(path string) *flock.Flock { return flock.New(path) },
-		processAlive: func(pid int) bool { return false },
+		processAlive: func(_ int) bool { return false },
 	})
 	if err != nil {
 		t.Fatalf("acquireLock() error = %v", err)
@@ -156,7 +157,7 @@ func TestBootWithNetworkDisabledKeepsDaemonOperational(t *testing.T) {
 	cfg := testConfig(t, homePaths)
 	cfg.Network.Enabled = false
 
-	d := newTestDaemon(t, homePaths, cfg)
+	d := newTestDaemon(t, homePaths, &cfg)
 	d.openRegistry = func(context.Context, string) (Registry, error) {
 		return &recordingRegistry{path: homePaths.DatabaseFile}, nil
 	}
@@ -202,7 +203,7 @@ func TestBootEnabledNetworkLateBindsSessionCallbacksAndPersistsSafeDiagnostics(t
 	cfg.Network.Enabled = true
 
 	bindableSessions := newFakeNetworkBindableSessionManager()
-	d := newTestDaemon(t, homePaths, cfg)
+	d := newTestDaemon(t, homePaths, &cfg)
 	d.openRegistry = func(context.Context, string) (Registry, error) {
 		return &recordingRegistry{path: homePaths.DatabaseFile}, nil
 	}
@@ -269,7 +270,7 @@ func TestBootEnabledNetworkRejectsSessionManagersMissingBindingSurface(t *testin
 	cfg := testConfig(t, homePaths)
 	cfg.Network.Enabled = true
 
-	d := newTestDaemon(t, homePaths, cfg)
+	d := newTestDaemon(t, homePaths, &cfg)
 	d.openRegistry = func(context.Context, string) (Registry, error) {
 		return &recordingRegistry{path: homePaths.DatabaseFile}, nil
 	}
@@ -294,9 +295,9 @@ func TestBootRemovesStaleSocketAndCleansOrphans(t *testing.T) {
 		t.Fatalf("os.WriteFile(socket) error = %v", err)
 	}
 
-	d := newTestDaemon(t, homePaths, cfg)
+	d := newTestDaemon(t, homePaths, &cfg)
 	d.pid = func() int { return 777 }
-	d.acquireLock = func(path string, pid int) (*Lock, error) {
+	d.acquireLock = func(path string, _ int) (*Lock, error) {
 		return &Lock{path: path, stalePID: 444}, nil
 	}
 
@@ -359,7 +360,7 @@ func TestBootRemovesStaleSocketAndCleansOrphans(t *testing.T) {
 func TestCleanupOrphansAllowsGracefulExitBeforeSIGKILL(t *testing.T) {
 	homePaths := testHomePaths(t)
 	cfg := testConfig(t, homePaths)
-	d := newTestDaemon(t, homePaths, cfg)
+	d := newTestDaemon(t, homePaths, &cfg)
 
 	var (
 		signals   []string
@@ -374,7 +375,7 @@ func TestCleanupOrphansAllowsGracefulExitBeforeSIGKILL(t *testing.T) {
 		signals = append(signals, sig.String()+":"+strconvString(pid))
 		return nil
 	}
-	d.processAlive = func(pid int) bool {
+	d.processAlive = func(_ int) bool {
 		aliveCall++
 		return aliveCall == 1
 	}
@@ -390,7 +391,7 @@ func TestCleanupOrphansAllowsGracefulExitBeforeSIGKILL(t *testing.T) {
 func TestBootRejectsConcurrentCallWhileFirstBootIsInProgress(t *testing.T) {
 	homePaths := testHomePaths(t)
 	cfg := testConfig(t, homePaths)
-	d := newTestDaemon(t, homePaths, cfg)
+	d := newTestDaemon(t, homePaths, &cfg)
 
 	loadStarted := make(chan struct{})
 	releaseLoad := make(chan struct{})
@@ -437,7 +438,7 @@ func TestBootRejectsConcurrentCallWhileFirstBootIsInProgress(t *testing.T) {
 func TestShutdownTearsDownInRequiredOrder(t *testing.T) {
 	homePaths := testHomePaths(t)
 	cfg := testConfig(t, homePaths)
-	d := newTestDaemon(t, homePaths, cfg)
+	d := newTestDaemon(t, homePaths, &cfg)
 
 	var events []string
 	d.extensions = &fakeExtensionRuntime{
@@ -451,7 +452,7 @@ func TestShutdownTearsDownInRequiredOrder(t *testing.T) {
 		},
 	}
 	d.sessions = &fakeSessionManager{
-		infos: []*session.SessionInfo{{ID: "sess-a"}, {ID: "sess-b"}},
+		infos: []*session.Info{{ID: "sess-a"}, {ID: "sess-b"}},
 		onStop: func(id string) {
 			events = append(events, "session:"+id)
 		},
@@ -494,7 +495,19 @@ func TestShutdownTearsDownInRequiredOrder(t *testing.T) {
 		t.Fatalf("Shutdown() left task runtime = %#v, want nil", d.tasks)
 	}
 
-	want := []string{"extensions", "automation", "session:sess-a", "session:sess-b", "http", "uds", "network", "hooks", "db", "lock", "logger"}
+	want := []string{
+		"extensions",
+		"automation",
+		"session:sess-a",
+		"session:sess-b",
+		"http",
+		"uds",
+		"network",
+		"hooks",
+		"db",
+		"lock",
+		"logger",
+	}
 	if !testutil.EqualStringSlices(events, want) {
 		t.Fatalf("Shutdown() order = %#v, want %#v", events, want)
 	}
@@ -505,7 +518,7 @@ func TestBootExtensionsBuildsManagerWhenNoExtensionsInstalled(t *testing.T) {
 
 	db := openDaemonTestGlobalDB(t)
 	homePaths := testHomePaths(t)
-	d := newTestDaemon(t, homePaths, testConfig(t, homePaths))
+	d := newTestDaemon(t, homePaths, testConfigPtr(t, homePaths))
 
 	runtime := &fakeExtensionRuntime{}
 	var managerBuilt bool
@@ -569,7 +582,7 @@ func TestBootExtensionsBuildsManagerDepsAndRebuildsHooks(t *testing.T) {
 	runtime := &fakeExtensionRuntime{}
 
 	var captured extensionManagerDeps
-	d := newTestDaemon(t, homePaths, cfg)
+	d := newTestDaemon(t, homePaths, &cfg)
 	d.newExtensionManager = func(deps extensionManagerDeps) extensionRuntime {
 		captured = deps
 		return runtime
@@ -638,7 +651,7 @@ func TestBootExtensionsLogsStartFailureAndKeepsPartialRuntime(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
 	runtime := &fakeExtensionRuntime{startErr: errors.New("boom")}
 	homePaths := testHomePaths(t)
-	d := newTestDaemon(t, homePaths, testConfig(t, homePaths))
+	d := newTestDaemon(t, homePaths, testConfigPtr(t, homePaths))
 	d.newExtensionManager = func(extensionManagerDeps) extensionRuntime {
 		return runtime
 	}
@@ -722,7 +735,7 @@ func TestBootExtensionsKeepsHealthyRegisteredExtensionsAfterPartialStartFailure(
 			},
 		}
 		homePaths := testHomePaths(t)
-		d := newTestDaemon(t, homePaths, testConfig(t, homePaths))
+		d := newTestDaemon(t, homePaths, testConfigPtr(t, homePaths))
 		d.newExtensionManager = func(extensionManagerDeps) extensionRuntime {
 			return runtime
 		}
@@ -805,7 +818,7 @@ func TestBootExtensionsPropagatesContextCancellation(t *testing.T) {
 
 			runtime := &fakeExtensionRuntime{startErr: tc.startErr}
 			homePaths := testHomePaths(t)
-			d := newTestDaemon(t, homePaths, testConfig(t, homePaths))
+			d := newTestDaemon(t, homePaths, testConfigPtr(t, homePaths))
 			d.newExtensionManager = func(extensionManagerDeps) extensionRuntime {
 				return runtime
 			}
@@ -879,7 +892,7 @@ func TestBootAutomationBuildsManagerDepsAndAttachesHookBoundary(t *testing.T) {
 	}
 
 	var captured automationManagerDeps
-	d := newTestDaemon(t, homePaths, cfg)
+	d := newTestDaemon(t, homePaths, &cfg)
 	d.newAutomationManager = func(deps automationManagerDeps) (automationRuntime, error) {
 		captured = deps
 		return manager, nil
@@ -945,7 +958,11 @@ func TestBootAutomationBuildsManagerDepsAndAttachesHookBoundary(t *testing.T) {
 		t.Fatalf("base lifecycle events = %#v, want %#v", got, want)
 	}
 
-	if err := state.hookTelemetrySinks.WriteHookRecord(testutil.Context(t), "sess-automation", hookspkg.HookRunRecord{HookName: "post-stop"}); err != nil {
+	if err := state.hookTelemetrySinks.WriteHookRecord(
+		testutil.Context(t),
+		"sess-automation",
+		hookspkg.HookRunRecord{HookName: "post-stop"},
+	); err != nil {
 		t.Fatalf("WriteHookRecord() error = %v", err)
 	}
 	if got, want := baseTelemetry.count(), 1; got != want {
@@ -966,13 +983,22 @@ func TestHooksNotifierNoopDispatchesWithoutRuntime(t *testing.T) {
 	notifier.OnSessionCreated(testutil.Context(t), &session.Session{ID: "sess-created"})
 	notifier.OnSessionStopped(testutil.Context(t), &session.Session{ID: "sess-stopped"})
 
-	if _, err := notifier.DispatchSessionPreCreate(testutil.Context(t), hookspkg.SessionPreCreatePayload{}); err != nil {
+	if _, err := notifier.DispatchSessionPreCreate(
+		testutil.Context(t),
+		hookspkg.SessionPreCreatePayload{},
+	); err != nil {
 		t.Fatalf("DispatchSessionPreCreate() error = %v", err)
 	}
-	if _, err := notifier.DispatchSessionPreResume(testutil.Context(t), hookspkg.SessionPreResumePayload{}); err != nil {
+	if _, err := notifier.DispatchSessionPreResume(
+		testutil.Context(t),
+		hookspkg.SessionPreResumePayload{},
+	); err != nil {
 		t.Fatalf("DispatchSessionPreResume() error = %v", err)
 	}
-	if _, err := notifier.DispatchSessionPostResume(testutil.Context(t), hookspkg.SessionPostResumePayload{}); err != nil {
+	if _, err := notifier.DispatchSessionPostResume(
+		testutil.Context(t),
+		hookspkg.SessionPostResumePayload{},
+	); err != nil {
 		t.Fatalf("DispatchSessionPostResume() error = %v", err)
 	}
 	if _, err := notifier.DispatchSessionPreStop(testutil.Context(t), hookspkg.SessionPreStopPayload{}); err != nil {
@@ -1041,11 +1067,15 @@ func TestDaemonExtensionServiceInstallStatusAndDisable(t *testing.T) {
 	if err := os.MkdirAll(fixtureDir, 0o755); err != nil {
 		t.Fatalf("os.MkdirAll(%q) error = %v", fixtureDir, err)
 	}
-	if err := os.WriteFile(filepath.Join(fixtureDir, "extension.toml"), []byte(daemonTestExtensionManifest("service-ext", daemonTestExtensionOptions{
-		runtimeCommand: daemonExtensionHelperCommand(t),
-		runtimeArgs:    daemonExtensionHelperArgs(),
-		runtimeEnv:     daemonExtensionHelperEnv(""),
-	})), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(fixtureDir, "extension.toml"),
+		[]byte(daemonTestExtensionManifest("service-ext", daemonTestExtensionOptions{
+			runtimeCommand: daemonExtensionHelperCommand(t),
+			runtimeArgs:    daemonExtensionHelperArgs(),
+			runtimeEnv:     daemonExtensionHelperEnv(""),
+		})),
+		0o644,
+	); err != nil {
 		t.Fatalf("os.WriteFile(extension.toml) error = %v", err)
 	}
 	checksum, err := extensionpkg.ComputeDirectoryChecksum(fixtureDir)
@@ -1180,13 +1210,13 @@ func TestBootStateExtensionRuntimeAccessIsSynchronized(t *testing.T) {
 
 	start := make(chan struct{})
 	var wg sync.WaitGroup
-	for i := 0; i < 16; i++ {
+	for i := range 16 {
 		wg.Add(2)
 
 		go func(iteration int) {
 			defer wg.Done()
 			<-start
-			for j := 0; j < 128; j++ {
+			for j := range 128 {
 				if (iteration+j)%2 == 0 {
 					state.setExtensionRuntime(runtime)
 				} else {
@@ -1198,7 +1228,7 @@ func TestBootStateExtensionRuntimeAccessIsSynchronized(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			for j := 0; j < 128; j++ {
+			for range 128 {
 				_, _ = provider(context.Background())
 			}
 		}()
@@ -1213,7 +1243,7 @@ func TestShutdownDrainsHooksBeforeClosingDatabase(t *testing.T) {
 
 	homePaths := testHomePaths(t)
 	cfg := testConfig(t, homePaths)
-	d := newTestDaemon(t, homePaths, cfg)
+	d := newTestDaemon(t, homePaths, &cfg)
 
 	asyncStarted := make(chan struct{}, 1)
 	asyncRelease := make(chan struct{})
@@ -1230,11 +1260,13 @@ func TestShutdownDrainsHooksBeforeClosingDatabase(t *testing.T) {
 			},
 		}),
 		hookspkg.WithExecutorResolver(testHookExecutorResolver(map[string]hookspkg.Executor{
-			"async-stop": hookspkg.NewTypedNativeExecutor(func(_ context.Context, _ hookspkg.RegisteredHook, _ hookspkg.SessionLifecyclePayload) (hookspkg.SessionPostStopPatch, error) {
-				asyncStarted <- struct{}{}
-				<-asyncRelease
-				return hookspkg.SessionPostStopPatch{}, nil
-			}),
+			"async-stop": hookspkg.NewTypedNativeExecutor(
+				func(_ context.Context, _ hookspkg.RegisteredHook, _ hookspkg.SessionLifecyclePayload) (hookspkg.SessionPostStopPatch, error) {
+					asyncStarted <- struct{}{}
+					<-asyncRelease
+					return hookspkg.SessionPostStopPatch{}, nil
+				},
+			),
 		})),
 	)
 	t.Cleanup(hooks.Close)
@@ -1242,22 +1274,28 @@ func TestShutdownDrainsHooksBeforeClosingDatabase(t *testing.T) {
 		t.Fatalf("Rebuild() error = %v", err)
 	}
 
-	notifier := newHooksNotifier(discardLogger(), func() time.Time { return time.Date(2026, 4, 9, 12, 0, 0, 0, time.UTC) })
+	notifier := newHooksNotifier(
+		discardLogger(),
+		func() time.Time { return time.Date(2026, 4, 9, 12, 0, 0, 0, time.UTC) },
+	)
 	notifier.setRuntime(hooks, nil)
 
 	d.sessions = &fakeSessionManager{
-		infos: []*session.SessionInfo{{ID: "sess-a"}},
+		infos: []*session.Info{{ID: "sess-a"}},
 		onStop: func(string) {
-			if _, err := notifier.DispatchSessionPostStop(context.Background(), hookspkg.SessionPostStopPayload(hookSessionLifecyclePayload(&session.Session{
-				ID:          "sess-a",
-				AgentName:   "codex",
-				WorkspaceID: "ws-1",
-				Workspace:   "/tmp/ws-1",
-				Type:        session.SessionTypeUser,
-				State:       session.StateStopped,
-				CreatedAt:   time.Date(2026, 4, 9, 11, 0, 0, 0, time.UTC),
-				UpdatedAt:   time.Date(2026, 4, 9, 12, 0, 0, 0, time.UTC),
-			}, hookspkg.HookSessionPostStop, time.Date(2026, 4, 9, 12, 0, 0, 0, time.UTC)))); err != nil {
+			if _, err := notifier.DispatchSessionPostStop(
+				context.Background(),
+				hookSessionLifecyclePayload(&session.Session{
+					ID:          "sess-a",
+					AgentName:   "codex",
+					WorkspaceID: "ws-1",
+					Workspace:   "/tmp/ws-1",
+					Type:        session.SessionTypeUser,
+					State:       session.StateStopped,
+					CreatedAt:   time.Date(2026, 4, 9, 11, 0, 0, 0, time.UTC),
+					UpdatedAt:   time.Date(2026, 4, 9, 12, 0, 0, 0, time.UTC),
+				}, hookspkg.HookSessionPostStop, time.Date(2026, 4, 9, 12, 0, 0, 0, time.UTC)),
+			); err != nil {
 				t.Fatalf("DispatchSessionPostStop() error = %v", err)
 			}
 		},
@@ -1303,14 +1341,14 @@ func TestShutdownDrainsHooksBeforeClosingDatabase(t *testing.T) {
 func TestBootFailureCleansUpStartedResourcesInReverseOrder(t *testing.T) {
 	homePaths := testHomePaths(t)
 	cfg := testConfig(t, homePaths)
-	d := newTestDaemon(t, homePaths, cfg)
+	d := newTestDaemon(t, homePaths, &cfg)
 
 	var events []string
 	d.closeLogger = func() error {
 		events = append(events, "logger")
 		return nil
 	}
-	d.acquireLock = func(path string, pid int) (*Lock, error) {
+	d.acquireLock = func(path string, _ int) (*Lock, error) {
 		return &Lock{
 			path: path,
 			releaseFn: func() error {
@@ -1363,7 +1401,7 @@ func TestBootFailureWhenWritingDaemonInfoCleansUpAllServers(t *testing.T) {
 		t.Fatalf("os.MkdirAll(infoDir) error = %v", err)
 	}
 
-	d := newTestDaemon(t, homePaths, cfg)
+	d := newTestDaemon(t, homePaths, &cfg)
 	d.homePaths.DaemonInfo = infoDir
 
 	var events []string
@@ -1371,7 +1409,7 @@ func TestBootFailureWhenWritingDaemonInfoCleansUpAllServers(t *testing.T) {
 		events = append(events, "logger")
 		return nil
 	}
-	d.acquireLock = func(path string, pid int) (*Lock, error) {
+	d.acquireLock = func(path string, _ int) (*Lock, error) {
 		return &Lock{
 			path: path,
 			releaseFn: func() error {
@@ -1413,7 +1451,11 @@ func TestBootFailureWhenWritingDaemonInfoCleansUpAllServers(t *testing.T) {
 
 func TestVerifyImportBoundariesReportsViolations(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module github.com/pedronauck/agh\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module github.com/pedronauck/agh\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("os.WriteFile(go.mod) error = %v", err)
 	}
 
@@ -1440,7 +1482,11 @@ func TestVerifyImportBoundariesReportsViolations(t *testing.T) {
 
 func TestVerifyImportBoundariesAllowsDaemonSubpackages(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module github.com/pedronauck/agh\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module github.com/pedronauck/agh\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("os.WriteFile(go.mod) error = %v", err)
 	}
 
@@ -1467,7 +1513,11 @@ func TestVerifyImportBoundariesAllowsDaemonSubpackages(t *testing.T) {
 
 func TestVerifyImportBoundariesDoesNotExemptHTTPPackages(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module github.com/pedronauck/agh\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module github.com/pedronauck/agh\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("os.WriteFile(go.mod) error = %v", err)
 	}
 
@@ -1502,7 +1552,7 @@ func TestStopSessionsIgnoresNotFoundAndHandlesNilManager(t *testing.T) {
 	}
 
 	manager := &fakeSessionManager{
-		infos: []*session.SessionInfo{{ID: "sess-a"}},
+		infos: []*session.Info{{ID: "sess-a"}},
 		stopErr: func(id string) error {
 			return fmt.Errorf("%w: %s", session.ErrSessionNotFound, id)
 		},
@@ -1519,7 +1569,7 @@ func TestStopSessionsUsesShutdownCauseWhenSupported(t *testing.T) {
 	}
 
 	manager := &fakeSessionManager{
-		infos: []*session.SessionInfo{{ID: "sess-a"}},
+		infos: []*session.Info{{ID: "sess-a"}},
 	}
 	if err := d.stopSessions(testutil.Context(t), manager); err != nil {
 		t.Fatalf("stopSessions() error = %v", err)
@@ -1551,7 +1601,7 @@ func TestStopSessionsWaitsForInFlightFinalizations(t *testing.T) {
 
 	release := make(chan struct{})
 	manager := &fakeSessionManager{
-		infos:                    []*session.SessionInfo{{ID: "sess-a"}},
+		infos:                    []*session.Info{{ID: "sess-a"}},
 		waitFinalizationsRelease: release,
 	}
 
@@ -1646,9 +1696,9 @@ func TestRunShutsDownOnInjectedSignal(t *testing.T) {
 	cfg := testConfig(t, homePaths)
 	signalCh := make(chan os.Signal, 1)
 
-	d := newTestDaemon(t, homePaths, cfg)
+	d := newTestDaemon(t, homePaths, &cfg)
 	d.signalCh = signalCh
-	d.acquireLock = func(path string, pid int) (*Lock, error) {
+	d.acquireLock = func(path string, _ int) (*Lock, error) {
 		return &Lock{path: path}, nil
 	}
 	d.openRegistry = func(context.Context, string) (Registry, error) {
@@ -1676,7 +1726,11 @@ func TestRunShutsDownOnInjectedSignal(t *testing.T) {
 
 func TestBoundariesUsesConfiguredRoot(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module github.com/pedronauck/agh\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module github.com/pedronauck/agh\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("os.WriteFile(go.mod) error = %v", err)
 	}
 	if err := os.MkdirAll(filepath.Join(root, "internal"), 0o755); err != nil {
@@ -1696,7 +1750,11 @@ func TestBoundariesUsesConfiguredRoot(t *testing.T) {
 
 func TestBoundariesReturnsViolations(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module github.com/pedronauck/agh\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module github.com/pedronauck/agh\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("os.WriteFile(go.mod) error = %v", err)
 	}
 	violatingDir := filepath.Join(root, "internal", "worker")
@@ -1724,7 +1782,11 @@ func TestBoundariesReturnsViolations(t *testing.T) {
 
 func TestBoundariesUsesWorkingDirectoryWhenRootUnset(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module github.com/pedronauck/agh\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module github.com/pedronauck/agh\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("os.WriteFile(go.mod) error = %v", err)
 	}
 	if err := os.MkdirAll(filepath.Join(root, "internal"), 0o755); err != nil {
@@ -1866,7 +1928,6 @@ func TestBootInjectsComposedAssemblerForFeatureFlagCombinations(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -1876,7 +1937,7 @@ func TestBootInjectsComposedAssemblerForFeatureFlagCombinations(t *testing.T) {
 			cfg.Skills.Enabled = tc.skillsEnabled
 			cfg.Memory.GlobalDir = filepath.Join(homePaths.HomeDir, "custom-memory")
 
-			d := newTestDaemon(t, homePaths, cfg)
+			d := newTestDaemon(t, homePaths, &cfg)
 
 			var capturedDeps SessionManagerDeps
 			d.newSessionManager = func(_ context.Context, deps SessionManagerDeps) (SessionManager, error) {
@@ -1921,9 +1982,14 @@ func TestBootInjectsComposedAssemblerForFeatureFlagCombinations(t *testing.T) {
 			workspace := filepath.Join(t.TempDir(), "workspace")
 			writeDaemonMemoryIndex(t, cfg.Memory.GlobalDir, workspace)
 
-			prompt, err := capturedDeps.PromptAssembler.Assemble(context.Background(), testPromptAgent("Base prompt."), workspacepkg.ResolvedWorkspace{
+			workspaceRef := workspacepkg.ResolvedWorkspace{
 				Workspace: workspacepkg.Workspace{RootDir: workspace},
-			})
+			}
+			prompt, err := capturedDeps.PromptAssembler.Assemble(
+				context.Background(),
+				testPromptAgent("Base prompt."),
+				&workspaceRef,
+			)
 			if err != nil {
 				t.Fatalf("PromptAssembler.Assemble() error = %v", err)
 			}
@@ -1955,7 +2021,7 @@ func TestBootCreatesWorkspaceResolverAndInjectsSessionManager(t *testing.T) {
 
 	var capturedDeps SessionManagerDeps
 	var capturedUDSDeps RuntimeDeps
-	d := newTestDaemon(t, homePaths, cfg)
+	d := newTestDaemon(t, homePaths, &cfg)
 	d.newSessionManager = func(_ context.Context, deps SessionManagerDeps) (SessionManager, error) {
 		capturedDeps = deps
 		return &fakeSessionManager{}, nil
@@ -2009,7 +2075,7 @@ func TestBootSkillsWatcherRefreshesOnGlobalChangesAndStopsOnShutdown(t *testing.
 	cfg.Skills.Enabled = true
 	cfg.Skills.PollInterval = 10 * time.Millisecond
 
-	d := newTestDaemon(t, homePaths, cfg)
+	d := newTestDaemon(t, homePaths, &cfg)
 	d.newSessionManager = func(context.Context, SessionManagerDeps) (SessionManager, error) {
 		return &fakeSessionManager{}, nil
 	}
@@ -2043,7 +2109,12 @@ func TestBootSkillsWatcherRefreshesOnGlobalChangesAndStopsOnShutdown(t *testing.
 		t.Fatalf("Shutdown() error = %v", err)
 	}
 
-	writeDaemonSkill(t, filepath.Join(homePaths.HomeDir, ".agents", "skills"), "after-shutdown", "Should not be observed")
+	writeDaemonSkill(
+		t,
+		filepath.Join(homePaths.HomeDir, ".agents", "skills"),
+		"after-shutdown",
+		"Should not be observed",
+	)
 	time.Sleep(4 * cfg.Skills.PollInterval)
 
 	if got := registry.GlobalVersion(); got != versionAfterRefresh {
@@ -2065,7 +2136,7 @@ func TestShutdownStopsSkillsWatcherBeforeSessions(t *testing.T) {
 
 	var skillsDone <-chan struct{}
 	sessions := &fakeSessionManager{
-		infos: []*session.SessionInfo{{ID: "sess-a"}},
+		infos: []*session.Info{{ID: "sess-a"}},
 		onStop: func(string) {
 			select {
 			case <-skillsDone:
@@ -2075,7 +2146,7 @@ func TestShutdownStopsSkillsWatcherBeforeSessions(t *testing.T) {
 		},
 	}
 
-	d := newTestDaemon(t, homePaths, cfg)
+	d := newTestDaemon(t, homePaths, &cfg)
 	d.newSessionManager = func(context.Context, SessionManagerDeps) (SessionManager, error) {
 		return sessions, nil
 	}
@@ -2109,9 +2180,9 @@ func TestSkillsRegistryConfigUsesDaemonHomeAndDisabledSkills(t *testing.T) {
 	cfg := testConfig(t, homePaths)
 	cfg.Skills.DisabledSkills = []string{"alpha", "beta"}
 
-	d := newTestDaemon(t, homePaths, cfg)
+	d := newTestDaemon(t, homePaths, &cfg)
 
-	registryCfg, err := d.skillsRegistryConfig(cfg)
+	registryCfg, err := d.skillsRegistryConfig(&cfg)
 	if err != nil {
 		t.Fatalf("skillsRegistryConfig() error = %v", err)
 	}
@@ -2152,7 +2223,6 @@ func TestRunSkipsDreamLoopWhenMemoryOrDreamDisabled(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -2160,7 +2230,7 @@ func TestRunSkipsDreamLoopWhenMemoryOrDreamDisabled(t *testing.T) {
 			cfg := testConfig(t, homePaths)
 			tc.patch(&cfg)
 
-			d := newTestDaemon(t, homePaths, cfg)
+			d := newTestDaemon(t, homePaths, &cfg)
 			d.newSessionManager = func(context.Context, SessionManagerDeps) (SessionManager, error) {
 				return &fakeSessionManager{}, nil
 			}
@@ -2203,14 +2273,14 @@ func TestDreamTickerRunsAndStopsOnCancellation(t *testing.T) {
 	cfg.Memory.Dream.CheckInterval = 10 * time.Millisecond
 
 	dream := &fakeDreamService{shouldRun: true}
-	d := newTestDaemon(t, homePaths, cfg)
+	d := newTestDaemon(t, homePaths, &cfg)
 	d.newSessionManager = func(context.Context, SessionManagerDeps) (SessionManager, error) {
 		return &fakeSessionManager{}, nil
 	}
 	d.newObserver = func(context.Context, RuntimeDeps) (Observer, error) {
 		return &fakeObserver{}, nil
 	}
-	d.newDreamService = func(opts ...memory.Option) consolidation.Service {
+	d.newDreamService = func(_ ...memory.Option) consolidation.Service {
 		return dream
 	}
 	d.httpFactory = func(context.Context, RuntimeDeps) (Server, error) {
@@ -2265,7 +2335,7 @@ func TestSessionStopNotifierQueuesDreamCheck(t *testing.T) {
 	}
 	var dispatcher session.HookSet
 
-	d := newTestDaemon(t, homePaths, cfg)
+	d := newTestDaemon(t, homePaths, &cfg)
 	d.newSessionManager = func(_ context.Context, deps SessionManagerDeps) (SessionManager, error) {
 		dispatcher = deps.Hooks
 		return sessions, nil
@@ -2273,7 +2343,7 @@ func TestSessionStopNotifierQueuesDreamCheck(t *testing.T) {
 	d.newObserver = func(context.Context, RuntimeDeps) (Observer, error) {
 		return &fakeObserver{}, nil
 	}
-	d.newDreamService = func(opts ...memory.Option) consolidation.Service {
+	d.newDreamService = func(_ ...memory.Option) consolidation.Service {
 		return dream
 	}
 	d.httpFactory = func(context.Context, RuntimeDeps) (Server, error) {
@@ -2489,7 +2559,7 @@ func TestDaemonNetworkInfoHelpersValidateAndRedactRuntimeStatus(t *testing.T) {
 	}
 
 	info, err := daemonNetworkInfo(ctx, aghconfig.NetworkConfig{Enabled: true}, &fakeNetworkRuntime{
-		status: &network.NetworkStatus{
+		status: &network.Status{
 			Enabled:      true,
 			Status:       " running ",
 			ListenerHost: " 127.0.0.1 ",
@@ -2502,7 +2572,8 @@ func TestDaemonNetworkInfoHelpersValidateAndRedactRuntimeStatus(t *testing.T) {
 	if info == nil {
 		t.Fatal("daemonNetworkInfo(runtime status) = nil, want populated diagnostics")
 	}
-	if !info.Enabled || info.Status != network.StatusRunning || info.ListenerHost != "127.0.0.1" || info.ListenerPort != 4222 {
+	if !info.Enabled || info.Status != network.StatusRunning || info.ListenerHost != "127.0.0.1" ||
+		info.ListenerPort != 4222 {
 		t.Fatalf("daemonNetworkInfo(runtime status) = %#v, want trimmed listener diagnostics", info)
 	}
 }
@@ -2605,11 +2676,22 @@ func testConfig(t *testing.T, homePaths aghconfig.HomePaths) aghconfig.Config {
 	return cfg
 }
 
+func testConfigPtr(t *testing.T, homePaths aghconfig.HomePaths) *aghconfig.Config {
+	t.Helper()
+
+	cfg := testConfig(t, homePaths)
+	return &cfg
+}
+
 func writeDaemonMemoryIndex(t *testing.T, globalDir string, workspace string) {
 	t.Helper()
 
 	writeDaemonFile(t, filepath.Join(globalDir, "MEMORY.md"), "- [Global](global.md) - global note")
-	writeDaemonFile(t, filepath.Join(workspace, aghconfig.DirName, "memory", "MEMORY.md"), "- [Workspace](workspace.md) - workspace note")
+	writeDaemonFile(
+		t,
+		filepath.Join(workspace, aghconfig.DirName, "memory", "MEMORY.md"),
+		"- [Workspace](workspace.md) - workspace note",
+	)
 }
 
 func writeDaemonSkill(t *testing.T, root string, name string, description string) {
@@ -2636,7 +2718,11 @@ func writeDaemonFile(t *testing.T, path string, content string) {
 	}
 }
 
-func resolveDaemonWorkspace(t *testing.T, resolver workspacepkg.WorkspaceResolver, root string) workspacepkg.ResolvedWorkspace {
+func resolveDaemonWorkspace(
+	t *testing.T,
+	resolver workspacepkg.RuntimeResolver,
+	root string,
+) workspacepkg.ResolvedWorkspace {
 	t.Helper()
 
 	if resolver == nil {
@@ -2720,7 +2806,7 @@ func assertPromptExcludes(t *testing.T, prompt string, fragments ...string) {
 	}
 }
 
-func newTestDaemon(t *testing.T, homePaths aghconfig.HomePaths, cfg aghconfig.Config) *Daemon {
+func newTestDaemon(t *testing.T, homePaths aghconfig.HomePaths, cfg *aghconfig.Config) *Daemon {
 	t.Helper()
 
 	d, err := New(
@@ -2765,7 +2851,7 @@ func freeTCPPort(t *testing.T) int {
 
 type fakeSessionManager struct {
 	mu               sync.Mutex
-	infos            []*session.SessionInfo
+	infos            []*session.Info
 	onStop           func(string)
 	stopErr          func(string) error
 	stopWithCauseErr func(string, session.StopCause, string) error
@@ -2811,17 +2897,17 @@ func (f *fakeSessionManager) Create(_ context.Context, opts session.CreateOpts) 
 	}, nil
 }
 
-func (f *fakeSessionManager) List() []*session.SessionInfo {
+func (f *fakeSessionManager) List() []*session.Info {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return append([]*session.SessionInfo(nil), f.infos...)
+	return append([]*session.Info(nil), f.infos...)
 }
 
-func (f *fakeSessionManager) ListAll(context.Context) ([]*session.SessionInfo, error) {
+func (f *fakeSessionManager) ListAll(context.Context) ([]*session.Info, error) {
 	return f.List(), nil
 }
 
-func (f *fakeSessionManager) Status(_ context.Context, id string) (*session.SessionInfo, error) {
+func (f *fakeSessionManager) Status(_ context.Context, id string) (*session.Info, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, info := range f.infos {
@@ -2879,7 +2965,12 @@ func (f *fakeSessionManager) StopWithCause(_ context.Context, id string, cause s
 	return nil
 }
 
-func (f *fakeSessionManager) RequestStopWithCause(_ context.Context, id string, cause session.StopCause, detail string) error {
+func (f *fakeSessionManager) RequestStopWithCause(
+	_ context.Context,
+	id string,
+	cause session.StopCause,
+	detail string,
+) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.requestStopCalls = append(f.requestStopCalls, fakeStopWithCauseCall{
@@ -3018,7 +3109,11 @@ func (f *fakeNetworkBindableSessionManager) currentTurnEndNotifier() session.Tur
 	return f.turnEndNotifier
 }
 
-func (f *fakeNetworkBindableSessionManager) PromptNetwork(ctx context.Context, id string, msg string) (<-chan acp.AgentEvent, error) {
+func (f *fakeNetworkBindableSessionManager) PromptNetwork(
+	ctx context.Context,
+	id string,
+	msg string,
+) (<-chan acp.AgentEvent, error) {
 	f.mu.Lock()
 	fn := f.promptNetworkFn
 	f.mu.Unlock()
@@ -3039,7 +3134,7 @@ func (f *fakeNetworkBindableSessionManager) IsPrompting(sessionID string) bool {
 
 type fakeNetworkRuntime struct {
 	mu          sync.Mutex
-	status      *network.NetworkStatus
+	status      *network.Status
 	statusErr   error
 	sendID      string
 	sendErr     error
@@ -3079,7 +3174,7 @@ func (f *fakeNetworkRuntime) ListChannels(context.Context) ([]network.ChannelInf
 	return nil, nil
 }
 
-func (f *fakeNetworkRuntime) Status(context.Context) (*network.NetworkStatus, error) {
+func (f *fakeNetworkRuntime) Status(context.Context) (*network.Status, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.statusErr != nil {
@@ -3264,7 +3359,10 @@ func (r *recordingRegistry) WritePermissionLog(context.Context, store.Permission
 	return nil
 }
 
-func (r *recordingRegistry) ListPermissionLog(context.Context, store.PermissionLogQuery) ([]store.PermissionLogEntry, error) {
+func (r *recordingRegistry) ListPermissionLog(
+	context.Context,
+	store.PermissionLogQuery,
+) ([]store.PermissionLogEntry, error) {
 	return nil, nil
 }
 
@@ -3272,7 +3370,10 @@ func (r *recordingRegistry) WriteNetworkAudit(context.Context, store.NetworkAudi
 	return nil
 }
 
-func (r *recordingRegistry) ListNetworkAudit(context.Context, store.NetworkAuditQuery) ([]store.NetworkAuditEntry, error) {
+func (r *recordingRegistry) ListNetworkAudit(
+	context.Context,
+	store.NetworkAuditQuery,
+) ([]store.NetworkAuditEntry, error) {
 	return nil, nil
 }
 
@@ -3280,7 +3381,10 @@ func (r *recordingRegistry) WriteNetworkMessage(context.Context, store.NetworkMe
 	return nil
 }
 
-func (r *recordingRegistry) ListNetworkMessages(context.Context, store.NetworkMessageQuery) ([]store.NetworkMessageEntry, error) {
+func (r *recordingRegistry) ListNetworkMessages(
+	context.Context,
+	store.NetworkMessageQuery,
+) ([]store.NetworkMessageEntry, error) {
 	return nil, nil
 }
 
@@ -3295,7 +3399,7 @@ func (r *recordingRegistry) UpdateTask(context.Context, taskpkg.Task) error {
 func (r *recordingRegistry) GetTask(context.Context, string) (taskpkg.Task, error) {
 	return taskpkg.Task{}, taskpkg.ErrTaskNotFound
 }
-func (r *recordingRegistry) ListTasks(context.Context, taskpkg.TaskQuery) ([]taskpkg.TaskSummary, error) {
+func (r *recordingRegistry) ListTasks(context.Context, taskpkg.Query) ([]taskpkg.Summary, error) {
 	return nil, nil
 }
 
@@ -3303,7 +3407,7 @@ func (r *recordingRegistry) CountDirectChildren(context.Context, string) (int, e
 	return 0, nil
 }
 
-func (r *recordingRegistry) CreateDependency(context.Context, taskpkg.TaskDependency) error {
+func (r *recordingRegistry) CreateDependency(context.Context, taskpkg.Dependency) error {
 	return nil
 }
 
@@ -3311,11 +3415,11 @@ func (r *recordingRegistry) DeleteDependency(context.Context, string, string) er
 	return nil
 }
 
-func (r *recordingRegistry) ListDependencies(context.Context, string) ([]taskpkg.TaskDependency, error) {
+func (r *recordingRegistry) ListDependencies(context.Context, string) ([]taskpkg.Dependency, error) {
 	return nil, nil
 }
 
-func (r *recordingRegistry) ListDependents(context.Context, string) ([]taskpkg.TaskDependency, error) {
+func (r *recordingRegistry) ListDependents(context.Context, string) ([]taskpkg.Dependency, error) {
 	return nil, nil
 }
 
@@ -3327,23 +3431,23 @@ func (r *recordingRegistry) HasDependencyPath(context.Context, string, string) (
 	return false, nil
 }
 
-func (r *recordingRegistry) CreateTaskRun(context.Context, taskpkg.TaskRun) error {
+func (r *recordingRegistry) CreateTaskRun(context.Context, taskpkg.Run) error {
 	return nil
 }
 
-func (r *recordingRegistry) UpdateTaskRun(context.Context, taskpkg.TaskRun) error {
+func (r *recordingRegistry) UpdateTaskRun(context.Context, taskpkg.Run) error {
 	return nil
 }
 
-func (r *recordingRegistry) GetTaskRun(context.Context, string) (taskpkg.TaskRun, error) {
-	return taskpkg.TaskRun{}, taskpkg.ErrTaskRunNotFound
+func (r *recordingRegistry) GetTaskRun(context.Context, string) (taskpkg.Run, error) {
+	return taskpkg.Run{}, taskpkg.ErrTaskRunNotFound
 }
 
-func (r *recordingRegistry) ListTaskRuns(context.Context, taskpkg.TaskRunQuery) ([]taskpkg.TaskRun, error) {
+func (r *recordingRegistry) ListTaskRuns(context.Context, taskpkg.RunQuery) ([]taskpkg.Run, error) {
 	return nil, nil
 }
 
-func (r *recordingRegistry) ListTaskRunsByStatus(context.Context, []taskpkg.TaskRunStatus) ([]taskpkg.TaskRun, error) {
+func (r *recordingRegistry) ListTaskRunsByStatus(context.Context, []taskpkg.RunStatus) ([]taskpkg.Run, error) {
 	return nil, nil
 }
 
@@ -3351,19 +3455,23 @@ func (r *recordingRegistry) CountActiveSessionBindings(context.Context, string) 
 	return 0, nil
 }
 
-func (r *recordingRegistry) CreateTaskEvent(context.Context, taskpkg.TaskEvent) error {
+func (r *recordingRegistry) CreateTaskEvent(context.Context, taskpkg.Event) error {
 	return nil
 }
 
-func (r *recordingRegistry) ListTaskEvents(context.Context, taskpkg.TaskEventQuery) ([]taskpkg.TaskEvent, error) {
+func (r *recordingRegistry) ListTaskEvents(context.Context, taskpkg.EventQuery) ([]taskpkg.Event, error) {
 	return nil, nil
 }
 
-func (r *recordingRegistry) GetTaskRunByIdempotencyKey(context.Context, string, taskpkg.Origin) (taskpkg.TaskRun, error) {
-	return taskpkg.TaskRun{}, taskpkg.ErrTaskRunIdempotencyNotFound
+func (r *recordingRegistry) GetTaskRunByIdempotencyKey(
+	context.Context,
+	string,
+	taskpkg.Origin,
+) (taskpkg.Run, error) {
+	return taskpkg.Run{}, taskpkg.ErrTaskRunIdempotencyNotFound
 }
 
-func (r *recordingRegistry) SaveTaskRunIdempotency(context.Context, taskpkg.TaskRunIdempotency) error {
+func (r *recordingRegistry) SaveTaskRunIdempotency(context.Context, taskpkg.RunIdempotency) error {
 	return nil
 }
 func (r *recordingRegistry) Close(context.Context) error {
@@ -3396,7 +3504,11 @@ type recordingHookTelemetrySink struct {
 	}
 }
 
-func (s *recordingHookTelemetrySink) WriteHookRecord(_ context.Context, sessionID string, record hookspkg.HookRunRecord) error {
+func (s *recordingHookTelemetrySink) WriteHookRecord(
+	_ context.Context,
+	sessionID string,
+	record hookspkg.HookRunRecord,
+) error {
 	s.calls = append(s.calls, struct {
 		sessionID string
 		record    hookspkg.HookRunRecord
@@ -3458,7 +3570,10 @@ func (f *fakeAutomationManager) Jobs(context.Context) ([]automationpkg.Job, erro
 	return append([]automationpkg.Job(nil), f.jobs...), nil
 }
 
-func (f *fakeAutomationManager) ListJobs(_ context.Context, query automationpkg.JobListQuery) ([]automationpkg.Job, error) {
+func (f *fakeAutomationManager) ListJobs(
+	_ context.Context,
+	query automationpkg.JobListQuery,
+) ([]automationpkg.Job, error) {
 	jobs := make([]automationpkg.Job, 0, len(f.jobs))
 	for _, job := range f.jobs {
 		if query.Scope != "" && job.Scope != query.Scope {
@@ -3510,7 +3625,12 @@ func (f *fakeAutomationManager) DeleteJob(_ context.Context, id string) error {
 }
 
 func (f *fakeAutomationManager) TriggerJob(_ context.Context, id string) (automationpkg.Run, error) {
-	run := automationpkg.Run{ID: "run-" + strings.TrimSpace(id), JobID: strings.TrimSpace(id), Status: automationpkg.RunCompleted, Attempt: 1}
+	run := automationpkg.Run{
+		ID:      "run-" + strings.TrimSpace(id),
+		JobID:   strings.TrimSpace(id),
+		Status:  automationpkg.RunCompleted,
+		Attempt: 1,
+	}
 	f.runs = append(f.runs, run)
 	return run, nil
 }
@@ -3519,7 +3639,10 @@ func (f *fakeAutomationManager) Triggers(context.Context) ([]automationpkg.Trigg
 	return append([]automationpkg.Trigger(nil), f.triggers...), nil
 }
 
-func (f *fakeAutomationManager) ListTriggers(_ context.Context, query automationpkg.TriggerListQuery) ([]automationpkg.Trigger, error) {
+func (f *fakeAutomationManager) ListTriggers(
+	_ context.Context,
+	query automationpkg.TriggerListQuery,
+) ([]automationpkg.Trigger, error) {
 	triggers := make([]automationpkg.Trigger, 0, len(f.triggers))
 	for _, trigger := range f.triggers {
 		if query.Scope != "" && trigger.Scope != query.Scope {
@@ -3548,12 +3671,20 @@ func (f *fakeAutomationManager) GetTrigger(_ context.Context, id string) (automa
 	return automationpkg.Trigger{}, automationpkg.ErrTriggerNotFound
 }
 
-func (f *fakeAutomationManager) CreateTrigger(_ context.Context, trigger automationpkg.Trigger, _ string) (automationpkg.Trigger, error) {
+func (f *fakeAutomationManager) CreateTrigger(
+	_ context.Context,
+	trigger automationpkg.Trigger,
+	_ string,
+) (automationpkg.Trigger, error) {
 	f.triggers = append(f.triggers, trigger)
 	return trigger, nil
 }
 
-func (f *fakeAutomationManager) UpdateTrigger(_ context.Context, trigger automationpkg.Trigger, _ *string) (automationpkg.Trigger, error) {
+func (f *fakeAutomationManager) UpdateTrigger(
+	_ context.Context,
+	trigger automationpkg.Trigger,
+	_ *string,
+) (automationpkg.Trigger, error) {
 	for i := range f.triggers {
 		if f.triggers[i].ID == strings.TrimSpace(trigger.ID) {
 			f.triggers[i] = trigger
@@ -3615,7 +3746,10 @@ func (f *fakeAutomationManager) SetTriggerEnabled(context.Context, string, bool)
 	return automationpkg.Trigger{}, nil
 }
 
-func (f *fakeAutomationManager) HandleWebhook(context.Context, automationpkg.WebhookRequest) (automationpkg.TriggerResult, error) {
+func (f *fakeAutomationManager) HandleWebhook(
+	context.Context,
+	automationpkg.WebhookRequest,
+) (automationpkg.TriggerResult, error) {
 	return automationpkg.TriggerResult{}, nil
 }
 
@@ -3631,9 +3765,12 @@ func (f *fakeAutomationManager) SyncManagedDefinitions(
 	})
 	f.jobs = append(f.jobs, desiredJobs...)
 
-	f.triggers = slices.DeleteFunc(append([]automationpkg.Trigger(nil), f.triggers...), func(trigger automationpkg.Trigger) bool {
-		return trigger.Source == source
-	})
+	f.triggers = slices.DeleteFunc(
+		append([]automationpkg.Trigger(nil), f.triggers...),
+		func(trigger automationpkg.Trigger) bool {
+			return trigger.Source == source
+		},
+	)
 	f.triggers = append(f.triggers, desiredTriggers...)
 
 	return automationpkg.SyncStats{
@@ -3643,7 +3780,10 @@ func (f *fakeAutomationManager) SyncManagedDefinitions(
 	}, nil
 }
 
-func (f *fakeAutomationManager) FireExtensionTrigger(_ context.Context, request automationpkg.ExtensionTriggerRequest) (automationpkg.TriggerResult, error) {
+func (f *fakeAutomationManager) FireExtensionTrigger(
+	_ context.Context,
+	request automationpkg.ExtensionTriggerRequest,
+) (automationpkg.TriggerResult, error) {
 	return automationpkg.TriggerResult{
 		Matched: 0,
 		Runs:    append([]automationpkg.Run(nil), f.runs...),
@@ -3701,135 +3841,216 @@ func (f *fakeHookRuntime) Version() int64 {
 	return f.version
 }
 
-func (f *fakeHookRuntime) DispatchSessionPreCreate(_ context.Context, payload hookspkg.SessionPreCreatePayload) (hookspkg.SessionPreCreatePayload, error) {
+func (f *fakeHookRuntime) DispatchSessionPreCreate(
+	_ context.Context,
+	payload hookspkg.SessionPreCreatePayload,
+) (hookspkg.SessionPreCreatePayload, error) {
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchSessionPostCreate(ctx context.Context, payload hookspkg.SessionPostCreatePayload) (hookspkg.SessionPostCreatePayload, error) {
+func (f *fakeHookRuntime) DispatchSessionPostCreate(
+	ctx context.Context,
+	payload hookspkg.SessionPostCreatePayload,
+) (hookspkg.SessionPostCreatePayload, error) {
 	if f.onDispatchCreate != nil {
 		return payload, f.onDispatchCreate(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchSessionPreResume(_ context.Context, payload hookspkg.SessionPreResumePayload) (hookspkg.SessionPreResumePayload, error) {
+func (f *fakeHookRuntime) DispatchSessionPreResume(
+	_ context.Context,
+	payload hookspkg.SessionPreResumePayload,
+) (hookspkg.SessionPreResumePayload, error) {
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchSessionPostResume(_ context.Context, payload hookspkg.SessionPostResumePayload) (hookspkg.SessionPostResumePayload, error) {
+func (f *fakeHookRuntime) DispatchSessionPostResume(
+	_ context.Context,
+	payload hookspkg.SessionPostResumePayload,
+) (hookspkg.SessionPostResumePayload, error) {
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchSessionPreStop(_ context.Context, payload hookspkg.SessionPreStopPayload) (hookspkg.SessionPreStopPayload, error) {
+func (f *fakeHookRuntime) DispatchSessionPreStop(
+	_ context.Context,
+	payload hookspkg.SessionPreStopPayload,
+) (hookspkg.SessionPreStopPayload, error) {
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchSessionPostStop(ctx context.Context, payload hookspkg.SessionPostStopPayload) (hookspkg.SessionPostStopPayload, error) {
+func (f *fakeHookRuntime) DispatchSessionPostStop(
+	ctx context.Context,
+	payload hookspkg.SessionPostStopPayload,
+) (hookspkg.SessionPostStopPayload, error) {
 	if f.onDispatchStop != nil {
 		return payload, f.onDispatchStop(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchInputPreSubmit(_ context.Context, payload hookspkg.InputPreSubmitPayload) (hookspkg.InputPreSubmitPayload, error) {
+func (f *fakeHookRuntime) DispatchInputPreSubmit(
+	_ context.Context,
+	payload hookspkg.InputPreSubmitPayload,
+) (hookspkg.InputPreSubmitPayload, error) {
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchPromptPostAssemble(_ context.Context, payload hookspkg.PromptPayload) (hookspkg.PromptPayload, error) {
+func (f *fakeHookRuntime) DispatchPromptPostAssemble(
+	_ context.Context,
+	payload hookspkg.PromptPayload,
+) (hookspkg.PromptPayload, error) {
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchEventPreRecord(_ context.Context, payload hookspkg.EventPreRecordPayload) (hookspkg.EventPreRecordPayload, error) {
+func (f *fakeHookRuntime) DispatchEventPreRecord(
+	_ context.Context,
+	payload hookspkg.EventPreRecordPayload,
+) (hookspkg.EventPreRecordPayload, error) {
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchEventPostRecord(_ context.Context, payload hookspkg.EventPostRecordPayload) (hookspkg.EventPostRecordPayload, error) {
+func (f *fakeHookRuntime) DispatchEventPostRecord(
+	_ context.Context,
+	payload hookspkg.EventPostRecordPayload,
+) (hookspkg.EventPostRecordPayload, error) {
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchAutomationJobPreFire(_ context.Context, payload hookspkg.AutomationJobPreFirePayload) (hookspkg.AutomationJobPreFirePayload, error) {
+func (f *fakeHookRuntime) DispatchAutomationJobPreFire(
+	_ context.Context,
+	payload hookspkg.AutomationJobPreFirePayload,
+) (hookspkg.AutomationJobPreFirePayload, error) {
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchAutomationJobPostFire(_ context.Context, payload hookspkg.AutomationJobPostFirePayload) (hookspkg.AutomationJobPostFirePayload, error) {
+func (f *fakeHookRuntime) DispatchAutomationJobPostFire(
+	_ context.Context,
+	payload hookspkg.AutomationJobPostFirePayload,
+) (hookspkg.AutomationJobPostFirePayload, error) {
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchAutomationTriggerPreFire(_ context.Context, payload hookspkg.AutomationTriggerPreFirePayload) (hookspkg.AutomationTriggerPreFirePayload, error) {
+func (f *fakeHookRuntime) DispatchAutomationTriggerPreFire(
+	_ context.Context,
+	payload hookspkg.AutomationTriggerPreFirePayload,
+) (hookspkg.AutomationTriggerPreFirePayload, error) {
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchAutomationTriggerPostFire(_ context.Context, payload hookspkg.AutomationTriggerPostFirePayload) (hookspkg.AutomationTriggerPostFirePayload, error) {
+func (f *fakeHookRuntime) DispatchAutomationTriggerPostFire(
+	_ context.Context,
+	payload hookspkg.AutomationTriggerPostFirePayload,
+) (hookspkg.AutomationTriggerPostFirePayload, error) {
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchAutomationRunCompleted(_ context.Context, payload hookspkg.AutomationRunCompletedPayload) (hookspkg.AutomationRunCompletedPayload, error) {
+func (f *fakeHookRuntime) DispatchAutomationRunCompleted(
+	_ context.Context,
+	payload hookspkg.AutomationRunCompletedPayload,
+) (hookspkg.AutomationRunCompletedPayload, error) {
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchAutomationRunFailed(_ context.Context, payload hookspkg.AutomationRunFailedPayload) (hookspkg.AutomationRunFailedPayload, error) {
+func (f *fakeHookRuntime) DispatchAutomationRunFailed(
+	_ context.Context,
+	payload hookspkg.AutomationRunFailedPayload,
+) (hookspkg.AutomationRunFailedPayload, error) {
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchAgentPreStart(_ context.Context, payload hookspkg.AgentPreStartPayload) (hookspkg.AgentPreStartPayload, error) {
+func (f *fakeHookRuntime) DispatchAgentPreStart(
+	_ context.Context,
+	payload hookspkg.AgentPreStartPayload,
+) (hookspkg.AgentPreStartPayload, error) {
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchAgentSpawned(_ context.Context, payload hookspkg.AgentSpawnedPayload) (hookspkg.AgentSpawnedPayload, error) {
+func (f *fakeHookRuntime) DispatchAgentSpawned(
+	_ context.Context,
+	payload hookspkg.AgentSpawnedPayload,
+) (hookspkg.AgentSpawnedPayload, error) {
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchAgentCrashed(_ context.Context, payload hookspkg.AgentCrashedPayload) (hookspkg.AgentCrashedPayload, error) {
+func (f *fakeHookRuntime) DispatchAgentCrashed(
+	_ context.Context,
+	payload hookspkg.AgentCrashedPayload,
+) (hookspkg.AgentCrashedPayload, error) {
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchAgentStopped(_ context.Context, payload hookspkg.AgentStoppedPayload) (hookspkg.AgentStoppedPayload, error) {
+func (f *fakeHookRuntime) DispatchAgentStopped(
+	_ context.Context,
+	payload hookspkg.AgentStoppedPayload,
+) (hookspkg.AgentStoppedPayload, error) {
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchTurnStart(ctx context.Context, payload hookspkg.TurnStartPayload) (hookspkg.TurnStartPayload, error) {
+func (f *fakeHookRuntime) DispatchTurnStart(
+	ctx context.Context,
+	payload hookspkg.TurnStartPayload,
+) (hookspkg.TurnStartPayload, error) {
 	if f.onTurnStart != nil {
 		return payload, f.onTurnStart(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchTurnEnd(ctx context.Context, payload hookspkg.TurnEndPayload) (hookspkg.TurnEndPayload, error) {
+func (f *fakeHookRuntime) DispatchTurnEnd(
+	ctx context.Context,
+	payload hookspkg.TurnEndPayload,
+) (hookspkg.TurnEndPayload, error) {
 	if f.onTurnEnd != nil {
 		return payload, f.onTurnEnd(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchMessageStart(ctx context.Context, payload hookspkg.MessageStartPayload) (hookspkg.MessageStartPayload, error) {
+func (f *fakeHookRuntime) DispatchMessageStart(
+	ctx context.Context,
+	payload hookspkg.MessageStartPayload,
+) (hookspkg.MessageStartPayload, error) {
 	if f.onMessageStart != nil {
 		return payload, f.onMessageStart(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchMessageDelta(ctx context.Context, payload hookspkg.MessageDeltaPayload) (hookspkg.MessageDeltaPayload, error) {
+func (f *fakeHookRuntime) DispatchMessageDelta(
+	ctx context.Context,
+	payload hookspkg.MessageDeltaPayload,
+) (hookspkg.MessageDeltaPayload, error) {
 	if f.onMessageDelta != nil {
 		return payload, f.onMessageDelta(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchMessageEnd(ctx context.Context, payload hookspkg.MessageEndPayload) (hookspkg.MessageEndPayload, error) {
+func (f *fakeHookRuntime) DispatchMessageEnd(
+	ctx context.Context,
+	payload hookspkg.MessageEndPayload,
+) (hookspkg.MessageEndPayload, error) {
 	if f.onMessageEnd != nil {
 		return payload, f.onMessageEnd(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchContextPreCompact(ctx context.Context, payload hookspkg.ContextPreCompactPayload) (hookspkg.ContextPreCompactPayload, error) {
+func (f *fakeHookRuntime) DispatchContextPreCompact(
+	ctx context.Context,
+	payload hookspkg.ContextPreCompactPayload,
+) (hookspkg.ContextPreCompactPayload, error) {
 	if f.onPreCompact != nil {
 		return payload, f.onPreCompact(ctx, payload)
 	}
 	return payload, nil
 }
 
-func (f *fakeHookRuntime) DispatchContextPostCompact(ctx context.Context, payload hookspkg.ContextPostCompactPayload) (hookspkg.ContextPostCompactPayload, error) {
+func (f *fakeHookRuntime) DispatchContextPostCompact(
+	ctx context.Context,
+	payload hookspkg.ContextPostCompactPayload,
+) (hookspkg.ContextPostCompactPayload, error) {
 	if f.onPostCompact != nil {
 		return payload, f.onPostCompact(ctx, payload)
 	}
@@ -3913,7 +4134,7 @@ const (
 	daemonExtensionHelperMarkerKey   = "AGH_TEST_DAEMON_EXTENSION_MARKER"
 )
 
-func TestDaemonExtensionHelperProcess(t *testing.T) {
+func TestDaemonExtensionHelperProcess(_ *testing.T) {
 	if os.Getenv(daemonExtensionHelperEnvKey) != "1" {
 		return
 	}
@@ -3982,15 +4203,11 @@ func (f *fakeExtensionRuntime) HookDeclarations(context.Context) ([]hookspkg.Hoo
 		cloned.Args = append([]string(nil), decl.Args...)
 		if len(decl.Env) > 0 {
 			cloned.Env = make(map[string]string, len(decl.Env))
-			for key, value := range decl.Env {
-				cloned.Env[key] = value
-			}
+			maps.Copy(cloned.Env, decl.Env)
 		}
 		if len(decl.Metadata) > 0 {
 			cloned.Metadata = make(map[string]string, len(decl.Metadata))
-			for key, value := range decl.Metadata {
-				cloned.Metadata[key] = value
-			}
+			maps.Copy(cloned.Metadata, decl.Metadata)
 		}
 		decls = append(decls, cloned)
 	}
@@ -4026,7 +4243,13 @@ func openDaemonTestGlobalDB(t *testing.T) *globaldb.GlobalDB {
 	return db
 }
 
-func installDaemonTestExtension(t *testing.T, db *globaldb.GlobalDB, name string, opts daemonTestExtensionOptions, enabled bool) string {
+func installDaemonTestExtension(
+	t *testing.T,
+	db *globaldb.GlobalDB,
+	name string,
+	opts daemonTestExtensionOptions,
+	enabled bool,
+) string {
 	t.Helper()
 
 	if db == nil {
@@ -4202,12 +4425,20 @@ func TestDaemonTestExtensionManifest(t *testing.T) {
 			"capabilities = []",
 		} {
 			if !strings.Contains(manifest, expected) {
-				t.Fatalf("daemonTestExtensionManifest() missing explicit empty list %q in manifest %q", expected, manifest)
+				t.Fatalf(
+					"daemonTestExtensionManifest() missing explicit empty list %q in manifest %q",
+					expected,
+					manifest,
+				)
 			}
 		}
 		for _, unexpected := range []string{"memory.backend", "sessions/list", "session.read"} {
 			if strings.Contains(manifest, unexpected) {
-				t.Fatalf("daemonTestExtensionManifest() unexpectedly injected %q into manifest %q", unexpected, manifest)
+				t.Fatalf(
+					"daemonTestExtensionManifest() unexpectedly injected %q into manifest %q",
+					unexpected,
+					manifest,
+				)
 			}
 		}
 	})
@@ -4239,7 +4470,10 @@ func TestDaemonExtensionHelperHarness(t *testing.T) {
 		t.Fatal("daemonExtensionHelperCommand() returned an empty path")
 	}
 
-	if got := daemonExtensionHelperArgs(); !testutil.EqualStringSlices(got, []string{"-test.run=TestDaemonExtensionHelperProcess"}) {
+	if got := daemonExtensionHelperArgs(); !testutil.EqualStringSlices(
+		got,
+		[]string{"-test.run=TestDaemonExtensionHelperProcess"},
+	) {
 		t.Fatalf("daemonExtensionHelperArgs() = %#v, want helper test selector", got)
 	}
 
@@ -4248,7 +4482,10 @@ func TestDaemonExtensionHelperHarness(t *testing.T) {
 		t.Fatalf("daemonExtensionHelperEnv() helper flag = %q, want 1", env[daemonExtensionHelperEnvKey])
 	}
 	if env[daemonExtensionHelperMarkerKey] != "/tmp/daemon-helper-marker" {
-		t.Fatalf("daemonExtensionHelperEnv() marker = %q, want /tmp/daemon-helper-marker", env[daemonExtensionHelperMarkerKey])
+		t.Fatalf(
+			"daemonExtensionHelperEnv() marker = %q, want /tmp/daemon-helper-marker",
+			env[daemonExtensionHelperMarkerKey],
+		)
 	}
 
 	withoutMarker := daemonExtensionHelperEnv("")
@@ -4555,15 +4792,13 @@ func (h *daemonExtensionHelperServer) handleRequest(req daemonExtensionHelperReq
 }
 
 func (h *daemonExtensionHelperServer) sendDelayedDeliveryResult(id any, ack bridgepkg.DeliveryAck) {
-	h.slowDeliveryWG.Add(1)
-	go func() {
-		defer h.slowDeliveryWG.Done()
+	h.slowDeliveryWG.Go(func() {
 		<-h.slowDeliveryRelease
 		if err := h.sendResult(id, ack); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-	}()
+	})
 }
 
 func (h *daemonExtensionHelperServer) releaseSlowDeliveries() {
@@ -4627,7 +4862,9 @@ func (h *daemonExtensionHelperServer) recordDelivery(request bridgepkg.DeliveryR
 
 func daemonExtensionInitializeResponse(req subprocess.InitializeRequest) subprocess.InitializeResponse {
 	implementedMethods := []string{"health_check", "shutdown"}
-	implementedMethods = append(implementedMethods, extensionprotocol.CapabilityServiceMethods(req.Capabilities.Provides)...)
+	implementedMethods = append(
+		implementedMethods,
+		extensionprotocol.CapabilityServiceMethods(req.Capabilities.Provides)...)
 
 	return subprocess.InitializeResponse{
 		ProtocolVersion: req.ProtocolVersion,
@@ -4689,7 +4926,7 @@ func markerLineCount(path string) int {
 		return 0
 	}
 	count := 0
-	for _, line := range strings.Split(string(payload), "\n") {
+	for line := range strings.SplitSeq(string(payload), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}

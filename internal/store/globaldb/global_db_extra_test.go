@@ -106,7 +106,12 @@ func TestGlobalDBDefaultsAndFilteredListings(t *testing.T) {
 		return base.Add(time.Duration(callCount) * time.Minute)
 	}
 
-	workspaceID := registerWorkspaceForGlobalTests(t, globalDB, "filtered-workspace", filepath.Join(t.TempDir(), "filtered-workspace"))
+	workspaceID := registerWorkspaceForGlobalTests(
+		t,
+		globalDB,
+		"filtered-workspace",
+		filepath.Join(t.TempDir(), "filtered-workspace"),
+	)
 	if err := globalDB.RegisterSession(testutil.Context(t), SessionInfo{
 		ID:          "sess-defaults",
 		AgentName:   "coder",
@@ -232,16 +237,20 @@ func TestGlobalDBDefaultsAndFilteredListings(t *testing.T) {
 func TestGlobalDBMigrationHelpers(t *testing.T) {
 	t.Parallel()
 
-	db, err := store.OpenSQLiteDatabase(testutil.Context(t), filepath.Join(t.TempDir(), GlobalDatabaseName), func(ctx context.Context, db *sql.DB) error {
-		return store.EnsureSchema(ctx, db, []string{
-			`CREATE TABLE IF NOT EXISTS workspaces (
+	db, err := store.OpenSQLiteDatabase(
+		testutil.Context(t),
+		filepath.Join(t.TempDir(), GlobalDatabaseName),
+		func(ctx context.Context, db *sql.DB) error {
+			return store.EnsureSchema(ctx, db, []string{
+				`CREATE TABLE IF NOT EXISTS workspaces (
 				id TEXT PRIMARY KEY,
 				root_dir TEXT NOT NULL,
 				name TEXT NOT NULL
 			);`,
-			`INSERT INTO workspaces (id, root_dir, name) VALUES ('ws-1', '/tmp/ws-1', 'alpha');`,
-		})
-	})
+				`INSERT INTO workspaces (id, root_dir, name) VALUES ('ws-1', '/tmp/ws-1', 'alpha');`,
+			})
+		},
+	)
 	if err != nil {
 		t.Fatalf("OpenSQLiteDatabase() error = %v", err)
 	}
@@ -296,9 +305,12 @@ func TestGlobalDBMigrationHelpers(t *testing.T) {
 		t.Fatalf("sessionsDirForDatabasePath() = %q, want %q", got, want)
 	}
 
-	migrationDB, err := store.OpenSQLiteDatabase(testutil.Context(t), filepath.Join(t.TempDir(), "migration.db"), func(ctx context.Context, db *sql.DB) error {
-		return store.EnsureSchema(ctx, db, []string{
-			`CREATE TABLE IF NOT EXISTS sessions (
+	migrationDB, err := store.OpenSQLiteDatabase(
+		testutil.Context(t),
+		filepath.Join(t.TempDir(), "migration.db"),
+		func(ctx context.Context, db *sql.DB) error {
+			return store.EnsureSchema(ctx, db, []string{
+				`CREATE TABLE IF NOT EXISTS sessions (
 				id TEXT PRIMARY KEY,
 				name TEXT,
 				agent_name TEXT NOT NULL,
@@ -309,12 +321,13 @@ func TestGlobalDBMigrationHelpers(t *testing.T) {
 				created_at TEXT NOT NULL,
 				updated_at TEXT NOT NULL
 			);`,
-			`INSERT INTO sessions (id, name, agent_name, workspace, session_type, state, acp_session_id, created_at, updated_at)
+				`INSERT INTO sessions (id, name, agent_name, workspace, session_type, state, acp_session_id, created_at, updated_at)
 			 VALUES ('sess-1', 'alpha', 'coder', '/tmp/ws-legacy', 'user', 'active', NULL, '2026-04-04T12:00:00.000000000Z', '2026-04-04T12:05:00.000000000Z');`,
-			`INSERT INTO sessions (id, name, agent_name, workspace, session_type, state, acp_session_id, created_at, updated_at)
+				`INSERT INTO sessions (id, name, agent_name, workspace, session_type, state, acp_session_id, created_at, updated_at)
 			 VALUES ('sess-2', 'beta', 'coder', '/tmp/ws-legacy', 'user', 'active', NULL, '2026-04-04T11:00:00.000000000Z', '2026-04-04T12:10:00.000000000Z');`,
-		})
-	})
+			})
+		},
+	)
 	if err != nil {
 		t.Fatalf("OpenSQLiteDatabase(migration) error = %v", err)
 	}
@@ -559,12 +572,16 @@ func TestGlobalDBLegacySessionMetaHelpers(t *testing.T) {
 		t.Fatalf("meta.WorkspaceID = %q, want %q", got, want)
 	}
 
-	db, err := store.OpenSQLiteDatabase(testutil.Context(t), filepath.Join(t.TempDir(), GlobalDatabaseName), func(ctx context.Context, db *sql.DB) error {
-		return store.EnsureSchema(ctx, db, []string{
-			`CREATE TABLE IF NOT EXISTS workspaces (id TEXT PRIMARY KEY, root_dir TEXT NOT NULL, name TEXT NOT NULL);`,
-			`INSERT INTO workspaces (id, root_dir, name) VALUES ('ws-123', '/tmp/ws-legacy', 'legacy');`,
-		})
-	})
+	db, err := store.OpenSQLiteDatabase(
+		testutil.Context(t),
+		filepath.Join(t.TempDir(), GlobalDatabaseName),
+		func(ctx context.Context, db *sql.DB) error {
+			return store.EnsureSchema(ctx, db, []string{
+				`CREATE TABLE IF NOT EXISTS workspaces (id TEXT PRIMARY KEY, root_dir TEXT NOT NULL, name TEXT NOT NULL);`,
+				`INSERT INTO workspaces (id, root_dir, name) VALUES ('ws-123', '/tmp/ws-legacy', 'legacy');`,
+			})
+		},
+	)
 	if err != nil {
 		t.Fatalf("OpenSQLiteDatabase(reconcile) error = %v", err)
 	}
@@ -603,13 +620,28 @@ func TestGlobalDBWorkspaceHelperUtilities(t *testing.T) {
 	if err := mapWorkspaceConstraintError(nil); err != nil {
 		t.Fatalf("mapWorkspaceConstraintError(nil) = %v, want nil", err)
 	}
-	if err := mapWorkspaceConstraintError(errors.New("UNIQUE constraint failed: workspaces.root_dir")); !errors.Is(err, aghworkspace.ErrWorkspacePathTaken) {
+	if err := mapWorkspaceConstraintError(
+		errors.New("UNIQUE constraint failed: workspaces.root_dir"),
+	); !errors.Is(
+		err,
+		aghworkspace.ErrWorkspacePathTaken,
+	) {
 		t.Fatalf("mapWorkspaceConstraintError(root_dir) = %v, want ErrWorkspacePathTaken", err)
 	}
-	if err := mapWorkspaceConstraintError(errors.New("UNIQUE constraint failed: workspaces.name")); !errors.Is(err, aghworkspace.ErrWorkspaceNameTaken) {
+	if err := mapWorkspaceConstraintError(
+		errors.New("UNIQUE constraint failed: workspaces.name"),
+	); !errors.Is(
+		err,
+		aghworkspace.ErrWorkspaceNameTaken,
+	) {
 		t.Fatalf("mapWorkspaceConstraintError(name) = %v, want ErrWorkspaceNameTaken", err)
 	}
-	if err := mapWorkspaceConstraintError(errors.New("FOREIGN KEY constraint failed")); !errors.Is(err, aghworkspace.ErrWorkspaceHasSessions) {
+	if err := mapWorkspaceConstraintError(
+		errors.New("FOREIGN KEY constraint failed"),
+	); !errors.Is(
+		err,
+		aghworkspace.ErrWorkspaceHasSessions,
+	) {
 		t.Fatalf("mapWorkspaceConstraintError(fk) = %v, want ErrWorkspaceHasSessions", err)
 	}
 }

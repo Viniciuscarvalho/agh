@@ -12,7 +12,7 @@ func TestStubSessionManagerListReturnsEmptySliceOnFallbackError(t *testing.T) {
 	t.Parallel()
 
 	manager := StubSessionManager{
-		ListAllFn: func(context.Context) ([]*session.SessionInfo, error) {
+		ListAllFn: func(context.Context) ([]*session.Info, error) {
 			return nil, errors.New("boom")
 		},
 	}

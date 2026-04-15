@@ -19,7 +19,15 @@ func TestOpenGlobalDBCreatesTaskSchemaAndIndexes(t *testing.T) {
 
 	globalDB := openTestGlobalDB(t)
 
-	assertTablesPresent(t, globalDB.db, "tasks", "task_runs", "task_dependencies", "task_events", "task_run_idempotency")
+	assertTablesPresent(
+		t,
+		globalDB.db,
+		"tasks",
+		"task_runs",
+		"task_dependencies",
+		"task_events",
+		"task_run_idempotency",
+	)
 	assertTableColumns(t, globalDB.db, "tasks", []string{
 		"id",
 		"identifier",
@@ -118,7 +126,12 @@ func TestGlobalDBTaskRoundTripPreservesNullableFields(t *testing.T) {
 	t.Parallel()
 
 	globalDB := openTestGlobalDB(t)
-	workspaceID := registerWorkspaceForGlobalTests(t, globalDB, "task-roundtrip-workspace", filepath.Join(t.TempDir(), "workspace"))
+	workspaceID := registerWorkspaceForGlobalTests(
+		t,
+		globalDB,
+		"task-roundtrip-workspace",
+		filepath.Join(t.TempDir(), "workspace"),
+	)
 
 	parent := taskRecordForTest("task-parent")
 	parent.Metadata = json.RawMessage(`{"kind":"global"}`)
@@ -161,7 +174,7 @@ func TestGlobalDBTaskRoundTripPreservesNullableFields(t *testing.T) {
 	}
 	assertTaskEqual(t, gotChild, child)
 
-	summaries, err := globalDB.ListTasks(testutil.Context(t), taskpkg.TaskQuery{ParentTaskID: parent.ID})
+	summaries, err := globalDB.ListTasks(testutil.Context(t), taskpkg.Query{ParentTaskID: parent.ID})
 	if err != nil {
 		t.Fatalf("ListTasks(parent filter) error = %v", err)
 	}
@@ -183,7 +196,12 @@ func TestGlobalDBCreateAndUpdateTaskRejectInvalidScopeBindings(t *testing.T) {
 	t.Parallel()
 
 	globalDB := openTestGlobalDB(t)
-	workspaceID := registerWorkspaceForGlobalTests(t, globalDB, "invalid-scope-workspace", filepath.Join(t.TempDir(), "workspace"))
+	workspaceID := registerWorkspaceForGlobalTests(
+		t,
+		globalDB,
+		"invalid-scope-workspace",
+		filepath.Join(t.TempDir(), "workspace"),
+	)
 
 	t.Run("create rejects global task with workspace", func(t *testing.T) {
 		t.Parallel()
@@ -248,8 +266,18 @@ func TestGlobalDBListTasksFilters(t *testing.T) {
 	t.Parallel()
 
 	globalDB := openTestGlobalDB(t)
-	workspaceA := registerWorkspaceForGlobalTests(t, globalDB, "task-filter-a", filepath.Join(t.TempDir(), "workspace-a"))
-	workspaceB := registerWorkspaceForGlobalTests(t, globalDB, "task-filter-b", filepath.Join(t.TempDir(), "workspace-b"))
+	workspaceA := registerWorkspaceForGlobalTests(
+		t,
+		globalDB,
+		"task-filter-a",
+		filepath.Join(t.TempDir(), "workspace-a"),
+	)
+	workspaceB := registerWorkspaceForGlobalTests(
+		t,
+		globalDB,
+		"task-filter-b",
+		filepath.Join(t.TempDir(), "workspace-b"),
+	)
 
 	globalTask := taskRecordForTest("task-filter-global")
 	globalTask.Status = taskpkg.TaskStatusPending
@@ -281,47 +309,47 @@ func TestGlobalDBListTasksFilters(t *testing.T) {
 
 	for _, tc := range []struct {
 		name  string
-		query taskpkg.TaskQuery
+		query taskpkg.Query
 		want  []string
 	}{
 		{
 			name:  "scope",
-			query: taskpkg.TaskQuery{Scope: taskpkg.ScopeGlobal},
+			query: taskpkg.Query{Scope: taskpkg.ScopeGlobal},
 			want:  []string{globalTask.ID},
 		},
 		{
 			name:  "workspace",
-			query: taskpkg.TaskQuery{WorkspaceID: workspaceA},
+			query: taskpkg.Query{WorkspaceID: workspaceA},
 			want:  []string{readyTask.ID},
 		},
 		{
 			name:  "status",
-			query: taskpkg.TaskQuery{Status: taskpkg.TaskStatusReady},
+			query: taskpkg.Query{Status: taskpkg.TaskStatusReady},
 			want:  []string{readyTask.ID},
 		},
 		{
 			name:  "parent",
-			query: taskpkg.TaskQuery{ParentTaskID: globalTask.ID},
+			query: taskpkg.Query{ParentTaskID: globalTask.ID},
 			want:  []string{childTask.ID},
 		},
 		{
 			name:  "owner kind",
-			query: taskpkg.TaskQuery{OwnerKind: taskpkg.OwnerKindHuman},
+			query: taskpkg.Query{OwnerKind: taskpkg.OwnerKindHuman},
 			want:  []string{readyTask.ID},
 		},
 		{
 			name:  "owner ref",
-			query: taskpkg.TaskQuery{OwnerRef: "alice"},
+			query: taskpkg.Query{OwnerRef: "alice"},
 			want:  []string{readyTask.ID},
 		},
 		{
 			name:  "channel",
-			query: taskpkg.TaskQuery{NetworkChannel: "engineering"},
+			query: taskpkg.Query{NetworkChannel: "engineering"},
 			want:  []string{childTask.ID},
 		},
 		{
 			name:  "limit",
-			query: taskpkg.TaskQuery{Limit: 2},
+			query: taskpkg.Query{Limit: 2},
 			want:  []string{childTask.ID, readyTask.ID},
 		},
 	} {
@@ -376,7 +404,7 @@ func TestGlobalDBTaskRunRoundTripAndFilters(t *testing.T) {
 		t.Fatalf("UpdateTaskRun(running) error = %v", err)
 	}
 
-	runsByTask, err := globalDB.ListTaskRuns(testutil.Context(t), taskpkg.TaskRunQuery{TaskID: taskRecord.ID})
+	runsByTask, err := globalDB.ListTaskRuns(testutil.Context(t), taskpkg.RunQuery{TaskID: taskRecord.ID})
 	if err != nil {
 		t.Fatalf("ListTaskRuns(task) error = %v", err)
 	}
@@ -385,7 +413,7 @@ func TestGlobalDBTaskRunRoundTripAndFilters(t *testing.T) {
 	}
 	assertTaskRunEqual(t, runsByTask[0], runningRun)
 
-	runsBySession, err := globalDB.ListTaskRuns(testutil.Context(t), taskpkg.TaskRunQuery{SessionID: "sess-task-run"})
+	runsBySession, err := globalDB.ListTaskRuns(testutil.Context(t), taskpkg.RunQuery{SessionID: "sess-task-run"})
 	if err != nil {
 		t.Fatalf("ListTaskRuns(session) error = %v", err)
 	}
@@ -393,7 +421,10 @@ func TestGlobalDBTaskRunRoundTripAndFilters(t *testing.T) {
 		t.Fatalf("len(ListTaskRuns(session)) = %d, want %d", got, want)
 	}
 
-	runsByStatus, err := globalDB.ListTaskRunsByStatus(testutil.Context(t), []taskpkg.TaskRunStatus{taskpkg.TaskRunStatusRunning})
+	runsByStatus, err := globalDB.ListTaskRunsByStatus(
+		testutil.Context(t),
+		[]taskpkg.RunStatus{taskpkg.TaskRunStatusRunning},
+	)
 	if err != nil {
 		t.Fatalf("ListTaskRunsByStatus() error = %v", err)
 	}
@@ -589,9 +620,9 @@ func taskRecordForTest(id string) taskpkg.Task {
 	}
 }
 
-func taskRunForTest(id string, taskID string) taskpkg.TaskRun {
+func taskRunForTest(id string, taskID string) taskpkg.Run {
 	queuedAt := time.Date(2026, 4, 14, 13, 0, 0, 0, time.UTC)
-	return taskpkg.TaskRun{
+	return taskpkg.Run{
 		ID:       id,
 		TaskID:   taskID,
 		Status:   taskpkg.TaskRunStatusQueued,
@@ -632,7 +663,7 @@ func assertTaskEqual(t *testing.T, got taskpkg.Task, want taskpkg.Task) {
 	assertOwnershipEqual(t, got.Owner, want.Owner)
 }
 
-func assertTaskSummaryMatchesTask(t *testing.T, got taskpkg.TaskSummary, want taskpkg.Task) {
+func assertTaskSummaryMatchesTask(t *testing.T, got taskpkg.Summary, want taskpkg.Task) {
 	t.Helper()
 
 	if got.ID != want.ID ||
@@ -653,7 +684,7 @@ func assertTaskSummaryMatchesTask(t *testing.T, got taskpkg.TaskSummary, want ta
 	assertOwnershipEqual(t, got.Owner, want.Owner)
 }
 
-func assertTaskRunEqual(t *testing.T, got taskpkg.TaskRun, want taskpkg.TaskRun) {
+func assertTaskRunEqual(t *testing.T, got taskpkg.Run, want taskpkg.Run) {
 	t.Helper()
 
 	if got.ID != want.ID ||
@@ -701,7 +732,7 @@ func assertActorEqual(t *testing.T, got *taskpkg.ActorIdentity, want *taskpkg.Ac
 	}
 }
 
-func taskSummaryIDs(summaries []taskpkg.TaskSummary) []string {
+func taskSummaryIDs(summaries []taskpkg.Summary) []string {
 	ids := make([]string, 0, len(summaries))
 	for _, summary := range summaries {
 		ids = append(ids, summary.ID)

@@ -188,13 +188,25 @@ func validateInitializeResponse(request InitializeRequest, response InitializeRe
 	if !slices.Contains(request.SupportedProtocolVersion, response.ProtocolVersion) {
 		return fmt.Errorf("subprocess: initialize selected unsupported protocol version %q", response.ProtocolVersion)
 	}
-	if err := validateSubset("accepted actions", response.AcceptedCapabilities.Actions, request.Capabilities.GrantedActions); err != nil {
+	if err := validateSubset(
+		"accepted actions",
+		response.AcceptedCapabilities.Actions,
+		request.Capabilities.GrantedActions,
+	); err != nil {
 		return err
 	}
-	if err := validateSubset("accepted security", response.AcceptedCapabilities.Security, request.Capabilities.GrantedSecurity); err != nil {
+	if err := validateSubset(
+		"accepted security",
+		response.AcceptedCapabilities.Security,
+		request.Capabilities.GrantedSecurity,
+	); err != nil {
 		return err
 	}
-	if err := validateSubset("accepted provides", response.AcceptedCapabilities.Provides, request.Capabilities.Provides); err != nil {
+	if err := validateSubset(
+		"accepted provides",
+		response.AcceptedCapabilities.Provides,
+		request.Capabilities.Provides,
+	); err != nil {
 		return err
 	}
 
@@ -299,9 +311,12 @@ func (r InitializeBridgeRuntime) normalize() InitializeBridgeRuntime {
 	for _, managed := range normalized.ManagedInstances {
 		managedInstances = append(managedInstances, managed.normalize())
 	}
-	slices.SortFunc(managedInstances, func(left InitializeBridgeManagedInstance, right InitializeBridgeManagedInstance) int {
-		return strings.Compare(left.Instance.ID, right.Instance.ID)
-	})
+	slices.SortFunc(
+		managedInstances,
+		func(left InitializeBridgeManagedInstance, right InitializeBridgeManagedInstance) int {
+			return strings.Compare(left.Instance.ID, right.Instance.ID)
+		},
+	)
 	normalized.ManagedInstances = managedInstances
 	return normalized
 }

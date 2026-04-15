@@ -57,7 +57,7 @@ type AgentProcess struct {
 	Args      []string
 	Cwd       string
 	SessionID string
-	Caps      acp.ACPCaps
+	Caps      acp.Caps
 	StartedAt time.Time
 
 	done                <-chan struct{}
@@ -76,7 +76,7 @@ type AgentProcessOptions struct {
 	Args              []string
 	Cwd               string
 	SessionID         string
-	Caps              acp.ACPCaps
+	Caps              acp.Caps
 	StartedAt         time.Time
 	Done              <-chan struct{}
 	Wait              func() error
@@ -210,12 +210,12 @@ type Notifier interface {
 
 // PromptAssembler assembles the prompt context for a new session start.
 type PromptAssembler interface {
-	Assemble(ctx context.Context, agent aghconfig.AgentDef, workspace workspacepkg.ResolvedWorkspace) (string, error)
+	Assemble(ctx context.Context, agent aghconfig.AgentDef, workspace *workspacepkg.ResolvedWorkspace) (string, error)
 }
 
 // SkillRegistry resolves the active skill set for a workspace during session start.
 type SkillRegistry interface {
-	ForWorkspace(ctx context.Context, resolved workspacepkg.ResolvedWorkspace) ([]*skillspkg.Skill, error)
+	ForWorkspace(ctx context.Context, resolved *workspacepkg.ResolvedWorkspace) ([]*skillspkg.Skill, error)
 }
 
 // MCPResolver resolves skill-declared MCP servers into runtime config entries.
@@ -245,7 +245,11 @@ func (a *ACPDriverAdapter) Start(ctx context.Context, opts acp.StartOpts) (*Agen
 }
 
 // Prompt streams prompt events from the wrapped ACP runtime.
-func (a *ACPDriverAdapter) Prompt(ctx context.Context, proc *AgentProcess, req acp.PromptRequest) (<-chan acp.AgentEvent, error) {
+func (a *ACPDriverAdapter) Prompt(
+	ctx context.Context,
+	proc *AgentProcess,
+	req acp.PromptRequest,
+) (<-chan acp.AgentEvent, error) {
 	native, err := a.nativeProcess(proc)
 	if err != nil {
 		return nil, err

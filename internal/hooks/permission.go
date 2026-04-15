@@ -13,12 +13,22 @@ var (
 	ErrPermissionEscalationBlocked = errors.New("hooks: permission escalation blocked")
 )
 
-func newPermissionRequestGuard(logger *slog.Logger, metrics *hookMetrics) patchGuard[PermissionRequestPayload, PermissionRequestPatch] {
+const permissionDecisionDeny = "deny"
+
+func newPermissionRequestGuard(
+	logger *slog.Logger,
+	metrics *hookMetrics,
+) patchGuard[PermissionRequestPayload, PermissionRequestPatch] {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
-	return func(ctx context.Context, hook RegisteredHook, payload PermissionRequestPayload, patch PermissionRequestPatch) error {
+	return func(
+		ctx context.Context,
+		hook RegisteredHook,
+		payload PermissionRequestPayload,
+		patch PermissionRequestPatch,
+	) error {
 		beforeDecision := normalizedPermissionDecision(payload.Decision)
 		afterDecision := normalizedPermissionDecision(permissionDecisionAfterPatch(payload.Decision, patch))
 		if permissionDecisionDenied(beforeDecision) && !permissionDecisionDenied(afterDecision) {
@@ -43,7 +53,7 @@ func newPermissionRequestGuard(logger *slog.Logger, metrics *hookMetrics) patchG
 func permissionDecisionAfterPatch(decision string, patch PermissionRequestPatch) string {
 	switch {
 	case patch.Deny:
-		return "deny"
+		return permissionDecisionDeny
 	case patch.Decision != nil:
 		return *patch.Decision
 	default:
@@ -69,11 +79,11 @@ func permissionDecisionDenied(decision string) bool {
 		return false
 	case clean == "block", clean == "blocked":
 		return true
-	case clean == "deny", clean == "denied", clean == "rejected":
+	case clean == permissionDecisionDeny, clean == "denied", clean == "rejected":
 		return true
 	case strings.HasPrefix(clean, "block-"):
 		return true
-	case strings.HasPrefix(clean, "deny-"):
+	case strings.HasPrefix(clean, permissionDecisionDeny+"-"):
 		return true
 	case clean == "reject":
 		return true

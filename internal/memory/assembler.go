@@ -27,7 +27,8 @@ Only prompt-safe MEMORY.md indexes are injected here. Read full memory files on 
 - ` + "`agh memory write <filename> --type <type> --description <desc> --content <content>`" + ` writes or updates durable memory.`
 	memoryStalenessSection = `## Staleness Policy
 
-- Memories older than 1 day should be verified against the current repository or system state before asserting them as fact.`
+- Memories older than 1 day should be verified against the current repository
+  or system state before asserting them as fact.`
 )
 
 // Assembler loads prompt-safe memory indexes and prepends them to the agent prompt.
@@ -44,7 +45,7 @@ func NewAssembler(store *Store) *Assembler {
 
 // PromptSection renders the dual-scope memory context block without the base
 // agent prompt so it can participate in composed prompt assembly.
-func (a *Assembler) PromptSection(ctx context.Context, workspace workspacepkg.ResolvedWorkspace) (string, error) {
+func (a *Assembler) PromptSection(ctx context.Context, workspace *workspacepkg.ResolvedWorkspace) (string, error) {
 	if a == nil || a.store == nil {
 		return "", nil
 	}
@@ -62,7 +63,11 @@ func (a *Assembler) PromptSection(ctx context.Context, workspace workspacepkg.Re
 
 	workspaceIndex := ""
 	workspaceTruncated := false
-	if workspaceRoot := strings.TrimSpace(workspace.RootDir); workspaceRoot != "" {
+	workspaceRoot := ""
+	if workspace != nil {
+		workspaceRoot = strings.TrimSpace(workspace.RootDir)
+	}
+	if workspaceRoot != "" {
 		var err error
 		workspaceIndex, workspaceTruncated, err = a.store.ForWorkspace(workspaceRoot).LoadIndex(ScopeWorkspace)
 		if err != nil {
@@ -88,7 +93,11 @@ func (a *Assembler) PromptSection(ctx context.Context, workspace workspacepkg.Re
 }
 
 // Assemble renders the dual-scope memory context ahead of the agent system prompt.
-func (a *Assembler) Assemble(ctx context.Context, agent aghconfig.AgentDef, workspace workspacepkg.ResolvedWorkspace) (string, error) {
+func (a *Assembler) Assemble(
+	ctx context.Context,
+	agent aghconfig.AgentDef,
+	workspace *workspacepkg.ResolvedWorkspace,
+) (string, error) {
 	basePrompt := strings.TrimSpace(agent.Prompt)
 
 	contextBlock, err := a.PromptSection(ctx, workspace)

@@ -52,7 +52,10 @@ func TestParseMCPServersJSONAcceptsBothKeyStyles(t *testing.T) {
 func TestParseMCPServersJSONRejectsInvalidEntries(t *testing.T) {
 	t.Parallel()
 
-	if _, err := ParseMCPServersJSON([]byte(`{"mcpServers":{"broken":{"args":["--missing-command"]}}}`), "broken.json"); err == nil {
+	if _, err := ParseMCPServersJSON(
+		[]byte(`{"mcpServers":{"broken":{"args":["--missing-command"]}}}`),
+		"broken.json",
+	); err == nil {
 		t.Fatal("ParseMCPServersJSON() error = nil, want missing command failure")
 	}
 }

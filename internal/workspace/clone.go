@@ -1,6 +1,8 @@
 package workspace
 
 import (
+	"maps"
+
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	"github.com/pedronauck/agh/internal/filesnap"
 	hookspkg "github.com/pedronauck/agh/internal/hooks"
@@ -10,10 +12,10 @@ func cloneSnapshots(snapshots map[string]filesnap.Snapshot) map[string]filesnap.
 	return filesnap.Clone(snapshots)
 }
 
-func cloneResolvedWorkspace(src ResolvedWorkspace) ResolvedWorkspace {
+func cloneResolvedWorkspace(src *ResolvedWorkspace) ResolvedWorkspace {
 	return ResolvedWorkspace{
 		Workspace:  cloneWorkspace(src.Workspace),
-		Config:     cloneConfig(src.Config),
+		Config:     cloneConfig(&src.Config),
 		Agents:     cloneAgentDefs(src.Agents),
 		Skills:     cloneSkillPaths(src.Skills),
 		ResolvedAt: src.ResolvedAt,
@@ -44,7 +46,7 @@ func cloneWorkspaces(src []Workspace) []Workspace {
 	return cloned
 }
 
-func cloneConfig(src aghconfig.Config) aghconfig.Config {
+func cloneConfig(src *aghconfig.Config) aghconfig.Config {
 	return aghconfig.Config{
 		Daemon:        src.Daemon,
 		HTTP:          src.HTTP,
@@ -147,9 +149,7 @@ func cloneStringMap(src map[string]string) map[string]string {
 	}
 
 	cloned := make(map[string]string, len(src))
-	for key, value := range src {
-		cloned[key] = value
-	}
+	maps.Copy(cloned, src)
 	return cloned
 }
 

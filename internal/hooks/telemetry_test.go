@@ -19,13 +19,15 @@ func TestHookTelemetrySecurityPatchPersistsAllFields(t *testing.T) {
 		Mode:         HookModeSync,
 		ExecutorKind: HookExecutorNative,
 	}, map[string]Executor{
-		"permission-hook": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, _ PermissionRequestPayload) (PermissionRequestPatch, error) {
-			deny := "deny"
-			return PermissionRequestPatch{
-				Decision: &deny,
-				Reason:   stringPointer("policy"),
-			}, nil
-		}),
+		"permission-hook": NewTypedNativeExecutor(
+			func(_ context.Context, _ RegisteredHook, _ PermissionRequestPayload) (PermissionRequestPatch, error) {
+				deny := "deny"
+				return PermissionRequestPatch{
+					Decision: &deny,
+					Reason:   stringPointer("policy"),
+				}, nil
+			},
+		),
 	})
 
 	ctx := WithHookRunWriter(t.Context(), writer)
@@ -80,9 +82,11 @@ func TestHookTelemetryOmitsNonSecurityPatchOutsideDebug(t *testing.T) {
 		Mode:         HookModeSync,
 		ExecutorKind: HookExecutorNative,
 	}, map[string]Executor{
-		"session-hook": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, _ SessionPostCreatePayload) (SessionPostCreatePatch, error) {
-			return SessionPostCreatePatch{SessionName: stringPointer("patched")}, nil
-		}),
+		"session-hook": NewTypedNativeExecutor(
+			func(_ context.Context, _ RegisteredHook, _ SessionPostCreatePayload) (SessionPostCreatePatch, error) {
+				return SessionPostCreatePatch{SessionName: stringPointer("patched")}, nil
+			},
+		),
 	})
 
 	ctx := WithHookRunWriter(t.Context(), writer)
@@ -111,9 +115,11 @@ func TestHookTelemetryCapturesNonSecurityPatchInDebugMode(t *testing.T) {
 		Mode:         HookModeSync,
 		ExecutorKind: HookExecutorNative,
 	}, map[string]Executor{
-		"session-hook": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, _ SessionPostCreatePayload) (SessionPostCreatePatch, error) {
-			return SessionPostCreatePatch{SessionName: stringPointer("patched")}, nil
-		}),
+		"session-hook": NewTypedNativeExecutor(
+			func(_ context.Context, _ RegisteredHook, _ SessionPostCreatePayload) (SessionPostCreatePatch, error) {
+				return SessionPostCreatePatch{SessionName: stringPointer("patched")}, nil
+			},
+		),
 	})
 
 	ctx := WithHookRunWriter(t.Context(), writer)
@@ -143,9 +149,11 @@ func TestHookTelemetryRecordsFailureOutcomeAndDuration(t *testing.T) {
 		Mode:         HookModeSync,
 		ExecutorKind: HookExecutorNative,
 	}, map[string]Executor{
-		"failing-hook": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, _ SessionPostCreatePayload) (SessionPostCreatePatch, error) {
-			return SessionPostCreatePatch{}, errors.New("boom")
-		}),
+		"failing-hook": NewTypedNativeExecutor(
+			func(_ context.Context, _ RegisteredHook, _ SessionPostCreatePayload) (SessionPostCreatePatch, error) {
+				return SessionPostCreatePatch{}, errors.New("boom")
+			},
+		),
 	})
 
 	ctx := WithHookRunWriter(t.Context(), writer)
@@ -190,10 +198,12 @@ func TestHookTelemetryRecordsDroppedAsyncSubmission(t *testing.T) {
 			if decl.Name != "async-event" {
 				return nil, errors.New("missing executor")
 			}
-			return NewTypedNativeExecutor(func(context.Context, RegisteredHook, EventPreRecordPayload) (EventPreRecordPatch, error) {
-				<-blocked
-				return EventPreRecordPatch{}, nil
-			}), nil
+			return NewTypedNativeExecutor(
+				func(context.Context, RegisteredHook, EventPreRecordPayload) (EventPreRecordPatch, error) {
+					<-blocked
+					return EventPreRecordPatch{}, nil
+				},
+			), nil
 		}),
 	)
 	t.Cleanup(hooks.Close)
@@ -203,7 +213,7 @@ func TestHookTelemetryRecordsDroppedAsyncSubmission(t *testing.T) {
 
 	ctx := WithHookRunWriter(t.Context(), writer)
 	payload := EventPreRecordPayload{PayloadBase: PayloadBase{Event: HookEventPreRecord}, RecordType: "agent_message"}
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if _, err := hooks.DispatchEventPreRecord(ctx, payload); err != nil {
 			t.Fatalf("DispatchEventPreRecord() #%d error = %v", i+1, err)
 		}

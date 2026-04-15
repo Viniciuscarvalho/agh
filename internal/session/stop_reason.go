@@ -9,13 +9,15 @@ import (
 	"github.com/pedronauck/agh/internal/store"
 )
 
+const stopDetailDaemonShutdown = "daemon shutdown"
+
 func classifyStopReason(cause StopCause, waitErr error, detail string) (store.StopReason, string) {
 	trimmedDetail := strings.TrimSpace(detail)
 
 	switch cause {
 	case CauseShutdown:
 		if trimmedDetail == "" {
-			trimmedDetail = "daemon shutdown"
+			trimmedDetail = stopDetailDaemonShutdown
 		}
 		return store.StopShutdown, trimmedDetail
 	case CauseHookDenied:
@@ -121,7 +123,12 @@ func (m *Manager) StopWithCause(ctx context.Context, id string, cause StopCause,
 	return errors.Join(stopErr, m.finalizeStopped(ctx, session, nil))
 }
 
-func (m *Manager) prepareStopWithCause(ctx context.Context, id string, cause StopCause, detail string) (*Session, *AgentProcess, bool, error) {
+func (m *Manager) prepareStopWithCause(
+	ctx context.Context,
+	id string,
+	cause StopCause,
+	detail string,
+) (*Session, *AgentProcess, bool, error) {
 	session, err := m.lookup(id)
 	if err != nil {
 		return nil, nil, false, err
@@ -148,5 +155,6 @@ func (m *Manager) prepareStopWithCause(ctx context.Context, id string, cause Sto
 	if session.Info().State == StateStopped {
 		return session, nil, true, nil
 	}
-	return session, session.processHandle(), false, nil
+	process := session.processHandle()
+	return session, process, false, nil
 }

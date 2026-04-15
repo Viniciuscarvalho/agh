@@ -285,7 +285,15 @@ func (s *Scheduler) Update(job Job) (ScheduledJobState, error) {
 		registeredAt: registeredAt,
 		job:          updatedJob,
 	}
-	s.logger.Info("automation.scheduler.updated", "job_id", normalized.ID, "job_name", normalized.Name, "schedule_mode", normalized.Schedule.Mode)
+	s.logger.Info(
+		"automation.scheduler.updated",
+		"job_id",
+		normalized.ID,
+		"job_name",
+		normalized.Name,
+		"schedule_mode",
+		normalized.Schedule.Mode,
+	)
 	return s.snapshotLocked(normalized.ID, s.registrations[normalized.ID]), nil
 }
 
@@ -377,7 +385,15 @@ func (s *Scheduler) registerLocked(job Job) (ScheduledJobState, error) {
 		job:          registeredJob,
 	}
 	s.registrations[job.ID] = registration
-	s.logger.Info("automation.scheduler.registered", "job_id", job.ID, "job_name", job.Name, "schedule_mode", job.Schedule.Mode)
+	s.logger.Info(
+		"automation.scheduler.registered",
+		"job_id",
+		job.ID,
+		"job_name",
+		job.Name,
+		"schedule_mode",
+		job.Schedule.Mode,
+	)
 	return s.snapshotLocked(job.ID, registration), nil
 }
 
@@ -484,7 +500,10 @@ func (s *Scheduler) executeScheduledJob(job Job) error {
 	})
 
 	if job.Schedule != nil && job.Schedule.Mode == ScheduleModeAt {
-		if unregisterErr := s.unregisterAfterOneTimeFire(job.ID); unregisterErr != nil && !errors.Is(unregisterErr, ErrScheduledJobNotFound) && !errors.Is(unregisterErr, ErrSchedulerStopped) {
+		if unregisterErr := s.unregisterAfterOneTimeFire(
+			job.ID,
+		); unregisterErr != nil && !errors.Is(unregisterErr, ErrScheduledJobNotFound) &&
+			!errors.Is(unregisterErr, ErrSchedulerStopped) {
 			if err == nil {
 				err = unregisterErr
 			} else {

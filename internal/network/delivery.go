@@ -81,7 +81,9 @@ func withDeliveryClock(now func() time.Time) deliveryOption {
 	}
 }
 
-func withDeliveryDeliveredHook(hook func(sessionID string, envelope Envelope, mode string, latency time.Duration)) deliveryOption {
+func withDeliveryDeliveredHook(
+	hook func(sessionID string, envelope Envelope, mode string, latency time.Duration),
+) deliveryOption {
 	return func(coordinator *deliveryCoordinator) {
 		coordinator.onDelivered = hook
 	}
@@ -297,69 +299,101 @@ func (c *deliveryCoordinator) runWorker(sessionID string, state *deliveryState) 
 		if !ok {
 			return
 		}
-		c.markInFlight(target, item)
-		envelope := item.Envelope
-
-		message, err := formatNetworkMessage(envelope)
-		if err != nil {
-			c.clearInFlight(target)
-			c.requeueFront(target, item)
-			c.logger.Warn(
-				"network.message.render_failed",
-				"session_id", target,
-				"envelope_id", envelope.ID,
-				"error", err,
-			)
-			if json.Valid(envelope.Body) {
-				c.retryAfterWorkerExit(target, state)
-			}
+		if !c.processQueuedItem(target, item, state) {
 			return
 		}
+	}
+}
 
-		events, err := c.prompter.PromptNetwork(c.lifecycleCtx, target, message)
-		if err != nil {
-			c.clearInFlight(target)
-			c.requeueFront(target, item)
-			c.logger.Warn(
-				"network.message.delivery_failed",
-				"session_id", target,
-				"envelope_id", envelope.ID,
-				"error", err,
-			)
-			c.retryAfterWorkerExit(target, state)
-			return
-		}
+func (c *deliveryCoordinator) processQueuedItem(sessionID string, item queuedEnvelope, state *deliveryState) bool {
+	c.markInFlight(sessionID, item)
+	envelope := item.Envelope
 
-		if !c.drainPromptEvents(events) {
-			c.clearInFlight(target)
-			c.logger.Warn(
-				"network.message.delivery_interrupted",
-				"session_id", target,
-				"message_id", envelope.ID,
-				"kind", string(envelope.Kind),
-				"channel", envelope.Channel,
-				"delivery_mode", item.DeliveryMode,
-				"error", c.lifecycleCtx.Err(),
-			)
-			return
-		}
-		c.clearInFlight(target)
-		latency := c.now().Sub(item.AcceptedAt)
-		if latency < 0 {
-			latency = 0
-		}
-		c.logger.Info(
-			"network.message.delivered",
-			"session_id", target,
-			"message_id", envelope.ID,
-			"kind", string(envelope.Kind),
-			"channel", envelope.Channel,
-			"delivery_mode", item.DeliveryMode,
-			"latency_ms", latency.Milliseconds(),
-		)
-		if c.onDelivered != nil {
-			c.onDelivered(target, envelope, item.DeliveryMode, latency)
-		}
+	message, err := formatNetworkMessage(envelope)
+	if err != nil {
+		c.handleRenderFailure(sessionID, item, state, err)
+		return false
+	}
+
+	events, err := c.prompter.PromptNetwork(c.lifecycleCtx, sessionID, message)
+	if err != nil {
+		c.handleDeliveryFailure(sessionID, item, state, err)
+		return false
+	}
+	if !c.drainPromptEvents(events) {
+		c.handleInterruptedDelivery(sessionID, item)
+		return false
+	}
+
+	c.finishDeliveredMessage(sessionID, item)
+	return true
+}
+
+func (c *deliveryCoordinator) handleRenderFailure(
+	sessionID string,
+	item queuedEnvelope,
+	state *deliveryState,
+	err error,
+) {
+	c.clearInFlight(sessionID)
+	c.requeueFront(sessionID, item)
+	c.logger.Warn(
+		"network.message.render_failed",
+		"session_id", sessionID,
+		"envelope_id", item.Envelope.ID,
+		"error", err,
+	)
+	if json.Valid(item.Envelope.Body) {
+		c.retryAfterWorkerExit(sessionID, state)
+	}
+}
+
+func (c *deliveryCoordinator) handleDeliveryFailure(
+	sessionID string,
+	item queuedEnvelope,
+	state *deliveryState,
+	err error,
+) {
+	c.clearInFlight(sessionID)
+	c.requeueFront(sessionID, item)
+	c.logger.Warn(
+		"network.message.delivery_failed",
+		"session_id", sessionID,
+		"envelope_id", item.Envelope.ID,
+		"error", err,
+	)
+	c.retryAfterWorkerExit(sessionID, state)
+}
+
+func (c *deliveryCoordinator) handleInterruptedDelivery(sessionID string, item queuedEnvelope) {
+	c.clearInFlight(sessionID)
+	c.logger.Warn(
+		"network.message.delivery_interrupted",
+		"session_id", sessionID,
+		"message_id", item.Envelope.ID,
+		"kind", string(item.Envelope.Kind),
+		"channel", item.Envelope.Channel,
+		"delivery_mode", item.DeliveryMode,
+		"error", c.lifecycleCtx.Err(),
+	)
+}
+
+func (c *deliveryCoordinator) finishDeliveredMessage(sessionID string, item queuedEnvelope) {
+	c.clearInFlight(sessionID)
+
+	latency := max(c.now().Sub(item.AcceptedAt), 0)
+
+	c.logger.Info(
+		"network.message.delivered",
+		"session_id", sessionID,
+		"message_id", item.Envelope.ID,
+		"kind", string(item.Envelope.Kind),
+		"channel", item.Envelope.Channel,
+		"delivery_mode", item.DeliveryMode,
+		"latency_ms", latency.Milliseconds(),
+	)
+	if c.onDelivered != nil {
+		c.onDelivered(sessionID, item.Envelope, item.DeliveryMode, latency)
 	}
 }
 
@@ -620,167 +654,233 @@ func formatNetworkMessage(envelope Envelope) (string, error) {
 }
 
 func renderReplyGuidance(envelope Envelope) string {
+	ctx := newReplyGuidanceContext(envelope)
+	lines := []string{
+		"",
+		"",
+		"Use `agh network send` to respond through the audited CLI path.",
+		ctx.replyFlagsLine(),
+		ctx.causationLine(),
+	}
+
+	if traceLine := ctx.traceLine(); traceLine != "" {
+		lines = append(lines, traceLine)
+	}
+	if interactionLine := ctx.broadcastInteractionLine(); interactionLine != "" {
+		lines = append(lines, interactionLine)
+	}
+	lines = append(lines, protocolGuidanceLines()...)
+	if sayLine := ctx.sayLifecycleLine(); sayLine != "" {
+		lines = append(lines, sayLine)
+	}
+
+	lines = append(lines, "Examples:", "```bash")
+	lines = append(lines, ctx.directReplyExample()...)
+	if ctx.reuseInteraction {
+		lines = append(lines, ctx.protocolExamples()...)
+	}
+	lines = append(lines, "```", "See `agh network --help` for options.")
+	return strings.Join(lines, "\n")
+}
+
+type replyGuidanceContext struct {
+	envelope         Envelope
+	reuseInteraction bool
+	interactionID    string
+	traceID          string
+}
+
+func newReplyGuidanceContext(envelope Envelope) replyGuidanceContext {
+	ctx := replyGuidanceContext{
+		envelope:         envelope,
+		reuseInteraction: shouldReuseInboundInteraction(envelope) && envelope.InteractionID != nil,
+	}
+	if envelope.InteractionID != nil {
+		ctx.interactionID = *envelope.InteractionID
+	}
+	if envelope.TraceID != nil {
+		ctx.traceID = *envelope.TraceID
+	}
+	return ctx
+}
+
+func (c replyGuidanceContext) replyFlagsLine() string {
 	var builder strings.Builder
-	builder.WriteString("\n\nUse `agh network send` to respond through the audited CLI path.")
-	builder.WriteString("\nFor replies to this message, keep `--session \"$AGH_SESSION_ID\"`,")
+	builder.WriteString("For replies to this message, keep `--session \"$AGH_SESSION_ID\"`,")
 	builder.WriteString(" `--channel \"")
-	builder.WriteString(envelope.Channel)
+	builder.WriteString(c.envelope.Channel)
 	builder.WriteString("\"`,")
 	builder.WriteString(" `--to \"")
-	builder.WriteString(envelope.From)
+	builder.WriteString(c.envelope.From)
 	builder.WriteString("\"`")
-	if shouldReuseInboundInteraction(envelope) && envelope.InteractionID != nil {
+	if c.reuseInteraction {
 		builder.WriteString(", `--interaction-id \"")
-		builder.WriteString(*envelope.InteractionID)
+		builder.WriteString(c.interactionID)
 		builder.WriteString("\"`")
 	}
 	builder.WriteString(", and `--reply-to \"")
-	builder.WriteString(envelope.ID)
+	builder.WriteString(c.envelope.ID)
 	builder.WriteString("\"`.")
-	builder.WriteString("\nIf this inbound message is the direct cause of your reply, set `--causation-id \"")
-	builder.WriteString(envelope.ID)
-	builder.WriteString("\"` on the outbound message.")
-	if envelope.TraceID != nil {
-		builder.WriteString("\nPreserve `--trace-id \"")
-		builder.WriteString(*envelope.TraceID)
-		builder.WriteString("\"` on correlated follow-up messages.")
-	}
-	if envelope.Kind == KindSay && envelope.InteractionID != nil {
-		builder.WriteString("\nIf you reply to this broadcast `say` with `--kind direct`, choose a NEW `--interaction-id` unique to your targeted conversation instead of reusing `")
-		builder.WriteString(*envelope.InteractionID)
-		builder.WriteString("`.")
-	}
-	builder.WriteString("\nIf you send a protocol `receipt`, the body must include `for_id` and a valid `status`.")
-	builder.WriteString(" Use `status:\"accepted\"` for normal admission.")
-	builder.WriteString(" Use `status:\"rejected\"`, `\"duplicate\"`, `\"expired\"`, or `\"unsupported\"` only with a matching `reason_code`.")
-	builder.WriteString("\nIf you send a protocol `trace`, the body must include a valid `state` such as `working`, `needs_input`, `completed`, `failed`, or `canceled`.")
-	builder.WriteString("\nIf you send a protocol `recipe`, the body must be nested as `{\"recipe\":{...}}` and include `recipe.recipe_id`, `recipe.version`, `recipe.content_type`, `recipe.digest`, and either `recipe.inline` or `recipe.uri`.")
-	builder.WriteString("\nDo not imitate protocol `receipt` or `trace` with `--kind direct` plus `intent:\"receipt\"` or `intent:\"trace\"`. Use the real protocol kinds `receipt` and `trace`.")
-	if envelope.Kind == KindSay {
-		builder.WriteString("\nDo not send `receipt` or `trace` directly against this broadcast `say`. Open a new targeted `direct` interaction first if you need lifecycle messages.")
-	}
-	builder.WriteString("\nExamples:")
-	builder.WriteString("\n```bash")
-	builder.WriteString("\n# Direct reply")
-	builder.WriteString("\nagh network send \\")
-	builder.WriteString("\n  --session \"$AGH_SESSION_ID\" \\")
-	builder.WriteString("\n  --channel \"")
-	builder.WriteString(envelope.Channel)
-	builder.WriteString("\" \\")
-	builder.WriteString("\n  --kind direct \\")
-	builder.WriteString("\n  --to \"")
-	builder.WriteString(envelope.From)
-	builder.WriteString("\" \\")
-	if shouldReuseInboundInteraction(envelope) && envelope.InteractionID != nil {
-		builder.WriteString("\n  --interaction-id \"")
-		builder.WriteString(*envelope.InteractionID)
-		builder.WriteString("\" \\")
-	} else if envelope.Kind == KindSay {
-		builder.WriteString("\n  --interaction-id \"int-my-peer-reply-")
-		builder.WriteString(envelope.ID)
-		builder.WriteString("\" \\")
-	}
-	builder.WriteString("\n  --reply-to \"")
-	builder.WriteString(envelope.ID)
-	builder.WriteString("\" \\")
-	builder.WriteString("\n  --causation-id \"")
-	builder.WriteString(envelope.ID)
-	builder.WriteString("\" \\")
-	if envelope.TraceID != nil {
-		builder.WriteString("\n  --trace-id \"")
-		builder.WriteString(*envelope.TraceID)
-		builder.WriteString("\" \\")
-	}
-	builder.WriteString("\n  --body '{\"text\":\"Reply text\",\"intent\":\"reply\"}' \\")
-	builder.WriteString("\n  -o json")
-	if shouldReuseInboundInteraction(envelope) && envelope.InteractionID != nil {
-		builder.WriteString("\n")
-		builder.WriteString("\n# Protocol receipt")
-		builder.WriteString("\nagh network send \\")
-		builder.WriteString("\n  --session \"$AGH_SESSION_ID\" \\")
-		builder.WriteString("\n  --channel \"")
-		builder.WriteString(envelope.Channel)
-		builder.WriteString("\" \\")
-		builder.WriteString("\n  --kind receipt \\")
-		builder.WriteString("\n  --to \"")
-		builder.WriteString(envelope.From)
-		builder.WriteString("\" \\")
-		builder.WriteString("\n  --interaction-id \"")
-		builder.WriteString(*envelope.InteractionID)
-		builder.WriteString("\" \\")
-		builder.WriteString("\n  --reply-to \"")
-		builder.WriteString(envelope.ID)
-		builder.WriteString("\" \\")
-		builder.WriteString("\n  --causation-id \"")
-		builder.WriteString(envelope.ID)
-		builder.WriteString("\" \\")
-		if envelope.TraceID != nil {
-			builder.WriteString("\n  --trace-id \"")
-			builder.WriteString(*envelope.TraceID)
-			builder.WriteString("\" \\")
-		}
-		builder.WriteString("\n  --body '{\"for_id\":\"")
-		builder.WriteString(envelope.ID)
-		builder.WriteString("\",\"status\":\"accepted\",\"detail\":\"Accepted for processing.\"}' \\")
-		builder.WriteString("\n  -o json")
-		builder.WriteString("\n")
-		builder.WriteString("\n# Protocol trace")
-		builder.WriteString("\nagh network send \\")
-		builder.WriteString("\n  --session \"$AGH_SESSION_ID\" \\")
-		builder.WriteString("\n  --channel \"")
-		builder.WriteString(envelope.Channel)
-		builder.WriteString("\" \\")
-		builder.WriteString("\n  --kind trace \\")
-		builder.WriteString("\n  --to \"")
-		builder.WriteString(envelope.From)
-		builder.WriteString("\" \\")
-		builder.WriteString("\n  --interaction-id \"")
-		builder.WriteString(*envelope.InteractionID)
-		builder.WriteString("\" \\")
-		builder.WriteString("\n  --reply-to \"")
-		builder.WriteString(envelope.ID)
-		builder.WriteString("\" \\")
-		builder.WriteString("\n  --causation-id \"")
-		builder.WriteString(envelope.ID)
-		builder.WriteString("\" \\")
-		if envelope.TraceID != nil {
-			builder.WriteString("\n  --trace-id \"")
-			builder.WriteString(*envelope.TraceID)
-			builder.WriteString("\" \\")
-		}
-		builder.WriteString("\n  --body '{\"state\":\"working\",\"message\":\"Inspecting the request.\"}' \\")
-		builder.WriteString("\n  -o json")
-		builder.WriteString("\n")
-		builder.WriteString("\n# Protocol recipe")
-		builder.WriteString("\nagh network send \\")
-		builder.WriteString("\n  --session \"$AGH_SESSION_ID\" \\")
-		builder.WriteString("\n  --channel \"")
-		builder.WriteString(envelope.Channel)
-		builder.WriteString("\" \\")
-		builder.WriteString("\n  --kind recipe \\")
-		builder.WriteString("\n  --to \"")
-		builder.WriteString(envelope.From)
-		builder.WriteString("\" \\")
-		builder.WriteString("\n  --interaction-id \"")
-		builder.WriteString(*envelope.InteractionID)
-		builder.WriteString("\" \\")
-		builder.WriteString("\n  --reply-to \"")
-		builder.WriteString(envelope.ID)
-		builder.WriteString("\" \\")
-		builder.WriteString("\n  --causation-id \"")
-		builder.WriteString(envelope.ID)
-		builder.WriteString("\" \\")
-		if envelope.TraceID != nil {
-			builder.WriteString("\n  --trace-id \"")
-			builder.WriteString(*envelope.TraceID)
-			builder.WriteString("\" \\")
-		}
-		builder.WriteString("\n  --body '{\"recipe\":{\"recipe_id\":\"reply-recipe\",\"version\":\"1.0.0\",\"title\":\"Reply Recipe\",\"summary\":\"Compact inline checklist.\",\"content_type\":\"text/markdown\",\"digest\":\"sha256:replace-me\",\"inline\":\"# Reply Recipe\\n- Step 1\\n- Step 2\"}}' \\")
-		builder.WriteString("\n  -o json")
-	}
-	builder.WriteString("\n```")
-	builder.WriteString("\nSee `agh network --help` for options.")
 	return builder.String()
+}
+
+func (c replyGuidanceContext) causationLine() string {
+	return fmt.Sprintf(
+		"If this inbound message is the direct cause of your reply, set `--causation-id %q` on the outbound message.",
+		c.envelope.ID,
+	)
+}
+
+func (c replyGuidanceContext) traceLine() string {
+	if c.traceID == "" {
+		return ""
+	}
+	return fmt.Sprintf(
+		"Preserve `--trace-id %q` on correlated follow-up messages.",
+		c.traceID,
+	)
+}
+
+func (c replyGuidanceContext) broadcastInteractionLine() string {
+	if c.envelope.Kind != KindSay || c.interactionID == "" {
+		return ""
+	}
+	return fmt.Sprintf(
+		"If you reply to this broadcast `say` with `--kind direct`, choose a NEW `--interaction-id` unique to your targeted conversation instead of reusing `%s`.",
+		c.interactionID,
+	)
+}
+
+func (c replyGuidanceContext) sayLifecycleLine() string {
+	if c.envelope.Kind != KindSay {
+		return ""
+	}
+	return "Do not send `receipt` or `trace` directly against this broadcast `say`. Open a new targeted `direct` interaction first if you need lifecycle messages."
+}
+
+func (c replyGuidanceContext) directReplyExample() []string {
+	lines := []string{
+		"# Direct reply",
+		"agh network send \\",
+		`  --session "$AGH_SESSION_ID" \`,
+		fmt.Sprintf("  --channel %q \\", c.envelope.Channel),
+		"  --kind direct \\",
+		fmt.Sprintf("  --to %q \\", c.envelope.From),
+	}
+	switch {
+	case c.reuseInteraction:
+		lines = append(lines, fmt.Sprintf("  --interaction-id %q \\", c.interactionID))
+	case c.envelope.Kind == KindSay:
+		lines = append(lines, fmt.Sprintf("  --interaction-id %q \\", "int-my-peer-reply-"+c.envelope.ID))
+	}
+	lines = append(lines,
+		fmt.Sprintf("  --reply-to %q \\", c.envelope.ID),
+		fmt.Sprintf("  --causation-id %q \\", c.envelope.ID),
+	)
+	lines = c.appendTraceFlag(lines)
+	lines = append(lines, `  --body '{"text":"Reply text","intent":"reply"}' \`, "  -o json")
+	return lines
+}
+
+func (c replyGuidanceContext) protocolExamples() []string {
+	lines := []string{}
+	lines = append(lines, c.protocolReceiptExample()...)
+	lines = append(lines, c.protocolTraceExample()...)
+	lines = append(lines, c.protocolRecipeExample()...)
+	return lines
+}
+
+func (c replyGuidanceContext) protocolReceiptExample() []string {
+	lines := []string{
+		"",
+		"# Protocol receipt",
+		"agh network send \\",
+		`  --session "$AGH_SESSION_ID" \`,
+		fmt.Sprintf("  --channel %q \\", c.envelope.Channel),
+		"  --kind receipt \\",
+		fmt.Sprintf("  --to %q \\", c.envelope.From),
+		fmt.Sprintf("  --interaction-id %q \\", c.interactionID),
+		fmt.Sprintf("  --reply-to %q \\", c.envelope.ID),
+		fmt.Sprintf("  --causation-id %q \\", c.envelope.ID),
+	}
+	lines = c.appendTraceFlag(lines)
+	lines = append(
+		lines,
+		fmt.Sprintf(
+			`  --body '{"for_id":%q,"status":"accepted","detail":"Accepted for processing."}' \`,
+			c.envelope.ID,
+		),
+		"  -o json",
+	)
+	return lines
+}
+
+func (c replyGuidanceContext) protocolTraceExample() []string {
+	lines := []string{
+		"",
+		"# Protocol trace",
+		"agh network send \\",
+		`  --session "$AGH_SESSION_ID" \`,
+		fmt.Sprintf("  --channel %q \\", c.envelope.Channel),
+		"  --kind trace \\",
+		fmt.Sprintf("  --to %q \\", c.envelope.From),
+		fmt.Sprintf("  --interaction-id %q \\", c.interactionID),
+		fmt.Sprintf("  --reply-to %q \\", c.envelope.ID),
+		fmt.Sprintf("  --causation-id %q \\", c.envelope.ID),
+	}
+	lines = c.appendTraceFlag(lines)
+	lines = append(lines, `  --body '{"state":"working","message":"Inspecting the request."}' \`, "  -o json")
+	return lines
+}
+
+func (c replyGuidanceContext) protocolRecipeExample() []string {
+	lines := []string{
+		"",
+		"# Protocol recipe",
+		"agh network send \\",
+		`  --session "$AGH_SESSION_ID" \`,
+		fmt.Sprintf("  --channel %q \\", c.envelope.Channel),
+		"  --kind recipe \\",
+		fmt.Sprintf("  --to %q \\", c.envelope.From),
+		fmt.Sprintf("  --interaction-id %q \\", c.interactionID),
+		fmt.Sprintf("  --reply-to %q \\", c.envelope.ID),
+		fmt.Sprintf("  --causation-id %q \\", c.envelope.ID),
+	}
+	lines = c.appendTraceFlag(lines)
+	lines = append(lines, recipeBodyExampleLine(), "  -o json")
+	return lines
+}
+
+func (c replyGuidanceContext) appendTraceFlag(lines []string) []string {
+	if c.traceID == "" {
+		return lines
+	}
+	return append(lines, fmt.Sprintf("  --trace-id %q \\", c.traceID))
+}
+
+func recipeBodyExampleLine() string {
+	return strings.Join([]string{
+		`  --body '{"recipe":{"recipe_id":"reply-recipe","version":"1.0.0",`,
+		`"title":"Reply Recipe","summary":"Compact inline checklist.",`,
+		`"content_type":"text/markdown","digest":"sha256:replace-me",`,
+		`"inline":"# Reply Recipe\n- Step 1\n- Step 2"}}' \`,
+	}, "")
+}
+
+func protocolGuidanceLines() []string {
+	return []string{
+		"If you send a protocol `receipt`, the body must include `for_id` and a valid `status`. " +
+			`Use ` + "`status:\"accepted\"`" + ` for normal admission. Use ` + "`status:\"rejected\"`" +
+			`, ` + "`\"duplicate\"`" + `, ` + "`\"expired\"`" + `, or ` + "`\"unsupported\"`" +
+			` only with a matching ` + "`reason_code`" + ".",
+		"If you send a protocol `trace`, the body must include a valid `state` such as " +
+			"`working`, `needs_input`, `completed`, `failed`, or `canceled`.",
+		"If you send a protocol `recipe`, the body must be nested as `{\"recipe\":{...}}` and " +
+			"include `recipe.recipe_id`, `recipe.version`, `recipe.content_type`, `recipe.digest`, " +
+			"and either `recipe.inline` or `recipe.uri`.",
+		"Do not imitate protocol `receipt` or `trace` with `--kind direct` plus " +
+			"`intent:\"receipt\"` or `intent:\"trace\"`. Use the real protocol kinds `receipt` and `trace`.",
+	}
 }
 
 func shouldReuseInboundInteraction(envelope Envelope) bool {

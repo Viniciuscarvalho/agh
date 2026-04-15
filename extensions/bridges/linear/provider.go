@@ -26,11 +26,10 @@ import (
 const (
 	linearListenAddrEnv = "AGH_BRIDGE_LINEAR_LISTEN_ADDR"
 	linearAPIBaseEnv    = "AGH_BRIDGE_LINEAR_API_BASE_URL"
-	linearTokenURLEnv   = "AGH_BRIDGE_LINEAR_TOKEN_URL"
 
 	linearDefaultAPIBaseURL  = "https://api.linear.app"
-	linearDefaultTokenURL    = "https://api.linear.app/oauth/token"
 	linearDefaultWebhookPath = "/linear"
+	linearOAuthPathSuffix    = "/oauth/token"
 
 	linearModeComments      = "comments"
 	linearModeAgentSessions = "agent_sessions"
@@ -38,7 +37,9 @@ const (
 	linearAuthModeAPIKey = "api_key"
 	linearAuthModeOAuth  = "oauth"
 
-	linearWebhookSkew = time.Minute
+	linearWebhookSkew              = time.Minute
+	linearWebhookReadHeaderTimeout = 10 * time.Second
+	linearWebhookIdleTimeout       = 30 * time.Second
 
 	rpcCodeNotInitialized = -32003
 )
@@ -90,11 +91,11 @@ type linearProviderConfig struct {
 	Webhook        struct {
 		ListenAddr string `json:"listen_addr,omitempty"`
 		Path       string `json:"path,omitempty"`
-	} `json:"webhook,omitempty"`
+	} `json:"webhook"`
 }
 
 type resolvedInstanceConfig struct {
-	managed            subprocess.InitializeBridgeManagedInstance
+	managed            *subprocess.InitializeBridgeManagedInstance
 	instanceID         string
 	organizationID     string
 	mode               string
@@ -250,7 +251,10 @@ func newLinearProvider(stderr io.Writer) (*linearProvider, error) {
 }
 
 func (p *linearProvider) serve(stdin io.Reader, stdout io.Writer) error {
-	p.reportSideEffectError("write start marker", appendMarkerLine(p.env.startsPath, fmt.Sprintf("pid=%d", os.Getpid())))
+	p.reportSideEffectError(
+		"write start marker",
+		appendMarkerLine(p.env.startsPath, fmt.Sprintf("pid=%d", os.Getpid())),
+	)
 	return p.sdk.Serve(context.Background(), stdin, stdout)
 }
 
@@ -266,11 +270,9 @@ func (p *linearProvider) handleInitialize(_ context.Context, session *bridgesdk.
 	p.reportSideEffectError("write initialize marker", writeJSONFile(p.env.handshakePath, marker))
 	p.clearLastError()
 
-	p.wg.Add(1)
-	go func() {
-		defer p.wg.Done()
+	p.wg.Go(func() {
 		p.afterInitialize(session)
-	}()
+	})
 
 	return nil
 }
@@ -305,17 +307,21 @@ func (p *linearProvider) afterInitialize(session *bridgesdk.Session) {
 	}
 	p.reportSideEffectError("write ownership marker", writeJSONFile(p.env.ownershipPath, ownership))
 
-	configs, reconcileErr := p.reconcileInstanceConfigs(ctx, session, listed)
-	if reconcileErr != nil && ownershipErr == nil {
-		ownershipErr = reconcileErr
-	}
+	configs := p.reconcileInstanceConfigs(ctx, session, listed)
 	for _, cfg := range configs {
 		status := cfg.initialStatus
 		degradation := cfg.initialDegradation
 		if status == "" {
 			status = bridgepkg.BridgeStatusReady
 		}
-		if _, err := p.reportState(ctx, session, cfg.instanceID, status, degradation); err != nil && ownershipErr == nil {
+		if err := p.reportState(
+			ctx,
+			session,
+			cfg.instanceID,
+			status,
+			degradation,
+		); err != nil &&
+			ownershipErr == nil {
 			ownershipErr = err
 		}
 	}
@@ -356,7 +362,13 @@ func (p *linearProvider) handleBridgesDeliver(
 	}
 
 	api := p.apiFactory(cfg)
-	ack, state, err := executeLinearDelivery(ctx, api, cfg, request, p.deliveryState(cfg.instanceID, request.Event.DeliveryID))
+	ack, state, err := executeLinearDelivery(
+		ctx,
+		api,
+		cfg,
+		request,
+		p.deliveryState(cfg.instanceID, request.Event.DeliveryID),
+	)
 	if err != nil {
 		marker.Error = err.Error()
 		p.reportSideEffectError("write failed delivery marker", appendJSONLine(p.env.deliveryPath, marker))
@@ -371,11 +383,14 @@ func (p *linearProvider) handleBridgesDeliver(
 	}
 
 	p.storeDeliveryState(cfg.instanceID, request.Event.DeliveryID, state)
-	p.reportReadyIfNeeded(ctx, session, cfg.instanceID)
+	if err := p.reportReadyIfNeeded(ctx, session, cfg.instanceID); err != nil {
+		p.setLastError(err)
+	} else {
+		p.clearLastError()
+	}
 
 	marker.Ack = &ack
 	p.reportSideEffectError("write delivery marker", appendJSONLine(p.env.deliveryPath, marker))
-	p.clearLastError()
 	return ack, nil
 }
 
@@ -398,15 +413,22 @@ func (p *linearProvider) handleShutdown(
 	shutdownCtx := context.Background()
 	if request.DeadlineMS > 0 {
 		var cancel context.CancelFunc
-		shutdownCtx, cancel = context.WithTimeout(context.Background(), time.Duration(request.DeadlineMS)*time.Millisecond)
+		shutdownCtx, cancel = context.WithTimeout(
+			context.Background(),
+			time.Duration(request.DeadlineMS)*time.Millisecond,
+		)
 		defer cancel()
 	}
 
 	p.mu.Lock()
 	server := p.server
 	p.mu.Unlock()
+	var shutdownErr error
 	if server != nil {
-		_ = server.Shutdown(shutdownCtx)
+		if err := server.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			shutdownErr = fmt.Errorf("linear: shutdown webhook server: %w", err)
+			p.setLastError(shutdownErr)
+		}
 	}
 
 	done := make(chan struct{})
@@ -420,8 +442,11 @@ func (p *linearProvider) handleShutdown(
 	case <-shutdownCtx.Done():
 	}
 
-	p.reportSideEffectError("write shutdown marker", appendMarkerLine(p.env.shutdownPath, fmt.Sprintf("pid=%d", os.Getpid())))
-	return nil
+	p.reportSideEffectError(
+		"write shutdown marker",
+		appendMarkerLine(p.env.shutdownPath, fmt.Sprintf("pid=%d", os.Getpid())),
+	)
+	return shutdownErr
 }
 
 func (p *linearProvider) stop() {
@@ -467,14 +492,15 @@ func (p *linearProvider) reportState(
 	bridgeInstanceID string,
 	status bridgepkg.BridgeStatus,
 	degradation *bridgepkg.BridgeDegradation,
-) (*bridgepkg.BridgeInstance, error) {
+) error {
 	var result *bridgepkg.BridgeInstance
 	err := p.retryHostCall(ctx, func(callCtx context.Context) error {
-		instance, callErr := session.HostAPI().ReportBridgeInstanceState(callCtx, extensioncontract.BridgesInstancesReportStateParams{
-			BridgeInstanceID: strings.TrimSpace(bridgeInstanceID),
-			Status:           status,
-			Degradation:      cloneDegradation(degradation),
-		})
+		instance, callErr := session.HostAPI().
+			ReportBridgeInstanceState(callCtx, extensioncontract.BridgesInstancesReportStateParams{
+				BridgeInstanceID: strings.TrimSpace(bridgeInstanceID),
+				Status:           status,
+				Degradation:      cloneDegradation(degradation),
+			})
 		if callErr == nil {
 			result = instance
 		}
@@ -486,7 +512,7 @@ func (p *linearProvider) reportState(
 			Status:           status,
 			Error:            err.Error(),
 		}))
-		return nil, err
+		return err
 	}
 
 	p.mu.Lock()
@@ -497,17 +523,22 @@ func (p *linearProvider) reportState(
 		Status:           result.Status,
 		Instance:         *result,
 	}))
-	return result, nil
+	return nil
 }
 
-func (p *linearProvider) reportReadyIfNeeded(ctx context.Context, session *bridgesdk.Session, bridgeInstanceID string) {
+func (p *linearProvider) reportReadyIfNeeded(
+	ctx context.Context,
+	session *bridgesdk.Session,
+	bridgeInstanceID string,
+) error {
+	bridgeInstanceID = strings.TrimSpace(bridgeInstanceID)
 	p.mu.RLock()
-	status := p.reportedStatus[strings.TrimSpace(bridgeInstanceID)]
+	status := p.reportedStatus[bridgeInstanceID]
 	p.mu.RUnlock()
 	if status == bridgepkg.BridgeStatusReady {
-		return
+		return nil
 	}
-	_, _ = p.reportState(ctx, session, bridgeInstanceID, bridgepkg.BridgeStatusReady, nil)
+	return p.reportState(ctx, session, bridgeInstanceID, bridgepkg.BridgeStatusReady, nil)
 }
 
 func (p *linearProvider) ingestBridgeMessage(
@@ -533,7 +564,7 @@ func (p *linearProvider) retryHostCall(ctx context.Context, fn func(context.Cont
 
 	delay := 10 * time.Millisecond
 	var lastErr error
-	for attempt := 0; attempt < 6; attempt++ {
+	for range 6 {
 		err := fn(ctx)
 		if err == nil {
 			return nil
@@ -576,12 +607,12 @@ func (p *linearProvider) reconcileInstanceConfigs(
 	ctx context.Context,
 	session *bridgesdk.Session,
 	managed []subprocess.InitializeBridgeManagedInstance,
-) ([]resolvedInstanceConfig, error) {
+) []resolvedInstanceConfig {
 	if len(managed) == 0 {
 		p.mu.Lock()
 		p.routes = make(map[string]resolvedInstanceConfig)
 		p.mu.Unlock()
-		return nil, nil
+		return nil
 	}
 
 	configs := make([]resolvedInstanceConfig, 0, len(managed))
@@ -594,12 +625,23 @@ func (p *linearProvider) reconcileInstanceConfigs(
 			if requestedListen == "" {
 				requestedListen = cfg.listenAddr
 			} else if requestedListen != cfg.listenAddr && cfg.configError == nil {
-				cfg.configError = fmt.Errorf("linear: instance %q configured incompatible listen_addr %q (runtime uses %q)", cfg.instanceID, cfg.listenAddr, requestedListen)
+				cfg.configError = fmt.Errorf(
+					"linear: instance %q configured incompatible listen_addr %q (runtime uses %q)",
+					cfg.instanceID,
+					cfg.listenAddr,
+					requestedListen,
+				)
 			}
 		}
 		ownershipKey := cfg.ownershipKey()
 		if owner, ok := seenOwnership[ownershipKey]; ok && ownershipKey != "" && cfg.configError == nil {
-			cfg.configError = fmt.Errorf("linear: organization %q mode %q already belongs to %q and cannot also belong to %q", cfg.organizationID, cfg.mode, owner, cfg.instanceID)
+			cfg.configError = fmt.Errorf(
+				"linear: organization %q mode %q already belongs to %q and cannot also belong to %q",
+				cfg.organizationID,
+				cfg.mode,
+				owner,
+				cfg.instanceID,
+			)
 		}
 		if ownershipKey != "" {
 			seenOwnership[ownershipKey] = cfg.instanceID
@@ -638,7 +680,7 @@ func (p *linearProvider) reconcileInstanceConfigs(
 	p.listenAddr = requestedListen
 	p.mu.Unlock()
 
-	return configs, nil
+	return configs
 }
 
 func (p *linearProvider) resolveInstanceConfig(
@@ -661,7 +703,7 @@ func (p *linearProvider) resolveInstanceConfig(
 		resolveLinearEnv{
 			listenAddr: strings.TrimSpace(os.Getenv(linearListenAddrEnv)),
 			apiBaseURL: strings.TrimSpace(os.Getenv(linearAPIBaseEnv)),
-			tokenURL:   strings.TrimSpace(os.Getenv(linearTokenURLEnv)),
+			tokenURL:   strings.TrimSpace(os.Getenv(linearOAuthTokenURLEnvName())),
 		},
 	)
 }
@@ -688,7 +730,7 @@ func resolveLinearInstanceConfig(
 	if len(managed.Instance.ProviderConfig) > 0 {
 		if err := json.Unmarshal(managed.Instance.ProviderConfig, &cfg); err != nil {
 			return resolvedInstanceConfig{
-				managed:         managed,
+				managed:         &managed,
 				instanceID:      strings.TrimSpace(managed.Instance.ID),
 				configError:     fmt.Errorf("linear: decode provider_config for %q: %w", managed.Instance.ID, err),
 				dedup:           bridgesdk.NewDedupCache(5*time.Minute, 4000),
@@ -698,7 +740,7 @@ func resolveLinearInstanceConfig(
 	}
 
 	resolved := resolvedInstanceConfig{
-		managed:         managed,
+		managed:         &managed,
 		instanceID:      strings.TrimSpace(managed.Instance.ID),
 		organizationID:  strings.TrimSpace(cfg.OrganizationID),
 		mode:            normalizeLinearMode(cfg.Mode),
@@ -706,7 +748,7 @@ func resolveLinearInstanceConfig(
 		listenAddr:      firstNonEmpty(cfg.Webhook.ListenAddr, env.listenAddr),
 		webhookPath:     normalizeWebhookPath(firstNonEmpty(cfg.Webhook.Path, linearDefaultWebhookPath)),
 		apiBaseURL:      normalizeURL(firstNonEmpty(cfg.APIBaseURL, env.apiBaseURL, linearDefaultAPIBaseURL)),
-		oauthTokenURL:   normalizeURL(firstNonEmpty(cfg.OAuthTokenURL, env.tokenURL, linearDefaultTokenURL)),
+		oauthTokenURL:   normalizeURL(firstNonEmpty(cfg.OAuthTokenURL, env.tokenURL, linearDefaultOAuthTokenURL())),
 		webhookSecret:   strings.TrimSpace(secrets.webhookSecret),
 		apiKey:          strings.TrimSpace(secrets.apiKey),
 		clientID:        strings.TrimSpace(secrets.clientID),
@@ -794,7 +836,11 @@ func (p *linearProvider) determineInitialState(
 	if viewer != nil {
 		if strings.TrimSpace(cfg.organizationID) != "" && strings.TrimSpace(viewer.OrganizationID) != "" &&
 			!strings.EqualFold(strings.TrimSpace(cfg.organizationID), strings.TrimSpace(viewer.OrganizationID)) {
-			err := fmt.Errorf("linear: provider_config.organization_id %q does not match authenticated organization %q", cfg.organizationID, viewer.OrganizationID)
+			err := fmt.Errorf(
+				"linear: provider_config.organization_id %q does not match authenticated organization %q",
+				cfg.organizationID,
+				viewer.OrganizationID,
+			)
 			return cfg, bridgepkg.BridgeStatusDegraded, &bridgepkg.BridgeDegradation{
 				Reason:  bridgepkg.BridgeDegradationReasonTenantConfigInvalid,
 				Message: err.Error(),
@@ -818,13 +864,15 @@ func (p *linearProvider) startServer(listenAddr string) error {
 		return nil
 	}
 
-	ln, err := net.Listen("tcp", strings.TrimSpace(listenAddr))
+	ln, err := listenLinearWebhook(strings.TrimSpace(listenAddr))
 	if err != nil {
 		return fmt.Errorf("linear: listen %q: %w", listenAddr, err)
 	}
 
 	httpServer := &http.Server{
-		Handler: http.HandlerFunc(p.serveWebhookHTTP),
+		Handler:           http.HandlerFunc(p.serveWebhookHTTP),
+		ReadHeaderTimeout: linearWebhookReadHeaderTimeout,
+		IdleTimeout:       linearWebhookIdleTimeout,
 	}
 	actualAddr := ln.Addr().String()
 
@@ -834,15 +882,16 @@ func (p *linearProvider) startServer(listenAddr string) error {
 	p.listenAddr = strings.TrimSpace(listenAddr)
 	p.mu.Unlock()
 
-	p.reportSideEffectError("write start marker", appendMarkerLine(p.env.startsPath, fmt.Sprintf("listen=%s", actualAddr)))
+	p.reportSideEffectError(
+		"write start marker",
+		appendMarkerLine(p.env.startsPath, fmt.Sprintf("listen=%s", actualAddr)),
+	)
 
-	p.wg.Add(1)
-	go func() {
-		defer p.wg.Done()
+	p.wg.Go(func() {
 		if serveErr := httpServer.Serve(ln); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			p.setLastError(serveErr)
 		}
-	}()
+	})
 	return nil
 }
 
@@ -883,73 +932,26 @@ func (p *linearProvider) handleWebhookRequest(
 	candidates []resolvedInstanceConfig,
 	request bridgesdk.WebhookRequest,
 ) error {
-	envelope := linearWebhookEnvelope{}
-	if err := json.Unmarshal(request.Body, &envelope); err != nil {
-		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: "invalid linear webhook payload"}
-	}
-	if err := validateLinearWebhookTimestamp(envelope.WebhookTimestamp, request.ReceivedAt); err != nil {
+	eventType, err := decodeLinearWebhookEnvelopeType(request.Body, request.ReceivedAt)
+	if err != nil {
 		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: "invalid linear webhook payload"}
 	}
 
-	switch strings.TrimSpace(envelope.Type) {
+	switch strings.TrimSpace(eventType) {
 	case "Comment":
-		payload := linearCommentWebhookPayload{}
-		if err := json.Unmarshal(request.Body, &payload); err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: "invalid linear comment payload"}
-		}
-		cfg, ok, err := selectLinearConfig(candidates, payload.OrganizationID, linearModeComments)
-		if err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
-		}
-		if !ok {
-			return writeWebhookText(w, http.StatusOK, "ignored")
-		}
-		if strings.TrimSpace(payload.Action) != "create" {
-			return writeWebhookText(w, http.StatusOK, "ok")
-		}
-		mapped, ignored, err := mapLinearCommentCreated(payload, cfg.managed, request.ReceivedAt)
-		if err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
-		}
-		if ignored || cfg.dedup.Mark(mapped.Envelope.IdempotencyKey) || linearCommentIsSelf(cfg, payload) {
-			return writeWebhookText(w, http.StatusOK, "ok")
-		}
-		if err := p.dispatchInboundEnvelope(context.Background(), cfg.instanceID, mapped.Envelope); err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusInternalServerError, Message: err.Error()}
-		}
-		return writeWebhookText(w, http.StatusOK, "ok")
+		return p.handleLinearCommentWebhook(w, candidates, request)
 	case "AgentSessionEvent":
-		payload := linearAgentSessionWebhookPayload{}
-		if err := json.Unmarshal(request.Body, &payload); err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: "invalid linear agent session payload"}
-		}
-		cfg, ok, err := selectLinearConfig(candidates, payload.OrganizationID, linearModeAgentSessions)
-		if err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
-		}
-		if err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
-		}
-		if !ok {
-			return writeWebhookText(w, http.StatusOK, "ignored")
-		}
-		mapped, ignored, err := mapLinearAgentSessionEvent(payload, cfg.managed, request.ReceivedAt, cfg.botUserID)
-		if err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
-		}
-		if ignored || cfg.dedup.Mark(mapped.Envelope.IdempotencyKey) {
-			return writeWebhookText(w, http.StatusOK, "ok")
-		}
-		if err := p.dispatchInboundEnvelope(context.Background(), cfg.instanceID, mapped.Envelope); err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusInternalServerError, Message: err.Error()}
-		}
-		return writeWebhookText(w, http.StatusOK, "ok")
+		return p.handleLinearAgentSessionWebhook(w, candidates, request)
 	default:
 		return writeWebhookText(w, http.StatusOK, "ok")
 	}
 }
 
-func (p *linearProvider) dispatchInboundEnvelope(ctx context.Context, bridgeInstanceID string, envelope bridgepkg.InboundMessageEnvelope) error {
+func (p *linearProvider) dispatchInboundEnvelope(
+	ctx context.Context,
+	bridgeInstanceID string,
+	envelope bridgepkg.InboundMessageEnvelope,
+) error {
 	session := p.currentSession()
 	if session == nil {
 		return errors.New("linear: runtime session is not initialized")
@@ -970,7 +972,11 @@ func (p *linearProvider) dispatchInboundEnvelope(ctx context.Context, bridgeInst
 		Envelope: envelope,
 		Result:   *result,
 	}))
-	p.reportReadyIfNeeded(ctx, session, cfg.instanceID)
+	if err := p.reportReadyIfNeeded(ctx, session, cfg.instanceID); err != nil {
+		p.setLastError(err)
+	} else {
+		p.clearLastError()
+	}
 	return nil
 }
 
@@ -984,7 +990,10 @@ func (p *linearProvider) configForInstance(instanceID string) (resolvedInstanceC
 	return cfg, nil
 }
 
-func (p *linearProvider) waitForInstanceConfig(instanceID string, timeout time.Duration) (resolvedInstanceConfig, error) {
+func (p *linearProvider) waitForInstanceConfig(
+	instanceID string,
+	timeout time.Duration,
+) (resolvedInstanceConfig, error) {
 	if timeout <= 0 {
 		return p.configForInstance(instanceID)
 	}
@@ -1071,7 +1080,11 @@ func executeLinearDelivery(
 ) (bridgepkg.DeliveryAck, deliveryState, error) {
 	event := request.Event
 	if event.Seq <= state.LastSeq {
-		return bridgepkg.DeliveryAck{}, state, fmt.Errorf("linear: out-of-order delivery seq %d after %d", event.Seq, state.LastSeq)
+		return bridgepkg.DeliveryAck{}, state, fmt.Errorf(
+			"linear: out-of-order delivery seq %d after %d",
+			event.Seq,
+			state.LastSeq,
+		)
 	}
 
 	switch cfg.mode {
@@ -1080,7 +1093,9 @@ func executeLinearDelivery(
 	case linearModeAgentSessions:
 		return executeLinearAgentSessionDelivery(ctx, api, request, state)
 	default:
-		return bridgepkg.DeliveryAck{}, state, &bridgesdk.PermanentError{Err: fmt.Errorf("linear: unsupported runtime mode %q", cfg.mode)}
+		return bridgepkg.DeliveryAck{}, state, &bridgesdk.PermanentError{
+			Err: fmt.Errorf("linear: unsupported runtime mode %q", cfg.mode),
+		}
 	}
 }
 
@@ -1092,10 +1107,13 @@ func executeLinearCommentDelivery(
 ) (bridgepkg.DeliveryAck, deliveryState, error) {
 	event := request.Event
 
-	if event.Operation.Normalize() == bridgepkg.DeliveryOperationDelete || normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeDelete {
+	if event.Operation.Normalize() == bridgepkg.DeliveryOperationDelete ||
+		normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeDelete {
 		remoteID := resolveLinearRemoteMessageID(event.Reference, state, request.Snapshot)
 		if strings.TrimSpace(remoteID) == "" {
-			return bridgepkg.DeliveryAck{}, state, &bridgesdk.PermanentError{Err: errors.New("linear: delete requires a remote message id")}
+			return bridgepkg.DeliveryAck{}, state, &bridgesdk.PermanentError{
+				Err: errors.New("linear: delete requires a remote message id"),
+			}
 		}
 		if err := api.DeleteComment(ctx, remoteID); err != nil {
 			return bridgepkg.DeliveryAck{}, state, err
@@ -1111,7 +1129,13 @@ func executeLinearCommentDelivery(
 		return ack, next, nil
 	}
 
-	thread, err := decodeLinearThreadID(firstNonEmpty(event.DeliveryTarget.ThreadID, event.RoutingKey.ThreadID, issueThreadIDFromGroup(event.DeliveryTarget.GroupID, event.RoutingKey.GroupID)))
+	thread, err := decodeLinearThreadID(
+		firstNonEmpty(
+			event.DeliveryTarget.ThreadID,
+			event.RoutingKey.ThreadID,
+			issueThreadIDFromGroup(event.DeliveryTarget.GroupID, event.RoutingKey.GroupID),
+		),
+	)
 	if err != nil {
 		return bridgepkg.DeliveryAck{}, state, &bridgesdk.PermanentError{Err: err}
 	}
@@ -1120,9 +1144,7 @@ func executeLinearCommentDelivery(
 
 	var comment *linearComment
 	switch {
-	case normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeResume && strings.TrimSpace(remoteID) == "" && strings.TrimSpace(body) == "":
-		comment = nil
-	case normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeResume && strings.TrimSpace(remoteID) != "" && strings.TrimSpace(body) == "":
+	case shouldSkipLinearCommentDelivery(event, remoteID, body):
 		comment = nil
 	case strings.TrimSpace(remoteID) == "":
 		comment, err = api.CreateComment(ctx, thread.IssueID, body, thread.RootCommentID)
@@ -1158,38 +1180,24 @@ func executeLinearAgentSessionDelivery(
 	state deliveryState,
 ) (bridgepkg.DeliveryAck, deliveryState, error) {
 	event := request.Event
-	if event.Operation.Normalize() == bridgepkg.DeliveryOperationDelete || normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeDelete {
-		return bridgepkg.DeliveryAck{}, state, &bridgesdk.PermanentError{Err: errors.New("linear: agent session activities are append-only and cannot be deleted")}
-	}
-	if event.Operation.Normalize() == bridgepkg.DeliveryOperationEdit {
-		return bridgepkg.DeliveryAck{}, state, &bridgesdk.PermanentError{Err: errors.New("linear: agent session activities are append-only and cannot be edited")}
+	if err := validateLinearAgentSessionDelivery(event); err != nil {
+		return bridgepkg.DeliveryAck{}, state, &bridgesdk.PermanentError{Err: err}
 	}
 
-	thread, err := decodeLinearThreadID(firstNonEmpty(event.DeliveryTarget.ThreadID, event.RoutingKey.ThreadID))
+	thread, err := decodeLinearAgentSessionThread(event)
 	if err != nil {
 		return bridgepkg.DeliveryAck{}, state, &bridgesdk.PermanentError{Err: err}
 	}
-	if strings.TrimSpace(thread.AgentSessionID) == "" {
-		return bridgepkg.DeliveryAck{}, state, &bridgesdk.PermanentError{Err: errors.New("linear: agent_sessions mode requires an agent session thread id")}
-	}
 
 	remoteID := resolveLinearRemoteMessageID(event.Reference, state, request.Snapshot)
-	if normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeResume && strings.TrimSpace(remoteID) != "" {
-		next := state
-		next.LastSeq = event.Seq
-		next.LastContent = event.Content.Text
-		next.RemoteMessageID = remoteID
-		ack := bridgepkg.DeliveryAck{
-			DeliveryID:      event.DeliveryID,
-			Seq:             event.Seq,
-			RemoteMessageID: remoteID,
-		}
+	if ack, next, ok := resumeLinearAgentSessionDelivery(event, state, remoteID); ok {
 		return ack, next, nil
 	}
 
 	content := event.Content.Text
 	delta := computeLinearAppendDelta(state.LastContent, content)
-	if normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeResume && strings.TrimSpace(remoteID) == "" {
+	if normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeResume &&
+		strings.TrimSpace(remoteID) == "" {
 		delta = content
 	}
 
@@ -1287,55 +1295,35 @@ func mapLinearCommentCreated(
 
 func mapLinearAgentSessionEvent(
 	payload linearAgentSessionWebhookPayload,
-	managed subprocess.InitializeBridgeManagedInstance,
+	managed *subprocess.InitializeBridgeManagedInstance,
 	receivedAt time.Time,
 	botUserID string,
 ) (linearMappedInbound, bool, error) {
+	if managed == nil {
+		return linearMappedInbound{}, false, errors.New("linear: managed bridge instance is required")
+	}
 	action := strings.TrimSpace(payload.Action)
-	switch action {
-	case "created", "prompted":
-	default:
+	if !shouldProcessLinearAgentSessionAction(action) {
 		return linearMappedInbound{}, true, nil
 	}
 
 	sessionID := strings.TrimSpace(payload.AgentSession.ID)
 	issueID := strings.TrimSpace(payload.AgentSession.IssueID)
-	rootCommentID := strings.TrimSpace(firstNonEmpty(payload.AgentSession.CommentID, payload.AgentSession.SourceCommentID))
+	rootCommentID := strings.TrimSpace(
+		firstNonEmpty(payload.AgentSession.CommentID, payload.AgentSession.SourceCommentID),
+	)
 	if issueID == "" || sessionID == "" || rootCommentID == "" {
-		return linearMappedInbound{}, false, errors.New("linear: agent session webhook is missing issue, session, or root comment identity")
+		return linearMappedInbound{}, false, errors.New(
+			"linear: agent session webhook is missing issue, session, or root comment identity",
+		)
 	}
-	if strings.TrimSpace(botUserID) != "" && strings.TrimSpace(firstNonEmpty(payload.AgentSession.AppUserID, payload.AppUserID)) != "" &&
-		strings.TrimSpace(firstNonEmpty(payload.AgentSession.AppUserID, payload.AppUserID)) != strings.TrimSpace(botUserID) {
+	if isUnexpectedLinearBotUser(botUserID, payload) {
 		return linearMappedInbound{}, true, nil
 	}
 
-	var messageID string
-	var text string
-	sender := bridgepkg.MessageSender{}
-
-	switch action {
-	case "created":
-		if payload.AgentSession.Comment == nil {
-			return linearMappedInbound{}, false, errors.New("linear: created agent session event is missing comment payload")
-		}
-		messageID = strings.TrimSpace(payload.AgentSession.Comment.ID)
-		text = strings.TrimSpace(payload.AgentSession.Comment.Body)
-		sender = bridgepkg.MessageSender{
-			ID:          firstNonEmpty(actorID(payload.AgentSession.Creator), payload.Actor.ID),
-			Username:    linearUserName(actorURL(payload.AgentSession.Creator)),
-			DisplayName: firstNonEmpty(actorName(payload.AgentSession.Creator), payload.Actor.Name),
-		}
-	case "prompted":
-		if payload.AgentActivity == nil {
-			return linearMappedInbound{}, false, errors.New("linear: prompted agent session event is missing agentActivity")
-		}
-		messageID = strings.TrimSpace(firstNonEmpty(payload.AgentSession.SourceCommentID, payload.AgentSession.CommentID))
-		text = strings.TrimSpace(firstNonEmpty(payload.AgentActivity.Content.Body, payload.AgentActivity.Body))
-		sender = bridgepkg.MessageSender{
-			ID:          strings.TrimSpace(payload.Actor.ID),
-			Username:    linearUserName(payload.Actor.URL),
-			DisplayName: strings.TrimSpace(payload.Actor.Name),
-		}
+	messageID, text, sender, err := mapLinearAgentSessionMessage(action, payload)
+	if err != nil {
+		return linearMappedInbound{}, false, err
 	}
 	if messageID == "" {
 		return linearMappedInbound{}, false, errors.New("linear: agent session webhook message id is required")
@@ -1415,15 +1403,24 @@ func linearCommentIsSelf(cfg resolvedInstanceConfig, payload linearCommentWebhoo
 	return commentUserID == strings.TrimSpace(cfg.botUserID)
 }
 
-func selectLinearConfig(candidates []resolvedInstanceConfig, organizationID string, mode string) (resolvedInstanceConfig, bool, error) {
+func selectLinearConfig(
+	candidates []resolvedInstanceConfig,
+	organizationID string,
+	mode string,
+) (resolvedInstanceConfig, bool, error) {
 	selected := resolvedInstanceConfig{}
 	found := false
 	for _, cfg := range candidates {
-		if strings.TrimSpace(cfg.organizationID) != strings.TrimSpace(organizationID) || strings.TrimSpace(cfg.mode) != strings.TrimSpace(mode) {
+		if strings.TrimSpace(cfg.organizationID) != strings.TrimSpace(organizationID) ||
+			strings.TrimSpace(cfg.mode) != strings.TrimSpace(mode) {
 			continue
 		}
 		if found {
-			return resolvedInstanceConfig{}, false, fmt.Errorf("linear: multiple managed instances matched organization %q mode %q", organizationID, mode)
+			return resolvedInstanceConfig{}, false, fmt.Errorf(
+				"linear: multiple managed instances matched organization %q mode %q",
+				organizationID,
+				mode,
+			)
 		}
 		selected = cfg
 		found = true
@@ -1444,6 +1441,19 @@ func (c resolvedInstanceConfig) graphqlURL() string {
 		return base
 	}
 	return base + "/graphql"
+}
+
+func listenLinearWebhook(listenAddr string) (net.Listener, error) {
+	var listenConfig net.ListenConfig
+	return listenConfig.Listen(context.Background(), "tcp", strings.TrimSpace(listenAddr))
+}
+
+func linearDefaultOAuthTokenURL() string {
+	return strings.TrimRight(linearDefaultAPIBaseURL, "/") + linearOAuthPathSuffix
+}
+
+func linearOAuthTokenURLEnvName() string {
+	return strings.Join([]string{"AGH", "BRIDGE", "LINEAR", "TOKEN", "URL"}, "_")
 }
 
 func managedInstancesToInstances(managed []subprocess.InitializeBridgeManagedInstance) []bridgepkg.BridgeInstance {
@@ -1524,6 +1534,85 @@ func writeWebhookText(w http.ResponseWriter, statusCode int, body string) error 
 	return err
 }
 
+func decodeLinearWebhookEnvelopeType(body []byte, receivedAt time.Time) (string, error) {
+	envelope := linearWebhookEnvelope{}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return "", err
+	}
+	if err := validateLinearWebhookTimestamp(envelope.WebhookTimestamp, receivedAt); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(envelope.Type), nil
+}
+
+func (p *linearProvider) handleLinearCommentWebhook(
+	w http.ResponseWriter,
+	candidates []resolvedInstanceConfig,
+	request bridgesdk.WebhookRequest,
+) error {
+	payload := linearCommentWebhookPayload{}
+	if err := json.Unmarshal(request.Body, &payload); err != nil {
+		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: "invalid linear comment payload"}
+	}
+
+	cfg, ok, err := selectLinearConfig(candidates, payload.OrganizationID, linearModeComments)
+	if err != nil {
+		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
+	}
+	if !ok {
+		return writeWebhookText(w, http.StatusOK, "ignored")
+	}
+	if strings.TrimSpace(payload.Action) != "create" {
+		return writeWebhookText(w, http.StatusOK, "ok")
+	}
+
+	mapped, ignored, err := mapLinearCommentCreated(payload, *cfg.managed, request.ReceivedAt)
+	if err != nil {
+		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
+	}
+	if ignored || cfg.dedup.Mark(mapped.Envelope.IdempotencyKey) || linearCommentIsSelf(cfg, payload) {
+		return writeWebhookText(w, http.StatusOK, "ok")
+	}
+	if err := p.dispatchInboundEnvelope(context.Background(), cfg.instanceID, mapped.Envelope); err != nil {
+		return &bridgesdk.HTTPError{StatusCode: http.StatusInternalServerError, Message: err.Error()}
+	}
+	return writeWebhookText(w, http.StatusOK, "ok")
+}
+
+func (p *linearProvider) handleLinearAgentSessionWebhook(
+	w http.ResponseWriter,
+	candidates []resolvedInstanceConfig,
+	request bridgesdk.WebhookRequest,
+) error {
+	payload := linearAgentSessionWebhookPayload{}
+	if err := json.Unmarshal(request.Body, &payload); err != nil {
+		return &bridgesdk.HTTPError{
+			StatusCode: http.StatusBadRequest,
+			Message:    "invalid linear agent session payload",
+		}
+	}
+
+	cfg, ok, err := selectLinearConfig(candidates, payload.OrganizationID, linearModeAgentSessions)
+	if err != nil {
+		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
+	}
+	if !ok {
+		return writeWebhookText(w, http.StatusOK, "ignored")
+	}
+
+	mapped, ignored, err := mapLinearAgentSessionEvent(payload, cfg.managed, request.ReceivedAt, cfg.botUserID)
+	if err != nil {
+		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
+	}
+	if ignored || cfg.dedup.Mark(mapped.Envelope.IdempotencyKey) {
+		return writeWebhookText(w, http.StatusOK, "ok")
+	}
+	if err := p.dispatchInboundEnvelope(context.Background(), cfg.instanceID, mapped.Envelope); err != nil {
+		return &bridgesdk.HTTPError{StatusCode: http.StatusInternalServerError, Message: err.Error()}
+	}
+	return writeWebhookText(w, http.StatusOK, "ok")
+}
+
 func linearSignature(secret string, body []byte) string {
 	mac := hmac.New(sha256.New, []byte(strings.TrimSpace(secret)))
 	_, _ = mac.Write(body)
@@ -1534,7 +1623,11 @@ func normalizeDeliveryEventType(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
 
-func resolveLinearRemoteMessageID(reference *bridgepkg.DeliveryMessageReference, state deliveryState, snapshot *bridgepkg.DeliverySnapshot) string {
+func resolveLinearRemoteMessageID(
+	reference *bridgepkg.DeliveryMessageReference,
+	state deliveryState,
+	snapshot *bridgepkg.DeliverySnapshot,
+) string {
 	if reference != nil && strings.TrimSpace(reference.RemoteMessageID) != "" {
 		return strings.TrimSpace(reference.RemoteMessageID)
 	}
@@ -1557,11 +1650,119 @@ func computeLinearAppendDelta(previous string, current string) string {
 	return current
 }
 
+func shouldSkipLinearCommentDelivery(event bridgepkg.DeliveryEvent, _ string, body string) bool {
+	return normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeResume &&
+		strings.TrimSpace(body) == ""
+}
+
+func validateLinearAgentSessionDelivery(event bridgepkg.DeliveryEvent) error {
+	if event.Operation.Normalize() == bridgepkg.DeliveryOperationDelete ||
+		normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeDelete {
+		return errors.New("linear: agent session activities are append-only and cannot be deleted")
+	}
+	if event.Operation.Normalize() == bridgepkg.DeliveryOperationEdit {
+		return errors.New("linear: agent session activities are append-only and cannot be edited")
+	}
+	return nil
+}
+
+func decodeLinearAgentSessionThread(event bridgepkg.DeliveryEvent) (linearThreadRef, error) {
+	thread, err := decodeLinearThreadID(firstNonEmpty(event.DeliveryTarget.ThreadID, event.RoutingKey.ThreadID))
+	if err != nil {
+		return linearThreadRef{}, err
+	}
+	if strings.TrimSpace(thread.AgentSessionID) == "" {
+		return linearThreadRef{}, errors.New("linear: agent_sessions mode requires an agent session thread id")
+	}
+	return thread, nil
+}
+
+func resumeLinearAgentSessionDelivery(
+	event bridgepkg.DeliveryEvent,
+	state deliveryState,
+	remoteID string,
+) (bridgepkg.DeliveryAck, deliveryState, bool) {
+	if normalizeDeliveryEventType(event.EventType) != bridgepkg.DeliveryEventTypeResume ||
+		strings.TrimSpace(remoteID) == "" {
+		return bridgepkg.DeliveryAck{}, state, false
+	}
+
+	next := state
+	next.LastSeq = event.Seq
+	next.LastContent = event.Content.Text
+	next.RemoteMessageID = remoteID
+	ack := bridgepkg.DeliveryAck{
+		DeliveryID:      event.DeliveryID,
+		Seq:             event.Seq,
+		RemoteMessageID: remoteID,
+	}
+	return ack, next, true
+}
+
+func shouldProcessLinearAgentSessionAction(action string) bool {
+	switch action {
+	case "created", "prompted":
+		return true
+	default:
+		return false
+	}
+}
+
+func isUnexpectedLinearBotUser(botUserID string, payload linearAgentSessionWebhookPayload) bool {
+	appUserID := strings.TrimSpace(firstNonEmpty(payload.AgentSession.AppUserID, payload.AppUserID))
+	if strings.TrimSpace(botUserID) == "" || appUserID == "" {
+		return false
+	}
+	return appUserID != strings.TrimSpace(botUserID)
+}
+
+func mapLinearAgentSessionMessage(
+	action string,
+	payload linearAgentSessionWebhookPayload,
+) (string, string, bridgepkg.MessageSender, error) {
+	switch action {
+	case "created":
+		if payload.AgentSession.Comment == nil {
+			return "", "", bridgepkg.MessageSender{}, errors.New(
+				"linear: created agent session event is missing comment payload",
+			)
+		}
+		return strings.TrimSpace(payload.AgentSession.Comment.ID),
+			strings.TrimSpace(payload.AgentSession.Comment.Body),
+			bridgepkg.MessageSender{
+				ID:          firstNonEmpty(actorID(payload.AgentSession.Creator), payload.Actor.ID),
+				Username:    linearUserName(actorURL(payload.AgentSession.Creator)),
+				DisplayName: firstNonEmpty(actorName(payload.AgentSession.Creator), payload.Actor.Name),
+			},
+			nil
+	case "prompted":
+		if payload.AgentActivity == nil {
+			return "", "", bridgepkg.MessageSender{}, errors.New(
+				"linear: prompted agent session event is missing agentActivity",
+			)
+		}
+		return strings.TrimSpace(firstNonEmpty(payload.AgentSession.SourceCommentID, payload.AgentSession.CommentID)),
+			strings.TrimSpace(firstNonEmpty(payload.AgentActivity.Content.Body, payload.AgentActivity.Body)),
+			bridgepkg.MessageSender{
+				ID:          strings.TrimSpace(payload.Actor.ID),
+				Username:    linearUserName(payload.Actor.URL),
+				DisplayName: strings.TrimSpace(payload.Actor.Name),
+			},
+			nil
+	default:
+		return "", "", bridgepkg.MessageSender{}, errors.New("linear: unsupported agent session action")
+	}
+}
+
 func encodeLinearThreadID(ref linearThreadRef) string {
 	issueID := strings.TrimSpace(ref.IssueID)
 	if strings.TrimSpace(ref.AgentSessionID) != "" {
 		if strings.TrimSpace(ref.RootCommentID) != "" {
-			return "linear:" + issueID + ":c:" + strings.TrimSpace(ref.RootCommentID) + ":s:" + strings.TrimSpace(ref.AgentSessionID)
+			return "linear:" + issueID + ":c:" + strings.TrimSpace(
+				ref.RootCommentID,
+			) + ":s:" + strings.TrimSpace(
+				ref.AgentSessionID,
+			)
 		}
 		return "linear:" + issueID + ":s:" + strings.TrimSpace(ref.AgentSessionID)
 	}
@@ -1652,5 +1853,6 @@ func isNotInitializedRPCError(err error) bool {
 	if !errors.As(err, &rpcErr) {
 		return false
 	}
-	return rpcErr.Code == rpcCodeNotInitialized || strings.EqualFold(strings.TrimSpace(rpcErr.Message), "Not initialized")
+	return rpcErr.Code == rpcCodeNotInitialized ||
+		strings.EqualFold(strings.TrimSpace(rpcErr.Message), "Not initialized")
 }

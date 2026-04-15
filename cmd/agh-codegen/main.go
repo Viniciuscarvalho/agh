@@ -24,9 +24,9 @@ var ErrStaleGeneratedFile = errors.New("generated file is stale")
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), shutdownSignals()...)
-	defer stop()
-
-	if err := run(ctx, os.Args[1:]); err != nil {
+	err := run(ctx, os.Args[1:])
+	stop()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -72,7 +72,7 @@ func writeSDKContracts(ctx context.Context, path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create sdk contracts directory %q: %w", filepath.Dir(path), err)
 	}
-	if err := os.WriteFile(path, content, 0o644); err != nil {
+	if err := os.WriteFile(path, content, 0o600); err != nil {
 		return fmt.Errorf("write sdk contracts to %q: %w", path, err)
 	}
 	return nil

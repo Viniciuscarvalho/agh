@@ -53,7 +53,16 @@ func newHandlerFixture(
 	store *memory.Store,
 	dream core.DreamTrigger,
 ) handlerFixture {
-	return newHandlerFixtureWithAutomationAndTasks(t, manager, observer, testutil.StubAutomationManager{}, testutil.StubTaskManager{}, workspaces, store, dream)
+	return newHandlerFixtureWithAutomationAndTasks(
+		t,
+		manager,
+		observer,
+		testutil.StubAutomationManager{},
+		testutil.StubTaskManager{},
+		workspaces,
+		store,
+		dream,
+	)
 }
 
 func newHandlerFixtureWithAutomation(
@@ -65,7 +74,16 @@ func newHandlerFixtureWithAutomation(
 	store *memory.Store,
 	dream core.DreamTrigger,
 ) handlerFixture {
-	return newHandlerFixtureWithAutomationAndTasks(t, manager, observer, automation, testutil.StubTaskManager{}, workspaces, store, dream)
+	return newHandlerFixtureWithAutomationAndTasks(
+		t,
+		manager,
+		observer,
+		automation,
+		testutil.StubTaskManager{},
+		workspaces,
+		store,
+		dream,
+	)
 }
 
 func newHandlerFixtureWithTasks(
@@ -77,7 +95,16 @@ func newHandlerFixtureWithTasks(
 	store *memory.Store,
 	dream core.DreamTrigger,
 ) handlerFixture {
-	return newHandlerFixtureWithAutomationAndTasks(t, manager, observer, testutil.StubAutomationManager{}, tasks, workspaces, store, dream)
+	return newHandlerFixtureWithAutomationAndTasks(
+		t,
+		manager,
+		observer,
+		testutil.StubAutomationManager{},
+		tasks,
+		workspaces,
+		store,
+		dream,
+	)
 }
 
 func newHandlerFixtureWithAutomationAndTasks(
@@ -99,7 +126,7 @@ func newHandlerFixtureWithAutomationAndTasks(
 	cfg.HTTP.Port = 2123
 	cfg.Daemon.Socket = "/tmp/api-core-test.sock"
 
-	handlers := core.NewBaseHandlers(core.BaseHandlerConfig{
+	handlers := core.NewBaseHandlers(&core.BaseHandlerConfig{
 		TransportName:                "api-core-test",
 		MaskInternalErrors:           false,
 		IncludeSessionWorkspaceInSSE: true,

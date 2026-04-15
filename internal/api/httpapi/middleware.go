@@ -96,9 +96,11 @@ type canonicalOrigin struct {
 	wildcard  bool
 }
 
+const defaultRequestScheme = "http"
+
 func requestScheme(r *http.Request) string {
 	if r == nil {
-		return "http"
+		return defaultRequestScheme
 	}
 	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); forwarded != "" {
 		return strings.ToLower(forwarded)
@@ -109,7 +111,7 @@ func requestScheme(r *http.Request) string {
 	if scheme := strings.TrimSpace(r.URL.Scheme); scheme != "" {
 		return strings.ToLower(scheme)
 	}
-	return "http"
+	return defaultRequestScheme
 }
 
 func canonicalOriginFromURL(parsed *url.URL) (canonicalOrigin, bool) {

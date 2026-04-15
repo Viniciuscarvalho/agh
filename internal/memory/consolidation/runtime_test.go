@@ -47,9 +47,16 @@ func TestRuntimeTriggerStates(t *testing.T) {
 	t.Parallel()
 
 	t.Run("disabled returns disabled message", func(t *testing.T) {
-		runtime := NewRuntime(false, &fakeDreamService{shouldRun: true}, func(context.Context, string, string, string) error {
-			return nil
-		}, time.Minute, discardLogger(), nil)
+		runtime := NewRuntime(
+			false,
+			&fakeDreamService{shouldRun: true},
+			func(context.Context, string, string, string) error {
+				return nil
+			},
+			time.Minute,
+			discardLogger(),
+			nil,
+		)
 
 		triggered, reason, err := runtime.Trigger(context.Background(), "ws-1")
 		if err != nil {
@@ -64,9 +71,16 @@ func TestRuntimeTriggerStates(t *testing.T) {
 	})
 
 	t.Run("gate miss returns not satisfied message", func(t *testing.T) {
-		runtime := NewRuntime(true, &fakeDreamService{shouldRun: false}, func(context.Context, string, string, string) error {
-			return nil
-		}, time.Minute, discardLogger(), nil)
+		runtime := NewRuntime(
+			true,
+			&fakeDreamService{shouldRun: false},
+			func(context.Context, string, string, string) error {
+				return nil
+			},
+			time.Minute,
+			discardLogger(),
+			nil,
+		)
 
 		triggered, reason, err := runtime.Trigger(context.Background(), "ws-1")
 		if err != nil {
@@ -82,9 +96,16 @@ func TestRuntimeTriggerStates(t *testing.T) {
 
 	t.Run("service error is returned", func(t *testing.T) {
 		expectedErr := errors.New("gate failed")
-		runtime := NewRuntime(true, &fakeDreamService{shouldRunErr: expectedErr}, func(context.Context, string, string, string) error {
-			return nil
-		}, time.Minute, discardLogger(), nil)
+		runtime := NewRuntime(
+			true,
+			&fakeDreamService{shouldRunErr: expectedErr},
+			func(context.Context, string, string, string) error {
+				return nil
+			},
+			time.Minute,
+			discardLogger(),
+			nil,
+		)
 
 		_, _, err := runtime.Trigger(context.Background(), "ws-1")
 		if !errors.Is(err, expectedErr) {
@@ -178,8 +199,7 @@ func TestRuntimeEnqueueCheckRunsQueuedRequest(t *testing.T) {
 		return nil
 	}, time.Hour, discardLogger(), nil)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	runtime.Start(ctx)
 	t.Cleanup(runtime.Shutdown)
 
@@ -201,8 +221,7 @@ func TestRuntimeStartDoesNothingWhenDisabled(t *testing.T) {
 		return nil
 	}, 10*time.Millisecond, discardLogger(), nil)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	runtime.Start(ctx)
 	runtime.EnqueueCheck("manual", "ws-disabled")
 
@@ -220,9 +239,16 @@ func TestRuntimeRunCheckStopsOnErrors(t *testing.T) {
 			return nil
 		}, time.Minute, discardLogger(), nil)
 
-		runtime.runCheck(context.Background(), discardLogger(), service, func(context.Context, string, string, string) error {
-			return nil
-		}, "manual", "ws-1")
+		runtime.runCheck(
+			context.Background(),
+			discardLogger(),
+			service,
+			func(context.Context, string, string, string) error {
+				return nil
+			},
+			"manual",
+			"ws-1",
+		)
 		if got := service.runCount(); got != 1 {
 			t.Fatalf("run count = %d, want 1", got)
 		}
@@ -236,10 +262,17 @@ func TestRuntimeRunCheckStopsOnErrors(t *testing.T) {
 			return nil
 		}, time.Minute, discardLogger(), nil)
 
-		runtime.runCheck(context.Background(), discardLogger(), service, func(context.Context, string, string, string) error {
-			spawnCalls++
-			return nil
-		}, "manual", "ws-1")
+		runtime.runCheck(
+			context.Background(),
+			discardLogger(),
+			service,
+			func(context.Context, string, string, string) error {
+				spawnCalls++
+				return nil
+			},
+			"manual",
+			"ws-1",
+		)
 		if spawnCalls != 0 {
 			t.Fatalf("spawn calls = %d, want 0", spawnCalls)
 		}
@@ -258,12 +291,17 @@ func TestNewSessionSpawnerCreatesDreamSession(t *testing.T) {
 		},
 	}
 
-	spawner := NewSessionSpawner(sessions, resolver, cfg, filepath.Join(t.TempDir(), "memory"))
+	spawner := NewSessionSpawner(sessions, resolver, &cfg, filepath.Join(t.TempDir(), "memory"))
 	if spawner == nil {
 		t.Fatal("NewSessionSpawner() = nil, want non-nil")
 	}
 
-	if err := spawner(context.Background(), "memory-consolidation", "summarize recent sessions", workspace); err != nil {
+	if err := spawner(
+		context.Background(),
+		"memory-consolidation",
+		"summarize recent sessions",
+		workspace,
+	); err != nil {
 		t.Fatalf("spawner() error = %v", err)
 	}
 
@@ -301,7 +339,7 @@ func TestNewSessionSpawnerResolvesExplicitAliasWorkspace(t *testing.T) {
 		},
 	}
 
-	spawner := NewSessionSpawner(sessions, resolver, cfg, filepath.Join(t.TempDir(), "memory"))
+	spawner := NewSessionSpawner(sessions, resolver, &cfg, filepath.Join(t.TempDir(), "memory"))
 	if err := spawner(context.Background(), "memory-consolidation", "prompt", "workspace-alias"); err != nil {
 		t.Fatalf("spawner() error = %v", err)
 	}
@@ -322,7 +360,12 @@ func TestNewSessionSpawnerPropagatesWorkspaceResolveErrors(t *testing.T) {
 
 	cfg := dreamConfig()
 	expectedErr := errors.New("lookup failed")
-	spawner := NewSessionSpawner(&fakeSessionManager{}, &fakeWorkspaceResolver{resolveErr: expectedErr}, cfg, filepath.Join(t.TempDir(), "memory"))
+	spawner := NewSessionSpawner(
+		&fakeSessionManager{},
+		&fakeWorkspaceResolver{resolveErr: expectedErr},
+		&cfg,
+		filepath.Join(t.TempDir(), "memory"),
+	)
 
 	err := spawner(context.Background(), "memory-consolidation", "prompt", "workspace-alias")
 	if !errors.Is(err, expectedErr) {
@@ -346,11 +389,31 @@ func TestNewSessionSpawnerDerivesRecentWorkspacesFromSessions(t *testing.T) {
 
 	cfg := dreamConfig()
 	sessions := &fakeSessionManager{
-		infos: []*session.SessionInfo{
-			{ID: "dream-old", WorkspaceID: "ws-a", Type: session.SessionTypeDream, UpdatedAt: time.Date(2026, 4, 3, 9, 0, 0, 0, time.UTC)},
-			{ID: "user-old", WorkspaceID: "ws-a", Type: session.SessionTypeUser, UpdatedAt: time.Date(2026, 4, 3, 10, 0, 0, 0, time.UTC)},
-			{ID: "user-new", WorkspaceID: "ws-b", Type: session.SessionTypeUser, UpdatedAt: time.Date(2026, 4, 4, 10, 0, 0, 0, time.UTC)},
-			{ID: "user-dup", WorkspaceID: "ws-a", Type: session.SessionTypeUser, UpdatedAt: time.Date(2026, 4, 4, 9, 0, 0, 0, time.UTC)},
+		infos: []*session.Info{
+			{
+				ID:          "dream-old",
+				WorkspaceID: "ws-a",
+				Type:        session.SessionTypeDream,
+				UpdatedAt:   time.Date(2026, 4, 3, 9, 0, 0, 0, time.UTC),
+			},
+			{
+				ID:          "user-old",
+				WorkspaceID: "ws-a",
+				Type:        session.SessionTypeUser,
+				UpdatedAt:   time.Date(2026, 4, 3, 10, 0, 0, 0, time.UTC),
+			},
+			{
+				ID:          "user-new",
+				WorkspaceID: "ws-b",
+				Type:        session.SessionTypeUser,
+				UpdatedAt:   time.Date(2026, 4, 4, 10, 0, 0, 0, time.UTC),
+			},
+			{
+				ID:          "user-dup",
+				WorkspaceID: "ws-a",
+				Type:        session.SessionTypeUser,
+				UpdatedAt:   time.Date(2026, 4, 4, 9, 0, 0, 0, time.UTC),
+			},
 		},
 	}
 	globalMemoryDir := filepath.Join(t.TempDir(), "memory")
@@ -366,7 +429,7 @@ func TestNewSessionSpawnerDerivesRecentWorkspacesFromSessions(t *testing.T) {
 		t.Fatalf("os.Chtimes(lock) error = %v", err)
 	}
 
-	spawner := NewSessionSpawner(sessions, &fakeWorkspaceResolver{}, cfg, globalMemoryDir)
+	spawner := NewSessionSpawner(sessions, &fakeWorkspaceResolver{}, &cfg, globalMemoryDir)
 	if err := spawner(context.Background(), "memory-consolidation", "prompt", ""); err != nil {
 		t.Fatalf("spawner() error = %v", err)
 	}
@@ -413,8 +476,13 @@ func TestNewSessionSpawnerReturnsNoRecentWorkspacesWhenSessionsAreOld(t *testing
 
 	cfg := dreamConfig()
 	sessions := &fakeSessionManager{
-		infos: []*session.SessionInfo{
-			{ID: "user-old", WorkspaceID: "ws-a", Type: session.SessionTypeUser, UpdatedAt: time.Date(2026, 4, 3, 10, 0, 0, 0, time.UTC)},
+		infos: []*session.Info{
+			{
+				ID:          "user-old",
+				WorkspaceID: "ws-a",
+				Type:        session.SessionTypeUser,
+				UpdatedAt:   time.Date(2026, 4, 3, 10, 0, 0, 0, time.UTC),
+			},
 		},
 	}
 	globalMemoryDir := filepath.Join(t.TempDir(), "memory")
@@ -430,7 +498,7 @@ func TestNewSessionSpawnerReturnsNoRecentWorkspacesWhenSessionsAreOld(t *testing
 		t.Fatalf("os.Chtimes(lock) error = %v", err)
 	}
 
-	spawner := NewSessionSpawner(sessions, &fakeWorkspaceResolver{}, cfg, globalMemoryDir)
+	spawner := NewSessionSpawner(sessions, &fakeWorkspaceResolver{}, &cfg, globalMemoryDir)
 	err := spawner(context.Background(), "memory-consolidation", "prompt", "")
 	if err == nil {
 		t.Fatal("spawner() error = nil, want non-nil")
@@ -555,7 +623,7 @@ func (f *fakeDreamService) lastWorkspace() string {
 
 type fakeSessionManager struct {
 	mu           sync.Mutex
-	infos        []*session.SessionInfo
+	infos        []*session.Info
 	promptErr    error
 	promptEvents []acp.AgentEvent
 	stopErr      error
@@ -583,10 +651,10 @@ func (f *fakeSessionManager) Create(_ context.Context, opts session.CreateOpts) 
 	}, nil
 }
 
-func (f *fakeSessionManager) ListAll(context.Context) ([]*session.SessionInfo, error) {
+func (f *fakeSessionManager) ListAll(context.Context) ([]*session.Info, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return append([]*session.SessionInfo(nil), f.infos...), nil
+	return append([]*session.Info(nil), f.infos...), nil
 }
 
 func (f *fakeSessionManager) Prompt(_ context.Context, id string, msg string) (<-chan acp.AgentEvent, error) {
@@ -686,7 +754,10 @@ type fakeWorkspaceResolver struct {
 	resolveOrRegisterCalls    int
 }
 
-func (f *fakeWorkspaceResolver) Register(context.Context, workspacepkg.RegisterOptions) (workspacepkg.Workspace, error) {
+func (f *fakeWorkspaceResolver) Register(
+	context.Context,
+	workspacepkg.RegisterOptions,
+) (workspacepkg.Workspace, error) {
 	return workspacepkg.Workspace{}, errors.New("unexpected Register call")
 }
 
@@ -706,7 +777,10 @@ func (f *fakeWorkspaceResolver) Get(context.Context, string) (workspacepkg.Works
 	return workspacepkg.Workspace{}, errors.New("unexpected Get call")
 }
 
-func (f *fakeWorkspaceResolver) Resolve(_ context.Context, idOrNameOrPath string) (workspacepkg.ResolvedWorkspace, error) {
+func (f *fakeWorkspaceResolver) Resolve(
+	_ context.Context,
+	idOrNameOrPath string,
+) (workspacepkg.ResolvedWorkspace, error) {
 	f.resolveCalls++
 	f.lastResolveArg = idOrNameOrPath
 	if f.resolveErr != nil {
@@ -715,7 +789,10 @@ func (f *fakeWorkspaceResolver) Resolve(_ context.Context, idOrNameOrPath string
 	return f.resolveResolved, nil
 }
 
-func (f *fakeWorkspaceResolver) ResolveOrRegister(_ context.Context, path string) (workspacepkg.ResolvedWorkspace, error) {
+func (f *fakeWorkspaceResolver) ResolveOrRegister(
+	_ context.Context,
+	path string,
+) (workspacepkg.ResolvedWorkspace, error) {
 	f.resolveOrRegisterCalls++
 	f.lastResolveOrRegisterArg = path
 	if f.resolveOrRegisterErr != nil {

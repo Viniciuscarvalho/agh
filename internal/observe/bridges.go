@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -52,9 +53,9 @@ type BridgeInstanceHealth struct {
 	DeliveryDroppedByReason map[string]int         `json:"delivery_dropped_by_reason,omitempty"`
 	DeliveryFailuresTotal   int                    `json:"delivery_failures_total"`
 	AuthFailuresTotal       int                    `json:"auth_failures_total"`
-	LastSuccessAt           time.Time              `json:"last_success_at,omitempty"`
+	LastSuccessAt           time.Time              `json:"last_success_at"`
 	LastError               string                 `json:"last_error,omitempty"`
-	LastErrorAt             time.Time              `json:"last_error_at,omitempty"`
+	LastErrorAt             time.Time              `json:"last_error_at"`
 }
 
 type observedBridgeState struct {
@@ -180,7 +181,11 @@ func (o *Observer) collectBridgeHealth(ctx context.Context) ([]BridgeInstanceHea
 	for _, instance := range instances {
 		routes, err := source.ListRoutes(ctx, instance.ID)
 		if err != nil {
-			return nil, BridgeAggregateHealth{}, fmt.Errorf("observe: list routes for bridge instance %q: %w", instance.ID, err)
+			return nil, BridgeAggregateHealth{}, fmt.Errorf(
+				"observe: list routes for bridge instance %q: %w",
+				instance.ID,
+				err,
+			)
 		}
 
 		item := BridgeInstanceHealth{
@@ -263,9 +268,7 @@ func cloneDroppedReasons(input map[string]int) map[string]int {
 		return nil
 	}
 	cloned := make(map[string]int, len(input))
-	for reason, count := range input {
-		cloned[reason] = count
-	}
+	maps.Copy(cloned, input)
 	return cloned
 }
 
@@ -274,8 +277,6 @@ func cloneObservedBridgeStateMap(input map[string]observedBridgeState) map[strin
 		return nil
 	}
 	cloned := make(map[string]observedBridgeState, len(input))
-	for key, value := range input {
-		cloned[key] = value
-	}
+	maps.Copy(cloned, input)
 	return cloned
 }

@@ -56,7 +56,7 @@ type commandDeps struct {
 	pollInterval                 time.Duration
 	startTimeout                 time.Duration
 	stopTimeout                  time.Duration
-	spawnDetached                func(aghconfig.HomePaths) (daemonProcess, error)
+	spawnDetached                func(context.Context, aghconfig.HomePaths) (daemonProcess, error)
 }
 
 // NewRootCommand constructs the AGH v1 CLI command tree.
@@ -197,35 +197,35 @@ func (d commandDeps) withDefaults() commandDeps {
 		d.stopTimeout = defaultStopTimeout
 	}
 	if d.spawnDetached == nil {
-		d.spawnDetached = func(homePaths aghconfig.HomePaths) (daemonProcess, error) {
-			return spawnDetachedDaemonProcess(homePaths, d.executable)
+		d.spawnDetached = func(ctx context.Context, homePaths aghconfig.HomePaths) (daemonProcess, error) {
+			return spawnDetachedDaemonProcess(ctx, homePaths, d.executable)
 		}
 	}
 	return d
 }
 
-func loadRuntimeContext(deps commandDeps) (runtimeContext, error) {
+func loadRuntimeContext(deps commandDeps) (*runtimeContext, error) {
 	homePaths, err := deps.resolveHome()
 	if err != nil {
-		return runtimeContext{}, err
+		return nil, err
 	}
 	cfg, err := deps.loadConfig()
 	if err != nil {
-		return runtimeContext{}, err
+		return nil, err
 	}
 	if strings.TrimSpace(cfg.Daemon.Socket) == "" {
 		cfg.Daemon.Socket = homePaths.DaemonSocket
 	}
-	return runtimeContext{
+	return &runtimeContext{
 		HomePaths: homePaths,
 		Config:    cfg,
 	}, nil
 }
 
-func clientFromDeps(deps commandDeps) (DaemonClient, runtimeContext, error) {
+func clientFromDeps(deps commandDeps) (DaemonClient, error) {
 	runtime, err := loadRuntimeContext(deps)
 	if err != nil {
-		return nil, runtimeContext{}, err
+		return nil, err
 	}
 
 	socketPath := strings.TrimSpace(runtime.Config.Daemon.Socket)
@@ -233,14 +233,14 @@ func clientFromDeps(deps commandDeps) (DaemonClient, runtimeContext, error) {
 		socketPath = runtime.HomePaths.DaemonSocket
 	}
 	if socketPath == "" {
-		return nil, runtimeContext{}, errors.New("cli: daemon socket path is required")
+		return nil, errors.New("cli: daemon socket path is required")
 	}
 
 	client, err := deps.newClient(socketPath)
 	if err != nil {
-		return nil, runtimeContext{}, err
+		return nil, err
 	}
-	return client, runtime, nil
+	return client, nil
 }
 
 func currentWorkingDirectory(deps commandDeps) (string, error) {

@@ -96,7 +96,6 @@ func TestScheduleSpecValidate(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -181,7 +180,6 @@ func TestRetryConfigValidate(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -236,7 +234,6 @@ func TestFireLimitConfigValidate(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -262,7 +259,7 @@ func TestValidateScopeBinding(t *testing.T) {
 
 	testCases := []struct {
 		name      string
-		scope     AutomationScope
+		scope     Scope
 		workspace string
 		wantErr   string
 	}{
@@ -289,7 +286,6 @@ func TestValidateScopeBinding(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -325,7 +321,7 @@ func TestDefaultsAndEnumValidation(t *testing.T) {
 	}{
 		{
 			name:    "scope invalid",
-			err:     AutomationScope("team").Validate("scope"),
+			err:     Scope("team").Validate("scope"),
 			wantErr: "scope",
 		},
 		{
@@ -351,7 +347,6 @@ func TestDefaultsAndEnumValidation(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -397,7 +392,6 @@ func TestValidateTriggerFilter(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -507,7 +501,6 @@ func TestJobValidateRejectsMissingRequiredFields(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -649,7 +642,6 @@ func TestTriggerValidate(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -780,7 +772,6 @@ func TestTriggerValidateRejectsMissingRequiredFieldsAndPolicies(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

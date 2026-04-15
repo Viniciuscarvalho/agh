@@ -48,7 +48,7 @@ func TestNormalizeEnvelopeValidKinds(t *testing.T) {
 				}),
 			},
 			wantKind: KindGreet,
-			wantType: reflect.TypeOf(GreetBody{}),
+			wantType: reflect.TypeFor[GreetBody](),
 		},
 		{
 			name: "whois response",
@@ -73,7 +73,7 @@ func TestNormalizeEnvelopeValidKinds(t *testing.T) {
 				}),
 			},
 			wantKind: KindWhois,
-			wantType: reflect.TypeOf(WhoisBody{}),
+			wantType: reflect.TypeFor[WhoisBody](),
 		},
 		{
 			name: "say",
@@ -90,7 +90,7 @@ func TestNormalizeEnvelopeValidKinds(t *testing.T) {
 				}),
 			},
 			wantKind: KindSay,
-			wantType: reflect.TypeOf(SayBody{}),
+			wantType: reflect.TypeFor[SayBody](),
 		},
 		{
 			name: "direct",
@@ -110,7 +110,7 @@ func TestNormalizeEnvelopeValidKinds(t *testing.T) {
 				}),
 			},
 			wantKind: KindDirect,
-			wantType: reflect.TypeOf(DirectBody{}),
+			wantType: reflect.TypeFor[DirectBody](),
 		},
 		{
 			name: "recipe",
@@ -133,7 +133,7 @@ func TestNormalizeEnvelopeValidKinds(t *testing.T) {
 				}),
 			},
 			wantKind: KindRecipe,
-			wantType: reflect.TypeOf(RecipeBody{}),
+			wantType: reflect.TypeFor[RecipeBody](),
 		},
 		{
 			name: "receipt",
@@ -153,7 +153,7 @@ func TestNormalizeEnvelopeValidKinds(t *testing.T) {
 				}),
 			},
 			wantKind: KindReceipt,
-			wantType: reflect.TypeOf(ReceiptBody{}),
+			wantType: reflect.TypeFor[ReceiptBody](),
 		},
 		{
 			name: "trace",
@@ -172,12 +172,11 @@ func TestNormalizeEnvelopeValidKinds(t *testing.T) {
 				}),
 			},
 			wantKind: KindTrace,
-			wantType: reflect.TypeOf(TraceBody{}),
+			wantType: reflect.TypeFor[TraceBody](),
 		},
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -364,7 +363,6 @@ func TestParseEnvelopeRejectsInvalidFields(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -391,7 +389,6 @@ func TestRouteTokenKnownVectors(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.peerID, func(t *testing.T) {
 			t.Parallel()
 

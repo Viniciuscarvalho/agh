@@ -133,35 +133,79 @@ func TestAssembleReadsCanonicalEnvelopeAndStableOrdering(t *testing.T) {
 
 	events := []store.SessionEvent{
 		{
-			ID:        "b",
-			Sequence:  3,
-			TurnID:    "turn-canonical",
-			Type:      acp.EventTypeToolCall,
-			Content:   mustMarshalCanonical(t, acp.EventTypeToolCall, "turn-canonical", time.Date(2026, 4, 3, 13, 0, 2, 0, time.UTC), "", "Bash", "call-2", json.RawMessage(`{"command":"ls -la"}`), nil, false),
+			ID:       "b",
+			Sequence: 3,
+			TurnID:   "turn-canonical",
+			Type:     acp.EventTypeToolCall,
+			Content: mustMarshalCanonical(
+				t,
+				acp.EventTypeToolCall,
+				"turn-canonical",
+				time.Date(2026, 4, 3, 13, 0, 2, 0, time.UTC),
+				"",
+				"Bash",
+				"call-2",
+				json.RawMessage(`{"command":"ls -la"}`),
+				nil,
+				false,
+			),
 			Timestamp: time.Date(2026, 4, 3, 13, 0, 2, 0, time.UTC),
 		},
 		{
-			ID:        "a",
-			Sequence:  1,
-			TurnID:    "turn-canonical",
-			Type:      acp.EventTypeUserMessage,
-			Content:   mustMarshalCanonical(t, acp.EventTypeUserMessage, "turn-canonical", time.Date(2026, 4, 3, 13, 0, 0, 0, time.UTC), "list files", "", "", nil, nil, false),
+			ID:       "a",
+			Sequence: 1,
+			TurnID:   "turn-canonical",
+			Type:     acp.EventTypeUserMessage,
+			Content: mustMarshalCanonical(
+				t,
+				acp.EventTypeUserMessage,
+				"turn-canonical",
+				time.Date(2026, 4, 3, 13, 0, 0, 0, time.UTC),
+				"list files",
+				"",
+				"",
+				nil,
+				nil,
+				false,
+			),
 			Timestamp: time.Date(2026, 4, 3, 13, 0, 0, 0, time.UTC),
 		},
 		{
-			ID:        "c",
-			Sequence:  4,
-			TurnID:    "turn-canonical",
-			Type:      acp.EventTypeToolResult,
-			Content:   mustMarshalCanonical(t, acp.EventTypeToolResult, "turn-canonical", time.Date(2026, 4, 3, 13, 0, 3, 0, time.UTC), "", "Bash", "call-2", nil, &ToolResult{Stdout: "ok"}, false),
+			ID:       "c",
+			Sequence: 4,
+			TurnID:   "turn-canonical",
+			Type:     acp.EventTypeToolResult,
+			Content: mustMarshalCanonical(
+				t,
+				acp.EventTypeToolResult,
+				"turn-canonical",
+				time.Date(2026, 4, 3, 13, 0, 3, 0, time.UTC),
+				"",
+				"Bash",
+				"call-2",
+				nil,
+				&ToolResult{Stdout: "ok"},
+				false,
+			),
 			Timestamp: time.Date(2026, 4, 3, 13, 0, 3, 0, time.UTC),
 		},
 		{
-			ID:        "d",
-			Sequence:  2,
-			TurnID:    "turn-canonical",
-			Type:      acp.EventTypeAgentMessage,
-			Content:   mustMarshalCanonical(t, acp.EventTypeAgentMessage, "turn-canonical", time.Date(2026, 4, 3, 13, 0, 1, 0, time.UTC), "Listing files", "", "", nil, nil, false),
+			ID:       "d",
+			Sequence: 2,
+			TurnID:   "turn-canonical",
+			Type:     acp.EventTypeAgentMessage,
+			Content: mustMarshalCanonical(
+				t,
+				acp.EventTypeAgentMessage,
+				"turn-canonical",
+				time.Date(2026, 4, 3, 13, 0, 1, 0, time.UTC),
+				"Listing files",
+				"",
+				"",
+				nil,
+				nil,
+				false,
+			),
 			Timestamp: time.Date(2026, 4, 3, 13, 0, 1, 0, time.UTC),
 		},
 	}
@@ -397,10 +441,31 @@ func TestUnmarshalAgentEventRoundTrip(t *testing.T) {
 	}
 }
 
-func mustMarshalCanonical(t *testing.T, eventType string, turnID string, timestamp time.Time, text string, toolName string, toolCallID string, toolInput json.RawMessage, toolResult *ToolResult, toolError bool) string {
+func mustMarshalCanonical(
+	t *testing.T,
+	eventType string,
+	turnID string,
+	timestamp time.Time,
+	text string,
+	toolName string,
+	toolCallID string,
+	toolInput json.RawMessage,
+	toolResult *ToolResult,
+	toolError bool,
+) string {
 	t.Helper()
 
-	payload, err := canonicalPayload(eventType, turnID, timestamp, text, toolName, toolCallID, toolInput, toolResult, toolError)
+	payload, err := canonicalPayload(
+		eventType,
+		turnID,
+		timestamp,
+		text,
+		toolName,
+		toolCallID,
+		toolInput,
+		toolResult,
+		toolError,
+	)
 	if err != nil {
 		t.Fatalf("canonicalPayload() error = %v", err)
 	}

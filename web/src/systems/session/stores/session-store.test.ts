@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { useSessionStore } from "./session-store";
+import { useSessionStore } from "../hooks/use-session-store";
 import type { UIMessage, PermissionRequest } from "../types";
 
 function makeMessage(overrides: Partial<UIMessage> = {}): UIMessage {

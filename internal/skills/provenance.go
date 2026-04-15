@@ -104,7 +104,7 @@ func WriteSidecar(skillDir string, provenance Provenance) error {
 	}
 	payload = append(payload, '\n')
 
-	if err := os.WriteFile(sidecarPath, payload, 0o644); err != nil {
+	if err := os.WriteFile(sidecarPath, payload, 0o600); err != nil {
 		return fmt.Errorf("skills: write provenance sidecar %q: %w", sidecarPath, err)
 	}
 
@@ -170,7 +170,10 @@ func writeHashEntry(hasher hash.Hash, root string, relPath string) error {
 			return fmt.Errorf("skills: read hashed path %q: %w", absPath, err)
 		}
 
-		if err := writeHashString(hasher, fmt.Sprintf("file:%s\nmode:%#o\n", normalizedPath, info.Mode().Perm())); err != nil {
+		if err := writeHashString(
+			hasher,
+			fmt.Sprintf("file:%s\nmode:%#o\n", normalizedPath, info.Mode().Perm()),
+		); err != nil {
 			return err
 		}
 		if _, err := hasher.Write(content); err != nil {
@@ -188,7 +191,15 @@ func writeHashEntry(hasher hash.Hash, root string, relPath string) error {
 			return fmt.Errorf("skills: read hashed symlink %q: %w", absPath, err)
 		}
 
-		if err := writeHashString(hasher, fmt.Sprintf("symlink:%s\nmode:%#o\ntarget:%s\n", normalizedPath, info.Mode().Perm(), filepath.ToSlash(target))); err != nil {
+		if err := writeHashString(
+			hasher,
+			fmt.Sprintf(
+				"symlink:%s\nmode:%#o\ntarget:%s\n",
+				normalizedPath,
+				info.Mode().Perm(),
+				filepath.ToSlash(target),
+			),
+		); err != nil {
 			return err
 		}
 		return nil

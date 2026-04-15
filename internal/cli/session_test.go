@@ -38,7 +38,7 @@ func TestParseSinceFlagRelativeDuration(t *testing.T) {
 func TestSessionNewUsesConfigDefaultWhenAgentFlagIsOmitted(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		createSessionFn: func(_ context.Context, request CreateSessionRequest) (SessionRecord, error) {
 			if request.AgentName != "" {
 				t.Fatalf("CreateSession() AgentName = %q, want empty", request.AgentName)
@@ -104,11 +104,10 @@ func TestSessionNewWorkspaceOptions(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			deps := newTestDeps(t, stubClient{
+			deps := newTestDeps(t, &stubClient{
 				createSessionFn: func(_ context.Context, request CreateSessionRequest) (SessionRecord, error) {
 					if request.Workspace != tt.request.Workspace || request.WorkspacePath != tt.request.WorkspacePath {
 						t.Fatalf("CreateSession() request = %#v, want %#v", request, tt.request)
@@ -144,7 +143,7 @@ func TestSessionNewWorkspaceOptions(t *testing.T) {
 func TestSessionNewPassesChannelFlag(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		createSessionFn: func(_ context.Context, request CreateSessionRequest) (SessionRecord, error) {
 			if request.Channel != "builders" {
 				t.Fatalf("CreateSession() Channel = %q, want %q", request.Channel, "builders")
@@ -179,7 +178,7 @@ func TestSessionNewPassesChannelFlag(t *testing.T) {
 func TestSessionNewRejectsInvalidWorkspaceFlags(t *testing.T) {
 	t.Parallel()
 
-	code, _, stderr := executeRootCommandWithExit(t, newTestDeps(t, stubClient{}),
+	code, _, stderr := executeRootCommandWithExit(t, newTestDeps(t, &stubClient{}),
 		"session", "new", "--workspace", "ws_abc", "--cwd", "/tmp/proj",
 	)
 	if code != 1 {
@@ -195,11 +194,10 @@ func TestSessionNewRejectsRelativeCWD(t *testing.T) {
 
 	tests := []string{".", "../project"}
 	for _, cwd := range tests {
-		cwd := cwd
 		t.Run(cwd, func(t *testing.T) {
 			t.Parallel()
 
-			code, _, stderr := executeRootCommandWithExit(t, newTestDeps(t, stubClient{}),
+			code, _, stderr := executeRootCommandWithExit(t, newTestDeps(t, &stubClient{}),
 				"session", "new", "--cwd", cwd,
 			)
 			if code != 1 {
@@ -217,7 +215,7 @@ func TestSessionListPassesWorkspaceFilter(t *testing.T) {
 
 	var seenQuery SessionListQuery
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		listSessionsFn: func(_ context.Context, query SessionListQuery) ([]SessionRecord, error) {
 			seenQuery = query
 			return []SessionRecord{{
@@ -232,7 +230,17 @@ func TestSessionListPassesWorkspaceFilter(t *testing.T) {
 		},
 	})
 
-	stdout, _, err := executeRootCommand(t, deps, "session", "list", "--workspace", "ws-filtered", "--all", "-o", "json")
+	stdout, _, err := executeRootCommand(
+		t,
+		deps,
+		"session",
+		"list",
+		"--workspace",
+		"ws-filtered",
+		"--all",
+		"-o",
+		"json",
+	)
 	if err != nil {
 		t.Fatalf("executeRootCommand(session list) error = %v", err)
 	}
@@ -257,7 +265,7 @@ func TestSessionEventsFollowUsesSSE(t *testing.T) {
 		querySeen    SessionEventQuery
 	)
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		streamSessionFn: func(_ context.Context, id string, query SessionEventQuery, _ string, handler SSEHandler) error {
 			streamCalled = true
 			querySeen = query
@@ -281,7 +289,18 @@ func TestSessionEventsFollowUsesSSE(t *testing.T) {
 		},
 	})
 
-	stdout, _, err := executeRootCommand(t, deps, "session", "events", "sess-1", "--type", "tool_call", "--follow", "-o", "json")
+	stdout, _, err := executeRootCommand(
+		t,
+		deps,
+		"session",
+		"events",
+		"sess-1",
+		"--type",
+		"tool_call",
+		"--follow",
+		"-o",
+		"json",
+	)
 	if err != nil {
 		t.Fatalf("executeRootCommand() error = %v", err)
 	}
@@ -308,7 +327,7 @@ func TestSessionEventsFollowUsesSSE(t *testing.T) {
 func TestSessionWaitReturnsImmediatelyForStoppedSession(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		getSessionFn: func(context.Context, string) (SessionRecord, error) {
 			return SessionRecord{
 				ID:            "sess-1",
@@ -344,7 +363,7 @@ func TestSessionWaitStreamsUntilStopped(t *testing.T) {
 	t.Parallel()
 
 	getCalls := 0
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		getSessionFn: func(context.Context, string) (SessionRecord, error) {
 			getCalls++
 			state := session.StateActive
@@ -399,7 +418,7 @@ func TestSessionStopFetchesUpdatedSession(t *testing.T) {
 
 	var stoppedID string
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		stopSessionFn: func(_ context.Context, id string) error {
 			stoppedID = id
 			return nil
@@ -437,7 +456,7 @@ func TestSessionStopFetchesUpdatedSession(t *testing.T) {
 func TestSessionStatusReturnsSessionRecord(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		getSessionFn: func(_ context.Context, id string) (SessionRecord, error) {
 			return SessionRecord{
 				ID:            id,
@@ -468,7 +487,7 @@ func TestSessionStatusReturnsSessionRecord(t *testing.T) {
 func TestSessionResumeReturnsSessionRecord(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		resumeSessionFn: func(_ context.Context, id string) (SessionRecord, error) {
 			return SessionRecord{
 				ID:            id,
@@ -504,7 +523,7 @@ func TestSessionPromptRendersReturnedEvents(t *testing.T) {
 		promptMsg string
 	)
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		promptSessionFn: func(_ context.Context, id string, message string) ([]AgentEventRecord, error) {
 			promptID = id
 			promptMsg = message

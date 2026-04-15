@@ -50,18 +50,24 @@ type installerVerificationRule struct {
 
 var installerVerificationRules = []installerVerificationRule{
 	{
-		key:     "ignore-previous-instructions",
-		regex:   regexp.MustCompile(`(?i)\bignore\s+(?:\w+\s+)*(?:all|previous|prior|above)\s+(?:\w+\s+)*(?:instructions|rules|guidelines)\b`),
+		key: "ignore-previous-instructions",
+		regex: regexp.MustCompile(
+			`(?i)\bignore\s+(?:\w+\s+)*(?:all|previous|prior|above)\s+(?:\w+\s+)*(?:instructions|rules|guidelines)\b`,
+		),
 		message: "content attempts to override existing instructions",
 	},
 	{
-		key:     "disregard-existing-rules",
-		regex:   regexp.MustCompile(`(?i)\bdisregard\s+(?:\w+\s+)*(?:all|previous|prior|your)\s+(?:\w+\s+)*(?:instructions|rules|guidelines)\b`),
+		key: "disregard-existing-rules",
+		regex: regexp.MustCompile(
+			`(?i)\bdisregard\s+(?:\w+\s+)*(?:all|previous|prior|your)\s+(?:\w+\s+)*(?:instructions|rules|guidelines)\b`,
+		),
 		message: "content attempts to bypass current rules",
 	},
 	{
-		key:     "forget-your-instructions",
-		regex:   regexp.MustCompile(`(?i)\bforget\s+(?:\w+\s+)*(?:your|all)\s+(?:\w+\s+)*(?:instructions|rules|guidelines)\b`),
+		key: "forget-your-instructions",
+		regex: regexp.MustCompile(
+			`(?i)\bforget\s+(?:\w+\s+)*(?:your|all)\s+(?:\w+\s+)*(?:instructions|rules|guidelines)\b`,
+		),
 		message: "content attempts to erase active instructions",
 	},
 	{
@@ -90,8 +96,10 @@ var installerVerificationRules = []installerVerificationRule{
 		message: "content includes a destructive shell command",
 	},
 	{
-		key:     "credential-extraction",
-		regex:   regexp.MustCompile(`(?i)\b(?:print|show|reveal|display|output)\s+(?:the\s+|your\s+)?(?:api\s+key|access\s+token|credentials?|secret(?:s)?|password(?:s)?)\b`),
+		key: "credential-extraction",
+		regex: regexp.MustCompile(
+			`(?i)\b(?:print|show|reveal|display|output)\s+(?:the\s+|your\s+)?(?:api\s+key|access\s+token|credentials?|secret(?:s)?|password(?:s)?)\b`,
+		),
 		message: "content attempts to extract credentials",
 	},
 }
@@ -216,91 +224,121 @@ func WithInstallerTempDirMaxAge(age time.Duration) InstallerOption {
 
 // Install downloads, extracts, verifies, and atomically moves a package into
 // its final target directory.
-func (i *Installer) Install(ctx context.Context, slug string, dlOpts DownloadOpts, targetDir string) (_ *InstallResult, err error) {
+func (i *Installer) Install(
+	ctx context.Context,
+	slug string,
+	dlOpts DownloadOpts,
+	targetDir string,
+) (_ *InstallResult, err error) {
 	if err := checkMultiRegistryContext(ctx); err != nil {
 		return nil, err
 	}
-	if i == nil {
-		return nil, errors.New("registry: installer is required")
-	}
-	if i.downloader == nil {
-		return nil, errors.New("registry: downloader is required")
-	}
-
-	trimmedSlug := strings.TrimSpace(slug)
-	if trimmedSlug == "" {
-		return nil, errors.New("registry: slug is required")
-	}
-
-	trimmedTarget := strings.TrimSpace(targetDir)
-	if trimmedTarget == "" {
-		return nil, errors.New("registry: target directory is required")
-	}
-
-	absTarget, err := filepath.Abs(trimmedTarget)
+	trimmedSlug, absTarget, err := i.prepareInstallTarget(slug, targetDir)
 	if err != nil {
-		return nil, fmt.Errorf("registry: resolve target directory %q: %w", trimmedTarget, err)
-	}
-	installParent := filepath.Dir(absTarget)
-	if err := os.MkdirAll(installParent, 0o755); err != nil {
-		return nil, fmt.Errorf("registry: create install parent %q: %w", installParent, err)
-	}
-	if err := i.cleanupStaleTempDirs(installParent); err != nil {
 		return nil, err
 	}
 
-	tempRoot, err := os.MkdirTemp(installParent, defaultInstallerTempDirPattern)
+	tempRoot, err := i.newInstallTempRoot(absTarget)
 	if err != nil {
-		return nil, fmt.Errorf("registry: create temporary install directory: %w", err)
+		return nil, err
 	}
 	defer func() {
 		removeErr := i.removeAll(tempRoot)
 		if removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
-			err = joinInstallerError(err, fmt.Errorf("registry: remove temporary install directory %q: %w", tempRoot, removeErr))
+			err = joinInstallerError(
+				err,
+				fmt.Errorf("registry: remove temporary install directory %q: %w", tempRoot, removeErr),
+			)
 		}
 	}()
 
-	download, err := i.downloader.Download(ctx, trimmedSlug, dlOpts)
+	download, err := i.downloadInstallArchive(ctx, trimmedSlug, dlOpts)
 	if err != nil {
 		return nil, err
-	}
-	if download == nil {
-		return nil, fmt.Errorf("registry: download returned no result for %q", trimmedSlug)
-	}
-	if download.Reader == nil {
-		return nil, fmt.Errorf("registry: download returned no archive stream for %q", trimmedSlug)
 	}
 	defer func() {
 		err = joinInstallerError(err, closeDownloadReader(download.Reader, trimmedSlug))
 	}()
+	return i.installDownloadedPackage(download, trimmedSlug, tempRoot, absTarget)
+}
 
+func (i *Installer) prepareInstallTarget(slug string, targetDir string) (string, string, error) {
+	if i == nil {
+		return "", "", errors.New("registry: installer is required")
+	}
+	if i.downloader == nil {
+		return "", "", errors.New("registry: downloader is required")
+	}
+
+	trimmedSlug := strings.TrimSpace(slug)
+	if trimmedSlug == "" {
+		return "", "", errors.New("registry: slug is required")
+	}
+
+	trimmedTarget := strings.TrimSpace(targetDir)
+	if trimmedTarget == "" {
+		return "", "", errors.New("registry: target directory is required")
+	}
+
+	absTarget, err := filepath.Abs(trimmedTarget)
+	if err != nil {
+		return "", "", fmt.Errorf("registry: resolve target directory %q: %w", trimmedTarget, err)
+	}
+	return trimmedSlug, absTarget, nil
+}
+
+func (i *Installer) newInstallTempRoot(absTarget string) (string, error) {
+	installParent := filepath.Dir(absTarget)
+	if err := os.MkdirAll(installParent, 0o755); err != nil {
+		return "", fmt.Errorf("registry: create install parent %q: %w", installParent, err)
+	}
+	if err := i.cleanupStaleTempDirs(installParent); err != nil {
+		return "", err
+	}
+
+	tempRoot, err := os.MkdirTemp(installParent, defaultInstallerTempDirPattern)
+	if err != nil {
+		return "", fmt.Errorf("registry: create temporary install directory: %w", err)
+	}
+	return tempRoot, nil
+}
+
+func (i *Installer) downloadInstallArchive(
+	ctx context.Context,
+	slug string,
+	opts DownloadOpts,
+) (*DownloadResult, error) {
+	download, err := i.downloader.Download(ctx, slug, opts)
+	if err != nil {
+		return nil, err
+	}
+	if download == nil {
+		return nil, fmt.Errorf("registry: download returned no result for %q", slug)
+	}
+	if download.Reader == nil {
+		return nil, fmt.Errorf("registry: download returned no archive stream for %q", slug)
+	}
 	if err := validateDownloadContentType(download.ContentType); err != nil {
 		return nil, err
 	}
+	return download, nil
+}
 
+func (i *Installer) installDownloadedPackage(
+	download *DownloadResult,
+	trimmedSlug string,
+	tempRoot string,
+	absTarget string,
+) (*InstallResult, error) {
 	extractRoot := filepath.Join(tempRoot, "extract")
 	if err := os.MkdirAll(extractRoot, 0o755); err != nil {
 		return nil, fmt.Errorf("registry: create extraction root %q: %w", extractRoot, err)
 	}
 
-	compressedReader := &countingReader{
-		reader: io.LimitReader(download.Reader, i.maxArchiveSize),
-	}
-	if err := extractArchive(compressedReader, extractRoot, extractLimits{
-		maxDecompressedSize: i.maxDecompressedSize,
-		maxFileCount:        i.maxFileCount,
-	}); err != nil {
-		return nil, normalizeExtractionError(err, compressedReader.total, i.maxArchiveSize)
-	}
-
-	packageRoot, metadata, err := loadInstalledPackageMetadata(extractRoot)
+	packageRoot, metadata, err := i.extractInstallPackage(download.Reader, extractRoot)
 	if err != nil {
 		return nil, err
 	}
-	if err := verifyInstallerContent(metadata.verifyContent); err != nil {
-		return nil, err
-	}
-
 	if err := MoveInstalledDir(packageRoot, absTarget, true); err != nil {
 		return nil, err
 	}
@@ -317,6 +355,30 @@ func (i *Installer) Install(ctx context.Context, slug string, dlOpts DownloadOpt
 		InstallPath: absTarget,
 		Checksum:    checksum,
 	}, nil
+}
+
+func (i *Installer) extractInstallPackage(
+	reader io.Reader,
+	extractRoot string,
+) (string, installedPackageMetadata, error) {
+	compressedReader := &countingReader{
+		reader: io.LimitReader(reader, i.maxArchiveSize),
+	}
+	if err := extractArchive(compressedReader, extractRoot, extractLimits{
+		maxDecompressedSize: i.maxDecompressedSize,
+		maxFileCount:        i.maxFileCount,
+	}); err != nil {
+		return "", installedPackageMetadata{}, normalizeExtractionError(err, compressedReader.total, i.maxArchiveSize)
+	}
+
+	packageRoot, metadata, err := loadInstalledPackageMetadata(extractRoot)
+	if err != nil {
+		return "", installedPackageMetadata{}, err
+	}
+	if err := verifyInstallerContent(metadata.verifyContent); err != nil {
+		return "", installedPackageMetadata{}, err
+	}
+	return packageRoot, metadata, nil
 }
 
 func (i *Installer) cleanupStaleTempDirs(parent string) error {
@@ -458,7 +520,12 @@ func manifestPathAtRoot(root string) (string, error) {
 
 	switch {
 	case hasExtensionManifest && hasSkillManifest:
-		return "", fmt.Errorf("registry: archive root %q contains both %s and %s", root, installerExtensionManifestName, installerSkillManifestName)
+		return "", fmt.Errorf(
+			"registry: archive root %q contains both %s and %s",
+			root,
+			installerExtensionManifestName,
+			installerSkillManifestName,
+		)
 	case hasExtensionManifest:
 		return extensionManifest, nil
 	case hasSkillManifest:
@@ -492,7 +559,11 @@ func parseInstalledPackageMetadata(manifestPath string) (installedPackageMetadat
 	case installerExtensionManifestName:
 		var meta extensionManifestHeader
 		if _, err := toml.Decode(string(content), &meta); err != nil {
-			return installedPackageMetadata{}, fmt.Errorf("registry: decode extension manifest %q: %w", manifestPath, err)
+			return installedPackageMetadata{}, fmt.Errorf(
+				"registry: decode extension manifest %q: %w",
+				manifestPath,
+				err,
+			)
 		}
 		return installedPackageMetadata{
 			name:          firstNonEmpty(meta.Name, meta.Extension.Name),
@@ -599,7 +670,10 @@ func writeInstallChecksumEntry(hasher hash.Hash, root string, relPath string) er
 		if err != nil {
 			return fmt.Errorf("registry: open checksum path %q: %w", absPath, err)
 		}
-		if err := writeInstallChecksumString(hasher, fmt.Sprintf("file:%s\nmode:%#o\n", normalizedPath, info.Mode().Perm())); err != nil {
+		if err := writeInstallChecksumString(
+			hasher,
+			fmt.Sprintf("file:%s\nmode:%#o\n", normalizedPath, info.Mode().Perm()),
+		); err != nil {
 			closeErr := file.Close()
 			if closeErr != nil {
 				return errors.Join(err, fmt.Errorf("registry: close checksum path %q: %w", absPath, closeErr))
@@ -609,7 +683,10 @@ func writeInstallChecksumEntry(hasher hash.Hash, root string, relPath string) er
 		if _, err := io.Copy(hasher, file); err != nil {
 			copyErr := fmt.Errorf("registry: hash regular file %q: %w", absPath, err)
 			if closeErr := file.Close(); closeErr != nil {
-				copyErr = errors.Join(copyErr, fmt.Errorf("registry: close checksum path %q after read failure: %w", absPath, closeErr))
+				copyErr = errors.Join(
+					copyErr,
+					fmt.Errorf("registry: close checksum path %q after read failure: %w", absPath, closeErr),
+				)
 			}
 			return copyErr
 		}

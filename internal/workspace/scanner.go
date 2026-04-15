@@ -48,13 +48,22 @@ func (r *Resolver) scanWorkspace(ctx context.Context, ws Workspace) (workspaceSc
 	if err := addSnapshotIfExists(r.homePaths.ConfigFile, scan.snapshots); err != nil {
 		return workspaceScan{}, fmt.Errorf("workspace: snapshot global config %q: %w", r.homePaths.ConfigFile, err)
 	}
-	if err := addSnapshotIfExists(filepath.Join(r.homePaths.HomeDir, aghconfig.MCPJSONName), scan.snapshots); err != nil {
+	if err := addSnapshotIfExists(
+		filepath.Join(r.homePaths.HomeDir, aghconfig.MCPJSONName),
+		scan.snapshots,
+	); err != nil {
 		return workspaceScan{}, fmt.Errorf("workspace: snapshot global MCP JSON %q: %w", r.homePaths.HomeDir, err)
 	}
-	if err := addSnapshotIfExists(filepath.Join(ws.RootDir, aghconfig.DirName, aghconfig.ConfigName), scan.snapshots); err != nil {
+	if err := addSnapshotIfExists(
+		filepath.Join(ws.RootDir, aghconfig.DirName, aghconfig.ConfigName),
+		scan.snapshots,
+	); err != nil {
 		return workspaceScan{}, fmt.Errorf("workspace: snapshot workspace config %q: %w", ws.RootDir, err)
 	}
-	if err := addSnapshotIfExists(filepath.Join(ws.RootDir, aghconfig.DirName, aghconfig.MCPJSONName), scan.snapshots); err != nil {
+	if err := addSnapshotIfExists(
+		filepath.Join(ws.RootDir, aghconfig.DirName, aghconfig.MCPJSONName),
+		scan.snapshots,
+	); err != nil {
 		return workspaceScan{}, fmt.Errorf("workspace: snapshot workspace MCP JSON %q: %w", ws.RootDir, err)
 	}
 
@@ -74,7 +83,11 @@ func (r *Resolver) scanWorkspace(ctx context.Context, ws Workspace) (workspaceSc
 	return scan, nil
 }
 
-func scanAgentSource(root aghconfig.WorkspaceDiscoveryRoot, snapshots map[string]filesnap.Snapshot, dst *[]agentCandidate) error {
+func scanAgentSource(
+	root aghconfig.WorkspaceDiscoveryRoot,
+	snapshots map[string]filesnap.Snapshot,
+	dst *[]agentCandidate,
+) error {
 	agentsDir := root.AgentsDir()
 	if err := addSnapshotIfExists(agentsDir, snapshots); err != nil {
 		return fmt.Errorf("workspace: snapshot agents directory %q: %w", agentsDir, err)
@@ -113,7 +126,11 @@ func scanAgentSource(root aghconfig.WorkspaceDiscoveryRoot, snapshots map[string
 	return nil
 }
 
-func scanSkillSource(root aghconfig.WorkspaceDiscoveryRoot, snapshots map[string]filesnap.Snapshot, dst *[]skillCandidate) error {
+func scanSkillSource(
+	root aghconfig.WorkspaceDiscoveryRoot,
+	snapshots map[string]filesnap.Snapshot,
+	dst *[]skillCandidate,
+) error {
 	skillsDir := root.SkillsDir()
 	if err := addSnapshotIfExists(skillsDir, snapshots); err != nil {
 		return fmt.Errorf("workspace: snapshot skills directory %q: %w", skillsDir, err)

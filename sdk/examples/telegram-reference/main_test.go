@@ -122,43 +122,63 @@ func TestResolveManagedInstanceRequiresExplicitSelectionForMultiplexedProvider(t
 		testBridgeRuntime(now, "brg-1"),
 		testBridgeRuntime(now, "brg-2"),
 	}
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesList), func(context.Context, json.RawMessage) (any, error) {
-		return []bridgepkg.BridgeInstance{managed[0].Instance, managed[1].Instance}, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesGet), func(_ context.Context, raw json.RawMessage) (any, error) {
-		var params extensioncontract.BridgeInstanceTargetParams
-		if err := json.Unmarshal(raw, &params); err != nil {
-			return nil, err
-		}
-		switch params.BridgeInstanceID {
-		case "brg-1":
-			return managed[0].Instance, nil
-		case "brg-2":
-			return managed[1].Instance, nil
-		default:
-			return nil, errors.New("unexpected instance")
-		}
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesReportState), func(_ context.Context, raw json.RawMessage) (any, error) {
-		var params extensioncontract.BridgesInstancesReportStateParams
-		if err := json.Unmarshal(raw, &params); err != nil {
-			return nil, err
-		}
-		switch params.BridgeInstanceID {
-		case "brg-1":
-			instance := managed[0].Instance
-			instance.Status = params.Status
-			return instance, nil
-		case "brg-2":
-			instance := managed[1].Instance
-			instance.Status = params.Status
-			return instance, nil
-		default:
-			return nil, errors.New("unexpected instance")
-		}
-	})
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesList),
+		func(context.Context, json.RawMessage) (any, error) {
+			return []bridgepkg.BridgeInstance{managed[0].Instance, managed[1].Instance}, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesGet),
+		func(_ context.Context, raw json.RawMessage) (any, error) {
+			var params extensioncontract.BridgeInstanceTargetParams
+			if err := json.Unmarshal(raw, &params); err != nil {
+				return nil, err
+			}
+			switch params.BridgeInstanceID {
+			case "brg-1":
+				return managed[0].Instance, nil
+			case "brg-2":
+				return managed[1].Instance, nil
+			default:
+				return nil, errors.New("unexpected instance")
+			}
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesReportState),
+		func(_ context.Context, raw json.RawMessage) (any, error) {
+			var params extensioncontract.BridgesInstancesReportStateParams
+			if err := json.Unmarshal(raw, &params); err != nil {
+				return nil, err
+			}
+			switch params.BridgeInstanceID {
+			case "brg-1":
+				instance := managed[0].Instance
+				instance.Status = params.Status
+				return instance, nil
+			case "brg-2":
+				instance := managed[1].Instance
+				instance.Status = params.Status
+				return instance, nil
+			default:
+				return nil, errors.New("unexpected instance")
+			}
+		},
+	)
 
-	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed...), nil); err != nil {
+	if err := hostPeer.Call(
+		context.Background(),
+		"initialize",
+		testInitializeRequest(now, managed...),
+		nil,
+	); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
 	}
 
@@ -182,7 +202,9 @@ func TestAckDeliveryPreservesOrderedRemoteAndReplacementIDsPerInstance(t *testin
 		t.Fatalf("newTelegramReferenceRuntime() error = %v", err)
 	}
 
-	startAck, err := runtime.ackDelivery(testDeliveryRequest("brg-1", "delivery-1", 1, bridgepkg.DeliveryEventTypeStart, false))
+	startAck, err := runtime.ackDelivery(
+		testDeliveryRequest("brg-1", "delivery-1", 1, bridgepkg.DeliveryEventTypeStart, false),
+	)
 	if err != nil {
 		t.Fatalf("ackDelivery(start) error = %v", err)
 	}
@@ -190,7 +212,9 @@ func TestAckDeliveryPreservesOrderedRemoteAndReplacementIDsPerInstance(t *testin
 		t.Fatalf("start ack remote_message_id = %q, want %q", got, want)
 	}
 
-	deltaAck, err := runtime.ackDelivery(testDeliveryRequest("brg-1", "delivery-1", 2, bridgepkg.DeliveryEventTypeDelta, false))
+	deltaAck, err := runtime.ackDelivery(
+		testDeliveryRequest("brg-1", "delivery-1", 2, bridgepkg.DeliveryEventTypeDelta, false),
+	)
 	if err != nil {
 		t.Fatalf("ackDelivery(delta) error = %v", err)
 	}
@@ -198,7 +222,9 @@ func TestAckDeliveryPreservesOrderedRemoteAndReplacementIDsPerInstance(t *testin
 		t.Fatalf("delta ack replace_remote_message_id = %q, want %q", got, want)
 	}
 
-	otherAck, err := runtime.ackDelivery(testDeliveryRequest("brg-2", "delivery-1", 1, bridgepkg.DeliveryEventTypeStart, false))
+	otherAck, err := runtime.ackDelivery(
+		testDeliveryRequest("brg-2", "delivery-1", 1, bridgepkg.DeliveryEventTypeStart, false),
+	)
 	if err != nil {
 		t.Fatalf("ackDelivery(other instance) error = %v", err)
 	}
@@ -213,10 +239,14 @@ func TestAckDeliveryRejectsOutOfOrderSequence(t *testing.T) {
 		t.Fatalf("newTelegramReferenceRuntime() error = %v", err)
 	}
 
-	if _, err := runtime.ackDelivery(testDeliveryRequest("brg-1", "delivery-2", 1, bridgepkg.DeliveryEventTypeStart, false)); err != nil {
+	if _, err := runtime.ackDelivery(
+		testDeliveryRequest("brg-1", "delivery-2", 1, bridgepkg.DeliveryEventTypeStart, false),
+	); err != nil {
 		t.Fatalf("ackDelivery(start) error = %v", err)
 	}
-	if _, err := runtime.ackDelivery(testDeliveryRequest("brg-1", "delivery-2", 1, bridgepkg.DeliveryEventTypeDelta, false)); err == nil {
+	if _, err := runtime.ackDelivery(
+		testDeliveryRequest("brg-1", "delivery-2", 1, bridgepkg.DeliveryEventTypeDelta, false),
+	); err == nil {
 		t.Fatal("ackDelivery(out-of-order) error = nil, want failure")
 	}
 }
@@ -254,7 +284,9 @@ func TestRuntimeInitializeWritesOwnershipAndPerInstanceStateMarkers(t *testing.T
 		testBridgeRuntime(now, "brg-1"),
 		testBridgeRuntime(now, "brg-2"),
 	}
-	managed[0].BoundSecrets = []subprocess.InitializeBridgeBoundSecret{{BindingName: "bot_token", Kind: "token", Value: "telegram-bot-token"}}
+	managed[0].BoundSecrets = []subprocess.InitializeBridgeBoundSecret{
+		{BindingName: "bot_token", Kind: "token", Value: "telegram-bot-token"},
+	}
 
 	listedIDs := make([]string, 0)
 	gotIDs := make([]string, 0)
@@ -265,36 +297,56 @@ func TestRuntimeInitializeWritesOwnershipAndPerInstanceStateMarkers(t *testing.T
 		"brg-1": managed[0].Instance,
 		"brg-2": managed[1].Instance,
 	}
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesList), func(context.Context, json.RawMessage) (any, error) {
-		mu.Lock()
-		listedIDs = append(listedIDs, "list")
-		mu.Unlock()
-		return []bridgepkg.BridgeInstance{instanceByID["brg-1"], instanceByID["brg-2"]}, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesGet), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgeInstanceTargetParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		mu.Lock()
-		gotIDs = append(gotIDs, payload.BridgeInstanceID)
-		mu.Unlock()
-		return instanceByID[payload.BridgeInstanceID], nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesReportState), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgesInstancesReportStateParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		instance := instanceByID[payload.BridgeInstanceID]
-		instance.Status = payload.Status
-		mu.Lock()
-		reportedStatuses = append(reportedStatuses, payload)
-		mu.Unlock()
-		return instance, nil
-	})
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesList),
+		func(context.Context, json.RawMessage) (any, error) {
+			mu.Lock()
+			listedIDs = append(listedIDs, "list")
+			mu.Unlock()
+			return []bridgepkg.BridgeInstance{instanceByID["brg-1"], instanceByID["brg-2"]}, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesGet),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgeInstanceTargetParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
+			mu.Lock()
+			gotIDs = append(gotIDs, payload.BridgeInstanceID)
+			mu.Unlock()
+			return instanceByID[payload.BridgeInstanceID], nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesReportState),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgesInstancesReportStateParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
+			instance := instanceByID[payload.BridgeInstanceID]
+			instance.Status = payload.Status
+			mu.Lock()
+			reportedStatuses = append(reportedStatuses, payload)
+			mu.Unlock()
+			return instance, nil
+		},
+	)
 
-	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed...), nil); err != nil {
+	if err := hostPeer.Call(
+		context.Background(),
+		"initialize",
+		testInitializeRequest(now, managed...),
+		nil,
+	); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
 	}
 
@@ -350,44 +402,64 @@ func TestRuntimePollsInboundUpdatesAndRetriesNotInitialized(t *testing.T) {
 		{BindingName: "bot_token", Kind: "token", Value: "telegram-bot-token"},
 	}
 
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesList), func(context.Context, json.RawMessage) (any, error) {
-		return []bridgepkg.BridgeInstance{managed.Instance}, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesGet), func(context.Context, json.RawMessage) (any, error) {
-		return managed.Instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesReportState), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgesInstancesReportStateParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		instance := managed.Instance
-		instance.Status = payload.Status
-		return instance, nil
-	})
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesList),
+		func(context.Context, json.RawMessage) (any, error) {
+			return []bridgepkg.BridgeInstance{managed.Instance}, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesGet),
+		func(context.Context, json.RawMessage) (any, error) {
+			return managed.Instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesReportState),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgesInstancesReportStateParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
+			instance := managed.Instance
+			instance.Status = payload.Status
+			return instance, nil
+		},
+	)
 
 	var ingestCalls atomic.Int64
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesMessagesIngest), func(_ context.Context, params json.RawMessage) (any, error) {
-		if ingestCalls.Add(1) == 1 {
-			return nil, subprocess.NewRPCError(rpcCodeNotInitialized, "Not initialized", nil)
-		}
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesMessagesIngest),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			if ingestCalls.Add(1) == 1 {
+				return nil, subprocess.NewRPCError(rpcCodeNotInitialized, "Not initialized", nil)
+			}
 
-		var envelope bridgepkg.InboundMessageEnvelope
-		if err := json.Unmarshal(params, &envelope); err != nil {
-			return nil, err
-		}
-		return extensioncontract.BridgesMessagesIngestResult{
-			SessionID:    "sess-1",
-			RouteCreated: true,
-			RoutingKey: bridgepkg.RoutingKey{
-				Scope:            envelope.Scope,
-				WorkspaceID:      envelope.WorkspaceID,
-				BridgeInstanceID: envelope.BridgeInstanceID,
-				PeerID:           envelope.PeerID,
-				ThreadID:         envelope.ThreadID,
-			},
-		}, nil
-	})
+			var envelope bridgepkg.InboundMessageEnvelope
+			if err := json.Unmarshal(params, &envelope); err != nil {
+				return nil, err
+			}
+			return extensioncontract.BridgesMessagesIngestResult{
+				SessionID:    "sess-1",
+				RouteCreated: true,
+				RoutingKey: bridgepkg.RoutingKey{
+					Scope:            envelope.Scope,
+					WorkspaceID:      envelope.WorkspaceID,
+					BridgeInstanceID: envelope.BridgeInstanceID,
+					PeerID:           envelope.PeerID,
+					ThreadID:         envelope.ThreadID,
+				},
+			}, nil
+		},
+	)
 
 	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed), nil); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
@@ -431,21 +503,36 @@ func TestRuntimeDeliveryWritesAckAndManagedInstanceErrors(t *testing.T) {
 		{BindingName: "bot_token", Kind: "token", Value: "telegram-bot-token"},
 	}
 
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesList), func(context.Context, json.RawMessage) (any, error) {
-		return []bridgepkg.BridgeInstance{managed.Instance}, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesGet), func(context.Context, json.RawMessage) (any, error) {
-		return managed.Instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesReportState), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgesInstancesReportStateParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		instance := managed.Instance
-		instance.Status = payload.Status
-		return instance, nil
-	})
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesList),
+		func(context.Context, json.RawMessage) (any, error) {
+			return []bridgepkg.BridgeInstance{managed.Instance}, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesGet),
+		func(context.Context, json.RawMessage) (any, error) {
+			return managed.Instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesReportState),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgesInstancesReportStateParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
+			instance := managed.Instance
+			instance.Status = payload.Status
+			return instance, nil
+		},
+	)
 
 	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed), nil); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
@@ -495,21 +582,36 @@ func TestRuntimeInitializeWritesOwnershipErrorAndStillReportsState(t *testing.T)
 		{BindingName: "bot_token", Kind: "token", Value: "telegram-bot-token"},
 	}
 
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesList), func(context.Context, json.RawMessage) (any, error) {
-		return []bridgepkg.BridgeInstance{managed.Instance}, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesGet), func(context.Context, json.RawMessage) (any, error) {
-		return nil, subprocess.NewRPCError(-32601, "Method not found", nil)
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesReportState), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgesInstancesReportStateParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		instance := managed.Instance
-		instance.Status = payload.Status
-		return instance, nil
-	})
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesList),
+		func(context.Context, json.RawMessage) (any, error) {
+			return []bridgepkg.BridgeInstance{managed.Instance}, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesGet),
+		func(context.Context, json.RawMessage) (any, error) {
+			return nil, subprocess.NewRPCError(-32601, "Method not found", nil)
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesReportState),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgesInstancesReportStateParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
+			instance := managed.Instance
+			instance.Status = payload.Status
+			return instance, nil
+		},
+	)
 
 	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed), nil); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
@@ -555,12 +657,14 @@ func TestHealthCheckReflectsLastErrorAndHandleShutdownWritesMarker(t *testing.T)
 		t.Fatalf("healthCheck() error = %v, want boom", err)
 	}
 
-	runtime.wg.Add(1)
-	go func() {
-		defer runtime.wg.Done()
+	runtime.wg.Go(func() {
 		<-runtime.stopCh
-	}()
-	if err := runtime.handleShutdown(context.Background(), nil, subprocess.ShutdownRequest{DeadlineMS: 50}); err != nil {
+	})
+	if err := runtime.handleShutdown(
+		context.Background(),
+		nil,
+		subprocess.ShutdownRequest{DeadlineMS: 50},
+	); err != nil {
 		t.Fatalf("handleShutdown() error = %v", err)
 	}
 	lines := waitForNonEmptyLines(t, env.shutdownPath)
@@ -649,7 +753,7 @@ func newRuntimePeerPair(t *testing.T) (*telegramReferenceRuntime, *bridgesdk.Pee
 			runtime.stop()
 			_ = hostConn.Close()
 			_ = runtimeConn.Close()
-			for i := 0; i < 2; i++ {
+			for range 2 {
 				err := <-errCh
 				if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, net.ErrClosed) {
 					continue
@@ -692,7 +796,7 @@ func testBridgeRuntime(now time.Time, instanceID string) subprocess.InitializeBr
 }
 
 func testInitializeRequest(
-	now time.Time,
+	_ time.Time,
 	managed ...subprocess.InitializeBridgeManagedInstance,
 ) subprocess.InitializeRequest {
 	return subprocess.InitializeRequest{
@@ -732,7 +836,13 @@ func testInitializeRequest(
 	}
 }
 
-func testDeliveryRequest(instanceID string, deliveryID string, seq int64, eventType string, final bool) bridgepkg.DeliveryRequest {
+func testDeliveryRequest(
+	instanceID string,
+	deliveryID string,
+	seq int64,
+	eventType string,
+	final bool,
+) bridgepkg.DeliveryRequest {
 	return bridgepkg.DeliveryRequest{
 		Event: bridgepkg.DeliveryEvent{
 			DeliveryID:       deliveryID,

@@ -35,7 +35,7 @@ func newWorkspaceAddCommand(deps commandDeps) *cobra.Command {
 		Short: "Register a workspace",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -54,8 +54,10 @@ func newWorkspaceAddCommand(deps commandDeps) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "Optional workspace name")
-	cmd.Flags().StringArrayVar(&addDirs, "add-dir", nil, "Additional directory to include (repeatable)")
-	cmd.Flags().StringVar(&defaultAgent, "default-agent", "", "Default agent override for this workspace")
+	cmd.Flags().
+		StringArrayVar(&addDirs, "add-dir", nil, "Additional directory to include (repeatable)")
+	cmd.Flags().
+		StringVar(&defaultAgent, "default-agent", "", "Default agent override for this workspace")
 	return cmd
 }
 
@@ -64,7 +66,7 @@ func newWorkspaceListCommand(deps commandDeps) *cobra.Command {
 		Use:   "list",
 		Short: "List registered workspaces",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -84,7 +86,7 @@ func newWorkspaceInfoCommand(deps commandDeps) *cobra.Command {
 		Short: "Show one workspace with resolved details",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -111,7 +113,7 @@ func newWorkspaceEditCommand(deps commandDeps) *cobra.Command {
 		Short: "Edit a registered workspace",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -138,7 +140,11 @@ func newWorkspaceEditCommand(deps commandDeps) *cobra.Command {
 				request.Name = &trimmedName
 			}
 			if addChanged || removeChanged {
-				mergedDirs, err := mergeWorkspaceAddDirs(detail.Workspace.AddDirs, addDirs, removeDirs)
+				mergedDirs, err := mergeWorkspaceAddDirs(
+					detail.Workspace.AddDirs,
+					addDirs,
+					removeDirs,
+				)
 				if err != nil {
 					return err
 				}
@@ -158,9 +164,12 @@ func newWorkspaceEditCommand(deps commandDeps) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "Rename the workspace")
-	cmd.Flags().StringArrayVar(&addDirs, "add-dir", nil, "Additional directory to include (repeatable)")
-	cmd.Flags().StringArrayVar(&removeDirs, "remove-dir", nil, "Additional directory to remove (repeatable)")
-	cmd.Flags().StringVar(&defaultAgent, "default-agent", "", "Override the workspace default agent (set empty to clear)")
+	cmd.Flags().
+		StringArrayVar(&addDirs, "add-dir", nil, "Additional directory to include (repeatable)")
+	cmd.Flags().
+		StringArrayVar(&removeDirs, "remove-dir", nil, "Additional directory to remove (repeatable)")
+	cmd.Flags().
+		StringVar(&defaultAgent, "default-agent", "", "Override the workspace default agent (set empty to clear)")
 	return cmd
 }
 
@@ -170,7 +179,7 @@ func newWorkspaceRemoveCommand(deps commandDeps) *cobra.Command {
 		Short: "Remove a workspace registration",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -252,95 +261,120 @@ func workspaceListBundle(items []WorkspaceRecord) outputBundle {
 func workspaceDetailBundle(detail WorkspaceDetailRecord) outputBundle {
 	return outputBundle{
 		jsonValue: detail,
-		human: func() (string, error) {
-			workspaceBlock, err := workspaceRecordBundle(detail.Workspace).human()
-			if err != nil {
-				return "", err
-			}
-
-			sessionRows := make([][]string, 0, len(detail.Sessions))
-			for _, item := range detail.Sessions {
-				sessionRows = append(sessionRows, []string{
-					stringOrDash(item.ID),
-					stringOrDash(item.Name),
-					stringOrDash(item.AgentName),
-					stringOrDash(string(item.State)),
-					stringOrDash(displaySessionWorkspace(item)),
-					stringOrDash(formatTime(item.UpdatedAt)),
-				})
-			}
-
-			agentRows := make([][]string, 0, len(detail.Agents))
-			for _, item := range detail.Agents {
-				agentRows = append(agentRows, []string{
-					stringOrDash(item.Name),
-					stringOrDash(item.Provider),
-					stringOrDash(item.Model),
-					stringOrDash(item.Permissions),
-				})
-			}
-
-			skillRows := make([][]string, 0, len(detail.Skills))
-			for _, item := range detail.Skills {
-				skillRows = append(skillRows, []string{
-					stringOrDash(item.Name),
-					stringOrDash(item.Source),
-					stringOrDash(item.Dir),
-				})
-			}
-
-			return renderHumanBlocks(
-				workspaceBlock,
-				renderHumanTable("Sessions", []string{"ID", "Name", "Agent", "State", "Workspace", "Updated"}, sessionRows),
-				renderHumanTable("Agents", []string{"Name", "Provider", "Model", "Permissions"}, agentRows),
-				renderHumanTable("Skills", []string{"Name", "Source", "Directory"}, skillRows),
-			), nil
-		},
-		toon: func() (string, error) {
-			workspaceBlock, err := workspaceRecordBundle(detail.Workspace).toon()
-			if err != nil {
-				return "", err
-			}
-
-			sessionRows := make([][]string, 0, len(detail.Sessions))
-			for _, item := range detail.Sessions {
-				sessionRows = append(sessionRows, []string{
-					item.ID,
-					item.Name,
-					item.AgentName,
-					string(item.State),
-					displaySessionWorkspace(item),
-					formatTime(item.UpdatedAt),
-				})
-			}
-
-			agentRows := make([][]string, 0, len(detail.Agents))
-			for _, item := range detail.Agents {
-				agentRows = append(agentRows, []string{
-					item.Name,
-					item.Provider,
-					item.Model,
-					item.Permissions,
-				})
-			}
-
-			skillRows := make([][]string, 0, len(detail.Skills))
-			for _, item := range detail.Skills {
-				skillRows = append(skillRows, []string{
-					item.Name,
-					item.Source,
-					item.Dir,
-				})
-			}
-
-			return renderHumanBlocks(
-				workspaceBlock,
-				renderToonArray("sessions", []string{"id", "name", "agent_name", "state", "workspace", "updated_at"}, sessionRows),
-				renderToonArray("agents", []string{"name", "provider", "model", "permissions"}, agentRows),
-				renderToonArray("skills", []string{"name", "source", "dir"}, skillRows),
-			), nil
-		},
+		human:     func() (string, error) { return renderWorkspaceDetailHuman(detail) },
+		toon:      func() (string, error) { return renderWorkspaceDetailToon(detail) },
 	}
+}
+
+func renderWorkspaceDetailHuman(detail WorkspaceDetailRecord) (string, error) {
+	workspaceBlock, err := workspaceRecordBundle(detail.Workspace).human()
+	if err != nil {
+		return "", err
+	}
+
+	return renderHumanBlocks(
+		workspaceBlock,
+		renderHumanTable(
+			"Sessions",
+			[]string{"ID", "Name", "Agent", "State", "Workspace", "Updated"},
+			workspaceSessionRows(detail.Sessions, true),
+		),
+		renderHumanTable(
+			"Agents",
+			[]string{"Name", "Provider", "Model", "Permissions"},
+			workspaceAgentRows(detail.Agents, true),
+		),
+		renderHumanTable(
+			"Skills",
+			[]string{"Name", "Source", "Directory"},
+			workspaceSkillRows(detail.Skills, true),
+		),
+	), nil
+}
+
+func renderWorkspaceDetailToon(detail WorkspaceDetailRecord) (string, error) {
+	workspaceBlock, err := workspaceRecordBundle(detail.Workspace).toon()
+	if err != nil {
+		return "", err
+	}
+
+	return renderHumanBlocks(
+		workspaceBlock,
+		renderToonArray(
+			"sessions",
+			[]string{"id", "name", "agent_name", "state", "workspace", "updated_at"},
+			workspaceSessionRows(detail.Sessions, false),
+		),
+		renderToonArray(
+			"agents",
+			[]string{"name", "provider", "model", "permissions"},
+			workspaceAgentRows(detail.Agents, false),
+		),
+		renderToonArray(
+			"skills",
+			[]string{"name", "source", "dir"},
+			workspaceSkillRows(detail.Skills, false),
+		),
+	), nil
+}
+
+func workspaceSessionRows(items []SessionRecord, human bool) [][]string {
+	rows := make([][]string, 0, len(items))
+	for _, item := range items {
+		row := []string{
+			item.ID,
+			item.Name,
+			item.AgentName,
+			string(item.State),
+			displaySessionWorkspace(item),
+			formatTime(item.UpdatedAt),
+		}
+		if human {
+			row = []string{
+				stringOrDash(item.ID),
+				stringOrDash(item.Name),
+				stringOrDash(item.AgentName),
+				stringOrDash(string(item.State)),
+				stringOrDash(displaySessionWorkspace(item)),
+				stringOrDash(formatTime(item.UpdatedAt)),
+			}
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+func workspaceAgentRows(items []AgentRecord, human bool) [][]string {
+	rows := make([][]string, 0, len(items))
+	for _, item := range items {
+		row := []string{item.Name, item.Provider, item.Model, item.Permissions}
+		if human {
+			row = []string{
+				stringOrDash(item.Name),
+				stringOrDash(item.Provider),
+				stringOrDash(item.Model),
+				stringOrDash(item.Permissions),
+			}
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+func workspaceSkillRows(items []WorkspaceSkillRecord, human bool) [][]string {
+	rows := make([][]string, 0, len(items))
+	for _, item := range items {
+		row := []string{item.Name, item.Source, item.Dir}
+		if human {
+			row = []string{
+				stringOrDash(item.Name),
+				stringOrDash(item.Source),
+				stringOrDash(item.Dir),
+			}
+		}
+		rows = append(rows, row)
+	}
+	return rows
 }
 
 func mergeWorkspaceAddDirs(existing []string, add []string, remove []string) ([]string, error) {

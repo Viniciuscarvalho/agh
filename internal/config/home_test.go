@@ -51,7 +51,11 @@ func TestResolveHomePathsFromExpandsTildePaths(t *testing.T) {
 		t.Fatalf("ResolveHomePathsFrom() error = %v", err)
 	}
 	if paths.HomeDir != filepath.Join(userHome, "agh-test-home") {
-		t.Fatalf("ResolveHomePathsFrom() HomeDir = %q, want %q", paths.HomeDir, filepath.Join(userHome, "agh-test-home"))
+		t.Fatalf(
+			"ResolveHomePathsFrom() HomeDir = %q, want %q",
+			paths.HomeDir,
+			filepath.Join(userHome, "agh-test-home"),
+		)
 	}
 	if got, want := paths.MemoryDir, filepath.Join(userHome, "agh-test-home", MemoryDirName); got != want {
 		t.Fatalf("ResolveHomePathsFrom() MemoryDir = %q, want %q", got, want)
@@ -59,7 +63,12 @@ func TestResolveHomePathsFromExpandsTildePaths(t *testing.T) {
 	if got, want := paths.SkillsDir, filepath.Join(userHome, "agh-test-home", SkillsDirName); got != want {
 		t.Fatalf("ResolveHomePathsFrom() SkillsDir = %q, want %q", got, want)
 	}
-	if got, want := paths.NetworkAuditFile, filepath.Join(userHome, "agh-test-home", LogsDirName, NetworkAuditFileName); got != want {
+	if got, want := paths.NetworkAuditFile, filepath.Join(
+		userHome,
+		"agh-test-home",
+		LogsDirName,
+		NetworkAuditFileName,
+	); got != want {
 		t.Fatalf("ResolveHomePathsFrom() NetworkAuditFile = %q, want %q", got, want)
 	}
 }

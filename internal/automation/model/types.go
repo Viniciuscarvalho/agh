@@ -12,14 +12,14 @@ const DefaultTimezone = "UTC"
 // DefaultMaxConcurrentJobs is the default global automation concurrency limit.
 const DefaultMaxConcurrentJobs = 5
 
-// AutomationScope identifies the visibility boundary of an automation resource.
-type AutomationScope string
+// Scope identifies the visibility boundary of an automation resource.
+type Scope string
 
 const (
 	// AutomationScopeGlobal targets daemon-wide automation without a workspace binding.
-	AutomationScopeGlobal AutomationScope = "global"
+	AutomationScopeGlobal Scope = "global"
 	// AutomationScopeWorkspace targets automation bound to a specific workspace.
-	AutomationScopeWorkspace AutomationScope = "workspace"
+	AutomationScopeWorkspace Scope = "workspace"
 )
 
 // JobSource identifies where a job or trigger definition originated.
@@ -70,8 +70,8 @@ const (
 	RunCompleted RunStatus = "completed"
 	// RunFailed reports a run that finished with an error.
 	RunFailed RunStatus = "failed"
-	// RunCancelled reports a run that was cancelled before completion.
-	RunCancelled RunStatus = "cancelled"
+	// RunCancelled reports a run that was canceled before completion.
+	RunCancelled RunStatus = "canceled"
 )
 
 // ActivationSource identifies which ingress path produced an activation envelope.
@@ -90,16 +90,16 @@ const (
 
 // JobTaskConfig configures direct automation-to-task materialization for one job.
 type JobTaskConfig struct {
-	Title          string             `json:"title,omitempty" toml:"title,omitempty"`
-	Description    string             `json:"description,omitempty" toml:"description,omitempty"`
-	Owner          *taskpkg.Ownership `json:"owner,omitempty" toml:"owner,omitempty"`
+	Title          string             `json:"title,omitempty"           toml:"title,omitempty"`
+	Description    string             `json:"description,omitempty"     toml:"description,omitempty"`
+	Owner          *taskpkg.Ownership `json:"owner,omitempty"           toml:"owner,omitempty"`
 	NetworkChannel string             `json:"network_channel,omitempty" toml:"network_channel,omitempty"`
 }
 
 // Job is the canonical scheduled automation definition used by runtime and storage layers.
 type Job struct {
 	ID          string          `json:"id"`
-	Scope       AutomationScope `json:"scope"`
+	Scope       Scope           `json:"scope"`
 	Name        string          `json:"name"`
 	AgentName   string          `json:"agent_name"`
 	WorkspaceID string          `json:"workspace_id,omitempty"`
@@ -116,16 +116,16 @@ type Job struct {
 
 // ScheduleSpec describes how a job should be scheduled.
 type ScheduleSpec struct {
-	Mode     ScheduleMode `json:"mode" toml:"mode"`
-	Expr     string       `json:"expr,omitempty" toml:"expr,omitempty"`
+	Mode     ScheduleMode `json:"mode"               toml:"mode"`
+	Expr     string       `json:"expr,omitempty"     toml:"expr,omitempty"`
 	Interval string       `json:"interval,omitempty" toml:"interval,omitempty"`
-	Time     string       `json:"time,omitempty" toml:"time,omitempty"`
+	Time     string       `json:"time,omitempty"     toml:"time,omitempty"`
 }
 
 // Trigger is the canonical event-driven automation definition used by runtime and storage layers.
 type Trigger struct {
 	ID           string            `json:"id"`
-	Scope        AutomationScope   `json:"scope"`
+	Scope        Scope             `json:"scope"`
 	Name         string            `json:"name"`
 	AgentName    string            `json:"agent_name"`
 	WorkspaceID  string            `json:"workspace_id,omitempty"`
@@ -144,14 +144,14 @@ type Trigger struct {
 
 // RetryConfig defines retry behavior for a failed automation run.
 type RetryConfig struct {
-	Strategy   RetryStrategy `json:"strategy" toml:"strategy"`
+	Strategy   RetryStrategy `json:"strategy"    toml:"strategy"`
 	MaxRetries int           `json:"max_retries" toml:"max_retries"`
-	BaseDelay  string        `json:"base_delay" toml:"base_delay"`
+	BaseDelay  string        `json:"base_delay"  toml:"base_delay"`
 }
 
 // FireLimitConfig caps how often a job or trigger may fire within a rolling window.
 type FireLimitConfig struct {
-	Max    int    `json:"max" toml:"max"`
+	Max    int    `json:"max"    toml:"max"`
 	Window string `json:"window" toml:"window"`
 }
 
@@ -173,7 +173,7 @@ type Run struct {
 // ActivationEnvelope is the normalized trigger input regardless of source.
 type ActivationEnvelope struct {
 	Kind        string           `json:"kind"`
-	Scope       AutomationScope  `json:"scope"`
+	Scope       Scope            `json:"scope"`
 	WorkspaceID string           `json:"workspace_id,omitempty"`
 	Source      ActivationSource `json:"source"`
 	Data        map[string]any   `json:"data"`

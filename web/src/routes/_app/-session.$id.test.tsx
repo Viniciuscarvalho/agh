@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useSessionStore } from "@/systems/session/stores/session-store";
+import { useSessionStore } from "@/systems/session/hooks/use-session-store";
 import type { UIMessage } from "@/systems/session/types";
 
 const mockNavigate = vi.fn();

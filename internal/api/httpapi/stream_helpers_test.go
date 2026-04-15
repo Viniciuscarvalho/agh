@@ -32,7 +32,7 @@ func TestStreamSessionHandlerPollsForNewEvents(t *testing.T) {
 	done := make(chan struct{})
 	callCount := 0
 	manager := stubSessionManager{
-		StatusFn: func(context.Context, string) (*session.SessionInfo, error) {
+		StatusFn: func(context.Context, string) (*session.Info, error) {
 			return newSessionInfo("sess-123"), nil
 		},
 		EventsFn: func(context.Context, string, store.EventQuery) ([]store.SessionEvent, error) {
@@ -71,7 +71,12 @@ func TestStreamSessionHandlerPollsForNewEvents(t *testing.T) {
 	engine := newTestRouter(t, handlers)
 
 	recorder := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/sessions/sess-123/stream", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"/api/sessions/sess-123/stream",
+		http.NoBody,
+	)
 	engine.ServeHTTP(recorder, req)
 
 	records := parseSSE(t, recorder.Body.String())
@@ -86,7 +91,7 @@ func TestStreamSessionHandlerPollsForNewEvents(t *testing.T) {
 func TestStreamSessionHandlerStopsWhenSessionIsAlreadyStopped(t *testing.T) {
 	homePaths := newTestHomePaths(t)
 	manager := stubSessionManager{
-		StatusFn: func(context.Context, string) (*session.SessionInfo, error) {
+		StatusFn: func(context.Context, string) (*session.Info, error) {
 			info := newSessionInfo("sess-123")
 			info.State = session.StateStopped
 			info.UpdatedAt = time.Date(2026, 4, 3, 12, 0, 2, 0, time.UTC)
@@ -100,7 +105,12 @@ func TestStreamSessionHandlerStopsWhenSessionIsAlreadyStopped(t *testing.T) {
 	engine := newTestRouter(t, handlers)
 
 	recorder := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/sessions/sess-123/stream", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"/api/sessions/sess-123/stream",
+		http.NoBody,
+	)
 	engine.ServeHTTP(recorder, req)
 
 	records := parseSSE(t, recorder.Body.String())
@@ -129,10 +139,20 @@ func TestStreamObserveEventsPollsForNewEvents(t *testing.T) {
 			timestamp := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 			switch callCount {
 			case 1:
-				return []store.EventSummary{{ID: "sum-1", SessionID: "sess-1", Type: "agent_message", AgentName: "coder", Timestamp: timestamp}}, nil
+				return []store.EventSummary{
+					{ID: "sum-1", SessionID: "sess-1", Type: "agent_message", AgentName: "coder", Timestamp: timestamp},
+				}, nil
 			case 2:
 				close(done)
-				return []store.EventSummary{{ID: "sum-2", SessionID: "sess-1", Type: "done", AgentName: "coder", Timestamp: timestamp.Add(time.Second)}}, nil
+				return []store.EventSummary{
+					{
+						ID:        "sum-2",
+						SessionID: "sess-1",
+						Type:      "done",
+						AgentName: "coder",
+						Timestamp: timestamp.Add(time.Second),
+					},
+				}, nil
 			default:
 				return nil, nil
 			}
@@ -143,7 +163,12 @@ func TestStreamObserveEventsPollsForNewEvents(t *testing.T) {
 	engine := newTestRouter(t, handlers)
 
 	recorder := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/observe/events/stream", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"/api/observe/events/stream",
+		http.NoBody,
+	)
 	engine.ServeHTTP(recorder, req)
 
 	records := parseSSE(t, recorder.Body.String())
@@ -182,12 +207,24 @@ func TestStreamBridgeHealthPollsForChangedSnapshots(t *testing.T) {
 			}
 		},
 	}
-	handlers := newTestHandlersWithBridges(t, stubSessionManager{}, observer, stubBridgeService{}, stubWorkspaceService{}, homePaths)
+	handlers := newTestHandlersWithBridges(
+		t,
+		stubSessionManager{},
+		observer,
+		stubBridgeService{},
+		stubWorkspaceService{},
+		homePaths,
+	)
 	handlers.setStreamDone(done)
 	engine := newTestRouter(t, handlers)
 
 	recorder := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/bridges/health/stream", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"/api/bridges/health/stream",
+		http.NoBody,
+	)
 	engine.ServeHTTP(recorder, req)
 
 	records := parseSSE(t, recorder.Body.String())
@@ -228,16 +265,30 @@ func TestStreamBridgeHealthEmitsErrorEventWhenPollingFails(t *testing.T) {
 		QueryBridgeHealthFn: func(context.Context) ([]observe.BridgeInstanceHealth, error) {
 			callCount++
 			if callCount == 1 {
-				return []observe.BridgeInstanceHealth{{BridgeInstanceID: "brg-123", Status: bridgepkg.BridgeStatusStarting}}, nil
+				return []observe.BridgeInstanceHealth{
+					{BridgeInstanceID: "brg-123", Status: bridgepkg.BridgeStatusStarting},
+				}, nil
 			}
 			return nil, errors.New("bridge observer unavailable")
 		},
 	}
-	handlers := newTestHandlersWithBridges(t, stubSessionManager{}, observer, stubBridgeService{}, stubWorkspaceService{}, homePaths)
+	handlers := newTestHandlersWithBridges(
+		t,
+		stubSessionManager{},
+		observer,
+		stubBridgeService{},
+		stubWorkspaceService{},
+		homePaths,
+	)
 	engine := newTestRouter(t, handlers)
 
 	recorder := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/bridges/health/stream", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"/api/bridges/health/stream",
+		http.NoBody,
+	)
 	engine.ServeHTTP(recorder, req)
 
 	records := parseSSE(t, recorder.Body.String())
@@ -258,20 +309,28 @@ func TestStreamBridgeHealthEmitsErrorEventWhenPollingFails(t *testing.T) {
 }
 
 func TestHelperBuildersCoverRemainingBranches(t *testing.T) {
-	if acpCapsPayloadFromInfo(acp.ACPCaps{SupportsLoadSession: true}) == nil {
+	if acpCapsPayloadFromInfo(acp.Caps{SupportsLoadSession: true}) == nil {
 		t.Fatal("expected non-nil caps payload")
 	}
 	usage := int64(10)
-	payload := tokenUsagePayloadFromUsage(&acp.TokenUsage{InputTokens: &usage, Timestamp: time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)})
+	payload := tokenUsagePayloadFromUsage(
+		&acp.TokenUsage{InputTokens: &usage, Timestamp: time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)},
+	)
 	if payload == nil || payload.Timestamp == "" {
 		t.Fatalf("tokenUsagePayloadFromUsage() = %#v", payload)
 	}
-	if !observeEventAfterCursor(store.EventSummary{ID: "b", Sequence: 2, Timestamp: time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)}, observeCursor{Timestamp: time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC), Sequence: 1}) {
+	if !observeEventAfterCursor(
+		store.EventSummary{ID: "b", Sequence: 2, Timestamp: time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)},
+		observeCursor{Timestamp: time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC), Sequence: 1},
+	) {
 		t.Fatal("expected event to sort after cursor")
 	}
 
 	writer := &bufferFlusher{}
-	if err := core.WriteSSE(writer, core.SSEMessage{ID: "1", Name: "done", Data: map[string]string{"ok": "true"}}); err != nil {
+	if err := core.WriteSSE(
+		writer,
+		core.SSEMessage{ID: "1", Name: "done", Data: map[string]string{"ok": "true"}},
+	); err != nil {
 		t.Fatalf("writeSSE() error = %v", err)
 	}
 	if got := writer.String(); got == "" || !bytes.Contains([]byte(got), []byte("event: done")) {
@@ -280,7 +339,7 @@ func TestHelperBuildersCoverRemainingBranches(t *testing.T) {
 }
 
 func TestNewHandlersAppliesDefaults(t *testing.T) {
-	handlers := newHandlers(handlerConfig{})
+	handlers := newHandlers(&handlerConfig{})
 	if handlers.Logger == nil {
 		t.Fatal("expected default logger")
 	}

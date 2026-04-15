@@ -110,8 +110,8 @@ func (r PromptRequest) Validate() error {
 	}
 }
 
-// ACPCaps captures the usable capabilities exposed by an ACP agent.
-type ACPCaps struct {
+// Caps captures the usable capabilities exposed by an ACP agent.
+type Caps struct {
 	SupportsLoadSession bool
 	SupportedModes      []string
 	SupportedModels     []string
@@ -196,7 +196,7 @@ type AgentProcess struct {
 	Args      []string
 	Cwd       string
 	SessionID string
-	Caps      ACPCaps
+	Caps      Caps
 	StartedAt time.Time
 
 	managed       *subprocess.Process
@@ -363,7 +363,7 @@ func (p *AgentProcess) currentTurnSource() string {
 }
 
 func (p *AgentProcess) isNetworkTurn() bool {
-	return p.currentTurnSource() == "network"
+	return p.currentTurnSource() == networkCommandName
 }
 
 func (p *AgentProcess) nextPromptText(message string) string {
@@ -439,7 +439,8 @@ func appendBounded(dst []byte, src []byte, limit int) []byte {
 		return nil
 	}
 
-	combined := append(dst, src...)
+	dst = append(dst[:len(dst):len(dst)], src...)
+	combined := dst
 	if len(combined) <= limit {
 		return combined
 	}

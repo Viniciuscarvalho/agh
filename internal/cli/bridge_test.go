@@ -13,7 +13,7 @@ import (
 func TestBridgeListRendersScopePlatformAndStatusInHumanOutput(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		listBridgesFn: func(context.Context) ([]BridgeRecord, error) {
 			return []BridgeRecord{testBridgeRecord(t)}, nil
 		},
@@ -35,7 +35,7 @@ func TestBridgeGetReturnsStructuredJSONOutput(t *testing.T) {
 	t.Parallel()
 
 	expected := testBridgeRecord(t)
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		getBridgeFn: func(_ context.Context, id string) (BridgeRecord, error) {
 			if id != expected.ID {
 				t.Fatalf("GetBridge() id = %q, want %q", id, expected.ID)
@@ -53,7 +53,8 @@ func TestBridgeGetReturnsStructuredJSONOutput(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
 		t.Fatalf("json.Unmarshal(bridge get) error = %v", err)
 	}
-	if decoded.ID != expected.ID || decoded.Scope != expected.Scope || decoded.Status != expected.Status || decoded.WorkspaceID != expected.WorkspaceID {
+	if decoded.ID != expected.ID || decoded.Scope != expected.Scope || decoded.Status != expected.Status ||
+		decoded.WorkspaceID != expected.WorkspaceID {
 		t.Fatalf("decoded = %#v, want %#v", decoded, expected)
 	}
 }
@@ -62,7 +63,7 @@ func TestBridgeCreateBuildsSharedRequestAndDerivesDisabledStatus(t *testing.T) {
 	t.Parallel()
 
 	var captured CreateBridgeRequest
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		createBridgeFn: func(_ context.Context, request CreateBridgeRequest) (BridgeRecord, error) {
 			captured = request
 			record := testBridgeRecord(t)
@@ -104,7 +105,8 @@ func TestBridgeCreateBuildsSharedRequestAndDerivesDisabledStatus(t *testing.T) {
 	if captured.Status != bridgepkg.BridgeStatusDisabled || captured.Enabled {
 		t.Fatalf("captured lifecycle = enabled:%t status:%q, want false/disabled", captured.Enabled, captured.Status)
 	}
-	if !captured.RoutingPolicy.IncludePeer || !captured.RoutingPolicy.IncludeGroup || captured.RoutingPolicy.IncludeThread {
+	if !captured.RoutingPolicy.IncludePeer || !captured.RoutingPolicy.IncludeGroup ||
+		captured.RoutingPolicy.IncludeThread {
 		t.Fatalf("captured routing policy = %#v", captured.RoutingPolicy)
 	}
 	if string(captured.DeliveryDefaults) != `{"mode":"reply","group_id":"group-1"}` {
@@ -123,7 +125,7 @@ func TestBridgeCreateBuildsSharedRequestAndDerivesDisabledStatus(t *testing.T) {
 func TestBridgeCreateRejectsWorkspaceScopeWithoutWorkspaceID(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		createBridgeFn: func(context.Context, CreateBridgeRequest) (BridgeRecord, error) {
 			t.Fatal("CreateBridge() should not be called when workspace scope is invalid")
 			return BridgeRecord{}, nil
@@ -147,7 +149,7 @@ func TestBridgeCreateRejectsWorkspaceScopeWithoutWorkspaceID(t *testing.T) {
 func TestBridgeCreateRejectsInvalidLifecycleCombination(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		createBridgeFn: func(context.Context, CreateBridgeRequest) (BridgeRecord, error) {
 			t.Fatal("CreateBridge() should not be called when lifecycle flags are invalid")
 			return BridgeRecord{}, nil
@@ -165,7 +167,11 @@ func TestBridgeCreateRejectsInvalidLifecycleCombination(t *testing.T) {
 		"--enabled=false",
 		"--status", "ready",
 	)
-	if err == nil || !strings.Contains(err.Error(), `cli: invalid bridge create payload: bridges: disabled bridge instance must report status "disabled"`) {
+	if err == nil ||
+		!strings.Contains(
+			err.Error(),
+			`cli: invalid bridge create payload: bridges: disabled bridge instance must report status "disabled"`,
+		) {
 		t.Fatalf("bridge create error = %v, want lifecycle validation failure", err)
 	}
 }
@@ -185,7 +191,7 @@ func TestBridgeUpdateMergesRoutingPolicyAndAllowsNullDeliveryDefaults(t *testing
 		captured UpdateBridgeRequest
 		updateID string
 	)
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		getBridgeFn: func(_ context.Context, id string) (BridgeRecord, error) {
 			getCalls++
 			if id != current.ID {
@@ -223,7 +229,8 @@ func TestBridgeUpdateMergesRoutingPolicyAndAllowsNullDeliveryDefaults(t *testing
 	if captured.DisplayName == nil || *captured.DisplayName != "Support Ops" {
 		t.Fatalf("captured display name = %#v", captured.DisplayName)
 	}
-	if captured.RoutingPolicy == nil || !captured.RoutingPolicy.IncludePeer || !captured.RoutingPolicy.IncludeThread || !captured.RoutingPolicy.IncludeGroup {
+	if captured.RoutingPolicy == nil || !captured.RoutingPolicy.IncludePeer || !captured.RoutingPolicy.IncludeThread ||
+		!captured.RoutingPolicy.IncludeGroup {
 		t.Fatalf("captured routing policy = %#v", captured.RoutingPolicy)
 	}
 	if captured.DeliveryDefaults == nil || string(*captured.DeliveryDefaults) != "null" {
@@ -289,11 +296,10 @@ func TestBridgeLifecycleCommandsUseDaemonClient(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			deps := newTestDeps(t, stubClient{
+			deps := newTestDeps(t, &stubClient{
 				enableBridgeFn:  tt.enableFn,
 				disableBridgeFn: tt.disableFn,
 				restartBridgeFn: tt.restartFn,
@@ -318,7 +324,7 @@ func TestBridgeLifecycleCommandsUseDaemonClient(t *testing.T) {
 func TestBridgeRoutesRenderPeerThreadAndGroupSeparately(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		bridgeRoutesFn: func(_ context.Context, id string) ([]BridgeRouteRecord, error) {
 			if id != "brg-1" {
 				t.Fatalf("BridgeRoutes() id = %q, want brg-1", id)
@@ -359,7 +365,7 @@ func TestBridgeTestDeliveryUsesTypedTargetPayload(t *testing.T) {
 		capturedID      string
 		capturedRequest BridgeTestDeliveryRequest
 	)
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		testBridgeDeliveryFn: func(_ context.Context, id string, request BridgeTestDeliveryRequest) (BridgeTestDeliveryRecord, error) {
 			capturedID = id
 			capturedRequest = request
@@ -395,7 +401,10 @@ func TestBridgeTestDeliveryUsesTypedTargetPayload(t *testing.T) {
 	if capturedID != "brg-1" {
 		t.Fatalf("capturedID = %q, want brg-1", capturedID)
 	}
-	if capturedRequest.Message != "hello" || capturedRequest.Target.PeerID != "peer-1" || capturedRequest.Target.ThreadID != "thread-1" || capturedRequest.Target.GroupID != "group-1" || capturedRequest.Target.Mode != bridgepkg.DeliveryModeReply {
+	if capturedRequest.Message != "hello" || capturedRequest.Target.PeerID != "peer-1" ||
+		capturedRequest.Target.ThreadID != "thread-1" ||
+		capturedRequest.Target.GroupID != "group-1" ||
+		capturedRequest.Target.Mode != bridgepkg.DeliveryModeReply {
 		t.Fatalf("capturedRequest = %#v", capturedRequest)
 	}
 
@@ -418,7 +427,8 @@ func TestBridgeBundleAndHelpers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bridgeBundle().human() error = %v", err)
 	}
-	if !strings.Contains(human, "Delivery Defaults") || !strings.Contains(human, `{"mode":"reply","peer_id":"peer-default"}`) {
+	if !strings.Contains(human, "Delivery Defaults") ||
+		!strings.Contains(human, `{"mode":"reply","peer_id":"peer-default"}`) {
 		t.Fatalf("bridgeBundle().human() = %q, want delivery defaults", human)
 	}
 
@@ -426,7 +436,10 @@ func TestBridgeBundleAndHelpers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bridgeBundle().toon() error = %v", err)
 	}
-	if !strings.Contains(toon, "bridge{id,display_name,platform,extension_name,scope,workspace_id,enabled,status,routing,include_peer,include_thread,include_group,delivery_defaults,created_at,updated_at}:") {
+	if !strings.Contains(
+		toon,
+		"bridge{id,display_name,platform,extension_name,scope,workspace_id,enabled,status,routing,include_peer,include_thread,include_group,delivery_defaults,created_at,updated_at}:",
+	) {
 		t.Fatalf("bridgeBundle().toon() = %q, want bridge TOON object", toon)
 	}
 
@@ -461,7 +474,10 @@ func TestParseRequiredBridgeJSONEnforcesObjectOrNull(t *testing.T) {
 	}
 
 	for _, raw := range []string{`[]`, `"text"`, `123`} {
-		if _, err := parseRequiredBridgeJSON(raw); err == nil || !strings.Contains(err.Error(), "must be a JSON object or null") {
+		if _, err := parseRequiredBridgeJSON(
+			raw,
+		); err == nil ||
+			!strings.Contains(err.Error(), "must be a JSON object or null") {
 			t.Fatalf("parseRequiredBridgeJSON(%s) error = %v, want object-or-null validation", raw, err)
 		}
 	}

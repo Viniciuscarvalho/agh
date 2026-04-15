@@ -27,7 +27,6 @@ func TestWorkspaceErrorsMatchViaErrorsIs(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -70,7 +69,6 @@ func TestWorkspaceErrorsAreDistinct(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -112,7 +110,6 @@ func TestUniqueWorkspaceName(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -188,40 +185,39 @@ func TestWorkspaceStructSurface(t *testing.T) {
 	}{
 		{
 			name:   "Workspace",
-			target: reflect.TypeOf(workspace.Workspace{}),
+			target: reflect.TypeFor[workspace.Workspace](),
 			fields: []fieldSpec{
-				{name: "ID", fieldType: reflect.TypeOf("")},
-				{name: "RootDir", fieldType: reflect.TypeOf("")},
-				{name: "AdditionalDirs", fieldType: reflect.TypeOf([]string(nil))},
-				{name: "Name", fieldType: reflect.TypeOf("")},
-				{name: "DefaultAgent", fieldType: reflect.TypeOf("")},
-				{name: "CreatedAt", fieldType: reflect.TypeOf(time.Time{})},
-				{name: "UpdatedAt", fieldType: reflect.TypeOf(time.Time{})},
+				{name: "ID", fieldType: reflect.TypeFor[string]()},
+				{name: "RootDir", fieldType: reflect.TypeFor[string]()},
+				{name: "AdditionalDirs", fieldType: reflect.TypeFor[[]string]()},
+				{name: "Name", fieldType: reflect.TypeFor[string]()},
+				{name: "DefaultAgent", fieldType: reflect.TypeFor[string]()},
+				{name: "CreatedAt", fieldType: reflect.TypeFor[time.Time]()},
+				{name: "UpdatedAt", fieldType: reflect.TypeFor[time.Time]()},
 			},
 		},
 		{
 			name:   "ResolvedWorkspace",
-			target: reflect.TypeOf(workspace.ResolvedWorkspace{}),
+			target: reflect.TypeFor[workspace.ResolvedWorkspace](),
 			fields: []fieldSpec{
-				{name: "Workspace", fieldType: reflect.TypeOf(workspace.Workspace{}), embedded: true},
-				{name: "Config", fieldType: reflect.TypeOf(aghconfig.Config{})},
-				{name: "Agents", fieldType: reflect.TypeOf([]aghconfig.AgentDef(nil))},
-				{name: "Skills", fieldType: reflect.TypeOf([]workspace.SkillPath(nil))},
-				{name: "ResolvedAt", fieldType: reflect.TypeOf(time.Time{})},
+				{name: "Workspace", fieldType: reflect.TypeFor[workspace.Workspace](), embedded: true},
+				{name: "Config", fieldType: reflect.TypeFor[aghconfig.Config]()},
+				{name: "Agents", fieldType: reflect.TypeFor[[]aghconfig.AgentDef]()},
+				{name: "Skills", fieldType: reflect.TypeFor[[]workspace.SkillPath]()},
+				{name: "ResolvedAt", fieldType: reflect.TypeFor[time.Time]()},
 			},
 		},
 		{
 			name:   "SkillPath",
-			target: reflect.TypeOf(workspace.SkillPath{}),
+			target: reflect.TypeFor[workspace.SkillPath](),
 			fields: []fieldSpec{
-				{name: "Dir", fieldType: reflect.TypeOf("")},
-				{name: "Source", fieldType: reflect.TypeOf("")},
+				{name: "Dir", fieldType: reflect.TypeFor[string]()},
+				{name: "Source", fieldType: reflect.TypeFor[string]()},
 			},
 		},
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -241,7 +237,13 @@ func TestWorkspaceStructSurface(t *testing.T) {
 					t.Fatalf("%s field %q tag = %q, want %q", tt.name, field.Name, field.Tag, wantField.tag)
 				}
 				if field.Anonymous != wantField.embedded {
-					t.Fatalf("%s field %q embedded = %t, want %t", tt.name, field.Name, field.Anonymous, wantField.embedded)
+					t.Fatalf(
+						"%s field %q embedded = %t, want %t",
+						tt.name,
+						field.Name,
+						field.Anonymous,
+						wantField.embedded,
+					)
 				}
 			}
 		})

@@ -51,7 +51,11 @@ func TestDriverOptionsAndNormalization(t *testing.T) {
 		t.Fatalf("normalizeStartOpts() error = %v", err)
 	}
 	if normalized.Permissions != aghconfig.PermissionModeApproveReads {
-		t.Fatalf("normalizeStartOpts() permissions = %q, want %q", normalized.Permissions, aghconfig.PermissionModeApproveReads)
+		t.Fatalf(
+			"normalizeStartOpts() permissions = %q, want %q",
+			normalized.Permissions,
+			aghconfig.PermissionModeApproveReads,
+		)
 	}
 
 	rootReal := t.TempDir()
@@ -77,7 +81,12 @@ func TestDriverOptionsAndNormalization(t *testing.T) {
 	if got, want := normalizedWithDirs.Cwd, mustCanonicalDir(t, rootReal); got != want {
 		t.Fatalf("normalizeStartOpts() cwd = %q, want %q", got, want)
 	}
-	if got, want := normalizedWithDirs.AdditionalDirs, []string{mustCanonicalDir(t, additionalReal)}; !slices.Equal(got, want) {
+	if got, want := normalizedWithDirs.AdditionalDirs, []string{
+		mustCanonicalDir(t, additionalReal),
+	}; !slices.Equal(
+		got,
+		want,
+	) {
 		t.Fatalf("normalizeStartOpts() additional dirs = %#v, want %#v", got, want)
 	}
 }
@@ -113,20 +122,28 @@ func TestHandleInboundReadWriteFile(t *testing.T) {
 	proc := newDirectProcess(t, aghconfig.PermissionModeApproveAll)
 	target := filepath.Join(proc.Cwd, "notes.txt")
 
-	if _, reqErr := proc.handleInbound(context.Background(), acpsdk.ClientMethodFsWriteTextFile, mustMarshalJSON(acpsdk.WriteTextFileRequest{
-		SessionId: "sess-direct",
-		Path:      target,
-		Content:   "line1\nline2\nline3",
-	})); reqErr != nil {
+	if _, reqErr := proc.handleInbound(
+		context.Background(),
+		acpsdk.ClientMethodFsWriteTextFile,
+		mustMarshalJSON(acpsdk.WriteTextFileRequest{
+			SessionId: "sess-direct",
+			Path:      target,
+			Content:   "line1\nline2\nline3",
+		}),
+	); reqErr != nil {
 		t.Fatalf("handleInbound(write) error = %v", reqErr)
 	}
 
-	response, reqErr := proc.handleInbound(context.Background(), acpsdk.ClientMethodFsReadTextFile, mustMarshalJSON(acpsdk.ReadTextFileRequest{
-		SessionId: "sess-direct",
-		Path:      target,
-		Line:      acpsdk.Ptr(2),
-		Limit:     acpsdk.Ptr(1),
-	}))
+	response, reqErr := proc.handleInbound(
+		context.Background(),
+		acpsdk.ClientMethodFsReadTextFile,
+		mustMarshalJSON(acpsdk.ReadTextFileRequest{
+			SessionId: "sess-direct",
+			Path:      target,
+			Line:      acpsdk.Ptr(2),
+			Limit:     acpsdk.Ptr(1),
+		}),
+	)
 	if reqErr != nil {
 		t.Fatalf("handleInbound(read) error = %v", reqErr)
 	}
@@ -145,11 +162,15 @@ func TestHandleInboundWriteDenied(t *testing.T) {
 	proc := newDirectProcess(t, aghconfig.PermissionModeApproveReads)
 	target := filepath.Join(proc.Cwd, "notes.txt")
 
-	if _, reqErr := proc.handleInbound(context.Background(), acpsdk.ClientMethodFsWriteTextFile, mustMarshalJSON(acpsdk.WriteTextFileRequest{
-		SessionId: "sess-direct",
-		Path:      target,
-		Content:   "nope",
-	})); reqErr == nil {
+	if _, reqErr := proc.handleInbound(
+		context.Background(),
+		acpsdk.ClientMethodFsWriteTextFile,
+		mustMarshalJSON(acpsdk.WriteTextFileRequest{
+			SessionId: "sess-direct",
+			Path:      target,
+			Content:   "nope",
+		}),
+	); reqErr == nil {
 		t.Fatal("handleInbound(write denied) error = nil, want non-nil")
 	}
 }
@@ -256,7 +277,11 @@ func TestHandleInboundPermissionRequest(t *testing.T) {
 	resultCh := make(chan acpsdk.RequestPermissionResponse, 1)
 	errCh := make(chan *acpsdk.RequestError, 1)
 	go func() {
-		response, reqErr := proc.handleInbound(context.Background(), acpsdk.ClientMethodSessionRequestPermission, mustMarshalJSON(request))
+		response, reqErr := proc.handleInbound(
+			context.Background(),
+			acpsdk.ClientMethodSessionRequestPermission,
+			mustMarshalJSON(request),
+		)
 		if reqErr != nil {
 			errCh <- reqErr
 			return
@@ -302,7 +327,8 @@ func TestHandleInboundPermissionRequest(t *testing.T) {
 	case reqErr := <-errCh:
 		t.Fatalf("handleInbound(permission) error = %v", reqErr)
 	case permissionResponse := <-resultCh:
-		if permissionResponse.Outcome.Selected == nil || permissionResponse.Outcome.Selected.OptionId != "allow-always" {
+		if permissionResponse.Outcome.Selected == nil ||
+			permissionResponse.Outcome.Selected.OptionId != "allow-always" {
 			t.Fatalf("permission outcome = %#v, want allow-always option", permissionResponse.Outcome)
 		}
 	case <-time.After(2 * time.Second):
@@ -341,18 +367,22 @@ func TestHandleInboundPermissionRequestTimeout(t *testing.T) {
 
 	title := "permission request"
 	kind := acpsdk.ToolKindEdit
-	response, reqErr := proc.handleInbound(context.Background(), acpsdk.ClientMethodSessionRequestPermission, mustMarshalJSON(acpsdk.RequestPermissionRequest{
-		SessionId: "sess-direct",
-		Options: []acpsdk.PermissionOption{
-			{OptionId: "allow-once", Name: "allow once", Kind: acpsdk.PermissionOptionKindAllowOnce},
-			{OptionId: "reject-once", Name: "reject once", Kind: acpsdk.PermissionOptionKindRejectOnce},
-		},
-		ToolCall: acpsdk.RequestPermissionToolCall{
-			ToolCallId: "tool-timeout",
-			Title:      &title,
-			Kind:       &kind,
-		},
-	}))
+	response, reqErr := proc.handleInbound(
+		context.Background(),
+		acpsdk.ClientMethodSessionRequestPermission,
+		mustMarshalJSON(acpsdk.RequestPermissionRequest{
+			SessionId: "sess-direct",
+			Options: []acpsdk.PermissionOption{
+				{OptionId: "allow-once", Name: "allow once", Kind: acpsdk.PermissionOptionKindAllowOnce},
+				{OptionId: "reject-once", Name: "reject once", Kind: acpsdk.PermissionOptionKindRejectOnce},
+			},
+			ToolCall: acpsdk.RequestPermissionToolCall{
+				ToolCallId: "tool-timeout",
+				Title:      &title,
+				Kind:       &kind,
+			},
+		}),
+	)
 	if reqErr != nil {
 		t.Fatalf("handleInbound(permission timeout) error = %v", reqErr)
 	}
@@ -400,7 +430,16 @@ func TestEmitPermissionEvent(t *testing.T) {
 			raw := mustMarshalJSON(map[string]any{"decision": string(tt.decision), "value": "original"})
 			wantRaw := append(json.RawMessage(nil), raw...)
 
-			proc.emitPermissionEvent("sess-emit", "turn-permission-event", "req-1", "permission request", "tool-1", "/tmp/demo.txt", tt.decision, raw)
+			proc.emitPermissionEvent(
+				"sess-emit",
+				"turn-permission-event",
+				"req-1",
+				"permission request",
+				"tool-1",
+				"/tmp/demo.txt",
+				tt.decision,
+				raw,
+			)
 			event := collectEventsUntilCount(t, active.events, 1)[0]
 
 			raw[0] = '['
@@ -467,10 +506,12 @@ func TestResolvePermissionConcurrentSafety(t *testing.T) {
 	}
 
 	registeredPending := make([]registered, 0, total)
-	for i := 0; i < total; i++ {
+	for i := range total {
 		requestID, pending := proc.registerPendingPermission(
 			fmt.Sprintf("turn-%d", i),
-			acpsdk.RequestPermissionRequest{ToolCall: acpsdk.RequestPermissionToolCall{ToolCallId: acpsdk.ToolCallId(fmt.Sprintf("tool-%d", i))}},
+			acpsdk.RequestPermissionRequest{
+				ToolCall: acpsdk.RequestPermissionToolCall{ToolCallId: acpsdk.ToolCallId(fmt.Sprintf("tool-%d", i))},
+			},
 		)
 		registeredPending = append(registeredPending, registered{
 			requestID: requestID,
@@ -480,17 +521,14 @@ func TestResolvePermissionConcurrentSafety(t *testing.T) {
 
 	var wg sync.WaitGroup
 	for _, pending := range registeredPending {
-		pending := pending
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			if err := proc.ResolvePermission(ApproveRequest{
 				RequestID: pending.requestID,
 				Decision:  string(decisionAllowOnce),
 			}); err != nil {
 				t.Errorf("ResolvePermission(%q) error = %v", pending.requestID, err)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 
@@ -521,19 +559,23 @@ func TestHandleInboundPermissionRequestAutoApprovesReadRequests(t *testing.T) {
 
 	title := "read file"
 	kind := acpsdk.ToolKindRead
-	response, reqErr := proc.handleInbound(context.Background(), acpsdk.ClientMethodSessionRequestPermission, mustMarshalJSON(acpsdk.RequestPermissionRequest{
-		SessionId: "sess-direct",
-		Options: []acpsdk.PermissionOption{
-			{OptionId: "allow-once", Name: "allow once", Kind: acpsdk.PermissionOptionKindAllowOnce},
-			{OptionId: "reject-once", Name: "reject once", Kind: acpsdk.PermissionOptionKindRejectOnce},
-		},
-		ToolCall: acpsdk.RequestPermissionToolCall{
-			ToolCallId: "tool-read",
-			Title:      &title,
-			Kind:       &kind,
-			Locations:  []acpsdk.ToolCallLocation{{Path: filepath.Join(proc.Cwd, "notes.txt")}},
-		},
-	}))
+	response, reqErr := proc.handleInbound(
+		context.Background(),
+		acpsdk.ClientMethodSessionRequestPermission,
+		mustMarshalJSON(acpsdk.RequestPermissionRequest{
+			SessionId: "sess-direct",
+			Options: []acpsdk.PermissionOption{
+				{OptionId: "allow-once", Name: "allow once", Kind: acpsdk.PermissionOptionKindAllowOnce},
+				{OptionId: "reject-once", Name: "reject once", Kind: acpsdk.PermissionOptionKindRejectOnce},
+			},
+			ToolCall: acpsdk.RequestPermissionToolCall{
+				ToolCallId: "tool-read",
+				Title:      &title,
+				Kind:       &kind,
+				Locations:  []acpsdk.ToolCallLocation{{Path: filepath.Join(proc.Cwd, "notes.txt")}},
+			},
+		}),
+	)
 	if reqErr != nil {
 		t.Fatalf("handleInbound(read permission) error = %v", reqErr)
 	}
@@ -557,12 +599,16 @@ func TestTerminalLifecycleHandlers(t *testing.T) {
 
 	proc := newDirectProcess(t, aghconfig.PermissionModeApproveAll)
 
-	createResult, reqErr := proc.handleInbound(context.Background(), acpsdk.ClientMethodTerminalCreate, mustMarshalJSON(acpsdk.CreateTerminalRequest{
-		SessionId: "sess-direct",
-		Command:   "sh",
-		Args:      []string{"-c", "printf hi"},
-		Cwd:       acpsdk.Ptr(proc.Cwd),
-	}))
+	createResult, reqErr := proc.handleInbound(
+		context.Background(),
+		acpsdk.ClientMethodTerminalCreate,
+		mustMarshalJSON(acpsdk.CreateTerminalRequest{
+			SessionId: "sess-direct",
+			Command:   "sh",
+			Args:      []string{"-c", "printf hi"},
+			Cwd:       acpsdk.Ptr(proc.Cwd),
+		}),
+	)
 	if reqErr != nil {
 		t.Fatalf("handleInbound(create terminal) error = %v", reqErr)
 	}
@@ -571,10 +617,14 @@ func TestTerminalLifecycleHandlers(t *testing.T) {
 		t.Fatalf("handleInbound(create terminal) type = %T, want CreateTerminalResponse", createResult)
 	}
 
-	waitResult, reqErr := proc.handleInbound(context.Background(), acpsdk.ClientMethodTerminalWaitForExit, mustMarshalJSON(acpsdk.WaitForTerminalExitRequest{
-		SessionId:  "sess-direct",
-		TerminalId: createResponse.TerminalId,
-	}))
+	waitResult, reqErr := proc.handleInbound(
+		context.Background(),
+		acpsdk.ClientMethodTerminalWaitForExit,
+		mustMarshalJSON(acpsdk.WaitForTerminalExitRequest{
+			SessionId:  "sess-direct",
+			TerminalId: createResponse.TerminalId,
+		}),
+	)
 	if reqErr != nil {
 		t.Fatalf("handleInbound(wait terminal) error = %v", reqErr)
 	}
@@ -586,10 +636,14 @@ func TestTerminalLifecycleHandlers(t *testing.T) {
 		t.Fatalf("handleInbound(wait terminal) exit code = %#v, want 0", waitResponse.ExitCode)
 	}
 
-	outputResult, reqErr := proc.handleInbound(context.Background(), acpsdk.ClientMethodTerminalOutput, mustMarshalJSON(acpsdk.TerminalOutputRequest{
-		SessionId:  "sess-direct",
-		TerminalId: createResponse.TerminalId,
-	}))
+	outputResult, reqErr := proc.handleInbound(
+		context.Background(),
+		acpsdk.ClientMethodTerminalOutput,
+		mustMarshalJSON(acpsdk.TerminalOutputRequest{
+			SessionId:  "sess-direct",
+			TerminalId: createResponse.TerminalId,
+		}),
+	)
 	if reqErr != nil {
 		t.Fatalf("handleInbound(output terminal) error = %v", reqErr)
 	}
@@ -601,17 +655,25 @@ func TestTerminalLifecycleHandlers(t *testing.T) {
 		t.Fatalf("handleInbound(output terminal) output = %q, want %q", outputResponse.Output, "hi")
 	}
 
-	if _, reqErr := proc.handleInbound(context.Background(), acpsdk.ClientMethodTerminalKill, mustMarshalJSON(acpsdk.KillTerminalCommandRequest{
-		SessionId:  "sess-direct",
-		TerminalId: createResponse.TerminalId,
-	})); reqErr != nil {
+	if _, reqErr := proc.handleInbound(
+		context.Background(),
+		acpsdk.ClientMethodTerminalKill,
+		mustMarshalJSON(acpsdk.KillTerminalCommandRequest{
+			SessionId:  "sess-direct",
+			TerminalId: createResponse.TerminalId,
+		}),
+	); reqErr != nil {
 		t.Fatalf("handleInbound(kill terminal) error = %v", reqErr)
 	}
 
-	if _, reqErr := proc.handleInbound(context.Background(), acpsdk.ClientMethodTerminalRelease, mustMarshalJSON(acpsdk.ReleaseTerminalRequest{
-		SessionId:  "sess-direct",
-		TerminalId: createResponse.TerminalId,
-	})); reqErr != nil {
+	if _, reqErr := proc.handleInbound(
+		context.Background(),
+		acpsdk.ClientMethodTerminalRelease,
+		mustMarshalJSON(acpsdk.ReleaseTerminalRequest{
+			SessionId:  "sess-direct",
+			TerminalId: createResponse.TerminalId,
+		}),
+	); reqErr != nil {
 		t.Fatalf("handleInbound(release terminal) error = %v", reqErr)
 	}
 
@@ -794,7 +856,10 @@ func TestHelperUtilities(t *testing.T) {
 		t.Fatalf("attachStderr(empty) = %v, want original error", got)
 	}
 
-	env := mergeCommandEnv([]string{"A=1", "B=2"}, []acpsdk.EnvVariable{{Name: "B", Value: "3"}, {Name: "C", Value: "4"}})
+	env := mergeCommandEnv(
+		[]string{"A=1", "B=2"},
+		[]acpsdk.EnvVariable{{Name: "B", Value: "3"}, {Name: "C", Value: "4"}},
+	)
 	if len(env) != 3 || env[1] != "B=3" || env[2] != "C=4" {
 		t.Fatalf("mergeCommandEnv() = %#v, want overridden env", env)
 	}
@@ -815,7 +880,9 @@ func TestHelperUtilities(t *testing.T) {
 		t.Fatalf("toSDKMCPServers() env order = %#v, want sorted env keys", servers[0].Stdio.Env)
 	}
 
-	if got := extractContentText(acpsdk.ResourceLinkBlock("doc", "file:///tmp/demo.txt")); got != "file:///tmp/demo.txt" {
+	if got := extractContentText(
+		acpsdk.ResourceLinkBlock("doc", "file:///tmp/demo.txt"),
+	); got != "file:///tmp/demo.txt" {
 		t.Fatalf("extractContentText(resource_link) = %q", got)
 	}
 
@@ -922,7 +989,8 @@ func TestHandleSessionUpdateVariants(t *testing.T) {
 	if events[0].Type != EventTypeAgentMessage {
 		t.Fatalf("agent message event = %#v, want agent message", events[0])
 	}
-	if events[1].Type != EventTypeUsage || events[1].Usage == nil || events[1].Usage.ContextUsed == nil || *events[1].Usage.ContextUsed != 10 {
+	if events[1].Type != EventTypeUsage || events[1].Usage == nil || events[1].Usage.ContextUsed == nil ||
+		*events[1].Usage.ContextUsed != 10 {
 		t.Fatalf("usage event = %#v, want usage metadata", events[1])
 	}
 	if events[2].Type != EventTypeToolCall {
@@ -973,7 +1041,8 @@ func TestPermissionHelperBranches(t *testing.T) {
 		{OptionId: "allow-once", Name: "allow once", Kind: acpsdk.PermissionOptionKindAllowOnce},
 		{OptionId: "allow-always", Name: "allow", Kind: acpsdk.PermissionOptionKindAllowAlways},
 	}, decisionAllowOnce)
-	if allowOutcome.Selected == nil || allowOutcome.Selected.OptionId != "allow-once" || allowDecision != decisionAllowOnce {
+	if allowOutcome.Selected == nil || allowOutcome.Selected.OptionId != "allow-once" ||
+		allowDecision != decisionAllowOnce {
 		t.Fatalf("selectPermissionOutcome(allow-once) = %#v, %q", allowOutcome, allowDecision)
 	}
 
@@ -981,13 +1050,17 @@ func TestPermissionHelperBranches(t *testing.T) {
 		{OptionId: "reject-once", Name: "reject once", Kind: acpsdk.PermissionOptionKindRejectOnce},
 		{OptionId: "reject-always", Name: "reject always", Kind: acpsdk.PermissionOptionKindRejectAlways},
 	}, decisionRejectAlways)
-	if rejectOutcome.Selected == nil || rejectOutcome.Selected.OptionId != "reject-always" || rejectDecision != decisionRejectAlways {
+	if rejectOutcome.Selected == nil || rejectOutcome.Selected.OptionId != "reject-always" ||
+		rejectDecision != decisionRejectAlways {
 		t.Fatalf("selectPermissionOutcome(reject-always) = %#v, %q", rejectOutcome, rejectDecision)
 	}
 
 	cancelOutcome, cancelDecision := selectPermissionOutcome(nil, decisionRejectOnce)
-	if cancelOutcome.Cancelled == nil {
-		t.Fatalf("selectPermissionOutcome(cancel) = %#v, want cancelled", cancelOutcome)
+	if err := cancelOutcome.Validate(); err != nil {
+		t.Fatalf("selectPermissionOutcome(cancel).Validate() error = %v", err)
+	}
+	if cancelOutcome.Selected != nil {
+		t.Fatalf("selectPermissionOutcome(cancel) = %#v, want no selected option", cancelOutcome)
 	}
 	if cancelDecision != "" {
 		t.Fatalf("selectPermissionOutcome(cancel) decision = %q, want empty", cancelDecision)

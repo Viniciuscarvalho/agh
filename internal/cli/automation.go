@@ -13,6 +13,31 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type automationTriggerCommandInput struct {
+	Name          string
+	ScopeRaw      string
+	EventRaw      string
+	WorkspaceRef  string
+	AgentName     string
+	Prompt        string
+	RetryRaw      string
+	FilterFlags   []string
+	Enabled       bool
+	WebhookID     string
+	EndpointSlug  string
+	WebhookSecret string
+}
+
+type automationJobUpdateInput struct {
+	Name         string
+	AgentName    string
+	WorkspaceRef string
+	Prompt       string
+	ScheduleRaw  string
+	RetryRaw     string
+	Enabled      bool
+}
+
 func newAutomationCommand(deps commandDeps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "automation",
@@ -41,12 +66,19 @@ func newAutomationJobsCommand(deps commandDeps) *cobra.Command {
 		Short: "Manage automation jobs",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
 
-			query, err := parseAutomationJobListQuery(cmd.Context(), client, scopeRaw, workspaceRef, sourceRaw, last)
+			query, err := parseAutomationJobListQuery(
+				cmd.Context(),
+				client,
+				scopeRaw,
+				workspaceRef,
+				sourceRaw,
+				last,
+			)
 			if err != nil {
 				return err
 			}
@@ -60,7 +92,8 @@ func newAutomationJobsCommand(deps commandDeps) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&scopeRaw, "scope", "", "Filter by scope: global or workspace")
 	cmd.Flags().StringVar(&workspaceRef, "workspace", "", "Filter by workspace path, name, or ID")
-	cmd.Flags().StringVar(&sourceRaw, "source", "", "Filter by definition source: config or dynamic")
+	cmd.Flags().
+		StringVar(&sourceRaw, "source", "", "Filter by definition source: config or dynamic")
 	cmd.Flags().IntVar(&last, "last", 0, "Show only the most recent N jobs")
 
 	cmd.AddCommand(newAutomationJobsCreateCommand(deps))
@@ -89,12 +122,17 @@ func newAutomationJobsCreateCommand(deps commandDeps) *cobra.Command {
 		Short: "Create an automation job",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
 
-			scope, workspaceID, err := resolveAutomationScopeWorkspace(cmd.Context(), client, scopeRaw, workspaceRef)
+			scope, workspaceID, err := resolveAutomationScopeWorkspace(
+				cmd.Context(),
+				client,
+				scopeRaw,
+				workspaceRef,
+			)
 			if err != nil {
 				return err
 			}
@@ -131,11 +169,14 @@ func newAutomationJobsCreateCommand(deps commandDeps) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&name, "name", "", "Job name")
 	cmd.Flags().StringVar(&scopeRaw, "scope", "", "Job scope: global or workspace")
-	cmd.Flags().StringVar(&scheduleRaw, "schedule", "", "Schedule spec: <cron-expr>, every:<duration>, or at:<timestamp>")
+	cmd.Flags().
+		StringVar(&scheduleRaw, "schedule", "", "Schedule spec: <cron-expr>, every:<duration>, or at:<timestamp>")
 	cmd.Flags().StringVar(&agentName, "agent", "", "Agent definition name")
-	cmd.Flags().StringVar(&workspaceRef, "workspace", "", "Workspace path, name, or ID (required when --scope=workspace)")
+	cmd.Flags().
+		StringVar(&workspaceRef, "workspace", "", "Workspace path, name, or ID (required when --scope=workspace)")
 	cmd.Flags().StringVar(&prompt, "prompt", "", "Prompt body to dispatch")
-	cmd.Flags().StringVar(&retryRaw, "retry", "", `Retry policy: "none", "backoff", or "backoff:<max_retries>:<base_delay>"`)
+	cmd.Flags().
+		StringVar(&retryRaw, "retry", "", `Retry policy: "none", "backoff", or "backoff:<max_retries>:<base_delay>"`)
 	cmd.Flags().BoolVar(&enabled, "enabled", false, "Create the job enabled or disabled")
 	mustMarkFlagRequired(cmd, "name")
 	mustMarkFlagRequired(cmd, "scope")
@@ -151,7 +192,7 @@ func newAutomationJobsGetCommand(deps commandDeps) *cobra.Command {
 		Short: "Show one automation job",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -181,47 +222,22 @@ func newAutomationJobsUpdateCommand(deps commandDeps) *cobra.Command {
 		Short: "Update an automation job",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
 
-			request := AutomationJobUpdateRequest{}
-			if cmd.Flags().Changed("name") {
-				request.Name = stringPointer(strings.TrimSpace(name))
-			}
-			if cmd.Flags().Changed("agent") {
-				request.AgentName = stringPointer(strings.TrimSpace(agentName))
-			}
-			if cmd.Flags().Changed("workspace") {
-				workspaceID, err := resolveAutomationWorkspaceID(cmd.Context(), client, workspaceRef)
-				if err != nil {
-					return err
-				}
-				request.WorkspaceID = stringPointer(workspaceID)
-			}
-			if cmd.Flags().Changed("prompt") {
-				request.Prompt = stringPointer(strings.TrimSpace(prompt))
-			}
-			if cmd.Flags().Changed("schedule") {
-				schedule, err := parseAutomationScheduleFlag(scheduleRaw)
-				if err != nil {
-					return err
-				}
-				request.Schedule = &schedule
-			}
-			if cmd.Flags().Changed("retry") {
-				retry, err := parseAutomationRetryFlag(retryRaw)
-				if err != nil {
-					return err
-				}
-				if retry == nil {
-					return errors.New(`cli: --retry requires "none", "backoff", or "backoff:<max_retries>:<base_delay>"`)
-				}
-				request.Retry = retry
-			}
-			if cmd.Flags().Changed("enabled") {
-				request.Enabled = boolPointer(enabled)
+			request, err := buildAutomationJobUpdateRequest(cmd, client, automationJobUpdateInput{
+				Name:         name,
+				AgentName:    agentName,
+				WorkspaceRef: workspaceRef,
+				Prompt:       prompt,
+				ScheduleRaw:  scheduleRaw,
+				RetryRaw:     retryRaw,
+				Enabled:      enabled,
+			})
+			if err != nil {
+				return err
 			}
 			if !request.HasChanges() {
 				return errors.New("cli: automation job update requires at least one change flag")
@@ -239,9 +255,57 @@ func newAutomationJobsUpdateCommand(deps commandDeps) *cobra.Command {
 	cmd.Flags().StringVar(&workspaceRef, "workspace", "", "Update the workspace path, name, or ID")
 	cmd.Flags().StringVar(&prompt, "prompt", "", "Update the prompt body")
 	cmd.Flags().StringVar(&scheduleRaw, "schedule", "", "Update the schedule spec")
-	cmd.Flags().StringVar(&retryRaw, "retry", "", `Update retry policy: "none", "backoff", or "backoff:<max_retries>:<base_delay>"`)
+	cmd.Flags().
+		StringVar(&retryRaw, "retry", "", `Update retry policy: "none", "backoff", or "backoff:<max_retries>:<base_delay>"`)
 	cmd.Flags().BoolVar(&enabled, "enabled", false, "Update the enabled state")
 	return cmd
+}
+
+func buildAutomationJobUpdateRequest(
+	cmd *cobra.Command,
+	client DaemonClient,
+	input automationJobUpdateInput,
+) (AutomationJobUpdateRequest, error) {
+	request := AutomationJobUpdateRequest{}
+	if cmd.Flags().Changed("name") {
+		request.Name = stringPointer(strings.TrimSpace(input.Name))
+	}
+	if cmd.Flags().Changed("agent") {
+		request.AgentName = stringPointer(strings.TrimSpace(input.AgentName))
+	}
+	if cmd.Flags().Changed("workspace") {
+		workspaceID, err := resolveAutomationWorkspaceID(cmd.Context(), client, input.WorkspaceRef)
+		if err != nil {
+			return AutomationJobUpdateRequest{}, err
+		}
+		request.WorkspaceID = stringPointer(workspaceID)
+	}
+	if cmd.Flags().Changed("prompt") {
+		request.Prompt = stringPointer(strings.TrimSpace(input.Prompt))
+	}
+	if cmd.Flags().Changed("schedule") {
+		schedule, err := parseAutomationScheduleFlag(input.ScheduleRaw)
+		if err != nil {
+			return AutomationJobUpdateRequest{}, err
+		}
+		request.Schedule = &schedule
+	}
+	if cmd.Flags().Changed("retry") {
+		retry, err := parseAutomationRetryFlag(input.RetryRaw)
+		if err != nil {
+			return AutomationJobUpdateRequest{}, err
+		}
+		if retry == nil {
+			return AutomationJobUpdateRequest{}, errors.New(
+				`cli: --retry requires "none", "backoff", or "backoff:<max_retries>:<base_delay>"`,
+			)
+		}
+		request.Retry = retry
+	}
+	if cmd.Flags().Changed("enabled") {
+		request.Enabled = boolPointer(input.Enabled)
+	}
+	return request, nil
 }
 
 func newAutomationJobsDeleteCommand(deps commandDeps) *cobra.Command {
@@ -250,7 +314,7 @@ func newAutomationJobsDeleteCommand(deps commandDeps) *cobra.Command {
 		Short: "Delete an automation job",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -273,7 +337,7 @@ func newAutomationJobsTriggerCommand(deps commandDeps) *cobra.Command {
 		Short: "Force an immediate automation job run",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -300,7 +364,7 @@ func newAutomationJobsHistoryCommand(deps commandDeps) *cobra.Command {
 		Short: "Show run history for one automation job",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -318,8 +382,10 @@ func newAutomationJobsHistoryCommand(deps commandDeps) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&statusRaw, "status", "", "Filter by run status")
-	cmd.Flags().StringVar(&sinceRaw, "since", "", "Show runs since an RFC3339 timestamp or relative duration")
-	cmd.Flags().StringVar(&untilRaw, "until", "", "Show runs until an RFC3339 timestamp or relative duration")
+	cmd.Flags().
+		StringVar(&sinceRaw, "since", "", "Show runs since an RFC3339 timestamp or relative duration")
+	cmd.Flags().
+		StringVar(&untilRaw, "until", "", "Show runs until an RFC3339 timestamp or relative duration")
 	cmd.Flags().IntVar(&last, "last", 0, "Show only the most recent N runs")
 	return cmd
 }
@@ -338,12 +404,20 @@ func newAutomationTriggersCommand(deps commandDeps) *cobra.Command {
 		Short: "Manage automation triggers",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
 
-			query, err := parseAutomationTriggerListQuery(cmd.Context(), client, scopeRaw, workspaceRef, eventRaw, sourceRaw, last)
+			query, err := parseAutomationTriggerListQuery(
+				cmd.Context(),
+				client,
+				scopeRaw,
+				workspaceRef,
+				eventRaw,
+				sourceRaw,
+				last,
+			)
 			if err != nil {
 				return err
 			}
@@ -358,7 +432,8 @@ func newAutomationTriggersCommand(deps commandDeps) *cobra.Command {
 	cmd.Flags().StringVar(&scopeRaw, "scope", "", "Filter by scope: global or workspace")
 	cmd.Flags().StringVar(&workspaceRef, "workspace", "", "Filter by workspace path, name, or ID")
 	cmd.Flags().StringVar(&eventRaw, "event", "", "Filter by activation event")
-	cmd.Flags().StringVar(&sourceRaw, "source", "", "Filter by definition source: config or dynamic")
+	cmd.Flags().
+		StringVar(&sourceRaw, "source", "", "Filter by definition source: config or dynamic")
 	cmd.Flags().IntVar(&last, "last", 0, "Show only the most recent N triggers")
 
 	cmd.AddCommand(newAutomationTriggersCreateCommand(deps))
@@ -390,41 +465,31 @@ func newAutomationTriggersCreateCommand(deps commandDeps) *cobra.Command {
 		Short: "Create an automation trigger",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
 
-			scope, workspaceID, err := resolveAutomationScopeWorkspace(cmd.Context(), client, scopeRaw, workspaceRef)
+			request, err := buildAutomationTriggerCreateRequest(
+				cmd,
+				client,
+				automationTriggerCommandInput{
+					Name:          name,
+					ScopeRaw:      scopeRaw,
+					EventRaw:      eventRaw,
+					WorkspaceRef:  workspaceRef,
+					AgentName:     agentName,
+					Prompt:        prompt,
+					RetryRaw:      retryRaw,
+					FilterFlags:   filterFlags,
+					Enabled:       enabled,
+					WebhookID:     webhookID,
+					EndpointSlug:  endpointSlug,
+					WebhookSecret: webhookSecret,
+				},
+			)
 			if err != nil {
 				return err
-			}
-			retry, err := parseAutomationRetryFlag(retryRaw)
-			if err != nil {
-				return err
-			}
-			filter, err := parseAutomationFilterFlags(filterFlags)
-			if err != nil {
-				return err
-			}
-
-			request := AutomationTriggerCreateRequest{
-				Scope:         scope,
-				Name:          strings.TrimSpace(name),
-				AgentName:     strings.TrimSpace(agentName),
-				WorkspaceID:   workspaceID,
-				Prompt:        strings.TrimSpace(prompt),
-				Event:         strings.TrimSpace(eventRaw),
-				Filter:        filter,
-				WebhookID:     strings.TrimSpace(webhookID),
-				EndpointSlug:  strings.TrimSpace(endpointSlug),
-				WebhookSecret: strings.TrimSpace(webhookSecret),
-			}
-			if cmd.Flags().Changed("enabled") {
-				request.Enabled = boolPointer(enabled)
-			}
-			if retry != nil {
-				request.Retry = retry
 			}
 
 			created, err := client.CreateAutomationTrigger(cmd.Context(), request)
@@ -437,14 +502,19 @@ func newAutomationTriggersCreateCommand(deps commandDeps) *cobra.Command {
 	cmd.Flags().StringVar(&name, "name", "", "Trigger name")
 	cmd.Flags().StringVar(&scopeRaw, "scope", "", "Trigger scope: global or workspace")
 	cmd.Flags().StringVar(&eventRaw, "event", "", "Trigger event name")
-	cmd.Flags().StringVar(&workspaceRef, "workspace", "", "Workspace path, name, or ID (required when --scope=workspace)")
+	cmd.Flags().
+		StringVar(&workspaceRef, "workspace", "", "Workspace path, name, or ID (required when --scope=workspace)")
 	cmd.Flags().StringVar(&agentName, "agent", "", "Agent definition name")
 	cmd.Flags().StringVar(&prompt, "prompt", "", "Prompt template body")
-	cmd.Flags().StringArrayVar(&filterFlags, "filter", nil, "Exact-match filter(s): key=value or comma-separated key=value pairs")
-	cmd.Flags().StringVar(&retryRaw, "retry", "", `Retry policy: "none", "backoff", or "backoff:<max_retries>:<base_delay>"`)
+	cmd.Flags().
+		StringArrayVar(&filterFlags, "filter", nil, "Exact-match filter(s): key=value or comma-separated key=value pairs")
+	cmd.Flags().
+		StringVar(&retryRaw, "retry", "", `Retry policy: "none", "backoff", or "backoff:<max_retries>:<base_delay>"`)
 	cmd.Flags().BoolVar(&enabled, "enabled", false, "Create the trigger enabled or disabled")
-	cmd.Flags().StringVar(&webhookID, "webhook-id", "", "Stable webhook identifier override for webhook events")
-	cmd.Flags().StringVar(&endpointSlug, "endpoint-slug", "", "Public endpoint slug for webhook events")
+	cmd.Flags().
+		StringVar(&webhookID, "webhook-id", "", "Stable webhook identifier override for webhook events")
+	cmd.Flags().
+		StringVar(&endpointSlug, "endpoint-slug", "", "Public endpoint slug for webhook events")
 	cmd.Flags().StringVar(&webhookSecret, "webhook-secret", "", "Webhook secret for webhook events")
 	mustMarkFlagRequired(cmd, "name")
 	mustMarkFlagRequired(cmd, "scope")
@@ -460,7 +530,7 @@ func newAutomationTriggersGetCommand(deps commandDeps) *cobra.Command {
 		Short: "Show one automation trigger",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -494,62 +564,30 @@ func newAutomationTriggersUpdateCommand(deps commandDeps) *cobra.Command {
 		Short: "Update an automation trigger",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
 
-			request := AutomationTriggerUpdateRequest{}
-			if cmd.Flags().Changed("name") {
-				request.Name = stringPointer(strings.TrimSpace(name))
-			}
-			if cmd.Flags().Changed("agent") {
-				request.AgentName = stringPointer(strings.TrimSpace(agentName))
-			}
-			if cmd.Flags().Changed("workspace") {
-				workspaceID, err := resolveAutomationWorkspaceID(cmd.Context(), client, workspaceRef)
-				if err != nil {
-					return err
-				}
-				request.WorkspaceID = stringPointer(workspaceID)
-			}
-			if cmd.Flags().Changed("prompt") {
-				request.Prompt = stringPointer(strings.TrimSpace(prompt))
-			}
-			if cmd.Flags().Changed("event") {
-				request.Event = stringPointer(strings.TrimSpace(eventRaw))
-			}
-			if cmd.Flags().Changed("filter") {
-				filter, err := parseAutomationFilterFlags(filterFlags)
-				if err != nil {
-					return err
-				}
-				request.Filter = filter
-			}
-			if cmd.Flags().Changed("retry") {
-				retry, err := parseAutomationRetryFlag(retryRaw)
-				if err != nil {
-					return err
-				}
-				if retry == nil {
-					return errors.New(`cli: --retry requires "none", "backoff", or "backoff:<max_retries>:<base_delay>"`)
-				}
-				request.Retry = retry
-			}
-			if cmd.Flags().Changed("enabled") {
-				request.Enabled = boolPointer(enabled)
-			}
-			if cmd.Flags().Changed("webhook-id") {
-				request.WebhookID = stringPointer(strings.TrimSpace(webhookID))
-			}
-			if cmd.Flags().Changed("endpoint-slug") {
-				request.EndpointSlug = stringPointer(strings.TrimSpace(endpointSlug))
-			}
-			if cmd.Flags().Changed("webhook-secret") {
-				request.WebhookSecret = stringPointer(strings.TrimSpace(webhookSecret))
-			}
-			if !request.HasChanges() {
-				return errors.New("cli: automation trigger update requires at least one change flag")
+			request, err := buildAutomationTriggerUpdateRequest(
+				cmd,
+				client,
+				automationTriggerCommandInput{
+					Name:          name,
+					EventRaw:      eventRaw,
+					WorkspaceRef:  workspaceRef,
+					AgentName:     agentName,
+					Prompt:        prompt,
+					RetryRaw:      retryRaw,
+					FilterFlags:   filterFlags,
+					Enabled:       enabled,
+					WebhookID:     webhookID,
+					EndpointSlug:  endpointSlug,
+					WebhookSecret: webhookSecret,
+				},
+			)
+			if err != nil {
+				return err
 			}
 
 			updated, err := client.UpdateAutomationTrigger(cmd.Context(), args[0], request)
@@ -564,8 +602,10 @@ func newAutomationTriggersUpdateCommand(deps commandDeps) *cobra.Command {
 	cmd.Flags().StringVar(&workspaceRef, "workspace", "", "Update the workspace path, name, or ID")
 	cmd.Flags().StringVar(&prompt, "prompt", "", "Update the prompt template body")
 	cmd.Flags().StringVar(&eventRaw, "event", "", "Update the trigger event")
-	cmd.Flags().StringArrayVar(&filterFlags, "filter", nil, "Replace filters with key=value entries")
-	cmd.Flags().StringVar(&retryRaw, "retry", "", `Update retry policy: "none", "backoff", or "backoff:<max_retries>:<base_delay>"`)
+	cmd.Flags().
+		StringArrayVar(&filterFlags, "filter", nil, "Replace filters with key=value entries")
+	cmd.Flags().
+		StringVar(&retryRaw, "retry", "", `Update retry policy: "none", "backoff", or "backoff:<max_retries>:<base_delay>"`)
 	cmd.Flags().BoolVar(&enabled, "enabled", false, "Update the enabled state")
 	cmd.Flags().StringVar(&webhookID, "webhook-id", "", "Update the stable webhook identifier")
 	cmd.Flags().StringVar(&endpointSlug, "endpoint-slug", "", "Update the webhook endpoint slug")
@@ -579,7 +619,7 @@ func newAutomationTriggersDeleteCommand(deps commandDeps) *cobra.Command {
 		Short: "Delete an automation trigger",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -609,7 +649,7 @@ func newAutomationTriggersHistoryCommand(deps commandDeps) *cobra.Command {
 		Short: "Show run history for one automation trigger",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -627,8 +667,10 @@ func newAutomationTriggersHistoryCommand(deps commandDeps) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&statusRaw, "status", "", "Filter by run status")
-	cmd.Flags().StringVar(&sinceRaw, "since", "", "Show runs since an RFC3339 timestamp or relative duration")
-	cmd.Flags().StringVar(&untilRaw, "until", "", "Show runs until an RFC3339 timestamp or relative duration")
+	cmd.Flags().
+		StringVar(&sinceRaw, "since", "", "Show runs since an RFC3339 timestamp or relative duration")
+	cmd.Flags().
+		StringVar(&untilRaw, "until", "", "Show runs until an RFC3339 timestamp or relative duration")
 	cmd.Flags().IntVar(&last, "last", 0, "Show only the most recent N runs")
 	return cmd
 }
@@ -648,7 +690,7 @@ func newAutomationRunsCommand(deps commandDeps) *cobra.Command {
 		Short: "Inspect automation run history",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -670,8 +712,10 @@ func newAutomationRunsCommand(deps commandDeps) *cobra.Command {
 	cmd.Flags().StringVar(&jobID, "job-id", "", "Filter by automation job ID")
 	cmd.Flags().StringVar(&triggerID, "trigger-id", "", "Filter by automation trigger ID")
 	cmd.Flags().StringVar(&statusRaw, "status", "", "Filter by run status")
-	cmd.Flags().StringVar(&sinceRaw, "since", "", "Show runs since an RFC3339 timestamp or relative duration")
-	cmd.Flags().StringVar(&untilRaw, "until", "", "Show runs until an RFC3339 timestamp or relative duration")
+	cmd.Flags().
+		StringVar(&sinceRaw, "since", "", "Show runs since an RFC3339 timestamp or relative duration")
+	cmd.Flags().
+		StringVar(&untilRaw, "until", "", "Show runs until an RFC3339 timestamp or relative duration")
 	cmd.Flags().IntVar(&last, "last", 0, "Show only the most recent N runs")
 	cmd.AddCommand(newAutomationRunsGetCommand(deps))
 	return cmd
@@ -683,7 +727,7 @@ func newAutomationRunsGetCommand(deps commandDeps) *cobra.Command {
 		Short: "Show one automation run",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -697,7 +741,14 @@ func newAutomationRunsGetCommand(deps commandDeps) *cobra.Command {
 	}
 }
 
-func parseAutomationJobListQuery(ctx context.Context, client DaemonClient, scopeRaw string, workspaceRef string, sourceRaw string, last int) (AutomationJobQuery, error) {
+func parseAutomationJobListQuery(
+	ctx context.Context,
+	client DaemonClient,
+	scopeRaw string,
+	workspaceRef string,
+	sourceRaw string,
+	last int,
+) (AutomationJobQuery, error) {
 	query := AutomationJobQuery{}
 	if err := validateAutomationLast(last); err != nil {
 		return AutomationJobQuery{}, err
@@ -726,7 +777,15 @@ func parseAutomationJobListQuery(ctx context.Context, client DaemonClient, scope
 	return query, nil
 }
 
-func parseAutomationTriggerListQuery(ctx context.Context, client DaemonClient, scopeRaw string, workspaceRef string, eventRaw string, sourceRaw string, last int) (AutomationTriggerQuery, error) {
+func parseAutomationTriggerListQuery(
+	ctx context.Context,
+	client DaemonClient,
+	scopeRaw string,
+	workspaceRef string,
+	eventRaw string,
+	sourceRaw string,
+	last int,
+) (AutomationTriggerQuery, error) {
 	query := AutomationTriggerQuery{
 		Event: strings.TrimSpace(eventRaw),
 	}
@@ -757,7 +816,13 @@ func parseAutomationTriggerListQuery(ctx context.Context, client DaemonClient, s
 	return query, nil
 }
 
-func parseAutomationRunListQuery(statusRaw string, sinceRaw string, untilRaw string, last int, now func() time.Time) (AutomationRunQuery, error) {
+func parseAutomationRunListQuery(
+	statusRaw string,
+	sinceRaw string,
+	untilRaw string,
+	last int,
+	now func() time.Time,
+) (AutomationRunQuery, error) {
 	query := AutomationRunQuery{}
 	if err := validateAutomationLast(last); err != nil {
 		return AutomationRunQuery{}, err
@@ -784,7 +849,12 @@ func parseAutomationRunListQuery(statusRaw string, sinceRaw string, untilRaw str
 	return query, nil
 }
 
-func resolveAutomationScopeWorkspace(ctx context.Context, client DaemonClient, rawScope string, workspaceRef string) (automationpkg.AutomationScope, string, error) {
+func resolveAutomationScopeWorkspace(
+	ctx context.Context,
+	client DaemonClient,
+	rawScope string,
+	workspaceRef string,
+) (automationpkg.Scope, string, error) {
 	scope, err := parseRequiredAutomationScope(rawScope)
 	if err != nil {
 		return "", "", err
@@ -811,7 +881,11 @@ func resolveAutomationScopeWorkspace(ctx context.Context, client DaemonClient, r
 	}
 }
 
-func resolveAutomationWorkspaceID(ctx context.Context, client DaemonClient, ref string) (string, error) {
+func resolveAutomationWorkspaceID(
+	ctx context.Context,
+	client DaemonClient,
+	ref string,
+) (string, error) {
 	trimmed := strings.TrimSpace(ref)
 	if trimmed == "" {
 		return "", nil
@@ -827,19 +901,19 @@ func resolveAutomationWorkspaceID(ctx context.Context, client DaemonClient, ref 
 	return id, nil
 }
 
-func parseRequiredAutomationScope(raw string) (automationpkg.AutomationScope, error) {
+func parseRequiredAutomationScope(raw string) (automationpkg.Scope, error) {
 	if strings.TrimSpace(raw) == "" {
 		return "", errors.New("cli: --scope is required")
 	}
 	return parseOptionalAutomationScope(raw)
 }
 
-func parseOptionalAutomationScope(raw string) (automationpkg.AutomationScope, error) {
+func parseOptionalAutomationScope(raw string) (automationpkg.Scope, error) {
 	trimmed := strings.ToLower(strings.TrimSpace(raw))
 	if trimmed == "" {
 		return "", nil
 	}
-	scope := automationpkg.AutomationScope(trimmed)
+	scope := automationpkg.Scope(trimmed)
 	if err := scope.Validate("scope"); err != nil {
 		return "", fmt.Errorf("cli: %w", err)
 	}
@@ -918,7 +992,10 @@ func normalizeAutomationAtTime(raw string) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("cli: invalid at-schedule timestamp %q: use RFC3339 or YYYY-MM-DDTHH:MM", value)
+	return "", fmt.Errorf(
+		"cli: invalid at-schedule timestamp %q: use RFC3339 or YYYY-MM-DDTHH:MM",
+		value,
+	)
 }
 
 func parseAutomationRetryFlag(raw string) (*automationpkg.RetryConfig, error) {
@@ -938,7 +1015,10 @@ func parseAutomationRetryFlag(raw string) (*automationpkg.RetryConfig, error) {
 		payload := strings.TrimSpace(trimmed[len("backoff:"):])
 		parts := strings.Split(payload, ":")
 		if len(parts) != 2 {
-			return nil, fmt.Errorf(`cli: invalid retry value %q: use "none", "backoff", or "backoff:<max_retries>:<base_delay>"`, trimmed)
+			return nil, fmt.Errorf(
+				`cli: invalid retry value %q: use "none", "backoff", or "backoff:<max_retries>:<base_delay>"`,
+				trimmed,
+			)
 		}
 		maxRetries, err := strconv.Atoi(strings.TrimSpace(parts[0]))
 		if err != nil {
@@ -950,7 +1030,10 @@ func parseAutomationRetryFlag(raw string) (*automationpkg.RetryConfig, error) {
 			BaseDelay:  strings.TrimSpace(parts[1]),
 		}
 	default:
-		return nil, fmt.Errorf(`cli: invalid retry value %q: use "none", "backoff", or "backoff:<max_retries>:<base_delay>"`, trimmed)
+		return nil, fmt.Errorf(
+			`cli: invalid retry value %q: use "none", "backoff", or "backoff:<max_retries>:<base_delay>"`,
+			trimmed,
+		)
 	}
 
 	if err := cfg.Validate("retry"); err != nil {
@@ -966,7 +1049,7 @@ func parseAutomationFilterFlags(flags []string) (map[string]string, error) {
 
 	filter := make(map[string]string)
 	for _, rawFlag := range flags {
-		for _, entry := range strings.Split(rawFlag, ",") {
+		for entry := range strings.SplitSeq(rawFlag, ",") {
 			trimmedEntry := strings.TrimSpace(entry)
 			if trimmedEntry == "" {
 				continue
@@ -995,7 +1078,11 @@ func parseAutomationFilterFlags(flags []string) (map[string]string, error) {
 	return filter, nil
 }
 
-func parseAutomationOptionalTimeFlag(raw string, flagName string, now func() time.Time) (time.Time, error) {
+func parseAutomationOptionalTimeFlag(
+	raw string,
+	flagName string,
+	now func() time.Time,
+) (time.Time, error) {
 	value := strings.TrimSpace(raw)
 	if value == "" {
 		return time.Time{}, nil
@@ -1041,19 +1128,41 @@ func automationJobBundle(item JobRecord) outputBundle {
 					{Label: "Agent", Value: stringOrDash(item.AgentName)},
 					{Label: "Enabled", Value: strconv.FormatBool(item.Enabled)},
 					{Label: "Source", Value: stringOrDash(string(item.Source))},
-					{Label: "Schedule", Value: stringOrDash(formatAutomationSchedule(item.Schedule))},
+					{
+						Label: "Schedule",
+						Value: stringOrDash(formatAutomationSchedule(item.Schedule)),
+					},
 					{Label: "Retry", Value: stringOrDash(formatAutomationRetry(item.Retry))},
-					{Label: "Fire Limit", Value: stringOrDash(formatAutomationFireLimit(item.FireLimit))},
+					{
+						Label: "Fire Limit",
+						Value: stringOrDash(formatAutomationFireLimit(item.FireLimit)),
+					},
 					{Label: "Next Run", Value: stringOrDash(formatOptionalTime(item.NextRun))},
 					{Label: "Created", Value: stringOrDash(formatTime(item.CreatedAt))},
 					{Label: "Updated", Value: stringOrDash(formatTime(item.UpdatedAt))},
 				}),
-				renderHumanSection("Prompt", []keyValue{{Label: "Body", Value: stringOrDash(item.Prompt)}}),
+				renderHumanSection(
+					"Prompt",
+					[]keyValue{{Label: "Body", Value: stringOrDash(item.Prompt)}},
+				),
 			), nil
 		},
 		toon: func() (string, error) {
 			return renderToonObject("automation_job", []string{
-				"id", "name", "scope", "workspace_id", "agent_name", "enabled", "source", "schedule", "retry", "fire_limit", "next_run", "created_at", "updated_at", "prompt",
+				"id",
+				"name",
+				"scope",
+				"workspace_id",
+				"agent_name",
+				"enabled",
+				"source",
+				"schedule",
+				"retry",
+				"fire_limit",
+				"next_run",
+				"created_at",
+				"updated_at",
+				"prompt",
 			}, []string{
 				item.ID,
 				item.Name,
@@ -1079,9 +1188,29 @@ func automationJobListBundle(items []JobRecord) outputBundle {
 		items,
 		items,
 		"Automation Jobs",
-		[]string{"ID", "Name", "Scope", "Workspace", "Schedule", "Agent", "Enabled", "Source", "Next Run"},
+		[]string{
+			"ID",
+			"Name",
+			"Scope",
+			"Workspace",
+			"Schedule",
+			"Agent",
+			"Enabled",
+			"Source",
+			"Next Run",
+		},
 		"automation_jobs",
-		[]string{"id", "name", "scope", "workspace_id", "schedule", "agent_name", "enabled", "source", "next_run"},
+		[]string{
+			"id",
+			"name",
+			"scope",
+			"workspace_id",
+			"schedule",
+			"agent_name",
+			"enabled",
+			"source",
+			"next_run",
+		},
 		func(item JobRecord) []string {
 			return []string{
 				stringOrDash(item.ID),
@@ -1126,21 +1255,46 @@ func automationTriggerBundle(item TriggerRecord) outputBundle {
 					{Label: "Enabled", Value: strconv.FormatBool(item.Enabled)},
 					{Label: "Source", Value: stringOrDash(string(item.Source))},
 					{Label: "Retry", Value: stringOrDash(formatAutomationRetry(item.Retry))},
-					{Label: "Fire Limit", Value: stringOrDash(formatAutomationFireLimit(item.FireLimit))},
+					{
+						Label: "Fire Limit",
+						Value: stringOrDash(formatAutomationFireLimit(item.FireLimit)),
+					},
 					{Label: "Webhook ID", Value: stringOrDash(item.WebhookID)},
 					{Label: "Endpoint Slug", Value: stringOrDash(item.EndpointSlug)},
 					{Label: "Webhook Path", Value: stringOrDash(displayTriggerEndpoint(item))},
 					{Label: "Created", Value: stringOrDash(formatTime(item.CreatedAt))},
 					{Label: "Updated", Value: stringOrDash(formatTime(item.UpdatedAt))},
 				}),
-				renderHumanSection("Prompt", []keyValue{{Label: "Body", Value: stringOrDash(item.Prompt)}}),
-				renderHumanTable("Filters", []string{"Path", "Value"}, automationFilterRows(item.Filter)),
+				renderHumanSection(
+					"Prompt",
+					[]keyValue{{Label: "Body", Value: stringOrDash(item.Prompt)}},
+				),
+				renderHumanTable(
+					"Filters",
+					[]string{"Path", "Value"},
+					automationFilterRows(item.Filter),
+				),
 			), nil
 		},
 		toon: func() (string, error) {
 			return renderHumanBlocks(
 				renderToonObject("automation_trigger", []string{
-					"id", "name", "scope", "workspace_id", "agent_name", "event", "enabled", "source", "retry", "fire_limit", "webhook_id", "endpoint_slug", "webhook_path", "created_at", "updated_at", "prompt",
+					"id",
+					"name",
+					"scope",
+					"workspace_id",
+					"agent_name",
+					"event",
+					"enabled",
+					"source",
+					"retry",
+					"fire_limit",
+					"webhook_id",
+					"endpoint_slug",
+					"webhook_path",
+					"created_at",
+					"updated_at",
+					"prompt",
 				}, []string{
 					item.ID,
 					item.Name,
@@ -1159,7 +1313,11 @@ func automationTriggerBundle(item TriggerRecord) outputBundle {
 					formatTime(item.UpdatedAt),
 					item.Prompt,
 				}),
-				renderToonArray("filters", []string{"path", "value"}, automationFilterRows(item.Filter)),
+				renderToonArray(
+					"filters",
+					[]string{"path", "value"},
+					automationFilterRows(item.Filter),
+				),
 			), nil
 		},
 	}
@@ -1219,7 +1377,16 @@ func automationRunBundle(item RunRecord) outputBundle {
 		},
 		toon: func() (string, error) {
 			return renderToonObject("automation_run", []string{
-				"id", "target", "job_id", "trigger_id", "session_id", "status", "attempt", "started_at", "ended_at", "error",
+				"id",
+				"target",
+				"job_id",
+				"trigger_id",
+				"session_id",
+				"status",
+				"attempt",
+				"started_at",
+				"ended_at",
+				"error",
 			}, []string{
 				item.ID,
 				displayRunTarget(item),
@@ -1243,7 +1410,16 @@ func automationRunListBundle(items []RunRecord) outputBundle {
 		"Automation Runs",
 		[]string{"ID", "Target", "Status", "Attempt", "Session", "Started", "Ended", "Error"},
 		"automation_runs",
-		[]string{"id", "target", "status", "attempt", "session_id", "started_at", "ended_at", "error"},
+		[]string{
+			"id",
+			"target",
+			"status",
+			"attempt",
+			"session_id",
+			"started_at",
+			"ended_at",
+			"error",
+		},
 		func(item RunRecord) []string {
 			return []string{
 				stringOrDash(item.ID),
@@ -1288,6 +1464,114 @@ func automationFilterRows(filter map[string]string) [][]string {
 	return rows
 }
 
+func buildAutomationTriggerCreateRequest(
+	cmd *cobra.Command,
+	client DaemonClient,
+	input automationTriggerCommandInput,
+) (AutomationTriggerCreateRequest, error) {
+	scope, workspaceID, err := resolveAutomationScopeWorkspace(
+		cmd.Context(),
+		client,
+		input.ScopeRaw,
+		input.WorkspaceRef,
+	)
+	if err != nil {
+		return AutomationTriggerCreateRequest{}, err
+	}
+	retry, err := parseAutomationRetryFlag(input.RetryRaw)
+	if err != nil {
+		return AutomationTriggerCreateRequest{}, err
+	}
+	filter, err := parseAutomationFilterFlags(input.FilterFlags)
+	if err != nil {
+		return AutomationTriggerCreateRequest{}, err
+	}
+
+	request := AutomationTriggerCreateRequest{
+		Scope:         scope,
+		Name:          strings.TrimSpace(input.Name),
+		AgentName:     strings.TrimSpace(input.AgentName),
+		WorkspaceID:   workspaceID,
+		Prompt:        strings.TrimSpace(input.Prompt),
+		Event:         strings.TrimSpace(input.EventRaw),
+		Filter:        filter,
+		WebhookID:     strings.TrimSpace(input.WebhookID),
+		EndpointSlug:  strings.TrimSpace(input.EndpointSlug),
+		WebhookSecret: strings.TrimSpace(input.WebhookSecret),
+	}
+	if cmd.Flags().Changed("enabled") {
+		request.Enabled = boolPointer(input.Enabled)
+	}
+	if retry != nil {
+		request.Retry = retry
+	}
+	return request, nil
+}
+
+func buildAutomationTriggerUpdateRequest(
+	cmd *cobra.Command,
+	client DaemonClient,
+	input automationTriggerCommandInput,
+) (AutomationTriggerUpdateRequest, error) {
+	request := AutomationTriggerUpdateRequest{}
+	if cmd.Flags().Changed("name") {
+		request.Name = stringPointer(strings.TrimSpace(input.Name))
+	}
+	if cmd.Flags().Changed("agent") {
+		request.AgentName = stringPointer(strings.TrimSpace(input.AgentName))
+	}
+	if cmd.Flags().Changed("workspace") {
+		workspaceID, err := resolveAutomationWorkspaceID(cmd.Context(), client, input.WorkspaceRef)
+		if err != nil {
+			return AutomationTriggerUpdateRequest{}, err
+		}
+		request.WorkspaceID = stringPointer(workspaceID)
+	}
+	if cmd.Flags().Changed("prompt") {
+		request.Prompt = stringPointer(strings.TrimSpace(input.Prompt))
+	}
+	if cmd.Flags().Changed("event") {
+		request.Event = stringPointer(strings.TrimSpace(input.EventRaw))
+	}
+	if cmd.Flags().Changed("filter") {
+		filter, err := parseAutomationFilterFlags(input.FilterFlags)
+		if err != nil {
+			return AutomationTriggerUpdateRequest{}, err
+		}
+		request.Filter = filter
+	}
+	if cmd.Flags().Changed("retry") {
+		retry, err := parseAutomationRetryFlag(input.RetryRaw)
+		if err != nil {
+			return AutomationTriggerUpdateRequest{}, err
+		}
+		if retry == nil {
+			return AutomationTriggerUpdateRequest{}, errors.New(
+				`cli: --retry requires "none", "backoff", or "backoff:<max_retries>:<base_delay>"`,
+			)
+		}
+		request.Retry = retry
+	}
+	if cmd.Flags().Changed("enabled") {
+		request.Enabled = boolPointer(input.Enabled)
+	}
+	if cmd.Flags().Changed("webhook-id") {
+		request.WebhookID = stringPointer(strings.TrimSpace(input.WebhookID))
+	}
+	if cmd.Flags().Changed("endpoint-slug") {
+		request.EndpointSlug = stringPointer(strings.TrimSpace(input.EndpointSlug))
+	}
+	if cmd.Flags().Changed("webhook-secret") {
+		request.WebhookSecret = stringPointer(strings.TrimSpace(input.WebhookSecret))
+	}
+	if !request.HasChanges() {
+		return AutomationTriggerUpdateRequest{}, errors.New(
+			"cli: automation trigger update requires at least one change flag",
+		)
+	}
+	return request, nil
+}
+
 func formatAutomationSchedule(spec *automationpkg.ScheduleSpec) string {
 	if spec == nil {
 		return ""
@@ -1297,8 +1581,6 @@ func formatAutomationSchedule(spec *automationpkg.ScheduleSpec) string {
 		return "every:" + strings.TrimSpace(spec.Interval)
 	case automationpkg.ScheduleModeAt:
 		return "at:" + strings.TrimSpace(spec.Time)
-	case automationpkg.ScheduleModeCron:
-		fallthrough
 	default:
 		return "cron:" + strings.TrimSpace(spec.Expr)
 	}
@@ -1308,8 +1590,6 @@ func formatAutomationRetry(cfg automationpkg.RetryConfig) string {
 	switch cfg.Strategy {
 	case automationpkg.RetryStrategyBackoff:
 		return fmt.Sprintf("backoff:%d:%s", cfg.MaxRetries, strings.TrimSpace(cfg.BaseDelay))
-	case automationpkg.RetryStrategyNone:
-		fallthrough
 	default:
 		return "none"
 	}
@@ -1327,7 +1607,8 @@ func displayTriggerEndpoint(item TriggerRecord) string {
 	if err != nil {
 		return ""
 	}
-	if item.Scope == automationpkg.AutomationScopeWorkspace && strings.TrimSpace(item.WorkspaceID) != "" {
+	if item.Scope == automationpkg.AutomationScopeWorkspace &&
+		strings.TrimSpace(item.WorkspaceID) != "" {
 		return "/api/webhooks/workspaces/" + strings.TrimSpace(item.WorkspaceID) + "/" + endpoint
 	}
 	return "/api/webhooks/global/" + endpoint

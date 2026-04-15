@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,7 +23,7 @@ func TestSpawnDetachedDaemonProcess(t *testing.T) {
 		t.Fatalf("os.WriteFile(script) error = %v", err)
 	}
 
-	process, err := spawnDetachedDaemonProcess(homePaths, func() (string, error) {
+	process, err := spawnDetachedDaemonProcess(context.Background(), homePaths, func() (string, error) {
 		return scriptPath, nil
 	})
 	if err != nil {
@@ -50,7 +51,7 @@ func TestSpawnDetachedDaemonProcessWaitIncludesStderr(t *testing.T) {
 		t.Fatalf("os.WriteFile(script) error = %v", err)
 	}
 
-	process, err := spawnDetachedDaemonProcess(homePaths, func() (string, error) {
+	process, err := spawnDetachedDaemonProcess(context.Background(), homePaths, func() (string, error) {
 		return scriptPath, nil
 	})
 	if err != nil {

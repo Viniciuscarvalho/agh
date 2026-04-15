@@ -42,7 +42,10 @@ func (g *GlobalDB) WritePermissionLog(ctx context.Context, entry store.Permissio
 }
 
 // ListPermissionLog returns permission audit rows filtered by the supplied options.
-func (g *GlobalDB) ListPermissionLog(ctx context.Context, query store.PermissionLogQuery) ([]store.PermissionLogEntry, error) {
+func (g *GlobalDB) ListPermissionLog(
+	ctx context.Context,
+	query store.PermissionLogQuery,
+) ([]store.PermissionLogEntry, error) {
 	if err := g.checkReady(ctx, "list permission log"); err != nil {
 		return nil, err
 	}

@@ -32,9 +32,24 @@ type stubWorkspaceService = testutil.StubWorkspaceService
 type stubSkillsRegistry = testutil.StubSkillsRegistry
 type sseRecord = testutil.SSERecord
 
-func newTestHandlers(t *testing.T, manager core.SessionManager, observer core.Observer, homePaths aghconfig.HomePaths) *Handlers {
+func newTestHandlers(
+	t *testing.T,
+	manager core.SessionManager,
+	observer core.Observer,
+	homePaths aghconfig.HomePaths,
+) *Handlers {
 	t.Helper()
-	return newTestHandlersWithRuntime(t, manager, observer, nil, stubTaskManager{}, nil, stubWorkspaceService{}, nil, homePaths)
+	return newTestHandlersWithRuntime(
+		t,
+		manager,
+		observer,
+		nil,
+		stubTaskManager{},
+		nil,
+		stubWorkspaceService{},
+		nil,
+		homePaths,
+	)
 }
 
 func newTestHandlersWithBridges(
@@ -49,9 +64,25 @@ func newTestHandlersWithBridges(
 	return newTestHandlersWithRuntime(t, manager, observer, nil, stubTaskManager{}, bridges, workspaces, nil, homePaths)
 }
 
-func newTestHandlersWithExtensions(t *testing.T, manager core.SessionManager, observer core.Observer, extensions ExtensionService, homePaths aghconfig.HomePaths) *Handlers {
+func newTestHandlersWithExtensions(
+	t *testing.T,
+	manager core.SessionManager,
+	observer core.Observer,
+	extensions ExtensionService,
+	homePaths aghconfig.HomePaths,
+) *Handlers {
 	t.Helper()
-	return newTestHandlersWithRuntime(t, manager, observer, nil, stubTaskManager{}, nil, stubWorkspaceService{}, extensions, homePaths)
+	return newTestHandlersWithRuntime(
+		t,
+		manager,
+		observer,
+		nil,
+		stubTaskManager{},
+		nil,
+		stubWorkspaceService{},
+		extensions,
+		homePaths,
+	)
 }
 
 func newTestHandlersWithRuntime(
@@ -67,7 +98,7 @@ func newTestHandlersWithRuntime(
 ) *Handlers {
 	t.Helper()
 
-	return newHandlers(handlerConfig{
+	return newHandlers(&handlerConfig{
 		sessions:     manager,
 		tasks:        tasks,
 		observer:     observer,
@@ -85,7 +116,13 @@ func newTestHandlersWithRuntime(
 	})
 }
 
-func newTestHandlersWithWorkspace(t *testing.T, manager core.SessionManager, observer core.Observer, workspaces core.WorkspaceService, homePaths aghconfig.HomePaths) *Handlers {
+func newTestHandlersWithWorkspace(
+	t *testing.T,
+	manager core.SessionManager,
+	observer core.Observer,
+	workspaces core.WorkspaceService,
+	homePaths aghconfig.HomePaths,
+) *Handlers {
 	t.Helper()
 
 	return newTestHandlersWithBridges(t, manager, observer, nil, workspaces, homePaths)
@@ -121,7 +158,7 @@ func writeAgentDef(t *testing.T, homePaths aghconfig.HomePaths, name string) {
 	testutil.WriteAgentDef(t, homePaths, name)
 }
 
-func newSessionInfo(id string) *session.SessionInfo {
+func newSessionInfo(id string) *session.Info {
 	return testutil.NewSessionInfo(id)
 }
 
@@ -159,10 +196,22 @@ func TestStubWorkspaceServiceDefaultsReportUnconfiguredMethods(t *testing.T) {
 
 	service := stubWorkspaceService{}
 
-	if _, err := service.Register(context.Background(), workspacepkg.RegisterOptions{}); !errors.Is(err, errStubWorkspaceServiceNotImplemented) {
+	if _, err := service.Register(
+		context.Background(),
+		workspacepkg.RegisterOptions{},
+	); !errors.Is(
+		err,
+		errStubWorkspaceServiceNotImplemented,
+	) {
 		t.Fatalf("Register() error = %v, want %v", err, errStubWorkspaceServiceNotImplemented)
 	}
-	if _, err := service.ResolveOrRegister(context.Background(), "/workspace"); !errors.Is(err, errStubWorkspaceServiceNotImplemented) {
+	if _, err := service.ResolveOrRegister(
+		context.Background(),
+		"/workspace",
+	); !errors.Is(
+		err,
+		errStubWorkspaceServiceNotImplemented,
+	) {
 		t.Fatalf("ResolveOrRegister() error = %v, want %v", err, errStubWorkspaceServiceNotImplemented)
 	}
 }

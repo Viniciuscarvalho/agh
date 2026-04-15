@@ -140,106 +140,166 @@ func OpenInteraction(env Envelope, at time.Time) (Interaction, error) {
 // ApplyInteractionEnvelope applies one validated lifecycle envelope to the
 // current interaction state and returns the router-facing decision.
 func ApplyInteractionEnvelope(current *Interaction, env Envelope, at time.Time) (LifecycleResult, error) {
-	if at.IsZero() {
-		at = time.Now().UTC()
-	}
+	at = normalizeInteractionTime(at)
 
 	if current == nil {
-		opened, err := OpenInteraction(env, at)
-		if err != nil {
-			if env.Kind != KindDirect && env.Kind != KindRecipe {
-				return LifecycleResult{}, fmt.Errorf("%w: kind=%q", ErrInteractionNotFound, env.Kind)
-			}
-			return LifecycleResult{}, err
-		}
-		return LifecycleResult{
-			Interaction: opened,
-			Action:      LifecycleActionOpened,
-		}, nil
+		return openInteractionResult(env, at)
 	}
 
-	interaction := *current
-	if err := interaction.Validate(); err != nil {
-		return LifecycleResult{}, fmt.Errorf("validate current interaction: %w", err)
+	interaction, err := validateInteractionEnvelope(*current, env)
+	if err != nil {
+		return LifecycleResult{}, err
 	}
-	if env.InteractionID == nil || *env.InteractionID != interaction.ID {
-		return LifecycleResult{}, fmt.Errorf("%w: interaction_id=%v current=%q", ErrInvalidField, env.InteractionID, interaction.ID)
-	}
-	if env.Channel != interaction.Channel {
-		return LifecycleResult{}, fmt.Errorf("%w: interaction channel=%q envelope channel=%q", ErrInvalidField, interaction.Channel, env.Channel)
-	}
-	if !interaction.IsParticipant(env.From) {
-		return LifecycleResult{}, fmt.Errorf("%w: from=%q", ErrInteractionActorNotAllowed, env.From)
-	}
-	if env.Kind == KindDirect || env.Kind == KindRecipe {
-		if env.To == nil {
-			return LifecycleResult{}, fmt.Errorf("%w: %s to is required", ErrMissingField, env.Kind)
-		}
-		expectedTarget, ok := interaction.counterparty(env.From)
-		if !ok || *env.To != expectedTarget {
-			return LifecycleResult{}, fmt.Errorf(
-				"%w: from=%q to=%q expected_to=%q",
-				ErrInteractionActorNotAllowed,
-				env.From,
-				*env.To,
-				expectedTarget,
-			)
-		}
+	if result, terminal := terminalInteractionResult(interaction, env); terminal {
+		return result, nil
 	}
 
-	if IsTerminalState(interaction.State) {
-		switch env.Kind {
-		case KindTrace:
-			return LifecycleResult{
-				Interaction: interaction,
-				Action:      LifecycleActionIgnored,
-			}, nil
-		case KindDirect, KindRecipe:
-			reason := ReasonCodeInteractionClosed
-			return LifecycleResult{
-				Interaction: interaction,
-				Action:      LifecycleActionRejectDirect,
-				ReasonCode:  &reason,
-			}, nil
-		case KindReceipt:
-			return LifecycleResult{
-				Interaction: interaction,
-				Action:      LifecycleActionIgnored,
-			}, nil
+	return applyActiveInteractionEnvelope(interaction, env, at)
+}
+
+func normalizeInteractionTime(at time.Time) time.Time {
+	if at.IsZero() {
+		return time.Now().UTC()
+	}
+	return at
+}
+
+func openInteractionResult(env Envelope, at time.Time) (LifecycleResult, error) {
+	opened, err := OpenInteraction(env, at)
+	if err != nil {
+		if env.Kind != KindDirect && env.Kind != KindRecipe {
+			return LifecycleResult{}, fmt.Errorf("%w: kind=%q", ErrInteractionNotFound, env.Kind)
 		}
+		return LifecycleResult{}, err
+	}
+	return LifecycleResult{
+		Interaction: opened,
+		Action:      LifecycleActionOpened,
+	}, nil
+}
+
+func validateInteractionEnvelope(current Interaction, env Envelope) (Interaction, error) {
+	if err := current.Validate(); err != nil {
+		return Interaction{}, fmt.Errorf("validate current interaction: %w", err)
+	}
+	if err := validateInteractionIdentity(current, env); err != nil {
+		return Interaction{}, err
+	}
+	if !current.IsParticipant(env.From) {
+		return Interaction{}, fmt.Errorf("%w: from=%q", ErrInteractionActorNotAllowed, env.From)
+	}
+	if err := validateInteractionDirection(current, env); err != nil {
+		return Interaction{}, err
+	}
+	return current, nil
+}
+
+func validateInteractionIdentity(current Interaction, env Envelope) error {
+	if env.InteractionID == nil || *env.InteractionID != current.ID {
+		return fmt.Errorf(
+			"%w: interaction_id=%v current=%q",
+			ErrInvalidField,
+			env.InteractionID,
+			current.ID,
+		)
+	}
+	if env.Channel != current.Channel {
+		return fmt.Errorf(
+			"%w: interaction channel=%q envelope channel=%q",
+			ErrInvalidField,
+			current.Channel,
+			env.Channel,
+		)
+	}
+	return nil
+}
+
+func validateInteractionDirection(current Interaction, env Envelope) error {
+	if env.Kind != KindDirect && env.Kind != KindRecipe {
+		return nil
+	}
+	if env.To == nil {
+		return fmt.Errorf("%w: %s to is required", ErrMissingField, env.Kind)
+	}
+
+	expectedTarget, ok := current.counterparty(env.From)
+	if !ok || *env.To != expectedTarget {
+		return fmt.Errorf(
+			"%w: from=%q to=%q expected_to=%q",
+			ErrInteractionActorNotAllowed,
+			env.From,
+			*env.To,
+			expectedTarget,
+		)
+	}
+	return nil
+}
+
+func terminalInteractionResult(interaction Interaction, env Envelope) (LifecycleResult, bool) {
+	if !IsTerminalState(interaction.State) {
+		return LifecycleResult{}, false
 	}
 
 	switch env.Kind {
+	case KindTrace, KindReceipt:
+		return LifecycleResult{
+			Interaction: interaction,
+			Action:      LifecycleActionIgnored,
+		}, true
 	case KindDirect, KindRecipe:
-		if interaction.State == StateNeedsInput {
-			interaction.State = StateWorking
-			interaction.UpdatedAt = at
-			return LifecycleResult{Interaction: interaction, Action: LifecycleActionAdvanced}, nil
-		}
-		return LifecycleResult{Interaction: interaction, Action: LifecycleActionUnchanged}, nil
+		reason := ReasonCodeInteractionClosed
+		return LifecycleResult{
+			Interaction: interaction,
+			Action:      LifecycleActionRejectDirect,
+			ReasonCode:  &reason,
+		}, true
+	default:
+		return LifecycleResult{}, false
+	}
+}
+
+func applyActiveInteractionEnvelope(interaction Interaction, env Envelope, at time.Time) (LifecycleResult, error) {
+	switch env.Kind {
+	case KindDirect, KindRecipe:
+		return applyDirectOrRecipe(interaction, at), nil
 	case KindReceipt:
-		body, err := env.DecodeBody()
+		receipt, err := decodeLifecycleBody[ReceiptBody](env, "receipt")
 		if err != nil {
-			return LifecycleResult{}, fmt.Errorf("decode receipt body: %w", err)
-		}
-		receipt, ok := body.(ReceiptBody)
-		if !ok {
-			return LifecycleResult{}, fmt.Errorf("%w: expected receipt body", ErrInvalidBody)
+			return LifecycleResult{}, err
 		}
 		return applyReceipt(interaction, receipt, at)
 	case KindTrace:
-		body, err := env.DecodeBody()
+		trace, err := decodeLifecycleBody[TraceBody](env, "trace")
 		if err != nil {
-			return LifecycleResult{}, fmt.Errorf("decode trace body: %w", err)
-		}
-		trace, ok := body.(TraceBody)
-		if !ok {
-			return LifecycleResult{}, fmt.Errorf("%w: expected trace body", ErrInvalidBody)
+			return LifecycleResult{}, err
 		}
 		return applyTrace(interaction, trace, at)
 	default:
 		return LifecycleResult{}, fmt.Errorf("%w: lifecycle kind=%q", ErrInvalidField, env.Kind)
 	}
+}
+
+func applyDirectOrRecipe(interaction Interaction, at time.Time) LifecycleResult {
+	if interaction.State == StateNeedsInput {
+		interaction.State = StateWorking
+		interaction.UpdatedAt = at
+		return LifecycleResult{Interaction: interaction, Action: LifecycleActionAdvanced}
+	}
+	return LifecycleResult{Interaction: interaction, Action: LifecycleActionUnchanged}
+}
+
+func decodeLifecycleBody[T any](env Envelope, label string) (T, error) {
+	var zero T
+
+	body, err := env.DecodeBody()
+	if err != nil {
+		return zero, fmt.Errorf("decode %s body: %w", label, err)
+	}
+	typed, ok := body.(T)
+	if !ok {
+		return zero, fmt.Errorf("%w: expected %s body", ErrInvalidBody, label)
+	}
+	return typed, nil
 }
 
 func applyReceipt(interaction Interaction, receipt ReceiptBody, at time.Time) (LifecycleResult, error) {
@@ -282,11 +342,14 @@ func applyTrace(interaction Interaction, trace TraceBody, at time.Time) (Lifecyc
 func canApplyTrace(current InteractionState, next InteractionState) bool {
 	switch current {
 	case StateSubmitted:
-		return next == StateWorking || next == StateNeedsInput || next == StateCompleted || next == StateFailed || next == StateCanceled
+		return next == StateWorking || next == StateNeedsInput || next == StateCompleted || next == StateFailed ||
+			next == StateCanceled
 	case StateWorking:
-		return next == StateWorking || next == StateNeedsInput || next == StateCompleted || next == StateFailed || next == StateCanceled
+		return next == StateWorking || next == StateNeedsInput || next == StateCompleted || next == StateFailed ||
+			next == StateCanceled
 	case StateNeedsInput:
-		return next == StateWorking || next == StateNeedsInput || next == StateCompleted || next == StateFailed || next == StateCanceled
+		return next == StateWorking || next == StateNeedsInput || next == StateCompleted || next == StateFailed ||
+			next == StateCanceled
 	default:
 		return false
 	}

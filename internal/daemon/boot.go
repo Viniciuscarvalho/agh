@@ -43,7 +43,7 @@ type bootState struct {
 	promptAssembler    session.PromptAssembler
 	notifier           *hooksNotifier
 	registry           Registry
-	workspaceResolver  workspacepkg.WorkspaceResolver
+	workspaceResolver  *workspacepkg.Resolver
 	sessions           SessionManager
 	tasks              *taskRuntime
 	network            networkRuntime
@@ -240,7 +240,7 @@ func (d *Daemon) bootPromptProviders(ctx context.Context, state *bootState) erro
 	}
 
 	if state.cfg.Skills.Enabled {
-		skillsCfg, err := d.skillsRegistryConfig(state.cfg)
+		skillsCfg, err := d.skillsRegistryConfig(&state.cfg)
 		if err != nil {
 			return err
 		}
@@ -261,6 +261,19 @@ func (d *Daemon) bootPromptProviders(ctx context.Context, state *bootState) erro
 }
 
 func (d *Daemon) bootRuntime(ctx context.Context, state *bootState, cleanup *bootCleanup) error {
+	if err := d.bootLockAndSocket(ctx, state, cleanup); err != nil {
+		return err
+	}
+	if err := d.bootRegistryState(ctx, state, cleanup); err != nil {
+		return err
+	}
+	if err := d.bootRuntimeServices(ctx, state, cleanup); err != nil {
+		return err
+	}
+	return d.attachRuntimeObserver(ctx, state)
+}
+
+func (d *Daemon) bootLockAndSocket(ctx context.Context, state *bootState, cleanup *bootCleanup) error {
 	pid := d.pid()
 	lock, err := d.acquireLock(d.homePaths.DaemonLock, pid)
 	if err != nil {
@@ -271,17 +284,7 @@ func (d *Daemon) bootRuntime(ctx context.Context, state *bootState, cleanup *boo
 	})
 	state.lock = lock
 
-	stalePID := lock.StalePID()
-	if stalePID == 0 {
-		existingInfo, readErr := ReadInfo(d.homePaths.DaemonInfo)
-		switch {
-		case readErr == nil && existingInfo.PID > 0 && existingInfo.PID != pid && !d.processAlive(existingInfo.PID):
-			stalePID = existingInfo.PID
-		case readErr != nil && !errors.Is(readErr, os.ErrNotExist):
-			state.logger.Warn("daemon: read stale daemon info failed", "path", d.homePaths.DaemonInfo, "error", readErr)
-		}
-	}
-	if stalePID > 0 {
+	if stalePID := d.resolveStaleDaemonPID(lock, pid, state.logger); stalePID > 0 {
 		if cleanupErr := d.cleanupOrphans(ctx, stalePID); cleanupErr != nil {
 			state.logger.Warn("daemon: cleanup orphan processes failed", "stale_pid", stalePID, "error", cleanupErr)
 		}
@@ -290,7 +293,32 @@ func (d *Daemon) bootRuntime(ctx context.Context, state *bootState, cleanup *boo
 	if err := removeStaleSocket(state.cfg.Daemon.Socket); err != nil {
 		return err
 	}
+	return nil
+}
 
+func (d *Daemon) resolveStaleDaemonPID(lock *Lock, pid int, logger *slog.Logger) int {
+	if lock == nil {
+		return 0
+	}
+	if stalePID := lock.StalePID(); stalePID > 0 {
+		return stalePID
+	}
+
+	existingInfo, err := ReadInfo(d.homePaths.DaemonInfo)
+	switch {
+	case err == nil && existingInfo.PID > 0 && existingInfo.PID != pid && !d.processAlive(existingInfo.PID):
+		return existingInfo.PID
+	case err != nil && !errors.Is(err, os.ErrNotExist) && logger != nil:
+		logger.Warn("daemon: read stale daemon info failed", "path", d.homePaths.DaemonInfo, "error", err)
+	}
+	return 0
+}
+
+func (d *Daemon) bootRegistryState(
+	ctx context.Context,
+	state *bootState,
+	cleanup *bootCleanup,
+) error {
 	registry, err := d.openRegistry(ctx, d.homePaths.DatabaseFile)
 	if err != nil {
 		return fmt.Errorf("daemon: open global database %q: %w", d.homePaths.DatabaseFile, err)
@@ -312,7 +340,14 @@ func (d *Daemon) bootRuntime(ctx context.Context, state *bootState, cleanup *boo
 	}
 	state.registry = registry
 	state.workspaceResolver = workspaceResolver
+	return nil
+}
 
+func (d *Daemon) bootRuntimeServices(
+	ctx context.Context,
+	state *bootState,
+	cleanup *bootCleanup,
+) error {
 	if state.cfg.Memory.Enabled && state.cfg.Memory.Dream.Enabled {
 		state.dreamSvc = d.newDreamService(
 			memory.WithMemoryStore(state.memoryStore),
@@ -320,32 +355,27 @@ func (d *Daemon) bootRuntime(ctx context.Context, state *bootState, cleanup *boo
 			memory.WithMinHours(state.cfg.Memory.Dream.MinHours),
 			memory.WithMinSessions(state.cfg.Memory.Dream.MinSessions),
 			memory.WithLogger(state.logger),
-			memory.WithWorkspaceResolver(workspaceResolver),
+			memory.WithWorkspaceResolver(state.workspaceResolver),
 		)
 	}
 
 	state.startedAt = d.now().UTC()
 	state.notifier = newHooksNotifier(state.logger, d.now)
 	state.bridges = d.composeBridgeRuntime(state, cleanup)
-
-	sessionNotifier := session.Notifier(state.notifier)
-	if state.bridges != nil {
-		sessionNotifier = extensionpkg.NewBridgeDeliveryNotifier(state.bridges.Broker(), state.notifier)
+	sessions, err := d.newSessionManager(ctx, d.sessionManagerDeps(state))
+	if err != nil {
+		return fmt.Errorf("daemon: create session manager: %w", err)
 	}
+	state.sessions = sessions
+	state.deps = d.runtimeDeps(state, sessions)
+	return nil
+}
 
-	var skillRegistryDep session.SkillRegistry
-	if state.skillsRegistry != nil {
-		skillRegistryDep = state.skillsRegistry
-	}
-	var mcpResolverDep session.MCPResolver
-	if state.mcpResolver != nil {
-		mcpResolverDep = state.mcpResolver
-	}
-
-	sessions, err := d.newSessionManager(ctx, SessionManagerDeps{
+func (d *Daemon) sessionManagerDeps(state *bootState) SessionManagerDeps {
+	return SessionManagerDeps{
 		HomePaths: d.homePaths,
 		Logger:    state.logger,
-		Notifier:  sessionNotifier,
+		Notifier:  d.sessionNotifier(state),
 		Hooks: session.HookSet{
 			Session:      state.notifier,
 			Prompt:       state.notifier,
@@ -355,57 +385,93 @@ func (d *Daemon) bootRuntime(ctx context.Context, state *bootState, cleanup *boo
 			Compaction:   state.notifier,
 		},
 		PromptAssembler:   state.promptAssembler,
-		SkillRegistry:     skillRegistryDep,
-		MCPResolver:       mcpResolverDep,
-		WorkspaceResolver: workspaceResolver,
-	})
-	if err != nil {
-		return fmt.Errorf("daemon: create session manager: %w", err)
+		SkillRegistry:     skillRegistryDependency(state.skillsRegistry),
+		MCPResolver:       mcpResolverDependency(state.mcpResolver),
+		WorkspaceResolver: state.workspaceResolver,
+	}
+}
+
+func (d *Daemon) sessionNotifier(state *bootState) session.Notifier {
+	if state == nil {
+		return nil
 	}
 
-	dreamSpawner := consolidation.NewSessionSpawner(sessions, workspaceResolver, state.cfg, state.globalMemoryDir)
-	var dreamTrigger DreamTrigger
-	if state.dreamSvc != nil {
+	notifier := session.Notifier(state.notifier)
+	if state.bridges != nil {
+		notifier = extensionpkg.NewBridgeDeliveryNotifier(state.bridges.Broker(), state.notifier)
+	}
+	return notifier
+}
+
+func skillRegistryDependency(registry *skills.Registry) session.SkillRegistry {
+	if registry == nil {
+		return nil
+	}
+	return registry
+}
+
+func mcpResolverDependency(resolver *skills.MCPResolver) session.MCPResolver {
+	if resolver == nil {
+		return nil
+	}
+	return resolver
+}
+
+func (d *Daemon) runtimeDeps(state *bootState, sessions SessionManager) RuntimeDeps {
+	if state != nil && state.dreamSvc != nil {
 		lockPath := memory.ConsolidationLockPath(state.globalMemoryDir)
 		state.dreamRuntime = consolidation.NewRuntime(
 			state.cfg.Memory.Dream.Enabled,
 			state.dreamSvc,
-			dreamSpawner,
+			consolidation.NewSessionSpawner(
+				sessions,
+				state.workspaceResolver,
+				&state.cfg,
+				state.globalMemoryDir,
+			),
 			state.cfg.Memory.Dream.CheckInterval,
 			state.logger,
 			func() (time.Time, error) {
 				return memory.NewConsolidationLock(lockPath).LastConsolidatedAt()
 			},
 		)
-		dreamTrigger = state.dreamRuntime
 	}
 
-	var skillsRegistryAPI core.SkillsRegistry
-	if state.skillsRegistry != nil {
-		skillsRegistryAPI = state.skillsRegistry
-	}
-
-	state.deps = RuntimeDeps{
+	return RuntimeDeps{
 		Config:            state.cfg,
 		HomePaths:         d.homePaths,
 		Logger:            state.logger,
 		Sessions:          sessions,
 		Bridges:           state.bridges,
-		Registry:          registry,
+		Registry:          state.registry,
 		MemoryStore:       state.memoryStore,
-		WorkspaceResolver: workspaceResolver,
-		WorkspaceService:  workspaceResolver,
-		SkillsRegistry:    skillsRegistryAPI,
-		DreamTrigger:      dreamTrigger,
+		WorkspaceResolver: state.workspaceResolver,
+		WorkspaceService:  state.workspaceResolver,
+		SkillsRegistry:    skillsRegistryAPI(state.skillsRegistry),
+		DreamTrigger:      dreamTriggerFromRuntime(state.dreamRuntime),
 		StartedAt:         state.startedAt,
 	}
+}
 
+func skillsRegistryAPI(registry *skills.Registry) core.SkillsRegistry {
+	if registry == nil {
+		return nil
+	}
+	return registry
+}
+
+func dreamTriggerFromRuntime(runtime *consolidation.Runtime) DreamTrigger {
+	if runtime == nil {
+		return nil
+	}
+	return runtime
+}
+
+func (d *Daemon) attachRuntimeObserver(ctx context.Context, state *bootState) error {
 	observer, err := d.newObserver(ctx, state.deps)
 	if err != nil {
 		return fmt.Errorf("daemon: create observer: %w", err)
 	}
-
-	state.sessions = sessions
 	state.observer = observer
 	state.deps.Observer = observer
 	return nil
@@ -472,8 +538,18 @@ func (d *Daemon) bootHooks(ctx context.Context, state *bootState, cleanup *bootC
 			configDeclarationProvider(state.registry, state.workspaceResolver, state.logger),
 			extensionDeclarationProvider(state.currentExtensionRuntime),
 		)),
-		hookspkg.WithAgentDeclarationProvider(agentDeclarationProvider(state.registry, state.workspaceResolver, state.logger)),
-		hookspkg.WithSkillDeclarationProvider(skillDeclarationProvider(state.skillsRegistry, state.registry, state.workspaceResolver, state.cfg.Skills.AllowedMarketplaceHooks, state.logger)),
+		hookspkg.WithAgentDeclarationProvider(
+			agentDeclarationProvider(state.registry, state.workspaceResolver, state.logger),
+		),
+		hookspkg.WithSkillDeclarationProvider(
+			skillDeclarationProvider(
+				state.skillsRegistry,
+				state.registry,
+				state.workspaceResolver,
+				state.cfg.Skills.AllowedMarketplaceHooks,
+				state.logger,
+			),
+		),
 		hookspkg.WithTelemetrySink(state.hookTelemetrySinks),
 	}
 
@@ -494,9 +570,14 @@ func (d *Daemon) bootHooks(ctx context.Context, state *bootState, cleanup *bootC
 	})
 
 	if state.skillsRegistry != nil {
-		state.skillsCancel, state.skillsDone = startSkillsWatcher(ctx, state.skillsRegistry, state.cfg.Skills.PollInterval, func(refreshCtx context.Context) error {
-			return hooks.Rebuild(refreshCtx)
-		})
+		state.skillsCancel, state.skillsDone = startSkillsWatcher(
+			ctx,
+			state.skillsRegistry,
+			state.cfg.Skills.PollInterval,
+			func(refreshCtx context.Context) error {
+				return hooks.Rebuild(refreshCtx)
+			},
+		)
 		cleanup.add(func(context.Context) error {
 			stopSkillsWatcher(state.skillsCancel, state.skillsDone)
 			return nil
@@ -651,7 +732,11 @@ func (d *Daemon) bootExtensions(ctx context.Context, state *bootState, cleanup *
 		}
 
 		if extensionRuntimeHasRegisteredEntries(ctx, extRegistry, manager) {
-			state.logger.Error("daemon: extension manager start failed; continuing with healthy extensions only", "error", err)
+			state.logger.Error(
+				"daemon: extension manager start failed; continuing with healthy extensions only",
+				"error",
+				err,
+			)
 		} else {
 			state.logger.Error("daemon: extension manager start failed; continuing without blocking boot", "error", err)
 		}
@@ -660,17 +745,33 @@ func (d *Daemon) bootExtensions(ctx context.Context, state *bootState, cleanup *
 		state.bridges.setExtensionRuntime(manager)
 	}
 	state.setExtensionRuntime(manager)
-	state.deps.Extensions = newDaemonExtensionService(extRegistry, manager, state.hooks, state.bundles, d.homePaths, state.logger, d.now)
+	state.deps.Extensions = newDaemonExtensionService(
+		extRegistry,
+		manager,
+		state.hooks,
+		state.bundles,
+		d.homePaths,
+		state.logger,
+		d.now,
+	)
 	if state.hooks != nil {
 		if err := state.hooks.Rebuild(ctx); err != nil {
-			state.logger.Error("daemon: rebuild hooks after extension boot failed; continuing without extension hooks", "error", err)
+			state.logger.Error(
+				"daemon: rebuild hooks after extension boot failed; continuing without extension hooks",
+				"error",
+				err,
+			)
 		}
 	}
 
 	return nil
 }
 
-func extensionRuntimeHasRegisteredEntries(ctx context.Context, registry *extensionpkg.Registry, runtime extensionRuntime) bool {
+func extensionRuntimeHasRegisteredEntries(
+	ctx context.Context,
+	registry *extensionpkg.Registry,
+	runtime extensionRuntime,
+) bool {
 	if ctx == nil || registry == nil || runtime == nil {
 		return false
 	}
@@ -746,7 +847,11 @@ func (d *Daemon) bootServers(ctx context.Context, state *bootState, cleanup *boo
 	return nil
 }
 
-func daemonNetworkInfo(ctx context.Context, cfg aghconfig.NetworkConfig, service core.NetworkService) (*NetworkInfo, error) {
+func daemonNetworkInfo(
+	ctx context.Context,
+	cfg aghconfig.NetworkConfig,
+	service core.NetworkService,
+) (*NetworkInfo, error) {
 	if !cfg.Enabled {
 		return &NetworkInfo{
 			Enabled: false,
@@ -826,10 +931,17 @@ func (d *Daemon) publishBootState(state *bootState) {
 	}
 }
 
-func (d *Daemon) skillsRegistryConfig(cfg aghconfig.Config) (skills.RegistryConfig, error) {
+func (d *Daemon) skillsRegistryConfig(cfg *aghconfig.Config) (skills.RegistryConfig, error) {
 	userAgentsDir, err := aghconfig.ResolveUserAgentsSkillsDir(d.getenv)
 	if err != nil {
 		return skills.RegistryConfig{}, err
+	}
+	if cfg == nil {
+		return skills.RegistryConfig{
+			BundledFS:     bundled.FS(),
+			UserSkillsDir: d.homePaths.SkillsDir,
+			UserAgentsDir: userAgentsDir,
+		}, nil
 	}
 
 	return skills.RegistryConfig{
@@ -840,7 +952,12 @@ func (d *Daemon) skillsRegistryConfig(cfg aghconfig.Config) (skills.RegistryConf
 	}, nil
 }
 
-func startSkillsWatcher(ctx context.Context, registry *skills.Registry, interval time.Duration, afterRefresh func(context.Context) error) (context.CancelFunc, chan struct{}) {
+func startSkillsWatcher(
+	ctx context.Context,
+	registry *skills.Registry,
+	interval time.Duration,
+	afterRefresh func(context.Context) error,
+) (context.CancelFunc, chan struct{}) {
 	if registry == nil {
 		return nil, nil
 	}

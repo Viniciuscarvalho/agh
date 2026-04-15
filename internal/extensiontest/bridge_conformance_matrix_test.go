@@ -63,7 +63,13 @@ func TestSummarizeConformanceReportBuildsStableMultiInstanceMatrixRow(t *testing
 	if got, want := entry.Platform, "github"; got != want {
 		t.Fatalf("entry.Platform = %q, want %q", got, want)
 	}
-	if got, want := entry.Targets, []CoverageTarget{CoverageTargetMultiInstance, CoverageTargetRestartRecovery}; !equalCoverageTargets(got, want) {
+	if got, want := entry.Targets, []CoverageTarget{
+		CoverageTargetMultiInstance,
+		CoverageTargetRestartRecovery,
+	}; !equalCoverageTargets(
+		got,
+		want,
+	) {
 		t.Fatalf("entry.Targets = %#v, want %#v", got, want)
 	}
 	if got, want := len(entry.ManagedInstances), 2; got != want {
@@ -76,7 +82,11 @@ func TestSummarizeConformanceReportBuildsStableMultiInstanceMatrixRow(t *testing
 		t.Fatalf("entry.ManagedInstances[0].DegradationReason = %q, want %q", got, want)
 	}
 
-	if err := ValidateConformanceMatrix(matrix, CoverageTargetRestartRecovery, CoverageTargetMultiInstance); err != nil {
+	if err := ValidateConformanceMatrix(
+		matrix,
+		CoverageTargetRestartRecovery,
+		CoverageTargetMultiInstance,
+	); err != nil {
 		t.Fatalf("ValidateConformanceMatrix() error = %v, want nil", err)
 	}
 }
@@ -163,7 +173,13 @@ func TestBuildConformanceMatrixAggregatesTargetsPerProvider(t *testing.T) {
 		t.Fatalf("len(matrix) = %d, want %d", got, want)
 	}
 	entry := matrix[0]
-	if got, want := entry.Targets, []CoverageTarget{CoverageTargetAuthDegradation, CoverageTargetRestartRecovery}; !equalCoverageTargets(got, want) {
+	if got, want := entry.Targets, []CoverageTarget{
+		CoverageTargetAuthDegradation,
+		CoverageTargetRestartRecovery,
+	}; !equalCoverageTargets(
+		got,
+		want,
+	) {
 		t.Fatalf("entry.Targets = %#v, want %#v", got, want)
 	}
 	if got, want := len(entry.ManagedInstances), 2; got != want {

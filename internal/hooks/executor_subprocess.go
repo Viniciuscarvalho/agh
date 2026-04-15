@@ -5,11 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
-	"os/exec"
+	exec "os/exec"
 	"sort"
 	"strings"
 	"time"
+
+	"golang.org/x/sys/execabs"
 )
 
 const (
@@ -95,7 +98,15 @@ func (e *SubprocessExecutor) Execute(ctx context.Context, hook RegisteredHook, p
 	hookCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	cmd := exec.Command(e.command, e.args...)
+	commandPath, commandArgs, err := resolvedHookCommand(e.command, e.args)
+	if err != nil {
+		return nil, fmt.Errorf("hooks: hook %q: %w", hook.Name, err)
+	}
+
+	cmd := &exec.Cmd{
+		Path: commandPath,
+		Args: commandArgs,
+	}
 	configureSubprocessCommand(cmd)
 	cmd.Dir = e.dir
 	cmd.Env = subprocessProcessEnv(e.env)
@@ -106,13 +117,25 @@ func (e *SubprocessExecutor) Execute(ctx context.Context, hook RegisteredHook, p
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 
-	err := runSubprocessCommand(hookCtx, cmd)
+	err = runSubprocessCommand(hookCtx, cmd)
 	output := []byte(stdout.String())
 	if err != nil {
 		return output, subprocessRunError(hookCtx, timeout, err, stderr)
 	}
 
 	return output, nil
+}
+
+func resolvedHookCommand(command string, args []string) (string, []string, error) {
+	resolvedPath, err := execabs.LookPath(command)
+	if err != nil {
+		return "", nil, fmt.Errorf("resolve executable %q: %w", command, err)
+	}
+
+	commandArgs := make([]string, 0, len(args)+1)
+	commandArgs = append(commandArgs, resolvedPath)
+	commandArgs = append(commandArgs, args...)
+	return resolvedPath, commandArgs, nil
 }
 
 func subprocessHookTimeout(timeout time.Duration) time.Duration {
@@ -137,16 +160,16 @@ func runSubprocessCommand(ctx context.Context, cmd *exec.Cmd) error {
 	case err := <-waitCh:
 		return err
 	case <-ctx.Done():
-		_ = terminateSubprocessCommand(cmd) // best-effort cleanup; the process may already be gone
+		terminateErr := terminateSubprocessCommand(cmd)
 		timer := time.NewTimer(subprocessShutdownGrace)
 		defer timer.Stop()
 
 		select {
 		case err := <-waitCh:
-			return err
+			return errors.Join(terminateErr, err)
 		case <-timer.C:
-			_ = killSubprocessCommand(cmd) // best-effort cleanup; the process may already be gone
-			return <-waitCh
+			killErr := killSubprocessCommand(cmd)
+			return errors.Join(terminateErr, killErr, <-waitCh)
 		}
 	}
 }
@@ -158,9 +181,7 @@ func subprocessProcessEnv(env map[string]string) []string {
 			merged[key] = value
 		}
 	}
-	for key, value := range env {
-		merged[key] = value
-	}
+	maps.Copy(merged, env)
 
 	keys := make([]string, 0, len(merged))
 	for key := range merged {

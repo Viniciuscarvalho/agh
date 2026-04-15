@@ -73,10 +73,14 @@ func TestSessionReportClassifiedErrorReportsStateThroughHostAPI(t *testing.T) {
 		}),
 	}
 
-	updated, recovery, err := session.ReportClassifiedError(context.Background(), "brg-1", ClassifyError(&RateLimitError{
-		Err:        errors.New("slow down"),
-		RetryAfter: time.Second,
-	}))
+	updated, recovery, err := session.ReportClassifiedError(
+		context.Background(),
+		"brg-1",
+		ClassifyError(&RateLimitError{
+			Err:        errors.New("slow down"),
+			RetryAfter: time.Second,
+		}),
+	)
 	if err != nil {
 		t.Fatalf("ReportClassifiedError() error = %v", err)
 	}

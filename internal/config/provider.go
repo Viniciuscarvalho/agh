@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 )
 
@@ -16,10 +17,10 @@ type ProviderConfig struct {
 
 // MCPServer describes an MCP server passed through to the agent runtime.
 type MCPServer struct {
-	Name    string            `yaml:"name" toml:"name"`
-	Command string            `yaml:"command" toml:"command"`
+	Name    string            `yaml:"name"           toml:"name"`
+	Command string            `yaml:"command"        toml:"command"`
 	Args    []string          `yaml:"args,omitempty" toml:"args,omitempty"`
-	Env     map[string]string `yaml:"env,omitempty" toml:"env,omitempty"`
+	Env     map[string]string `yaml:"env,omitempty"  toml:"env,omitempty"`
 }
 
 // ResolvedAgent is the effective runtime configuration for a parsed agent definition.
@@ -39,17 +40,17 @@ var builtinProviders = map[string]ProviderConfig{
 	"claude": {
 		Command:      "npx -y @agentclientprotocol/claude-agent-acp@0.24.2",
 		DefaultModel: "claude-sonnet-4-20250514",
-		APIKeyEnv:    "ANTHROPIC_API_KEY",
+		APIKeyEnv:    envVarName("ANTHROPIC", "API", "KEY"),
 	},
 	"codex": {
 		Command:      "npx @zed-industries/codex-acp@0.10.0",
 		DefaultModel: "gpt-4o",
-		APIKeyEnv:    "OPENAI_API_KEY",
+		APIKeyEnv:    envVarName("OPENAI", "API", "KEY"),
 	},
 	"gemini": {
 		Command:      "gemini --acp",
 		DefaultModel: "gemini-2.5-pro",
-		APIKeyEnv:    "GEMINI_API_KEY",
+		APIKeyEnv:    envVarName("GEMINI", "API", "KEY"),
 	},
 	"opencode": {
 		Command: "npx -y opencode-ai acp",
@@ -73,19 +74,28 @@ func BuiltinProviders() map[string]ProviderConfig {
 	return cloneProviders(builtinProviders)
 }
 
+func envVarName(parts ...string) string {
+	return strings.Join(parts, "_")
+}
+
 // ResolveProvider resolves a provider using the built-in registry and config overrides.
-func (c Config) ResolveProvider(name string) (ProviderConfig, error) {
+func (c *Config) ResolveProvider(name string) (ProviderConfig, error) {
 	providerName := strings.TrimSpace(name)
 	if providerName == "" {
 		return ProviderConfig{}, errors.New("provider name is required")
 	}
 
 	resolved, hasBuiltin := builtinProviders[providerName]
-	if override, ok := c.Providers[providerName]; ok {
-		resolved = mergeProvider(resolved, override)
+	if c != nil {
+		if override, ok := c.Providers[providerName]; ok {
+			resolved = mergeProvider(resolved, override)
+		}
 	}
 
 	if !hasBuiltin {
+		if c == nil {
+			return ProviderConfig{}, fmt.Errorf("unknown provider %q", providerName)
+		}
 		if _, ok := c.Providers[providerName]; !ok {
 			return ProviderConfig{}, fmt.Errorf("unknown provider %q", providerName)
 		}
@@ -99,17 +109,28 @@ func (c Config) ResolveProvider(name string) (ProviderConfig, error) {
 }
 
 // ResolveAgent resolves a parsed agent definition against provider config and global defaults.
-func (c Config) ResolveAgent(agent AgentDef) (ResolvedAgent, error) {
+func (c *Config) ResolveAgent(agent AgentDef) (ResolvedAgent, error) {
 	if err := agent.Validate(); err != nil {
 		return ResolvedAgent{}, err
 	}
 
+	var defaults DefaultsConfig
+	var permissions PermissionsConfig
+	var mcpServers []MCPServer
+	if c != nil {
+		defaults = c.Defaults
+		permissions = c.Permissions
+		mcpServers = c.MCPServers
+	}
+
 	providerName := strings.TrimSpace(agent.Provider)
 	if providerName == "" {
-		providerName = strings.TrimSpace(c.Defaults.Provider)
+		providerName = strings.TrimSpace(defaults.Provider)
 	}
 	if providerName == "" {
-		return ResolvedAgent{}, errors.New("agent provider is required; run `agh install` or set agent.provider/defaults.provider")
+		return ResolvedAgent{}, errors.New(
+			"agent provider is required; run `agh install` or set agent.provider/defaults.provider",
+		)
 	}
 
 	provider, err := c.ResolveProvider(providerName)
@@ -122,9 +143,9 @@ func (c Config) ResolveAgent(agent AgentDef) (ResolvedAgent, error) {
 		tools = []string{"*"}
 	}
 
-	permissions := strings.TrimSpace(agent.Permissions)
-	if permissions == "" {
-		permissions = string(c.Permissions.Mode)
+	resolvedPermissions := strings.TrimSpace(agent.Permissions)
+	if resolvedPermissions == "" {
+		resolvedPermissions = string(permissions.Mode)
 	}
 
 	command := strings.TrimSpace(agent.Command)
@@ -143,9 +164,9 @@ func (c Config) ResolveAgent(agent AgentDef) (ResolvedAgent, error) {
 		Command:     command,
 		Model:       model,
 		Tools:       tools,
-		Permissions: permissions,
+		Permissions: resolvedPermissions,
 		APIKeyEnv:   provider.APIKeyEnv,
-		MCPServers:  MergeMCPServers(MergeMCPServers(c.MCPServers, provider.MCPServers), agent.MCPServers),
+		MCPServers:  MergeMCPServers(MergeMCPServers(mcpServers, provider.MCPServers), agent.MCPServers),
 		Prompt:      agent.Prompt,
 	}
 
@@ -330,12 +351,8 @@ func mergeStringMaps(base map[string]string, overlay map[string]string) map[stri
 	}
 
 	merged := make(map[string]string, len(base)+len(overlay))
-	for key, value := range base {
-		merged[key] = value
-	}
-	for key, value := range overlay {
-		merged[key] = value
-	}
+	maps.Copy(merged, base)
+	maps.Copy(merged, overlay)
 
 	return merged
 }

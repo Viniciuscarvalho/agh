@@ -23,7 +23,7 @@ type sessionStartSpec struct {
 	agentName              string
 	workspace              workspacepkg.ResolvedWorkspace
 	channel                string
-	sessionType            SessionType
+	sessionType            Type
 	postEvent              hookspkg.HookEvent
 	startAction            string
 	cleanupSessionDir      bool
@@ -33,6 +33,18 @@ type sessionStartSpec struct {
 	acpSessionID           string
 	stopReason             store.StopReason
 	stopDetail             string
+}
+
+type sessionStartRuntime struct {
+	agent      aghconfig.ResolvedAgent
+	mcpServers []aghconfig.MCPServer
+}
+
+type sessionStartStorage struct {
+	sessionDir string
+	metaPath   string
+	dbPath     string
+	recorder   EventRecorder
 }
 
 func (m *Manager) prepareCreateStart(ctx context.Context, opts CreateOpts) (sessionStartSpec, error) {
@@ -46,7 +58,7 @@ func (m *Manager) prepareCreateStart(ctx context.Context, opts CreateOpts) (sess
 		return sessionStartSpec{}, err
 	}
 
-	agentName, err := aghconfig.ResolveAgentName(opts.AgentName, resolvedWorkspace.Config)
+	agentName, err := aghconfig.ResolveAgentName(opts.AgentName, resolvedWorkspace.Config.Defaults)
 	if err != nil {
 		return sessionStartSpec{}, fmt.Errorf("session: resolve agent name: %w", err)
 	}
@@ -86,7 +98,7 @@ func (m *Manager) prepareResumeStart(ctx context.Context, meta store.SessionMeta
 		agentName:              meta.AgentName,
 		workspace:              resolvedWorkspace,
 		channel:                strings.TrimSpace(meta.Channel),
-		sessionType:            normalizeSessionType(SessionType(meta.SessionType)),
+		sessionType:            normalizeSessionType(Type(meta.SessionType)),
 		postEvent:              hookspkg.HookSessionPostResume,
 		startAction:            "resume",
 		includePromptUpdatedAt: true,
@@ -98,33 +110,15 @@ func (m *Manager) prepareResumeStart(ctx context.Context, meta store.SessionMeta
 	}, nil
 }
 
-func (m *Manager) startSession(ctx context.Context, spec sessionStartSpec) (_ *Session, err error) {
-	agentDef, err := resolveWorkspaceAgent(spec.agentName, spec.workspace)
-	if err != nil {
-		return nil, fmt.Errorf("session: resolve workspace agent %q: %w", spec.agentName, err)
-	}
+func (m *Manager) startSession(ctx context.Context, spec *sessionStartSpec) (_ *Session, err error) {
+	now := m.now()
 
-	startupPrompt, err := m.startupPrompt(ctx, spec.startupSessionContext(m.now()), agentDef, spec.workspace)
-	if err != nil {
-		return nil, err
-	}
-	startupPrompt, err = appendBundledNetworkSkill(startupPrompt, spec.channel)
-	if err != nil {
-		return nil, err
-	}
-	agentDef.Prompt = startupPrompt
-
-	resolved, err := spec.workspace.Config.ResolveAgent(agentDef)
-	if err != nil {
-		return nil, fmt.Errorf("session: resolve agent %q: %w", spec.agentName, err)
-	}
-
-	startMCPServers, err := m.resolveStartMCPServers(ctx, spec.workspace, resolved.MCPServers)
+	runtime, err := m.prepareSessionStartRuntime(ctx, spec, now)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := m.reserve(spec.sessionID, m.effectiveMaxSessions(spec.workspace.Config)); err != nil {
+	if err := m.reserve(spec.sessionID, m.effectiveMaxSessions(&spec.workspace.Config)); err != nil {
 		return nil, err
 	}
 	defer func() {
@@ -133,18 +127,9 @@ func (m *Manager) startSession(ctx context.Context, spec sessionStartSpec) (_ *S
 		}
 	}()
 
-	sessionDir := filepath.Join(m.homePaths.SessionsDir, spec.sessionID)
-	if spec.cleanupSessionDir {
-		if err := os.MkdirAll(sessionDir, 0o755); err != nil {
-			return nil, fmt.Errorf("session: create session directory %q: %w", sessionDir, err)
-		}
-	}
-
-	metaPath := store.SessionMetaFile(sessionDir)
-	dbPath := store.SessionDBFile(sessionDir)
-	recorder, err := m.openStore(ctx, spec.sessionID, dbPath)
+	storage, err := m.openSessionStartStorage(ctx, spec)
 	if err != nil {
-		return nil, fmt.Errorf("session: open session store %q: %w", dbPath, err)
+		return nil, err
 	}
 
 	var proc *AgentProcess
@@ -155,49 +140,15 @@ func (m *Manager) startSession(ctx context.Context, spec sessionStartSpec) (_ *S
 
 		cleanupDir := ""
 		if spec.cleanupSessionDir {
-			cleanupDir = sessionDir
+			cleanupDir = storage.sessionDir
 		}
-		err = errors.Join(err, m.cleanupFailedStart(cleanupDir, recorder, proc))
+		err = errors.Join(err, m.cleanupFailedStart(cleanupDir, storage.recorder, proc))
 	}()
 
-	now := m.now()
-	createdAt := spec.createdAt
-	if createdAt.IsZero() {
-		createdAt = now
-	}
+	session := spec.newStartingSession(runtime.agent, storage, now)
 
-	session := &Session{
-		ID:           spec.sessionID,
-		Name:         spec.sessionName,
-		AgentName:    resolved.Name,
-		WorkspaceID:  spec.workspace.ID,
-		Workspace:    spec.workspace.RootDir,
-		Channel:      spec.channel,
-		Type:         normalizeSessionType(spec.sessionType),
-		State:        StateStarting,
-		stopReason:   spec.stopReason,
-		stopDetail:   spec.stopDetail,
-		ACPSessionID: spec.acpSessionID,
-		CreatedAt:    createdAt,
-		UpdatedAt:    now,
-		sessionDir:   sessionDir,
-		metaPath:     metaPath,
-		dbPath:       dbPath,
-		recorder:     recorder,
-	}
-
-	startOpts := acp.StartOpts{
-		AgentName:       resolved.Name,
-		Command:         resolved.Command,
-		Cwd:             spec.workspace.RootDir,
-		AdditionalDirs:  append([]string(nil), spec.workspace.AdditionalDirs...),
-		Env:             sessionStartEnv(os.Environ(), session),
-		MCPServers:      startMCPServers,
-		Permissions:     m.startPermissions(session.Type, resolved.Permissions),
-		SystemPrompt:    resolved.Prompt,
-		ResumeSessionID: spec.acpSessionID,
-	}
-	startOpts, err = m.dispatchAgentPreStart(ctx, session, resolved, startOpts)
+	startOpts := m.sessionStartOpts(spec, session, runtime.agent, runtime.mcpServers)
+	startOpts, err = m.dispatchAgentPreStart(ctx, session, runtime.agent, startOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -212,14 +163,21 @@ func (m *Manager) startSession(ctx context.Context, spec sessionStartSpec) (_ *S
 	}
 	proc.configureRuntime(session.CurrentTurnSource)
 
-	if err := m.activateAndWatch(ctx, session, proc, resolved, spec.postEvent, spec.preserveStopReason); err != nil {
+	if err := m.activateAndWatch(
+		ctx,
+		session,
+		proc,
+		runtime.agent,
+		spec.postEvent,
+		spec.preserveStopReason,
+	); err != nil {
 		return nil, err
 	}
 
 	return session, nil
 }
 
-func (s sessionStartSpec) startupSessionContext(updatedAt time.Time) hookspkg.SessionContext {
+func (s *sessionStartSpec) startupSessionContext(updatedAt time.Time) hookspkg.SessionContext {
 	ref := workref.NewRoot(s.workspace.ID, s.workspace.RootDir)
 	ctx := hookspkg.SessionContext{
 		SessionID:    strings.TrimSpace(s.sessionID),
@@ -236,6 +194,117 @@ func (s sessionStartSpec) startupSessionContext(updatedAt time.Time) hookspkg.Se
 		ctx.UpdatedAt = updatedAt
 	}
 	return ctx
+}
+
+func (m *Manager) prepareSessionStartRuntime(
+	ctx context.Context,
+	spec *sessionStartSpec,
+	updatedAt time.Time,
+) (sessionStartRuntime, error) {
+	agentDef, err := resolveWorkspaceAgent(spec.agentName, &spec.workspace)
+	if err != nil {
+		return sessionStartRuntime{}, fmt.Errorf("session: resolve workspace agent %q: %w", spec.agentName, err)
+	}
+
+	startupPrompt, err := m.startupPrompt(ctx, spec.startupSessionContext(updatedAt), agentDef, &spec.workspace)
+	if err != nil {
+		return sessionStartRuntime{}, err
+	}
+	startupPrompt, err = appendBundledNetworkSkill(startupPrompt, spec.channel)
+	if err != nil {
+		return sessionStartRuntime{}, err
+	}
+	agentDef.Prompt = startupPrompt
+
+	resolved, err := spec.workspace.Config.ResolveAgent(agentDef)
+	if err != nil {
+		return sessionStartRuntime{}, fmt.Errorf("session: resolve agent %q: %w", spec.agentName, err)
+	}
+
+	startMCPServers, err := m.resolveStartMCPServers(ctx, &spec.workspace, resolved.MCPServers)
+	if err != nil {
+		return sessionStartRuntime{}, err
+	}
+
+	return sessionStartRuntime{
+		agent:      resolved,
+		mcpServers: startMCPServers,
+	}, nil
+}
+
+func (m *Manager) openSessionStartStorage(
+	ctx context.Context,
+	spec *sessionStartSpec,
+) (sessionStartStorage, error) {
+	sessionDir := filepath.Join(m.homePaths.SessionsDir, spec.sessionID)
+	if spec.cleanupSessionDir {
+		if err := os.MkdirAll(sessionDir, 0o755); err != nil {
+			return sessionStartStorage{}, fmt.Errorf("session: create session directory %q: %w", sessionDir, err)
+		}
+	}
+
+	dbPath := store.SessionDBFile(sessionDir)
+	recorder, err := m.openStore(ctx, spec.sessionID, dbPath)
+	if err != nil {
+		return sessionStartStorage{}, fmt.Errorf("session: open session store %q: %w", dbPath, err)
+	}
+
+	return sessionStartStorage{
+		sessionDir: sessionDir,
+		metaPath:   store.SessionMetaFile(sessionDir),
+		dbPath:     dbPath,
+		recorder:   recorder,
+	}, nil
+}
+
+func (s *sessionStartSpec) newStartingSession(
+	resolved aghconfig.ResolvedAgent,
+	storage sessionStartStorage,
+	now time.Time,
+) *Session {
+	createdAt := s.createdAt
+	if createdAt.IsZero() {
+		createdAt = now
+	}
+
+	return &Session{
+		ID:           s.sessionID,
+		Name:         s.sessionName,
+		AgentName:    resolved.Name,
+		WorkspaceID:  s.workspace.ID,
+		Workspace:    s.workspace.RootDir,
+		Channel:      s.channel,
+		Type:         normalizeSessionType(s.sessionType),
+		State:        StateStarting,
+		stopReason:   s.stopReason,
+		stopDetail:   s.stopDetail,
+		ACPSessionID: s.acpSessionID,
+		CreatedAt:    createdAt,
+		UpdatedAt:    now,
+		sessionDir:   storage.sessionDir,
+		metaPath:     storage.metaPath,
+		dbPath:       storage.dbPath,
+		recorder:     storage.recorder,
+	}
+}
+
+func (m *Manager) sessionStartOpts(
+	s *sessionStartSpec,
+	session *Session,
+	resolved aghconfig.ResolvedAgent,
+	mcpServers []aghconfig.MCPServer,
+) acp.StartOpts {
+	return acp.StartOpts{
+		AgentName:       resolved.Name,
+		Command:         resolved.Command,
+		Cwd:             s.workspace.RootDir,
+		AdditionalDirs:  append([]string(nil), s.workspace.AdditionalDirs...),
+		Env:             sessionStartEnv(os.Environ(), session),
+		MCPServers:      mcpServers,
+		Permissions:     m.startPermissions(session.Type, resolved.Permissions),
+		SystemPrompt:    resolved.Prompt,
+		ResumeSessionID: s.acpSessionID,
+	}
 }
 
 func sessionStartEnv(base []string, session *Session) []string {

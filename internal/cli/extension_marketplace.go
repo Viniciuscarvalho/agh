@@ -18,11 +18,13 @@ import (
 
 const (
 	defaultExtensionRegistrySearchLimit = 20
-	extensionInstallRestartMessage      = "Extension installed. Restart the daemon to activate, or it will be discovered on next boot."
-	extensionUpdateRestartMessage       = "Extension updated. Restart the daemon to activate the new version."
+	extensionRegistryGitHub             = "github"
+	extensionInstallRestartMessage      = "Extension installed. Restart the daemon to activate, " +
+		"or it will be discovered on next boot."
+	extensionUpdateRestartMessage = "Extension updated. Restart the daemon to activate the new version."
 )
 
-type extensionRegistrySourceLoader func(runtimeContext) ([]registrypkg.RegistrySource, error)
+type extensionRegistrySourceLoader func(*runtimeContext) ([]registrypkg.Source, error)
 
 type extensionRemoveItem struct {
 	Name   string `json:"name"`
@@ -50,7 +52,9 @@ type stagedExtensionDirChange struct {
 	backupDir string
 }
 
-func defaultExtensionRegistrySourceLoader(runtime runtimeContext) ([]registrypkg.RegistrySource, error) {
+func defaultExtensionRegistrySourceLoader(
+	runtime *runtimeContext,
+) ([]registrypkg.Source, error) {
 	cfg := runtime.Config.Extensions.Marketplace
 	registryName := strings.ToLower(strings.TrimSpace(cfg.Registry))
 	if registryName == "" && strings.TrimSpace(cfg.BaseURL) == "" {
@@ -58,8 +62,8 @@ func defaultExtensionRegistrySourceLoader(runtime runtimeContext) ([]registrypkg
 	}
 
 	switch registryName {
-	case "github":
-		return []registrypkg.RegistrySource{
+	case extensionRegistryGitHub:
+		return []registrypkg.Source{
 			registrygithub.NewClient(cfg.BaseURL),
 		}, nil
 	default:
@@ -67,12 +71,18 @@ func defaultExtensionRegistrySourceLoader(runtime runtimeContext) ([]registrypkg
 	}
 }
 
-func searchExtensions(ctx context.Context, deps commandDeps, query string, sourceFilter string, limit int) (_ []registrypkg.Listing, err error) {
+func searchExtensions(
+	ctx context.Context,
+	deps commandDeps,
+	query string,
+	sourceFilter string,
+	limit int,
+) (_ []registrypkg.Listing, err error) {
 	if limit <= 0 {
 		return nil, fmt.Errorf("cli: search limit must be positive: %d", limit)
 	}
 
-	runtime, sources, err := loadExtensionRegistrySources(ctx, deps, sourceFilter)
+	sources, err := loadExtensionRegistrySources(deps, sourceFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +100,6 @@ func searchExtensions(ctx context.Context, deps commandDeps, query string, sourc
 		return nil, err
 	}
 
-	_ = runtime
 	return listings, nil
 }
 
@@ -102,93 +111,139 @@ func installMarketplaceExtension(
 	version string,
 	asset string,
 ) (_ ExtensionRecord, _ string, err error) {
-	item, err := withLocalExtensionRegistry(ctx, deps, func(runtime runtimeContext, registry localExtensionRegistry) (_ ExtensionRecord, err error) {
-		sources, err := configuredExtensionRegistrySources(runtime, deps, sourceFilter)
-		if err != nil {
-			return ExtensionRecord{}, err
-		}
-
-		multi := registrypkg.NewMultiRegistry(slog.Default(), sources...)
-		defer func() {
-			err = errors.Join(err, multi.Close())
-		}()
-
-		detail, err := multi.Info(ctx, slug)
-		if err != nil {
-			return ExtensionRecord{}, err
-		}
-
-		stagingDir, err := extensionpkg.NewManagedInstallStagingDir(runtime.HomePaths)
-		if err != nil {
-			return ExtensionRecord{}, err
-		}
-		defer func() {
-			removeErr := os.RemoveAll(stagingDir)
-			if removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
-				err = errors.Join(err, fmt.Errorf("cli: remove staged extension directory %q: %w", stagingDir, removeErr))
-			}
-		}()
-
-		installer := registrypkg.NewInstaller(multi)
-		result, err := installer.Install(ctx, slug, registrypkg.DownloadOpts{
-			Version: strings.TrimSpace(version),
-			Asset:   strings.TrimSpace(asset),
-		}, stagingDir)
-		if err != nil {
-			return ExtensionRecord{}, err
-		}
-
-		manifest, err := extensionpkg.LoadManifest(result.InstallPath)
-		if err != nil {
-			return ExtensionRecord{}, fmt.Errorf("cli: load installed extension manifest for %q: %w", slug, err)
-		}
-
-		if _, getErr := registry.Get(manifest.Name); getErr == nil {
-			return ExtensionRecord{}, &extensionpkg.ExtensionExistsError{Name: manifest.Name}
-		} else if !errors.Is(getErr, extensionpkg.ErrExtensionNotFound) {
-			return ExtensionRecord{}, getErr
-		}
-
-		finalDir := extensionpkg.ManagedInstallPath(runtime.HomePaths, manifest.Name)
-		if err := registrypkg.MoveInstalledDir(result.InstallPath, finalDir, false); err != nil {
-			return ExtensionRecord{}, fmt.Errorf("cli: move extension %q into managed install path: %w", manifest.Name, err)
-		}
-
-		remoteVersion := firstNonEmpty(result.Version, detail.Version, manifest.Version)
-		registryName := strings.TrimSpace(detail.Source)
-		if err := registry.Install(
-			manifest,
-			finalDir,
-			result.Checksum,
-			extensionpkg.WithInstallSource(extensionpkg.SourceMarketplace),
-			extensionpkg.WithInstallRegistryMetadata(slug, registryName, remoteVersion),
-		); err != nil {
-			cleanupErr := os.RemoveAll(finalDir)
-			if cleanupErr != nil && !errors.Is(cleanupErr, os.ErrNotExist) {
-				err = errors.Join(err, fmt.Errorf("cli: remove failed extension install %q: %w", finalDir, cleanupErr))
-			}
-			return ExtensionRecord{}, err
-		}
-
-		info, err := registry.Get(manifest.Name)
-		if err != nil {
-			return ExtensionRecord{}, err
-		}
-
-		return localExtensionRecord(*info, deps.now), nil
-	})
+	item, err := withLocalExtensionRegistry(
+		ctx,
+		deps,
+		func(runtime *runtimeContext, registry localExtensionRegistry) (ExtensionRecord, error) {
+			return installMarketplaceExtensionWithRegistry(
+				ctx,
+				runtime,
+				deps,
+				registry,
+				slug,
+				sourceFilter,
+				version,
+				asset,
+			)
+		},
+	)
 	if err != nil {
 		return ExtensionRecord{}, "", err
 	}
 	return item, extensionInstallRestartMessage, nil
 }
 
-func removeInstalledExtension(ctx context.Context, deps commandDeps, name string) (_ extensionRemoveItem, err error) {
-	return withLocalExtensionRegistry(ctx, deps, func(_ runtimeContext, registry localExtensionRegistry) (_ extensionRemoveItem, err error) {
-		return removeInstalledExtensionWithRegistry(registry, name, func(targetDir string) (extensionDirChange, error) {
-			return stageExtensionDirRemoval(targetDir)
-		})
-	})
+func installMarketplaceExtensionWithRegistry(
+	ctx context.Context,
+	runtime *runtimeContext,
+	deps commandDeps,
+	registry localExtensionRegistry,
+	slug string,
+	sourceFilter string,
+	version string,
+	asset string,
+) (_ ExtensionRecord, err error) {
+	sources, err := configuredExtensionRegistrySources(runtime, deps, sourceFilter)
+	if err != nil {
+		return ExtensionRecord{}, err
+	}
+
+	multi := registrypkg.NewMultiRegistry(slog.Default(), sources...)
+	defer func() {
+		err = errors.Join(err, multi.Close())
+	}()
+
+	detail, err := multi.Info(ctx, slug)
+	if err != nil {
+		return ExtensionRecord{}, err
+	}
+
+	stagingDir, err := extensionpkg.NewManagedInstallStagingDir(runtime.HomePaths)
+	if err != nil {
+		return ExtensionRecord{}, err
+	}
+	defer joinRemoveAll(&err, stagingDir, "cli: remove staged extension directory")
+
+	result, err := installMarketplaceExtensionToDir(ctx, multi, slug, version, asset, stagingDir)
+	if err != nil {
+		return ExtensionRecord{}, err
+	}
+
+	manifest, err := extensionpkg.LoadManifest(result.InstallPath)
+	if err != nil {
+		return ExtensionRecord{}, fmt.Errorf(
+			"cli: load installed extension manifest for %q: %w",
+			slug,
+			err,
+		)
+	}
+	if err := ensureExtensionNotInstalled(registry, manifest.Name); err != nil {
+		return ExtensionRecord{}, err
+	}
+
+	finalDir := extensionpkg.ManagedInstallPath(runtime.HomePaths, manifest.Name)
+	if err := registrypkg.MoveInstalledDir(result.InstallPath, finalDir, false); err != nil {
+		return ExtensionRecord{}, fmt.Errorf(
+			"cli: move extension %q into managed install path: %w",
+			manifest.Name,
+			err,
+		)
+	}
+
+	remoteVersion := firstNonEmpty(result.Version, detail.Version, manifest.Version)
+	registryName := strings.TrimSpace(detail.Source)
+	if err := installMarketplaceExtensionRecord(
+		registry,
+		manifest,
+		finalDir,
+		result.Checksum,
+		slug,
+		registryName,
+		remoteVersion,
+	); err != nil {
+		return ExtensionRecord{}, errors.Join(err, removeExtensionDir(finalDir))
+	}
+
+	info, err := registry.Get(manifest.Name)
+	if err != nil {
+		return ExtensionRecord{}, err
+	}
+	return localExtensionRecord(*info, deps.now), nil
+}
+
+func installMarketplaceExtensionToDir(
+	ctx context.Context,
+	registry *registrypkg.MultiRegistry,
+	slug string,
+	version string,
+	asset string,
+	targetDir string,
+) (*registrypkg.InstallResult, error) {
+	installer := registrypkg.NewInstaller(registry)
+	return installer.Install(ctx, slug, registrypkg.DownloadOpts{
+		Version: strings.TrimSpace(version),
+		Asset:   strings.TrimSpace(asset),
+	}, targetDir)
+}
+
+func removeInstalledExtension(
+	ctx context.Context,
+	deps commandDeps,
+	name string,
+) (_ extensionRemoveItem, err error) {
+	return withLocalExtensionRegistry(
+		ctx,
+		deps,
+		func(_ *runtimeContext, registry localExtensionRegistry) (_ extensionRemoveItem, err error) {
+			return removeInstalledExtensionWithRegistry(
+				registry,
+				name,
+				func(targetDir string) (extensionDirChange, error) {
+					return stageExtensionDirRemoval(targetDir)
+				},
+			)
+		},
+	)
 }
 
 func removeInstalledExtensionWithRegistry(
@@ -242,7 +297,11 @@ func restoreRemovedExtensionRecord(
 
 	manifest, err := extensionpkg.LoadManifest(installDir)
 	if err != nil {
-		return fmt.Errorf("cli: reload extension manifest from %q after failed remove: %w", installDir, err)
+		return fmt.Errorf(
+			"cli: reload extension manifest from %q after failed remove: %w",
+			installDir,
+			err,
+		)
 	}
 
 	opts := []extensionpkg.InstallOption{
@@ -274,28 +333,39 @@ func updateMarketplaceExtensions(
 	updateAll bool,
 	checkOnly bool,
 ) (_ []extensionUpdateItem, err error) {
-	return withLocalExtensionRegistry(ctx, deps, func(runtime runtimeContext, registry localExtensionRegistry) (_ []extensionUpdateItem, err error) {
-		targets, err := selectMarketplaceExtensionsForUpdate(registry, args, updateAll)
-		if err != nil {
-			return nil, err
-		}
-
-		items := make([]extensionUpdateItem, 0, len(targets))
-		for _, info := range targets {
-			item, err := updateMarketplaceExtension(ctx, runtime, deps, registry, info, checkOnly)
+	return withLocalExtensionRegistry(
+		ctx,
+		deps,
+		func(runtime *runtimeContext, registry localExtensionRegistry) (_ []extensionUpdateItem, err error) {
+			targets, err := selectMarketplaceExtensionsForUpdate(registry, args, updateAll)
 			if err != nil {
 				return nil, err
 			}
-			items = append(items, item)
-		}
 
-		return items, nil
-	})
+			items := make([]extensionUpdateItem, 0, len(targets))
+			for _, info := range targets {
+				item, err := updateMarketplaceExtension(
+					ctx,
+					runtime,
+					deps,
+					registry,
+					info,
+					checkOnly,
+				)
+				if err != nil {
+					return nil, err
+				}
+				items = append(items, item)
+			}
+
+			return items, nil
+		},
+	)
 }
 
 func updateMarketplaceExtension(
 	ctx context.Context,
-	runtime runtimeContext,
+	runtime *runtimeContext,
 	deps commandDeps,
 	registry localExtensionRegistry,
 	info extensionpkg.ExtensionInfo,
@@ -303,11 +373,17 @@ func updateMarketplaceExtension(
 ) (_ extensionUpdateItem, err error) {
 	slug := dereferenceOptionalString(info.RegistrySlug)
 	if slug == "" {
-		return extensionUpdateItem{}, fmt.Errorf("cli: extension %q is missing registry slug metadata", info.Name)
+		return extensionUpdateItem{}, fmt.Errorf(
+			"cli: extension %q is missing registry slug metadata",
+			info.Name,
+		)
 	}
 	registryName := dereferenceOptionalString(info.RegistryName)
 	if registryName == "" {
-		return extensionUpdateItem{}, fmt.Errorf("cli: extension %q is missing registry source metadata", info.Name)
+		return extensionUpdateItem{}, fmt.Errorf(
+			"cli: extension %q is missing registry source metadata",
+			info.Name,
+		)
 	}
 
 	sources, err := configuredExtensionRegistrySources(runtime, deps, registryName)
@@ -341,93 +417,144 @@ func updateMarketplaceExtension(
 	}
 
 	if !updateInfo.HasUpdate {
-		item.Status = "already up to date"
+		item.Status = skillUpdateStatusCurrent
 		return item, nil
 	}
 	if checkOnly {
-		item.Status = "update available"
+		item.Status = skillUpdateStatusAvailable
 		return item, nil
 	}
 
-	stagingDir, err := extensionpkg.NewManagedInstallStagingDir(runtime.HomePaths)
+	remoteVersion, err := applyMarketplaceExtensionUpdate(
+		ctx,
+		runtime,
+		registry,
+		multi,
+		slug,
+		registryName,
+		updateInfo.LatestVersion,
+		info.Name,
+		item.Path,
+	)
 	if err != nil {
 		return extensionUpdateItem{}, err
+	}
+	item.LatestVersion = remoteVersion
+	item.Status = skillUpdateStatusUpdated
+	return item, nil
+}
+
+func applyMarketplaceExtensionUpdate(
+	ctx context.Context,
+	runtime *runtimeContext,
+	registry localExtensionRegistry,
+	multi *registrypkg.MultiRegistry,
+	slug string,
+	registryName string,
+	latestVersion string,
+	installedName string,
+	installDir string,
+) (_ string, err error) {
+	stagingDir, err := extensionpkg.NewManagedInstallStagingDir(runtime.HomePaths)
+	if err != nil {
+		return "", err
 	}
 	defer func() {
 		removeErr := os.RemoveAll(stagingDir)
 		if removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
-			err = errors.Join(err, fmt.Errorf("cli: remove staged extension directory %q: %w", stagingDir, removeErr))
+			err = errors.Join(
+				err,
+				fmt.Errorf("cli: remove staged extension directory %q: %w", stagingDir, removeErr),
+			)
 		}
 	}()
 
 	installer := registrypkg.NewInstaller(multi)
 	result, err := installer.Install(ctx, slug, registrypkg.DownloadOpts{
-		Version: strings.TrimSpace(updateInfo.LatestVersion),
+		Version: strings.TrimSpace(latestVersion),
 	}, stagingDir)
 	if err != nil {
-		return extensionUpdateItem{}, err
+		return "", err
 	}
 
-	manifest, err := extensionpkg.LoadManifest(result.InstallPath)
+	manifest, err := loadMarketplaceUpdatedExtensionManifest(result.InstallPath, installedName)
 	if err != nil {
-		return extensionUpdateItem{}, fmt.Errorf("cli: load updated extension manifest for %q: %w", info.Name, err)
-	}
-	if manifest.Name != info.Name {
-		return extensionUpdateItem{}, fmt.Errorf(
-			"cli: extension update identity mismatch: installed %q, registry returned %q",
-			info.Name,
-			manifest.Name,
-		)
+		return "", err
 	}
 
-	change, err := stageExtensionDirReplacement(result.InstallPath, item.Path)
+	change, err := stageExtensionDirReplacement(result.InstallPath, installDir)
 	if err != nil {
-		return extensionUpdateItem{}, err
+		return "", err
 	}
 
-	remoteVersion := firstNonEmpty(result.Version, updateInfo.LatestVersion, manifest.Version)
+	remoteVersion := firstNonEmpty(result.Version, latestVersion, manifest.Version)
 	if err := registry.Install(
 		manifest,
-		item.Path,
+		installDir,
 		result.Checksum,
 		extensionpkg.WithInstallSource(extensionpkg.SourceMarketplace),
 		extensionpkg.WithInstallRegistryMetadata(slug, registryName, remoteVersion),
 		extensionpkg.WithInstallReplaceExisting(),
 	); err != nil {
-		rollbackErr := change.Rollback()
-		return extensionUpdateItem{}, errors.Join(err, rollbackErr)
+		return "", errors.Join(err, change.Rollback())
 	}
 	if err := change.Commit(); err != nil {
-		return extensionUpdateItem{}, err
+		return "", err
 	}
+	return remoteVersion, nil
+}
 
-	item.LatestVersion = remoteVersion
-	item.Status = "updated"
-	return item, nil
+func joinRemoveAll(errp *error, path string, label string) {
+	removeErr := os.RemoveAll(path)
+	if removeErr == nil || errors.Is(removeErr, os.ErrNotExist) {
+		return
+	}
+	*errp = errors.Join(*errp, fmt.Errorf("%s %q: %w", label, path, removeErr))
+}
+
+func loadMarketplaceUpdatedExtensionManifest(
+	installPath string,
+	installedName string,
+) (*extensionpkg.Manifest, error) {
+	manifest, err := extensionpkg.LoadManifest(installPath)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"cli: load updated extension manifest for %q: %w",
+			installedName,
+			err,
+		)
+	}
+	if manifest.Name != installedName {
+		return nil, fmt.Errorf(
+			"cli: extension update identity mismatch: installed %q, registry returned %q",
+			installedName,
+			manifest.Name,
+		)
+	}
+	return manifest, nil
 }
 
 func loadExtensionRegistrySources(
-	_ context.Context,
 	deps commandDeps,
 	sourceFilter string,
-) (runtimeContext, []registrypkg.RegistrySource, error) {
+) ([]registrypkg.Source, error) {
 	runtime, err := loadRuntimeContext(deps)
 	if err != nil {
-		return runtimeContext{}, nil, err
+		return nil, err
 	}
 
 	sources, err := configuredExtensionRegistrySources(runtime, deps, sourceFilter)
 	if err != nil {
-		return runtimeContext{}, nil, err
+		return nil, err
 	}
-	return runtime, sources, nil
+	return sources, nil
 }
 
 func configuredExtensionRegistrySources(
-	runtime runtimeContext,
+	runtime *runtimeContext,
 	deps commandDeps,
 	sourceFilter string,
-) ([]registrypkg.RegistrySource, error) {
+) ([]registrypkg.Source, error) {
 	loader := deps.loadExtensionRegistrySources
 	if loader == nil {
 		loader = defaultExtensionRegistrySourceLoader
@@ -453,35 +580,88 @@ func configuredExtensionRegistrySources(
 	return filtered, nil
 }
 
+func ensureExtensionNotInstalled(registry localExtensionRegistry, name string) error {
+	if _, err := registry.Get(name); err == nil {
+		return &extensionpkg.ExtensionExistsError{Name: name}
+	} else if !errors.Is(err, extensionpkg.ErrExtensionNotFound) {
+		return err
+	}
+	return nil
+}
+
+func installMarketplaceExtensionRecord(
+	registry localExtensionRegistry,
+	manifest *extensionpkg.Manifest,
+	finalDir string,
+	checksum string,
+	slug string,
+	registryName string,
+	remoteVersion string,
+) error {
+	return registry.Install(
+		manifest,
+		finalDir,
+		checksum,
+		extensionpkg.WithInstallSource(extensionpkg.SourceMarketplace),
+		extensionpkg.WithInstallRegistryMetadata(slug, registryName, remoteVersion),
+	)
+}
+
+func removeExtensionDir(path string) error {
+	if err := os.RemoveAll(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("cli: remove failed extension install %q: %w", path, err)
+	}
+	return nil
+}
+
 func installedExtensionDir(info extensionpkg.ExtensionInfo) (string, error) {
 	manifestPath := filepath.Clean(strings.TrimSpace(info.ManifestPath))
 	if manifestPath == "" || manifestPath == "." {
-		return "", fmt.Errorf("cli: extension %q has an invalid manifest path %q", info.Name, info.ManifestPath)
+		return "", fmt.Errorf(
+			"cli: extension %q has an invalid manifest path %q",
+			info.Name,
+			info.ManifestPath,
+		)
 	}
 	if !filepath.IsAbs(manifestPath) {
-		return "", fmt.Errorf("cli: extension %q has a non-absolute manifest path %q", info.Name, info.ManifestPath)
+		return "", fmt.Errorf(
+			"cli: extension %q has a non-absolute manifest path %q",
+			info.Name,
+			info.ManifestPath,
+		)
 	}
 
 	switch filepath.Base(manifestPath) {
 	case "extension.toml", "extension.json":
 	default:
-		return "", fmt.Errorf("cli: extension %q has an invalid manifest path %q", info.Name, info.ManifestPath)
+		return "", fmt.Errorf(
+			"cli: extension %q has an invalid manifest path %q",
+			info.Name,
+			info.ManifestPath,
+		)
 	}
 
 	installDir := filepath.Dir(manifestPath)
 	if installDir == "." || installDir == string(filepath.Separator) {
-		return "", fmt.Errorf("cli: extension %q has an invalid install directory %q", info.Name, installDir)
+		return "", fmt.Errorf(
+			"cli: extension %q has an invalid install directory %q",
+			info.Name,
+			installDir,
+		)
 	}
 	return installDir, nil
 }
 
-func filterExtensionRegistrySources(sources []registrypkg.RegistrySource, sourceFilter string) []registrypkg.RegistrySource {
+func filterExtensionRegistrySources(
+	sources []registrypkg.Source,
+	sourceFilter string,
+) []registrypkg.Source {
 	filter := strings.ToLower(strings.TrimSpace(sourceFilter))
 	if filter == "" {
 		return sources
 	}
 
-	filtered := make([]registrypkg.RegistrySource, 0, len(sources))
+	filtered := make([]registrypkg.Source, 0, len(sources))
 	for _, source := range sources {
 		if source == nil {
 			continue
@@ -493,13 +673,16 @@ func filterExtensionRegistrySources(sources []registrypkg.RegistrySource, source
 	return filtered
 }
 
-func closeUnselectedExtensionRegistrySources(sources []registrypkg.RegistrySource, sourceFilter string) error {
+func closeUnselectedExtensionRegistrySources(
+	sources []registrypkg.Source,
+	sourceFilter string,
+) error {
 	filter := strings.TrimSpace(sourceFilter)
 	if filter == "" {
 		return nil
 	}
 
-	dropped := make([]registrypkg.RegistrySource, 0, len(sources))
+	dropped := make([]registrypkg.Source, 0, len(sources))
 	for _, source := range sources {
 		if source == nil {
 			continue
@@ -513,7 +696,7 @@ func closeUnselectedExtensionRegistrySources(sources []registrypkg.RegistrySourc
 	return closeRegistrySources(dropped)
 }
 
-func closeRegistrySources(sources []registrypkg.RegistrySource) error {
+func closeRegistrySources(sources []registrypkg.Source) error {
 	errs := make([]error, 0, len(sources))
 	for _, source := range sources {
 		if source == nil {
@@ -569,14 +752,18 @@ func selectMarketplaceExtensionsForUpdate(
 		return nil, err
 	}
 	if !marketplaceExtensionInstalled(*info) {
-		return nil, fmt.Errorf("cli: extension %q is not a marketplace-installed extension", info.Name)
+		return nil, fmt.Errorf(
+			"cli: extension %q is not a marketplace-installed extension",
+			info.Name,
+		)
 	}
 
 	return []extensionpkg.ExtensionInfo{*info}, nil
 }
 
 func marketplaceExtensionInstalled(info extensionpkg.ExtensionInfo) bool {
-	return info.Source == extensionpkg.SourceMarketplace && dereferenceOptionalString(info.RegistrySlug) != ""
+	return info.Source == extensionpkg.SourceMarketplace &&
+		dereferenceOptionalString(info.RegistrySlug) != ""
 }
 
 func stageExtensionDirRemoval(targetDir string) (*stagedExtensionDirChange, error) {
@@ -603,13 +790,20 @@ func stageExtensionDirRemoval(targetDir string) (*stagedExtensionDirChange, erro
 	return change, nil
 }
 
-func stageExtensionDirReplacement(stagingDir string, targetDir string) (*stagedExtensionDirChange, error) {
+func stageExtensionDirReplacement(
+	stagingDir string,
+	targetDir string,
+) (*stagedExtensionDirChange, error) {
 	change := &stagedExtensionDirChange{
 		targetDir: targetDir,
 	}
 
 	if err := os.MkdirAll(filepath.Dir(targetDir), 0o755); err != nil {
-		return nil, fmt.Errorf("cli: create extension install parent %q: %w", filepath.Dir(targetDir), err)
+		return nil, fmt.Errorf(
+			"cli: create extension install parent %q: %w",
+			filepath.Dir(targetDir),
+			err,
+		)
 	}
 
 	if _, err := os.Stat(targetDir); err == nil {
@@ -717,11 +911,15 @@ func extensionRemoveBundle(item extensionRemoveItem) outputBundle {
 			}), nil
 		},
 		toon: func() (string, error) {
-			return renderToonObject("extension_remove", []string{"name", "path", "status"}, []string{
-				item.Name,
-				item.Path,
-				item.Status,
-			}), nil
+			return renderToonObject(
+				"extension_remove",
+				[]string{"name", "path", "status"},
+				[]string{
+					item.Name,
+					item.Path,
+					item.Status,
+				},
+			), nil
 		},
 	}
 }

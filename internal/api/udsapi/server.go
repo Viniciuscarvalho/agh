@@ -119,9 +119,11 @@ func WithHomePaths(homePaths aghconfig.HomePaths) Option {
 }
 
 // WithConfig overrides the runtime configuration used by the server.
-func WithConfig(cfg aghconfig.Config) Option {
+func WithConfig(cfg *aghconfig.Config) Option {
 	return func(server *Server) {
-		server.config = cfg
+		if cfg != nil {
+			server.config = *cfg
+		}
 	}
 }
 
@@ -272,7 +274,21 @@ func New(opts ...Option) (*Server, error) {
 		return nil, fmt.Errorf("udsapi: resolve home paths: %w", err)
 	}
 
-	server := &Server{
+	server := newDefaultServer(homePaths)
+	applyOptions(server, opts)
+	if err := server.finalize(); err != nil {
+		return nil, err
+	}
+
+	server.ensureEngine()
+	server.handlers = newHandlers(server.handlerConfig())
+	RegisterRoutes(server.engine, server.handlers)
+
+	return server, nil
+}
+
+func newDefaultServer(homePaths aghconfig.HomePaths) *Server {
+	return &Server{
 		homePaths: homePaths,
 		config:    aghconfig.DefaultWithHome(homePaths),
 		logger:    slog.Default(),
@@ -282,80 +298,104 @@ func New(opts ...Option) (*Server, error) {
 		pollInterval: defaultPollInterval,
 		agentLoader:  aghconfig.LoadAgentDef,
 	}
+}
+
+func applyOptions(server *Server, opts []Option) {
 	for _, opt := range opts {
 		if opt != nil {
 			opt(server)
 		}
 	}
+}
 
-	if server.logger == nil {
-		server.logger = slog.Default()
+func (s *Server) finalize() error {
+	s.applyDefaults()
+	if err := s.validateRequired(); err != nil {
+		return err
 	}
-	if server.now == nil {
-		server.now = func() time.Time {
+	return s.configureSocketPath()
+}
+
+func (s *Server) applyDefaults() {
+	if s.logger == nil {
+		s.logger = slog.Default()
+	}
+	if s.now == nil {
+		s.now = func() time.Time {
 			return time.Now().UTC()
 		}
 	}
-	if server.pollInterval <= 0 {
-		server.pollInterval = defaultPollInterval
+	if s.pollInterval <= 0 {
+		s.pollInterval = defaultPollInterval
 	}
-	if server.startedAt.IsZero() {
-		server.startedAt = server.now()
+	if s.startedAt.IsZero() {
+		s.startedAt = s.now()
 	}
-	if server.agentLoader == nil {
-		server.agentLoader = aghconfig.LoadAgentDef
+	if s.agentLoader == nil {
+		s.agentLoader = aghconfig.LoadAgentDef
 	}
-	if server.sessions == nil {
-		return nil, ErrSessionManagerRequired
+	if strings.TrimSpace(s.config.Daemon.Socket) == "" {
+		s.config.Daemon.Socket = s.homePaths.DaemonSocket
 	}
-	if server.tasks == nil {
-		return nil, ErrTaskServiceRequired
+}
+
+func (s *Server) validateRequired() error {
+	switch {
+	case s.sessions == nil:
+		return ErrSessionManagerRequired
+	case s.tasks == nil:
+		return ErrTaskServiceRequired
+	case s.observer == nil:
+		return ErrObserverRequired
+	case s.workspaces == nil:
+		return ErrWorkspaceResolverRequired
+	default:
+		return nil
 	}
-	if server.observer == nil {
-		return nil, ErrObserverRequired
+}
+
+func (s *Server) configureSocketPath() error {
+	if strings.TrimSpace(s.socketPath) == "" {
+		s.socketPath = strings.TrimSpace(s.config.Daemon.Socket)
 	}
-	if server.workspaces == nil {
-		return nil, ErrWorkspaceResolverRequired
+	if strings.TrimSpace(s.socketPath) == "" {
+		return errors.New("udsapi: socket path is required")
 	}
-	if strings.TrimSpace(server.config.Daemon.Socket) == "" {
-		server.config.Daemon.Socket = server.homePaths.DaemonSocket
-	}
-	if strings.TrimSpace(server.socketPath) == "" {
-		server.socketPath = strings.TrimSpace(server.config.Daemon.Socket)
-	}
-	if strings.TrimSpace(server.socketPath) == "" {
-		return nil, errors.New("udsapi: socket path is required")
-	}
-	if server.engine == nil {
-		server.engine = gin.New()
-		server.engine.Use(gin.Recovery())
+	return nil
+}
+
+func (s *Server) ensureEngine() {
+	if s.engine != nil {
+		return
 	}
 
-	server.handlers = newHandlers(handlerConfig{
-		sessions:       server.sessions,
-		tasks:          server.tasks,
-		network:        server.network,
-		networkStore:   server.networkStore,
-		observer:       server.observer,
-		automation:     server.automation,
-		bridges:        server.bridges,
-		bundles:        server.bundles,
-		workspaces:     server.workspaces,
-		skillsRegistry: server.skillsRegistry,
-		memoryStore:    server.memoryStore,
-		dreamTrigger:   server.dreamTrigger,
-		homePaths:      server.homePaths,
-		config:         server.config,
-		logger:         server.logger,
-		startedAt:      server.startedAt,
-		now:            server.now,
-		pollInterval:   server.pollInterval,
-		agentLoader:    server.agentLoader,
-		extensions:     server.extensions,
-	})
-	RegisterRoutes(server.engine, server.handlers)
+	s.engine = gin.New()
+	s.engine.Use(gin.Recovery())
+}
 
-	return server, nil
+func (s *Server) handlerConfig() *handlerConfig {
+	return &handlerConfig{
+		sessions:       s.sessions,
+		tasks:          s.tasks,
+		network:        s.network,
+		networkStore:   s.networkStore,
+		observer:       s.observer,
+		automation:     s.automation,
+		bridges:        s.bridges,
+		bundles:        s.bundles,
+		workspaces:     s.workspaces,
+		skillsRegistry: s.skillsRegistry,
+		memoryStore:    s.memoryStore,
+		dreamTrigger:   s.dreamTrigger,
+		homePaths:      s.homePaths,
+		config:         s.config,
+		logger:         s.logger,
+		startedAt:      s.startedAt,
+		now:            s.now,
+		pollInterval:   s.pollInterval,
+		agentLoader:    s.agentLoader,
+		extensions:     s.extensions,
+	}
 }
 
 // Path reports the served Unix domain socket path.
@@ -389,7 +429,8 @@ func (s *Server) Start(ctx context.Context) error {
 		return err
 	}
 
-	ln, err := net.Listen("unix", socketPath)
+	var listenConfig net.ListenConfig
+	ln, err := listenConfig.Listen(ctx, "unix", socketPath)
 	if err != nil {
 		return fmt.Errorf("udsapi: listen on %q: %w", socketPath, err)
 	}
@@ -426,7 +467,10 @@ func (s *Server) Start(ctx context.Context) error {
 
 	go func() {
 		defer close(serveDone)
-		if err := httpServer.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
+		if err := httpServer.Serve(
+			ln,
+		); err != nil && !errors.Is(err, http.ErrServerClosed) &&
+			!errors.Is(err, net.ErrClosed) {
 			s.mu.Lock()
 			s.serveErr = fmt.Errorf("udsapi: serve socket %q: %w", socketPath, err)
 			s.mu.Unlock()
@@ -535,13 +579,17 @@ func waitForServeDone(ctx context.Context, done <-chan struct{}) error {
 	}
 }
 
-func newHandlers(cfg handlerConfig) *Handlers {
+func newHandlers(cfg *handlerConfig) *Handlers {
+	if cfg == nil {
+		cfg = &handlerConfig{}
+	}
+
 	if cfg.pollInterval <= 0 {
 		cfg.pollInterval = defaultPollInterval
 	}
 
 	return &Handlers{
-		BaseHandlers: core.NewBaseHandlers(core.BaseHandlerConfig{
+		BaseHandlers: core.NewBaseHandlers(&core.BaseHandlerConfig{
 			TransportName:                "udsapi",
 			MaskInternalErrors:           false,
 			IncludeSessionWorkspaceInSSE: true,

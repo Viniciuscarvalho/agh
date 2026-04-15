@@ -206,12 +206,17 @@ func (d *Driver) initializeConnection(ctx context.Context, process *AgentProcess
 			Version: defaultClientVersion,
 		},
 	}
-	initializeResponse, err := acpsdk.SendRequest[acpsdk.InitializeResponse](process.conn, ctx, acpsdk.AgentMethodInitialize, initRequest)
+	initializeResponse, err := acpsdk.SendRequest[acpsdk.InitializeResponse](
+		process.conn,
+		ctx,
+		acpsdk.AgentMethodInitialize,
+		initRequest,
+	)
 	if err != nil {
 		return fmt.Errorf("acp: initialize session for %q: %w", agentName, err)
 	}
 
-	process.Caps = ACPCaps{
+	process.Caps = Caps{
 		SupportsLoadSession: initializeResponse.AgentCapabilities.LoadSession,
 	}
 	return nil
@@ -226,7 +231,12 @@ func (d *Driver) negotiateSession(ctx context.Context, process *AgentProcess, no
 
 func (d *Driver) loadSession(ctx context.Context, process *AgentProcess, normalized StartOpts) error {
 	if !process.Caps.SupportsLoadSession {
-		return fmt.Errorf("%w: agent %q does not support session/load for resume %q", ErrAgentDoesNotSupportSession, normalized.AgentName, normalized.ResumeSessionID)
+		return fmt.Errorf(
+			"%w: agent %q does not support session/load for resume %q",
+			ErrAgentDoesNotSupportSession,
+			normalized.AgentName,
+			normalized.ResumeSessionID,
+		)
 	}
 
 	loadRequest := acpsdk.LoadSessionRequest{
@@ -240,9 +250,20 @@ func (d *Driver) loadSession(ctx context.Context, process *AgentProcess, normali
 		AdditionalDirs: append([]string(nil), normalized.AdditionalDirs...),
 		SessionID:      loadRequest.SessionId,
 	}
-	loadResponse, err := acpsdk.SendRequest[acpsdk.LoadSessionResponse](process.conn, ctx, acpsdk.AgentMethodSessionLoad, loadWireRequest)
+	loadResponse, err := acpsdk.SendRequest[acpsdk.LoadSessionResponse](
+		process.conn,
+		ctx,
+		acpsdk.AgentMethodSessionLoad,
+		loadWireRequest,
+	)
 	if err != nil {
-		return fmt.Errorf("%w: load session %q for %q: %w", ErrLoadSessionFailed, normalized.ResumeSessionID, normalized.AgentName, err)
+		return fmt.Errorf(
+			"%w: load session %q for %q: %w",
+			ErrLoadSessionFailed,
+			normalized.ResumeSessionID,
+			normalized.AgentName,
+			err,
+		)
 	}
 
 	process.SessionID = normalized.ResumeSessionID
@@ -263,7 +284,12 @@ func (d *Driver) createSession(ctx context.Context, process *AgentProcess, norma
 		McpServers:     newRequest.McpServers,
 		AdditionalDirs: append([]string(nil), normalized.AdditionalDirs...),
 	}
-	newResponse, err := acpsdk.SendRequest[acpsdk.NewSessionResponse](process.conn, ctx, acpsdk.AgentMethodSessionNew, newWireRequest)
+	newResponse, err := acpsdk.SendRequest[acpsdk.NewSessionResponse](
+		process.conn,
+		ctx,
+		acpsdk.AgentMethodSessionNew,
+		newWireRequest,
+	)
 	if err != nil {
 		return fmt.Errorf("acp: create session for %q: %w", normalized.AgentName, err)
 	}
@@ -276,7 +302,11 @@ func (d *Driver) createSession(ctx context.Context, process *AgentProcess, norma
 	return nil
 }
 
-func (d *Driver) applySessionMode(ctx context.Context, process *AgentProcess, permissions aghconfig.PermissionMode) error {
+func (d *Driver) applySessionMode(
+	ctx context.Context,
+	process *AgentProcess,
+	permissions aghconfig.PermissionMode,
+) error {
 	if ctx == nil || process == nil || process.conn == nil {
 		return nil
 	}
@@ -286,10 +316,15 @@ func (d *Driver) applySessionMode(ctx context.Context, process *AgentProcess, pe
 		return nil
 	}
 
-	_, err := acpsdk.SendRequest[acpsdk.SetSessionModeResponse](process.conn, ctx, acpsdk.AgentMethodSessionSetMode, acpsdk.SetSessionModeRequest{
-		SessionId: acpsdk.SessionId(process.SessionID),
-		ModeId:    acpsdk.SessionModeId(modeID),
-	})
+	_, err := acpsdk.SendRequest[acpsdk.SetSessionModeResponse](
+		process.conn,
+		ctx,
+		acpsdk.AgentMethodSessionSetMode,
+		acpsdk.SetSessionModeRequest{
+			SessionId: acpsdk.SessionId(process.SessionID),
+			ModeId:    acpsdk.SessionModeId(modeID),
+		},
+	)
 	return err
 }
 
@@ -435,8 +470,10 @@ func (d *Driver) Stop(ctx context.Context, proc *AgentProcess) error {
 	proc.markStopRequested()
 	var errs []error
 	if strings.TrimSpace(proc.SessionID) != "" {
-		cancelCtx, cancel := context.WithTimeout(context.Background(), time.Second)
-		_ = d.Cancel(cancelCtx, proc)
+		cancelCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
+		if err := d.Cancel(cancelCtx, proc); err != nil && !errors.Is(err, context.Canceled) {
+			errs = append(errs, fmt.Errorf("acp: cancel session prompt: %w", err))
+		}
 		cancel()
 	}
 	if proc.managed != nil {
@@ -487,9 +524,26 @@ func (d *Driver) runPrompt(ctx context.Context, proc *AgentProcess, active *acti
 		select {
 		case <-ctx.Done():
 			if strings.TrimSpace(proc.SessionID) != "" {
-				_ = proc.conn.SendNotification(context.Background(), acpsdk.AgentMethodSessionCancel, acpsdk.CancelNotification{
-					SessionId: acpsdk.SessionId(proc.SessionID),
-				})
+				notifyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
+				defer cancel()
+				if err := proc.conn.SendNotification(
+					notifyCtx,
+					acpsdk.AgentMethodSessionCancel,
+					acpsdk.CancelNotification{
+						SessionId: acpsdk.SessionId(proc.SessionID),
+					},
+				); err != nil && !errors.Is(err, context.Canceled) {
+					d.logger.WarnContext(
+						notifyCtx,
+						"acp: send session cancel notification",
+						"session_id",
+						proc.SessionID,
+						"turn_id",
+						active.turnID,
+						"error",
+						err,
+					)
+				}
 			}
 		case <-cancellationDone:
 		}
@@ -499,7 +553,12 @@ func (d *Driver) runPrompt(ctx context.Context, proc *AgentProcess, active *acti
 		SessionId: acpsdk.SessionId(proc.SessionID),
 		Prompt:    []acpsdk.ContentBlock{acpsdk.TextBlock(proc.nextPromptText(req.Message))},
 	}
-	response, err := acpsdk.SendRequest[wirePromptResponse](proc.conn, ctx, acpsdk.AgentMethodSessionPrompt, promptRequest)
+	response, err := acpsdk.SendRequest[wirePromptResponse](
+		proc.conn,
+		ctx,
+		acpsdk.AgentMethodSessionPrompt,
+		promptRequest,
+	)
 	close(cancellationDone)
 
 	if err != nil {
@@ -598,7 +657,10 @@ func daemonMatchedEnv(base []string) []string {
 	if err != nil {
 		return env
 	}
-	if resolved, resolveErr := filepath.EvalSymlinks(executable); resolveErr == nil && strings.TrimSpace(resolved) != "" {
+	if resolved, resolveErr := filepath.EvalSymlinks(
+		executable,
+	); resolveErr == nil &&
+		strings.TrimSpace(resolved) != "" {
 		executable = resolved
 	}
 	executable = strings.TrimSpace(executable)
@@ -758,8 +820,8 @@ func toSDKMCPServers(servers []aghconfig.MCPServer) []acpsdk.McpServer {
 	return converted
 }
 
-func captureCaps(loadSession bool, modes *acpsdk.SessionModeState, models *acpsdk.SessionModelState) ACPCaps {
-	caps := ACPCaps{SupportsLoadSession: loadSession}
+func captureCaps(loadSession bool, modes *acpsdk.SessionModeState, models *acpsdk.SessionModelState) Caps {
+	caps := Caps{SupportsLoadSession: loadSession}
 	if modes != nil {
 		caps.SupportedModes = make([]string, 0, len(modes.AvailableModes))
 		for _, mode := range modes.AvailableModes {

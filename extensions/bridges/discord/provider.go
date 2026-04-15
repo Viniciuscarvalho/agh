@@ -84,18 +84,18 @@ type discordProviderConfig struct {
 	Webhook       struct {
 		ListenAddr string `json:"listen_addr,omitempty"`
 		Path       string `json:"path,omitempty"`
-	} `json:"webhook,omitempty"`
+	} `json:"webhook"`
 	Batching struct {
 		DelayMS        int `json:"delay_ms,omitempty"`
 		SplitDelayMS   int `json:"split_delay_ms,omitempty"`
 		SplitThreshold int `json:"split_threshold,omitempty"`
-	} `json:"batching,omitempty"`
+	} `json:"batching"`
 	DM struct {
 		AllowUserIDs    []string `json:"allow_user_ids,omitempty"`
 		AllowUsernames  []string `json:"allow_usernames,omitempty"`
 		PairedUserIDs   []string `json:"paired_user_ids,omitempty"`
 		PairedUsernames []string `json:"paired_usernames,omitempty"`
-	} `json:"dm,omitempty"`
+	} `json:"dm"`
 }
 
 type resolvedInstanceConfig struct {
@@ -321,7 +321,10 @@ func newDiscordProvider(stderr io.Writer) (*discordProvider, error) {
 }
 
 func (p *discordProvider) serve(stdin io.Reader, stdout io.Writer) error {
-	p.reportSideEffectError("write start marker", appendMarkerLine(p.env.startsPath, fmt.Sprintf("pid=%d", os.Getpid())))
+	p.reportSideEffectError(
+		"write start marker",
+		appendMarkerLine(p.env.startsPath, fmt.Sprintf("pid=%d", os.Getpid())),
+	)
 	return p.sdk.Serve(context.Background(), stdin, stdout)
 }
 
@@ -337,11 +340,9 @@ func (p *discordProvider) handleInitialize(_ context.Context, session *bridgesdk
 	p.reportSideEffectError("write initialize marker", writeJSONFile(p.env.handshakePath, marker))
 	p.clearLastError()
 
-	p.wg.Add(1)
-	go func() {
-		defer p.wg.Done()
+	p.wg.Go(func() {
 		p.afterInitialize(session)
-	}()
+	})
 
 	return nil
 }
@@ -376,17 +377,22 @@ func (p *discordProvider) afterInitialize(session *bridgesdk.Session) {
 	}
 	p.reportSideEffectError("write ownership marker", writeJSONFile(p.env.ownershipPath, ownership))
 
-	configs, reconcileErr := p.reconcileInstanceConfigs(ctx, session, listed)
-	if reconcileErr != nil && ownershipErr == nil {
-		ownershipErr = reconcileErr
-	}
-	for _, cfg := range configs {
+	configs := p.reconcileInstanceConfigs(ctx, session, listed)
+	for idx := range configs {
+		cfg := configs[idx]
 		status := cfg.initialStatus
 		degradation := cfg.initialDegradation
 		if status == "" {
 			status = bridgepkg.BridgeStatusReady
 		}
-		if _, err := p.reportState(ctx, session, cfg.instanceID, status, degradation); err != nil && ownershipErr == nil {
+		if err := p.reportState(
+			ctx,
+			session,
+			cfg.instanceID,
+			status,
+			degradation,
+		); err != nil &&
+			ownershipErr == nil {
 			ownershipErr = err
 		}
 	}
@@ -428,7 +434,12 @@ func (p *discordProvider) handleBridgesDeliver(
 	}
 
 	api := p.apiFactory(cfg)
-	ack, state, err := executeDiscordDelivery(ctx, api, request, p.deliveryState(cfg.instanceID, request.Event.DeliveryID))
+	ack, state, err := executeDiscordDelivery(
+		ctx,
+		api,
+		request,
+		p.deliveryState(cfg.instanceID, request.Event.DeliveryID),
+	)
 	if err != nil {
 		marker.Error = err.Error()
 		p.reportSideEffectError("write failed delivery marker", appendJSONLine(p.env.deliveryPath, marker))
@@ -470,7 +481,10 @@ func (p *discordProvider) handleShutdown(
 	shutdownCtx := context.Background()
 	if request.DeadlineMS > 0 {
 		var cancel context.CancelFunc
-		shutdownCtx, cancel = context.WithTimeout(context.Background(), time.Duration(request.DeadlineMS)*time.Millisecond)
+		shutdownCtx, cancel = context.WithTimeout(
+			context.Background(),
+			time.Duration(request.DeadlineMS)*time.Millisecond,
+		)
 		defer cancel()
 	}
 
@@ -478,7 +492,10 @@ func (p *discordProvider) handleShutdown(
 	server := p.server
 	p.mu.Unlock()
 	if server != nil {
-		_ = server.Shutdown(shutdownCtx)
+		if err := server.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			p.reportSideEffectError("shutdown discord webhook server", err)
+			p.setLastError(err)
+		}
 	}
 
 	done := make(chan struct{})
@@ -492,22 +509,28 @@ func (p *discordProvider) handleShutdown(
 	case <-shutdownCtx.Done():
 	}
 
-	p.reportSideEffectError("write shutdown marker", appendMarkerLine(p.env.shutdownPath, fmt.Sprintf("pid=%d", os.Getpid())))
+	p.reportSideEffectError(
+		"write shutdown marker",
+		appendMarkerLine(p.env.shutdownPath, fmt.Sprintf("pid=%d", os.Getpid())),
+	)
 	return nil
 }
 
 func (p *discordProvider) stop() {
 	p.stopOnce.Do(func() {
 		close(p.stopCh)
+		batchersToClose := make(map[*bridgesdk.InboundBatcher]struct{}, len(p.routes))
 		p.mu.Lock()
-		defer p.mu.Unlock()
-		for id, cfg := range p.routes {
+		for instanceID := range p.routes {
+			cfg := p.routes[instanceID]
 			if cfg.batcher != nil {
-				cfg.batcher.Close()
+				batchersToClose[cfg.batcher] = struct{}{}
 				cfg.batcher = nil
-				p.routes[id] = cfg
+				p.routes[instanceID] = cfg
 			}
 		}
+		p.mu.Unlock()
+		closeDiscordInboundBatchers(batchersToClose)
 	})
 }
 
@@ -548,14 +571,15 @@ func (p *discordProvider) reportState(
 	bridgeInstanceID string,
 	status bridgepkg.BridgeStatus,
 	degradation *bridgepkg.BridgeDegradation,
-) (*bridgepkg.BridgeInstance, error) {
+) error {
 	var result *bridgepkg.BridgeInstance
 	err := p.retryHostCall(ctx, func(callCtx context.Context) error {
-		instance, callErr := session.HostAPI().ReportBridgeInstanceState(callCtx, extensioncontract.BridgesInstancesReportStateParams{
-			BridgeInstanceID: strings.TrimSpace(bridgeInstanceID),
-			Status:           status,
-			Degradation:      cloneDegradation(degradation),
-		})
+		instance, callErr := session.HostAPI().
+			ReportBridgeInstanceState(callCtx, extensioncontract.BridgesInstancesReportStateParams{
+				BridgeInstanceID: strings.TrimSpace(bridgeInstanceID),
+				Status:           status,
+				Degradation:      cloneDegradation(degradation),
+			})
 		if callErr == nil {
 			result = instance
 		}
@@ -567,7 +591,7 @@ func (p *discordProvider) reportState(
 			Status:           status,
 			Error:            err.Error(),
 		}))
-		return nil, err
+		return err
 	}
 
 	p.mu.Lock()
@@ -578,17 +602,23 @@ func (p *discordProvider) reportState(
 		Status:           result.Status,
 		Instance:         *result,
 	}))
-	return result, nil
+	return nil
 }
 
-func (p *discordProvider) reportReadyIfNeeded(ctx context.Context, session *bridgesdk.Session, bridgeInstanceID string) {
+func (p *discordProvider) reportReadyIfNeeded(
+	ctx context.Context,
+	session *bridgesdk.Session,
+	bridgeInstanceID string,
+) {
 	p.mu.RLock()
 	status := p.reportedStatus[strings.TrimSpace(bridgeInstanceID)]
 	p.mu.RUnlock()
 	if status == bridgepkg.BridgeStatusReady {
 		return
 	}
-	_, _ = p.reportState(ctx, session, bridgeInstanceID, bridgepkg.BridgeStatusReady, nil)
+	if err := p.reportState(ctx, session, bridgeInstanceID, bridgepkg.BridgeStatusReady, nil); err != nil {
+		p.setLastError(err)
+	}
 }
 
 func (p *discordProvider) ingestBridgeMessage(
@@ -614,7 +644,7 @@ func (p *discordProvider) retryHostCall(ctx context.Context, fn func(context.Con
 
 	delay := 10 * time.Millisecond
 	var lastErr error
-	for attempt := 0; attempt < 6; attempt++ {
+	for range 6 {
 		err := fn(ctx)
 		if err == nil {
 			return nil
@@ -657,73 +687,21 @@ func (p *discordProvider) reconcileInstanceConfigs(
 	ctx context.Context,
 	session *bridgesdk.Session,
 	managed []subprocess.InitializeBridgeManagedInstance,
-) ([]resolvedInstanceConfig, error) {
+) []resolvedInstanceConfig {
 	if len(managed) == 0 {
 		p.mu.Lock()
 		p.routes = make(map[string]resolvedInstanceConfig)
 		p.mu.Unlock()
-		return nil, nil
+		return nil
 	}
 
-	configs := make([]resolvedInstanceConfig, 0, len(managed))
-	requestedListen := strings.TrimSpace(os.Getenv(discordListenAddrEnv))
-	usedPaths := make(map[string]string, len(managed))
-
-	for _, item := range managed {
-		cfg := p.resolveInstanceConfig(session, item)
-		if cfg.listenAddr != "" {
-			if requestedListen == "" {
-				requestedListen = cfg.listenAddr
-			} else if requestedListen != cfg.listenAddr && cfg.configError == nil {
-				cfg.configError = fmt.Errorf("discord: instance %q configured incompatible listen_addr %q (runtime uses %q)", cfg.instanceID, cfg.listenAddr, requestedListen)
-			}
-		}
-		if owner, ok := usedPaths[cfg.webhookPath]; ok && cfg.webhookPath != "" && cfg.configError == nil {
-			cfg.configError = fmt.Errorf("discord: webhook path %q is shared by %q and %q", cfg.webhookPath, owner, cfg.instanceID)
-		}
-		if cfg.webhookPath != "" {
-			usedPaths[cfg.webhookPath] = cfg.instanceID
-		}
-		configs = append(configs, cfg)
-	}
-
-	if requestedListen == "" {
-		for idx := range configs {
-			if configs[idx].configError == nil {
-				configs[idx].configError = errors.New("discord: webhook listen address is required")
-			}
-		}
-	} else if err := p.startServer(requestedListen); err != nil {
-		for idx := range configs {
-			if configs[idx].configError == nil {
-				configs[idx].configError = err
-			}
-		}
-	}
-
-	nextRoutes := make(map[string]resolvedInstanceConfig, len(configs))
-	p.mu.Lock()
-	existing := p.routes
-	for _, cfg := range configs {
-		if prior, ok := existing[cfg.instanceID]; ok && prior.batcher != nil && cfg.batcher == nil {
-			prior.batcher.Close()
-		}
-		nextRoutes[cfg.instanceID] = cfg
-	}
-	for instanceID, prior := range existing {
-		if _, ok := nextRoutes[instanceID]; ok {
-			continue
-		}
-		if prior.batcher != nil {
-			prior.batcher.Close()
-		}
-	}
-	p.routes = nextRoutes
-	p.listenAddr = requestedListen
-	p.mu.Unlock()
+	configs, requestedListen := p.collectDiscordConfigs(session, managed)
+	p.applyDiscordListenErrors(configs, requestedListen)
+	nextRoutes := buildDiscordRouteMap(configs)
+	closeDiscordInboundBatchers(p.swapDiscordRoutes(nextRoutes, requestedListen))
 
 	for idx := range configs {
-		status, degradation, err := p.determineInitialState(ctx, configs[idx])
+		status, degradation, err := p.determineInitialState(ctx, &configs[idx])
 		if err != nil {
 			p.setLastError(err)
 		}
@@ -731,7 +709,114 @@ func (p *discordProvider) reconcileInstanceConfigs(
 		configs[idx].initialDegradation = degradation
 	}
 
-	return configs, nil
+	return configs
+}
+
+func (p *discordProvider) collectDiscordConfigs(
+	session *bridgesdk.Session,
+	managed []subprocess.InitializeBridgeManagedInstance,
+) ([]resolvedInstanceConfig, string) {
+	configs := make([]resolvedInstanceConfig, 0, len(managed))
+	requestedListen := strings.TrimSpace(os.Getenv(discordListenAddrEnv))
+	usedPaths := make(map[string]string, len(managed))
+
+	for _, item := range managed {
+		cfg := p.resolveInstanceConfig(session, item)
+		requestedListen = applyDiscordListenConstraint(&cfg, requestedListen)
+		applyDiscordWebhookPathConflict(&cfg, usedPaths)
+		configs = append(configs, cfg)
+	}
+
+	return configs, requestedListen
+}
+
+func applyDiscordListenConstraint(cfg *resolvedInstanceConfig, requestedListen string) string {
+	if cfg == nil || cfg.listenAddr == "" {
+		return requestedListen
+	}
+	if requestedListen == "" {
+		return cfg.listenAddr
+	}
+	if requestedListen != cfg.listenAddr && cfg.configError == nil {
+		cfg.configError = fmt.Errorf(
+			"discord: instance %q configured incompatible listen_addr %q (runtime uses %q)",
+			cfg.instanceID,
+			cfg.listenAddr,
+			requestedListen,
+		)
+	}
+	return requestedListen
+}
+
+func applyDiscordWebhookPathConflict(cfg *resolvedInstanceConfig, usedPaths map[string]string) {
+	if cfg == nil || cfg.webhookPath == "" {
+		return
+	}
+	if owner, ok := usedPaths[cfg.webhookPath]; ok && cfg.configError == nil {
+		cfg.configError = fmt.Errorf(
+			"discord: webhook path %q is shared by %q and %q",
+			cfg.webhookPath,
+			owner,
+			cfg.instanceID,
+		)
+	}
+	usedPaths[cfg.webhookPath] = cfg.instanceID
+}
+
+func (p *discordProvider) applyDiscordListenErrors(configs []resolvedInstanceConfig, requestedListen string) {
+	if requestedListen == "" {
+		for idx := range configs {
+			if configs[idx].configError == nil {
+				configs[idx].configError = errors.New("discord: webhook listen address is required")
+			}
+		}
+		return
+	}
+	if err := p.startServer(requestedListen); err != nil {
+		for idx := range configs {
+			if configs[idx].configError == nil {
+				configs[idx].configError = err
+			}
+		}
+	}
+}
+
+func buildDiscordRouteMap(configs []resolvedInstanceConfig) map[string]resolvedInstanceConfig {
+	nextRoutes := make(map[string]resolvedInstanceConfig, len(configs))
+	for idx := range configs {
+		cfg := configs[idx]
+		nextRoutes[cfg.instanceID] = cfg
+	}
+	return nextRoutes
+}
+
+func (p *discordProvider) swapDiscordRoutes(
+	nextRoutes map[string]resolvedInstanceConfig,
+	requestedListen string,
+) map[*bridgesdk.InboundBatcher]struct{} {
+	batchersToClose := make(map[*bridgesdk.InboundBatcher]struct{})
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	existing := p.routes
+	for instanceID := range nextRoutes {
+		cfg := nextRoutes[instanceID]
+		if prior, ok := existing[instanceID]; ok && prior.batcher != nil && prior.batcher != cfg.batcher {
+			batchersToClose[prior.batcher] = struct{}{}
+		}
+	}
+	for instanceID := range existing {
+		prior := existing[instanceID]
+		if _, ok := nextRoutes[instanceID]; ok {
+			continue
+		}
+		if prior.batcher != nil {
+			batchersToClose[prior.batcher] = struct{}{}
+		}
+	}
+	p.routes = nextRoutes
+	p.listenAddr = requestedListen
+	return batchersToClose
 }
 
 func (p *discordProvider) resolveInstanceConfig(
@@ -752,7 +837,9 @@ func (p *discordProvider) resolveInstanceConfig(
 	botToken, _ := session.Cache().BoundSecretValue(managed.Instance.ID, "bot_token")
 	publicKey, _ := session.Cache().BoundSecretValue(managed.Instance.ID, "public_key")
 	listenAddr := firstNonEmpty(cfg.Webhook.ListenAddr, strings.TrimSpace(os.Getenv(discordListenAddrEnv)))
-	webhookPath := normalizeWebhookPath(firstNonEmpty(cfg.Webhook.Path, "/discord/"+strings.TrimSpace(managed.Instance.ID)))
+	webhookPath := normalizeWebhookPath(
+		firstNonEmpty(cfg.Webhook.Path, "/discord/"+strings.TrimSpace(managed.Instance.ID)),
+	)
 	apiBaseURL := normalizeURL(firstNonEmpty(strings.TrimSpace(os.Getenv(discordAPIBaseEnv)), discordDefaultAPIBaseURL))
 
 	resolved := resolvedInstanceConfig{
@@ -809,8 +896,11 @@ func (p *discordProvider) resolveInstanceConfig(
 
 func (p *discordProvider) determineInitialState(
 	ctx context.Context,
-	cfg resolvedInstanceConfig,
+	cfg *resolvedInstanceConfig,
 ) (bridgepkg.BridgeStatus, *bridgepkg.BridgeDegradation, error) {
+	if cfg == nil {
+		return bridgepkg.BridgeStatusError, nil, errors.New("discord: config is required")
+	}
 	if cfg.configError != nil {
 		return bridgepkg.BridgeStatusDegraded, &bridgepkg.BridgeDegradation{
 			Reason:  bridgepkg.BridgeDegradationReasonTenantConfigInvalid,
@@ -831,7 +921,7 @@ func (p *discordProvider) determineInitialState(
 			Message: wrapped.Error(),
 		}, wrapped
 	}
-	bot, err := p.apiFactory(cfg).GetBotUser(ctx)
+	bot, err := p.apiFactory(*cfg).GetBotUser(ctx)
 	if err != nil {
 		classified := bridgesdk.ClassifyError(err)
 		recovery := classified.Recovery()
@@ -864,12 +954,16 @@ func (p *discordProvider) startServer(listenAddr string) error {
 	p.mu.RUnlock()
 	if server != nil {
 		if currentListen != "" && currentListen != strings.TrimSpace(listenAddr) {
-			return fmt.Errorf("discord: runtime already listening on %q, cannot switch to %q", currentListen, listenAddr)
+			return fmt.Errorf(
+				"discord: runtime already listening on %q, cannot switch to %q",
+				currentListen,
+				listenAddr,
+			)
 		}
 		return nil
 	}
 
-	ln, err := net.Listen("tcp", strings.TrimSpace(listenAddr))
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", strings.TrimSpace(listenAddr))
 	if err != nil {
 		return fmt.Errorf("discord: listen %q: %w", listenAddr, err)
 	}
@@ -887,15 +981,16 @@ func (p *discordProvider) startServer(listenAddr string) error {
 	p.listenAddr = strings.TrimSpace(listenAddr)
 	p.mu.Unlock()
 
-	p.reportSideEffectError("write start marker", appendMarkerLine(p.env.startsPath, fmt.Sprintf("listen=%s", actualAddr)))
+	p.reportSideEffectError(
+		"write start marker",
+		appendMarkerLine(p.env.startsPath, fmt.Sprintf("listen=%s", actualAddr)),
+	)
 
-	p.wg.Add(1)
-	go func() {
-		defer p.wg.Done()
+	p.wg.Go(func() {
 		if serveErr := httpServer.Serve(ln); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			p.setLastError(serveErr)
 		}
-	}()
+	})
 
 	return nil
 }
@@ -921,7 +1016,7 @@ func (p *discordProvider) serveWebhookHTTP(w http.ResponseWriter, r *http.Reques
 		},
 		Now: func() time.Time { return p.now() },
 	}, func(w http.ResponseWriter, r *http.Request, request bridgesdk.WebhookRequest) error {
-		return p.handleWebhookRequest(w, r, cfg, request)
+		return p.handleWebhookRequest(w, r, &cfg, request)
 	})
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -934,7 +1029,7 @@ func (p *discordProvider) serveWebhookHTTP(w http.ResponseWriter, r *http.Reques
 func (p *discordProvider) handleWebhookRequest(
 	w http.ResponseWriter,
 	r *http.Request,
-	cfg resolvedInstanceConfig,
+	cfg *resolvedInstanceConfig,
 	request bridgesdk.WebhookRequest,
 ) error {
 	var probe discordPayloadProbe
@@ -949,7 +1044,7 @@ func (p *discordProvider) handleWebhookRequest(
 
 func (p *discordProvider) handleInteractionWebhook(
 	w http.ResponseWriter,
-	cfg resolvedInstanceConfig,
+	cfg *resolvedInstanceConfig,
 	request bridgesdk.WebhookRequest,
 ) error {
 	var interaction discordInteraction
@@ -965,7 +1060,8 @@ func (p *discordProvider) handleInteractionWebhook(
 		if err != nil {
 			return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
 		}
-		if !cfg.dedup.Mark(mapped.Envelope.IdempotencyKey) && allowDiscordDirectMessage(cfg, mapped.User, mapped.Direct) {
+		if !cfg.dedup.Mark(mapped.Envelope.IdempotencyKey) &&
+			allowDiscordDirectMessage(cfg, mapped.User, mapped.Direct) {
 			p.dispatchAsyncInboundEnvelope(cfg.instanceID, mapped.Envelope)
 		}
 		return writeDiscordInteractionResponse(w, discordInteractionResponseTypeDeferredChannelMessage)
@@ -974,19 +1070,23 @@ func (p *discordProvider) handleInteractionWebhook(
 		if err != nil {
 			return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
 		}
-		if !cfg.dedup.Mark(mapped.Envelope.IdempotencyKey) && allowDiscordDirectMessage(cfg, mapped.User, mapped.Direct) {
+		if !cfg.dedup.Mark(mapped.Envelope.IdempotencyKey) &&
+			allowDiscordDirectMessage(cfg, mapped.User, mapped.Direct) {
 			p.dispatchAsyncInboundEnvelope(cfg.instanceID, mapped.Envelope)
 		}
 		return writeDiscordInteractionResponse(w, discordInteractionResponseTypeDeferredUpdateMessage)
 	default:
-		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: fmt.Sprintf("unsupported discord interaction type %d", interaction.Type)}
+		return &bridgesdk.HTTPError{
+			StatusCode: http.StatusBadRequest,
+			Message:    fmt.Sprintf("unsupported discord interaction type %d", interaction.Type),
+		}
 	}
 }
 
 func (p *discordProvider) handleEventWebhook(
 	w http.ResponseWriter,
 	r *http.Request,
-	cfg resolvedInstanceConfig,
+	cfg *resolvedInstanceConfig,
 	request bridgesdk.WebhookRequest,
 ) error {
 	var envelope discordWebhookEventEnvelope
@@ -1011,53 +1111,89 @@ func (p *discordProvider) handleEventWebhook(
 
 	switch strings.TrimSpace(envelope.Event.Type) {
 	case "MESSAGE_CREATE":
-		var event discordMessageEvent
-		if err := json.Unmarshal(envelope.Event.Data, &event); err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: "invalid discord message event"}
-		}
-		mapped, ignored, err := mapDiscordMessageEvent(event, cfg.managed, parseDiscordReceivedAt(envelope.Event.Timestamp, request.ReceivedAt), strings.TrimSpace(envelope.Event.ID))
-		if err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
-		}
-		if ignored || cfg.dedup.Mark(mapped.Envelope.IdempotencyKey) || !allowDiscordDirectMessage(cfg, mapped.User, mapped.Direct) {
-			return writeWebhookNoContent(w)
-		}
-		if cfg.batcher != nil {
-			if err := cfg.batcher.Enqueue(mapped.Envelope); err != nil {
-				return &bridgesdk.HTTPError{StatusCode: http.StatusInternalServerError, Message: err.Error()}
-			}
-			return writeWebhookNoContent(w)
-		}
-		if err := p.dispatchInboundEnvelope(ctx, cfg.instanceID, mapped.Envelope); err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusInternalServerError, Message: err.Error()}
-		}
-		return writeWebhookNoContent(w)
+		return p.handleDiscordMessageWebhookEvent(ctx, w, cfg, request, envelope)
 	case "MESSAGE_REACTION_ADD", "MESSAGE_REACTION_REMOVE":
-		var event discordReactionEvent
-		if err := json.Unmarshal(envelope.Event.Data, &event); err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: "invalid discord reaction event"}
-		}
-		mapped, err := mapDiscordReactionEvent(event, cfg.managed, parseDiscordReceivedAt(envelope.Event.Timestamp, request.ReceivedAt), strings.TrimSpace(envelope.Event.ID), strings.TrimSpace(envelope.Event.Type))
-		if err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
-		}
-		if cfg.dedup.Mark(mapped.Envelope.IdempotencyKey) || !allowDiscordDirectMessage(cfg, mapped.User, mapped.Direct) {
-			return writeWebhookNoContent(w)
-		}
-		if err := p.dispatchInboundEnvelope(ctx, cfg.instanceID, mapped.Envelope); err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusInternalServerError, Message: err.Error()}
-		}
-		return writeWebhookNoContent(w)
+		return p.handleDiscordReactionWebhookEvent(ctx, w, cfg, request, envelope)
 	default:
 		return writeWebhookNoContent(w)
 	}
 }
 
-func (p *discordProvider) dispatchAsyncInboundEnvelope(instanceID string, envelope bridgepkg.InboundMessageEnvelope) {
-	p.wg.Add(1)
-	go func() {
-		defer p.wg.Done()
+func (p *discordProvider) handleDiscordMessageWebhookEvent(
+	ctx context.Context,
+	w http.ResponseWriter,
+	cfg *resolvedInstanceConfig,
+	request bridgesdk.WebhookRequest,
+	envelope discordWebhookEventEnvelope,
+) error {
+	var event discordMessageEvent
+	if err := json.Unmarshal(envelope.Event.Data, &event); err != nil {
+		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: "invalid discord message event"}
+	}
+	mapped, ignored, err := mapDiscordMessageEvent(event, cfg.managed, request.ReceivedAt, envelope.Event.ID)
+	if err != nil {
+		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
+	}
+	if ignored {
+		return writeWebhookNoContent(w)
+	}
+	return p.dispatchDiscordWebhookEnvelope(ctx, w, cfg, mapped, true)
+}
 
+func (p *discordProvider) handleDiscordReactionWebhookEvent(
+	ctx context.Context,
+	w http.ResponseWriter,
+	cfg *resolvedInstanceConfig,
+	request bridgesdk.WebhookRequest,
+	envelope discordWebhookEventEnvelope,
+) error {
+	var event discordReactionEvent
+	if err := json.Unmarshal(envelope.Event.Data, &event); err != nil {
+		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: "invalid discord reaction event"}
+	}
+	mapped, err := mapDiscordReactionEvent(
+		event,
+		cfg.managed,
+		request.ReceivedAt,
+		envelope.Event.ID,
+		envelope.Event.Type,
+	)
+	if err != nil {
+		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
+	}
+	return p.dispatchDiscordWebhookEnvelope(ctx, w, cfg, mapped, false)
+}
+
+func (p *discordProvider) dispatchDiscordWebhookEnvelope(
+	ctx context.Context,
+	w http.ResponseWriter,
+	cfg *resolvedInstanceConfig,
+	mapped discordMappedInbound,
+	allowBatch bool,
+) error {
+	if cfg == nil {
+		return &bridgesdk.HTTPError{StatusCode: http.StatusInternalServerError, Message: "discord: config is required"}
+	}
+	if cfg.dedup.Mark(mapped.Envelope.IdempotencyKey) {
+		return writeWebhookNoContent(w)
+	}
+	if !allowDiscordDirectMessage(cfg, mapped.User, mapped.Direct) {
+		return writeWebhookNoContent(w)
+	}
+	if allowBatch && cfg.batcher != nil {
+		if err := cfg.batcher.Enqueue(mapped.Envelope); err != nil {
+			return &bridgesdk.HTTPError{StatusCode: http.StatusInternalServerError, Message: err.Error()}
+		}
+		return writeWebhookNoContent(w)
+	}
+	if err := p.dispatchInboundEnvelope(ctx, cfg.instanceID, mapped.Envelope); err != nil {
+		return &bridgesdk.HTTPError{StatusCode: http.StatusInternalServerError, Message: err.Error()}
+	}
+	return writeWebhookNoContent(w)
+}
+
+func (p *discordProvider) dispatchAsyncInboundEnvelope(instanceID string, envelope bridgepkg.InboundMessageEnvelope) {
+	p.wg.Go(func() {
 		select {
 		case <-p.stopCh:
 			return
@@ -1069,10 +1205,14 @@ func (p *discordProvider) dispatchAsyncInboundEnvelope(instanceID string, envelo
 		if err := p.dispatchInboundEnvelope(ctx, instanceID, envelope); err != nil {
 			p.setLastError(err)
 		}
-	}()
+	})
 }
 
-func (p *discordProvider) dispatchInboundBatch(ctx context.Context, bridgeInstanceID string, batch bridgesdk.InboundBatch) error {
+func (p *discordProvider) dispatchInboundBatch(
+	ctx context.Context,
+	bridgeInstanceID string,
+	batch bridgesdk.InboundBatch,
+) error {
 	if len(batch.Items) == 0 {
 		return nil
 	}
@@ -1090,7 +1230,11 @@ func (p *discordProvider) dispatchInboundBatch(ctx context.Context, bridgeInstan
 	return p.dispatchInboundEnvelope(ctx, bridgeInstanceID, merged)
 }
 
-func (p *discordProvider) dispatchInboundEnvelope(ctx context.Context, bridgeInstanceID string, envelope bridgepkg.InboundMessageEnvelope) error {
+func (p *discordProvider) dispatchInboundEnvelope(
+	ctx context.Context,
+	bridgeInstanceID string,
+	envelope bridgepkg.InboundMessageEnvelope,
+) error {
 	session := p.currentSession()
 	if session == nil {
 		return errors.New("discord: runtime session is not initialized")
@@ -1126,7 +1270,10 @@ func (p *discordProvider) configForInstance(instanceID string) (resolvedInstance
 	return cfg, nil
 }
 
-func (p *discordProvider) waitForInstanceConfig(instanceID string, timeout time.Duration) (resolvedInstanceConfig, error) {
+func (p *discordProvider) waitForInstanceConfig(
+	instanceID string,
+	timeout time.Duration,
+) (resolvedInstanceConfig, error) {
 	if timeout <= 0 {
 		return p.configForInstance(instanceID)
 	}
@@ -1156,7 +1303,8 @@ func (p *discordProvider) waitForInstanceConfig(instanceID string, timeout time.
 func (p *discordProvider) configForPath(path string) (resolvedInstanceConfig, bool) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	for _, cfg := range p.routes {
+	for instanceID := range p.routes {
+		cfg := p.routes[instanceID]
 		if cfg.webhookPath == normalizeWebhookPath(path) {
 			return cfg, true
 		}
@@ -1180,6 +1328,12 @@ func (p *discordProvider) storeDeliveryState(instanceID string, deliveryID strin
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.deliveries[deliveryStateKey(instanceID, deliveryID)] = state
+}
+
+func closeDiscordInboundBatchers(batchers map[*bridgesdk.InboundBatcher]struct{}) {
+	for batcher := range batchers {
+		batcher.Close()
+	}
 }
 
 func (p *discordProvider) setLastError(err error) {
@@ -1213,7 +1367,11 @@ func executeDiscordDelivery(
 
 	event := request.Event
 	if event.EventType != bridgepkg.DeliveryEventTypeResume && event.Seq <= state.LastSeq {
-		return bridgepkg.DeliveryAck{}, state, fmt.Errorf("discord: out-of-order delivery seq %d after %d", event.Seq, state.LastSeq)
+		return bridgepkg.DeliveryAck{}, state, fmt.Errorf(
+			"discord: out-of-order delivery seq %d after %d",
+			event.Seq,
+			state.LastSeq,
+		)
 	}
 	if event.EventType == bridgepkg.DeliveryEventTypeResume && request.Snapshot != nil {
 		state.LastSeq = request.Snapshot.LastAckedSeq
@@ -1227,88 +1385,20 @@ func executeDiscordDelivery(
 	}
 
 	switch {
-	case event.Operation.Normalize() == bridgepkg.DeliveryOperationDelete || normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeDelete:
-		remoteID := firstNonEmpty(referenceRemoteMessageID(event.Reference), state.RemoteMessageID)
-		if remoteID == "" && request.Snapshot != nil {
-			remoteID = strings.TrimSpace(request.Snapshot.RemoteMessageID)
-		}
-		if remoteID == "" {
-			return bridgepkg.DeliveryAck{}, state, errors.New("discord: delete delivery requires a remote message id")
-		}
-		targetChannelID, messageID, err := decodeRemoteMessageID(remoteID)
-		if err != nil {
-			return bridgepkg.DeliveryAck{}, state, err
-		}
-		if err := api.DeleteMessage(ctx, discordDeleteMessageRequest{
-			ChannelID: targetChannelID,
-			MessageID: messageID,
-		}); err != nil {
-			return bridgepkg.DeliveryAck{}, state, err
-		}
-		ack := bridgepkg.DeliveryAck{
-			DeliveryID:             event.DeliveryID,
-			Seq:                    event.Seq,
-			RemoteMessageID:        remoteID,
-			ReplaceRemoteMessageID: firstNonEmpty(state.RemoteMessageID, remoteID),
-		}
-		state.LastSeq = event.Seq
-		state.RemoteMessageID = remoteID
-		state.ReplaceRemoteMessageID = ack.ReplaceRemoteMessageID
-		return ack, state, ack.ValidateFor(event)
+	case isDiscordDeleteEvent(event):
+		return executeDiscordDelete(ctx, api, request, state)
 	case shouldPostDiscordMessage(event, state, request):
-		sent, err := api.PostMessage(ctx, discordPostMessageRequest{
-			ChannelID: channelID,
-			Content:   event.Content.Text,
-		})
-		if err != nil {
-			return bridgepkg.DeliveryAck{}, state, err
-		}
-		remoteID := encodeRemoteMessageID(channelID, sent.ID)
-		ack := bridgepkg.DeliveryAck{
-			DeliveryID:      event.DeliveryID,
-			Seq:             event.Seq,
-			RemoteMessageID: remoteID,
-		}
-		state.LastSeq = event.Seq
-		state.ReplaceRemoteMessageID = state.RemoteMessageID
-		state.RemoteMessageID = remoteID
-		if state.ReplaceRemoteMessageID != "" {
-			ack.ReplaceRemoteMessageID = state.ReplaceRemoteMessageID
-		}
-		return ack, state, ack.ValidateFor(event)
+		return executeDiscordCreate(ctx, api, event, state, channelID)
 	default:
-		remoteID := state.RemoteMessageID
-		if remoteID == "" && request.Snapshot != nil {
-			remoteID = strings.TrimSpace(request.Snapshot.RemoteMessageID)
-		}
-		if remoteID == "" {
-			return bridgepkg.DeliveryAck{}, state, errors.New("discord: edit delivery requires a remote message id")
-		}
-		targetChannelID, messageID, err := decodeRemoteMessageID(remoteID)
-		if err != nil {
-			return bridgepkg.DeliveryAck{}, state, err
-		}
-		if err := api.UpdateMessage(ctx, discordUpdateMessageRequest{
-			ChannelID: targetChannelID,
-			MessageID: messageID,
-			Content:   event.Content.Text,
-		}); err != nil {
-			return bridgepkg.DeliveryAck{}, state, err
-		}
-		ack := bridgepkg.DeliveryAck{
-			DeliveryID:             event.DeliveryID,
-			Seq:                    event.Seq,
-			RemoteMessageID:        remoteID,
-			ReplaceRemoteMessageID: firstNonEmpty(state.RemoteMessageID, remoteID),
-		}
-		state.LastSeq = event.Seq
-		state.RemoteMessageID = remoteID
-		state.ReplaceRemoteMessageID = ack.ReplaceRemoteMessageID
-		return ack, state, ack.ValidateFor(event)
+		return executeDiscordUpdate(ctx, api, request, state)
 	}
 }
 
-func shouldPostDiscordMessage(event bridgepkg.DeliveryEvent, state deliveryState, request bridgepkg.DeliveryRequest) bool {
+func shouldPostDiscordMessage(
+	event bridgepkg.DeliveryEvent,
+	state deliveryState,
+	request bridgepkg.DeliveryRequest,
+) bool {
 	if normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeStart {
 		return true
 	}
@@ -1319,6 +1409,115 @@ func shouldPostDiscordMessage(event bridgepkg.DeliveryEvent, state deliveryState
 		return strings.TrimSpace(request.Snapshot.RemoteMessageID) == ""
 	}
 	return strings.TrimSpace(state.RemoteMessageID) == ""
+}
+
+func isDiscordDeleteEvent(event bridgepkg.DeliveryEvent) bool {
+	return event.Operation.Normalize() == bridgepkg.DeliveryOperationDelete ||
+		normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeDelete
+}
+
+func executeDiscordDelete(
+	ctx context.Context,
+	api discordAPI,
+	request bridgepkg.DeliveryRequest,
+	state deliveryState,
+) (bridgepkg.DeliveryAck, deliveryState, error) {
+	event := request.Event
+	remoteID := discordRemoteMessageIDFromRequest(request, state)
+	if remoteID == "" {
+		return bridgepkg.DeliveryAck{}, state, errors.New("discord: delete delivery requires a remote message id")
+	}
+	channelID, messageID, err := decodeRemoteMessageID(remoteID)
+	if err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
+	}
+	if err := api.DeleteMessage(ctx, discordDeleteMessageRequest{
+		ChannelID: channelID,
+		MessageID: messageID,
+	}); err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
+	}
+	ack := bridgepkg.DeliveryAck{
+		DeliveryID:             event.DeliveryID,
+		Seq:                    event.Seq,
+		RemoteMessageID:        remoteID,
+		ReplaceRemoteMessageID: firstNonEmpty(state.RemoteMessageID, remoteID),
+	}
+	state.LastSeq = event.Seq
+	state.RemoteMessageID = remoteID
+	state.ReplaceRemoteMessageID = ack.ReplaceRemoteMessageID
+	return ack, state, ack.ValidateFor(event)
+}
+
+func executeDiscordCreate(
+	ctx context.Context,
+	api discordAPI,
+	event bridgepkg.DeliveryEvent,
+	state deliveryState,
+	channelID string,
+) (bridgepkg.DeliveryAck, deliveryState, error) {
+	sent, err := api.PostMessage(ctx, discordPostMessageRequest{
+		ChannelID: channelID,
+		Content:   event.Content.Text,
+	})
+	if err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
+	}
+	remoteID := encodeRemoteMessageID(channelID, sent.ID)
+	ack := bridgepkg.DeliveryAck{
+		DeliveryID:      event.DeliveryID,
+		Seq:             event.Seq,
+		RemoteMessageID: remoteID,
+	}
+	state.LastSeq = event.Seq
+	state.ReplaceRemoteMessageID = state.RemoteMessageID
+	state.RemoteMessageID = remoteID
+	if state.ReplaceRemoteMessageID != "" {
+		ack.ReplaceRemoteMessageID = state.ReplaceRemoteMessageID
+	}
+	return ack, state, ack.ValidateFor(event)
+}
+
+func executeDiscordUpdate(
+	ctx context.Context,
+	api discordAPI,
+	request bridgepkg.DeliveryRequest,
+	state deliveryState,
+) (bridgepkg.DeliveryAck, deliveryState, error) {
+	event := request.Event
+	remoteID := discordRemoteMessageIDFromRequest(request, state)
+	if remoteID == "" {
+		return bridgepkg.DeliveryAck{}, state, errors.New("discord: edit delivery requires a remote message id")
+	}
+	channelID, messageID, err := decodeRemoteMessageID(remoteID)
+	if err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
+	}
+	if err := api.UpdateMessage(ctx, discordUpdateMessageRequest{
+		ChannelID: channelID,
+		MessageID: messageID,
+		Content:   event.Content.Text,
+	}); err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
+	}
+	ack := bridgepkg.DeliveryAck{
+		DeliveryID:             event.DeliveryID,
+		Seq:                    event.Seq,
+		RemoteMessageID:        remoteID,
+		ReplaceRemoteMessageID: firstNonEmpty(state.RemoteMessageID, remoteID),
+	}
+	state.LastSeq = event.Seq
+	state.RemoteMessageID = remoteID
+	state.ReplaceRemoteMessageID = ack.ReplaceRemoteMessageID
+	return ack, state, ack.ValidateFor(event)
+}
+
+func discordRemoteMessageIDFromRequest(request bridgepkg.DeliveryRequest, state deliveryState) string {
+	remoteID := firstNonEmpty(referenceRemoteMessageID(request.Event.Reference), state.RemoteMessageID)
+	if remoteID == "" && request.Snapshot != nil {
+		return strings.TrimSpace(request.Snapshot.RemoteMessageID)
+	}
+	return remoteID
 }
 
 func mapDiscordMessageEvent(
@@ -1336,11 +1535,20 @@ func mapDiscordMessageEvent(
 
 	receivedAt = parseDiscordReceivedAt(event.Timestamp, receivedAt)
 	user := discordUserIdentity{
-		ID:          normalizeDiscordUserID(event.Author.ID),
-		Username:    normalizeUsername(event.Author.Username),
-		DisplayName: firstNonEmpty(strings.TrimSpace(event.Author.GlobalName), strings.TrimSpace(event.Author.Username), normalizeDiscordUserID(event.Author.ID)),
+		ID:       normalizeDiscordUserID(event.Author.ID),
+		Username: normalizeUsername(event.Author.Username),
+		DisplayName: firstNonEmpty(
+			strings.TrimSpace(event.Author.GlobalName),
+			strings.TrimSpace(event.Author.Username),
+			normalizeDiscordUserID(event.Author.ID),
+		),
 	}
-	peerID, groupID, threadID, direct, err := discordRouteIdentity(event.GuildID, event.ChannelID, event.ParentID, event.ChannelType)
+	peerID, groupID, threadID, direct, err := discordRouteIdentity(
+		event.GuildID,
+		event.ChannelID,
+		event.ParentID,
+		event.ChannelType,
+	)
 	if err != nil {
 		return discordMappedInbound{}, false, err
 	}
@@ -1359,12 +1567,15 @@ func mapDiscordMessageEvent(
 		Content: bridgepkg.MessageContent{
 			Text: strings.TrimSpace(event.Content),
 		},
-		Attachments:    normalizeDiscordAttachments(event.Attachments),
-		EventFamily:    bridgepkg.InboundEventFamilyMessage,
-		IdempotencyKey: firstNonEmpty(strings.TrimSpace(eventID), fmt.Sprintf("discord:%s:message:%s", managed.Instance.ID, strings.TrimSpace(event.ID))),
-		PeerID:         peerID,
-		GroupID:        groupID,
-		ThreadID:       threadID,
+		Attachments: normalizeDiscordAttachments(event.Attachments),
+		EventFamily: bridgepkg.InboundEventFamilyMessage,
+		IdempotencyKey: firstNonEmpty(
+			strings.TrimSpace(eventID),
+			fmt.Sprintf("discord:%s:message:%s", managed.Instance.ID, strings.TrimSpace(event.ID)),
+		),
+		PeerID:   peerID,
+		GroupID:  groupID,
+		ThreadID: threadID,
 	}
 	metadata, err := json.Marshal(map[string]any{
 		"channel_id":   strings.TrimSpace(event.ChannelID),
@@ -1520,17 +1731,29 @@ func mapDiscordReactionEvent(
 	eventID string,
 	eventType string,
 ) (discordMappedInbound, error) {
-	if strings.TrimSpace(event.ChannelID) == "" || strings.TrimSpace(event.MessageID) == "" || strings.TrimSpace(event.UserID) == "" {
-		return discordMappedInbound{}, errors.New("discord: reaction event requires channel_id, message_id, and user_id")
+	if strings.TrimSpace(event.ChannelID) == "" || strings.TrimSpace(event.MessageID) == "" ||
+		strings.TrimSpace(event.UserID) == "" {
+		return discordMappedInbound{}, errors.New(
+			"discord: reaction event requires channel_id, message_id, and user_id",
+		)
 	}
 
 	receivedAt = parseDiscordReceivedAt(event.Timestamp, receivedAt)
 	user := discordUserIdentity{
-		ID:          normalizeDiscordUserID(event.UserID),
-		Username:    normalizeUsername(discordUsernameFromMember(event.Member)),
-		DisplayName: firstNonEmpty(discordGlobalNameFromMember(event.Member), discordUsernameFromMember(event.Member), normalizeDiscordUserID(event.UserID)),
+		ID:       normalizeDiscordUserID(event.UserID),
+		Username: normalizeUsername(discordUsernameFromMember(event.Member)),
+		DisplayName: firstNonEmpty(
+			discordGlobalNameFromMember(event.Member),
+			discordUsernameFromMember(event.Member),
+			normalizeDiscordUserID(event.UserID),
+		),
 	}
-	peerID, groupID, threadID, direct, err := discordRouteIdentity(event.GuildID, event.ChannelID, event.ParentID, event.ChannelType)
+	peerID, groupID, threadID, direct, err := discordRouteIdentity(
+		event.GuildID,
+		event.ChannelID,
+		event.ParentID,
+		event.ChannelType,
+	)
 	if err != nil {
 		return discordMappedInbound{}, err
 	}
@@ -1554,7 +1777,17 @@ func mapDiscordReactionEvent(
 			RawEmoji:  rawDiscordEmoji(event.Emoji),
 			Added:     strings.TrimSpace(eventType) == "MESSAGE_REACTION_ADD",
 		},
-		IdempotencyKey: firstNonEmpty(strings.TrimSpace(eventID), fmt.Sprintf("discord:%s:reaction:%s:%s:%s:%s", managed.Instance.ID, strings.TrimSpace(event.ChannelID), strings.TrimSpace(event.MessageID), strings.TrimSpace(event.UserID), rawDiscordEmoji(event.Emoji))),
+		IdempotencyKey: firstNonEmpty(
+			strings.TrimSpace(eventID),
+			fmt.Sprintf(
+				"discord:%s:reaction:%s:%s:%s:%s",
+				managed.Instance.ID,
+				strings.TrimSpace(event.ChannelID),
+				strings.TrimSpace(event.MessageID),
+				strings.TrimSpace(event.UserID),
+				rawDiscordEmoji(event.Emoji),
+			),
+		),
 	}
 	metadata, err := json.Marshal(map[string]any{
 		"channel_id":   strings.TrimSpace(event.ChannelID),
@@ -1573,7 +1806,10 @@ func mapDiscordReactionEvent(
 	return discordMappedInbound{Envelope: envelope, Direct: direct, User: user}, nil
 }
 
-func allowDiscordDirectMessage(cfg resolvedInstanceConfig, user discordUserIdentity, direct bool) bool {
+func allowDiscordDirectMessage(cfg *resolvedInstanceConfig, user discordUserIdentity, direct bool) bool {
+	if cfg == nil {
+		return false
+	}
 	if !direct {
 		return true
 	}
@@ -1679,20 +1915,41 @@ func (c *discordBotClient) GetBotUser(ctx context.Context) (*discordBotIdentity,
 	return &result, nil
 }
 
-func (c *discordBotClient) PostMessage(ctx context.Context, req discordPostMessageRequest) (*discordPostedMessage, error) {
+func (c *discordBotClient) PostMessage(
+	ctx context.Context,
+	req discordPostMessageRequest,
+) (*discordPostedMessage, error) {
 	var result discordPostedMessage
-	if err := c.callJSON(ctx, http.MethodPost, "/channels/"+strings.TrimSpace(req.ChannelID)+"/messages", req, &result); err != nil {
+	if err := c.callJSON(
+		ctx,
+		http.MethodPost,
+		"/channels/"+strings.TrimSpace(req.ChannelID)+"/messages",
+		req,
+		&result,
+	); err != nil {
 		return nil, err
 	}
 	return &result, nil
 }
 
 func (c *discordBotClient) UpdateMessage(ctx context.Context, req discordUpdateMessageRequest) error {
-	return c.callJSON(ctx, http.MethodPatch, "/channels/"+strings.TrimSpace(req.ChannelID)+"/messages/"+strings.TrimSpace(req.MessageID), req, nil)
+	return c.callJSON(
+		ctx,
+		http.MethodPatch,
+		"/channels/"+strings.TrimSpace(req.ChannelID)+"/messages/"+strings.TrimSpace(req.MessageID),
+		req,
+		nil,
+	)
 }
 
 func (c *discordBotClient) DeleteMessage(ctx context.Context, req discordDeleteMessageRequest) error {
-	return c.callJSON(ctx, http.MethodDelete, "/channels/"+strings.TrimSpace(req.ChannelID)+"/messages/"+strings.TrimSpace(req.MessageID), nil, nil)
+	return c.callJSON(
+		ctx,
+		http.MethodDelete,
+		"/channels/"+strings.TrimSpace(req.ChannelID)+"/messages/"+strings.TrimSpace(req.MessageID),
+		nil,
+		nil,
+	)
 }
 
 func (c *discordBotClient) callJSON(ctx context.Context, method string, path string, payload any, out any) error {
@@ -1752,22 +2009,35 @@ func (c *discordBotClient) callJSON(ctx context.Context, method string, path str
 func discordUserIdentityFromInteraction(interaction discordInteraction) (discordUserIdentity, error) {
 	if interaction.Member != nil && interaction.Member.User != nil {
 		return discordUserIdentity{
-			ID:          normalizeDiscordUserID(interaction.Member.User.ID),
-			Username:    normalizeUsername(interaction.Member.User.Username),
-			DisplayName: firstNonEmpty(strings.TrimSpace(interaction.Member.User.GlobalName), strings.TrimSpace(interaction.Member.User.Username), normalizeDiscordUserID(interaction.Member.User.ID)),
+			ID:       normalizeDiscordUserID(interaction.Member.User.ID),
+			Username: normalizeUsername(interaction.Member.User.Username),
+			DisplayName: firstNonEmpty(
+				strings.TrimSpace(interaction.Member.User.GlobalName),
+				strings.TrimSpace(interaction.Member.User.Username),
+				normalizeDiscordUserID(interaction.Member.User.ID),
+			),
 		}, nil
 	}
 	if interaction.User != nil {
 		return discordUserIdentity{
-			ID:          normalizeDiscordUserID(interaction.User.ID),
-			Username:    normalizeUsername(interaction.User.Username),
-			DisplayName: firstNonEmpty(strings.TrimSpace(interaction.User.GlobalName), strings.TrimSpace(interaction.User.Username), normalizeDiscordUserID(interaction.User.ID)),
+			ID:       normalizeDiscordUserID(interaction.User.ID),
+			Username: normalizeUsername(interaction.User.Username),
+			DisplayName: firstNonEmpty(
+				strings.TrimSpace(interaction.User.GlobalName),
+				strings.TrimSpace(interaction.User.Username),
+				normalizeDiscordUserID(interaction.User.ID),
+			),
 		}, nil
 	}
 	return discordUserIdentity{}, errors.New("discord: interaction is missing a user")
 }
 
-func discordRouteIdentity(guildID string, channelID string, parentID string, channelType int) (string, string, string, bool, error) {
+func discordRouteIdentity(
+	guildID string,
+	channelID string,
+	parentID string,
+	channelType int,
+) (string, string, string, bool, error) {
 	channelID = strings.TrimSpace(channelID)
 	parentID = strings.TrimSpace(parentID)
 	if channelID == "" {

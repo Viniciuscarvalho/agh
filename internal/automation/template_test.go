@@ -48,7 +48,6 @@ func TestValidateTriggerPromptTemplateAcceptsSupportedEnvelopeReferences(t *test
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -100,7 +99,6 @@ func TestValidateTriggerPromptTemplateRejectsUnsupportedEnvelopeReferences(t *te
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -136,7 +134,6 @@ func TestParseTriggerPromptTemplateRejectsEmptyAndSyntaxErrors(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -177,7 +174,6 @@ func TestTriggerPromptTemplateErrorsIncludeValidationContext(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

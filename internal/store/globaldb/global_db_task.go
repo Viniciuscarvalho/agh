@@ -14,7 +14,7 @@ import (
 	aghworkspace "github.com/pedronauck/agh/internal/workspace"
 )
 
-var _ taskpkg.TaskStore = (*GlobalDB)(nil)
+var _ taskpkg.RecordStore = (*GlobalDB)(nil)
 var _ taskpkg.RunStore = (*GlobalDB)(nil)
 
 // CreateTask inserts one durable task record.
@@ -35,7 +35,8 @@ func (g *GlobalDB) CreateTask(ctx context.Context, record taskpkg.Task) error {
 		ctx,
 		`INSERT INTO tasks (
 			id, identifier, scope, workspace_id, parent_task_id, network_channel, title, description, status,
-			owner_kind, owner_ref, created_by_kind, created_by_ref, origin_kind, origin_ref, created_at, updated_at, closed_at, metadata_json
+			owner_kind, owner_ref, created_by_kind, created_by_ref, origin_kind, origin_ref,
+			created_at, updated_at, closed_at, metadata_json
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		normalized.ID,
 		store.NullableString(normalized.Identifier),
@@ -87,9 +88,11 @@ func (g *GlobalDB) UpdateTask(ctx context.Context, record taskpkg.Task) error {
 	result, err := g.db.ExecContext(
 		ctx,
 		`UPDATE tasks
-		 SET identifier = ?, scope = ?, workspace_id = ?, parent_task_id = ?, network_channel = ?, title = ?, description = ?, status = ?,
-		     owner_kind = ?, owner_ref = ?, created_by_kind = ?, created_by_ref = ?, origin_kind = ?, origin_ref = ?, created_at = ?,
-		     updated_at = ?, closed_at = ?, metadata_json = ?
+		 SET identifier = ?, scope = ?, workspace_id = ?, parent_task_id = ?,
+		     network_channel = ?, title = ?, description = ?, status = ?,
+		     owner_kind = ?, owner_ref = ?, created_by_kind = ?,
+		     created_by_ref = ?, origin_kind = ?, origin_ref = ?,
+		     created_at = ?, updated_at = ?, closed_at = ?, metadata_json = ?
 		 WHERE id = ?`,
 		store.NullableString(normalized.Identifier),
 		string(normalized.Scope),
@@ -133,9 +136,10 @@ func (g *GlobalDB) GetTask(ctx context.Context, id string) (taskpkg.Task, error)
 		ctx,
 		`SELECT
 			id, identifier, scope, workspace_id, parent_task_id, network_channel, title, description, status,
-			owner_kind, owner_ref, created_by_kind, created_by_ref, origin_kind, origin_ref, created_at, updated_at, closed_at, metadata_json
-		 FROM tasks
-		 WHERE id = ?`,
+			owner_kind, owner_ref, created_by_kind, created_by_ref, origin_kind, origin_ref,
+			created_at, updated_at, closed_at, metadata_json
+			 FROM tasks
+			 WHERE id = ?`,
 		trimmedID,
 	)
 
@@ -150,7 +154,7 @@ func (g *GlobalDB) GetTask(ctx context.Context, id string) (taskpkg.Task, error)
 }
 
 // ListTasks returns durable task summaries that match the supplied filters.
-func (g *GlobalDB) ListTasks(ctx context.Context, query taskpkg.TaskQuery) ([]taskpkg.TaskSummary, error) {
+func (g *GlobalDB) ListTasks(ctx context.Context, query taskpkg.Query) ([]taskpkg.Summary, error) {
 	if err := g.checkReady(ctx, "list tasks"); err != nil {
 		return nil, err
 	}
@@ -161,7 +165,8 @@ func (g *GlobalDB) ListTasks(ctx context.Context, query taskpkg.TaskQuery) ([]ta
 	normalized := normalizeTaskQuery(query)
 	sqlQuery := `SELECT
 		id, identifier, scope, workspace_id, parent_task_id, network_channel, title, description, status,
-		owner_kind, owner_ref, created_by_kind, created_by_ref, origin_kind, origin_ref, created_at, updated_at, closed_at, metadata_json
+		owner_kind, owner_ref, created_by_kind, created_by_ref, origin_kind, origin_ref,
+		created_at, updated_at, closed_at, metadata_json
 		FROM tasks`
 	where, args := store.BuildClauses(
 		store.StringClause("scope", string(normalized.Scope)),
@@ -185,7 +190,7 @@ func (g *GlobalDB) ListTasks(ctx context.Context, query taskpkg.TaskQuery) ([]ta
 		_ = rows.Close()
 	}()
 
-	summaries := make([]taskpkg.TaskSummary, 0)
+	summaries := make([]taskpkg.Summary, 0)
 	for rows.Next() {
 		record, scanErr := scanTaskRecord(rows)
 		if scanErr != nil {
@@ -224,7 +229,7 @@ func (g *GlobalDB) CountDirectChildren(ctx context.Context, parentTaskID string)
 }
 
 // CreateTaskRun inserts one durable task-run record.
-func (g *GlobalDB) CreateTaskRun(ctx context.Context, run taskpkg.TaskRun) error {
+func (g *GlobalDB) CreateTaskRun(ctx context.Context, run taskpkg.Run) error {
 	if err := g.checkReady(ctx, "create task run"); err != nil {
 		return err
 	}
@@ -269,7 +274,7 @@ func (g *GlobalDB) CreateTaskRun(ctx context.Context, run taskpkg.TaskRun) error
 }
 
 // UpdateTaskRun replaces the persisted canonical task-run record.
-func (g *GlobalDB) UpdateTaskRun(ctx context.Context, run taskpkg.TaskRun) error {
+func (g *GlobalDB) UpdateTaskRun(ctx context.Context, run taskpkg.Run) error {
 	if err := g.checkReady(ctx, "update task run"); err != nil {
 		return err
 	}
@@ -283,7 +288,8 @@ func (g *GlobalDB) UpdateTaskRun(ctx context.Context, run taskpkg.TaskRun) error
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(current.SessionID) != "" && strings.TrimSpace(normalized.SessionID) != strings.TrimSpace(current.SessionID) {
+	if strings.TrimSpace(current.SessionID) != "" &&
+		strings.TrimSpace(normalized.SessionID) != strings.TrimSpace(current.SessionID) {
 		return taskpkg.ErrSessionAlreadyBound
 	}
 	if normalized.QueuedAt.IsZero() {
@@ -296,8 +302,11 @@ func (g *GlobalDB) UpdateTaskRun(ctx context.Context, run taskpkg.TaskRun) error
 	result, err := g.db.ExecContext(
 		ctx,
 		`UPDATE task_runs
-		 SET task_id = ?, status = ?, attempt = ?, claimed_by_kind = ?, claimed_by_ref = ?, session_id = ?, origin_kind = ?, origin_ref = ?,
-		     idempotency_key = ?, network_channel = ?, queued_at = ?, claimed_at = ?, started_at = ?, ended_at = ?, error = ?, result_json = ?
+		 SET task_id = ?, status = ?, attempt = ?, claimed_by_kind = ?,
+		     claimed_by_ref = ?, session_id = ?, origin_kind = ?,
+		     origin_ref = ?, idempotency_key = ?, network_channel = ?,
+		     queued_at = ?, claimed_at = ?, started_at = ?, ended_at = ?,
+		     error = ?, result_json = ?
 		 WHERE id = ?`,
 		normalized.TaskID,
 		string(normalized.Status),
@@ -325,14 +334,14 @@ func (g *GlobalDB) UpdateTaskRun(ctx context.Context, run taskpkg.TaskRun) error
 }
 
 // GetTaskRun returns one persisted task run by primary key.
-func (g *GlobalDB) GetTaskRun(ctx context.Context, id string) (taskpkg.TaskRun, error) {
+func (g *GlobalDB) GetTaskRun(ctx context.Context, id string) (taskpkg.Run, error) {
 	if err := g.checkReady(ctx, "get task run"); err != nil {
-		return taskpkg.TaskRun{}, err
+		return taskpkg.Run{}, err
 	}
 
 	trimmedID, err := requireTaskValue(id, "task run id")
 	if err != nil {
-		return taskpkg.TaskRun{}, err
+		return taskpkg.Run{}, err
 	}
 
 	row := g.db.QueryRowContext(
@@ -348,15 +357,15 @@ func (g *GlobalDB) GetTaskRun(ctx context.Context, id string) (taskpkg.TaskRun, 
 	run, err := scanTaskRunRecord(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return taskpkg.TaskRun{}, taskpkg.ErrTaskRunNotFound
+			return taskpkg.Run{}, taskpkg.ErrTaskRunNotFound
 		}
-		return taskpkg.TaskRun{}, err
+		return taskpkg.Run{}, err
 	}
 	return run, nil
 }
 
 // ListTaskRuns returns persisted runs that match the supplied filters.
-func (g *GlobalDB) ListTaskRuns(ctx context.Context, query taskpkg.TaskRunQuery) ([]taskpkg.TaskRun, error) {
+func (g *GlobalDB) ListTaskRuns(ctx context.Context, query taskpkg.RunQuery) ([]taskpkg.Run, error) {
 	if err := g.checkReady(ctx, "list task runs"); err != nil {
 		return nil, err
 	}
@@ -387,7 +396,7 @@ func (g *GlobalDB) ListTaskRuns(ctx context.Context, query taskpkg.TaskRunQuery)
 		_ = rows.Close()
 	}()
 
-	runs := make([]taskpkg.TaskRun, 0)
+	runs := make([]taskpkg.Run, 0)
 	for rows.Next() {
 		run, scanErr := scanTaskRunRecord(rows)
 		if scanErr != nil {
@@ -403,12 +412,15 @@ func (g *GlobalDB) ListTaskRuns(ctx context.Context, query taskpkg.TaskRunQuery)
 }
 
 // ListTaskRunsByStatus returns persisted runs that match any of the supplied statuses.
-func (g *GlobalDB) ListTaskRunsByStatus(ctx context.Context, statuses []taskpkg.TaskRunStatus) ([]taskpkg.TaskRun, error) {
+func (g *GlobalDB) ListTaskRunsByStatus(
+	ctx context.Context,
+	statuses []taskpkg.RunStatus,
+) ([]taskpkg.Run, error) {
 	if err := g.checkReady(ctx, "list task runs by status"); err != nil {
 		return nil, err
 	}
 	if len(statuses) == 0 {
-		return []taskpkg.TaskRun{}, nil
+		return []taskpkg.Run{}, nil
 	}
 
 	placeholders := make([]string, 0, len(statuses))
@@ -443,7 +455,7 @@ func (g *GlobalDB) ListTaskRunsByStatus(ctx context.Context, statuses []taskpkg.
 		_ = rows.Close()
 	}()
 
-	runs := make([]taskpkg.TaskRun, 0)
+	runs := make([]taskpkg.Run, 0)
 	for rows.Next() {
 		run, scanErr := scanTaskRunRecord(rows)
 		if scanErr != nil {
@@ -512,7 +524,7 @@ func (g *GlobalDB) normalizeTaskForUpdate(record taskpkg.Task) (taskpkg.Task, er
 	return normalized, nil
 }
 
-func (g *GlobalDB) normalizeTaskRunForCreate(run taskpkg.TaskRun) (taskpkg.TaskRun, error) {
+func (g *GlobalDB) normalizeTaskRunForCreate(run taskpkg.Run) (taskpkg.Run, error) {
 	normalized := normalizeTaskRunRecord(run)
 	if normalized.Attempt == 0 {
 		normalized.Attempt = 1
@@ -521,15 +533,15 @@ func (g *GlobalDB) normalizeTaskRunForCreate(run taskpkg.TaskRun) (taskpkg.TaskR
 		normalized.QueuedAt = g.now()
 	}
 	if err := normalized.Validate(); err != nil {
-		return taskpkg.TaskRun{}, err
+		return taskpkg.Run{}, err
 	}
 	return normalized, nil
 }
 
-func (g *GlobalDB) normalizeTaskRunForUpdate(run taskpkg.TaskRun) (taskpkg.TaskRun, error) {
+func (g *GlobalDB) normalizeTaskRunForUpdate(run taskpkg.Run) (taskpkg.Run, error) {
 	normalized := normalizeTaskRunRecord(run)
 	if err := normalized.Validate(); err != nil {
-		return taskpkg.TaskRun{}, err
+		return taskpkg.Run{}, err
 	}
 	return normalized, nil
 }
@@ -626,45 +638,26 @@ func scanTaskRecord(scanner rowScanner) (taskpkg.Task, error) {
 		return taskpkg.Task{}, fmt.Errorf("store: scan task: %w", err)
 	}
 
-	record.Identifier = taskNullStringValue(identifier)
-	record.Scope = taskpkg.Scope(strings.TrimSpace(scope))
-	record.WorkspaceID = taskNullStringValue(workspaceID)
-	record.ParentTaskID = taskNullStringValue(parentTaskID)
-	record.NetworkChannel = taskNullStringValue(networkChannel)
-	record.Description = taskNullStringValue(description)
-	record.Status = taskpkg.TaskStatus(strings.TrimSpace(status))
-	record.CreatedBy.Kind = taskpkg.ActorKind(strings.TrimSpace(createdByKind))
-	record.Origin.Kind = taskpkg.OriginKind(strings.TrimSpace(originKind))
-	if ownerKind.Valid || ownerRef.Valid {
-		record.Owner = &taskpkg.Ownership{
-			Kind: taskpkg.OwnerKind(strings.TrimSpace(ownerKind.String)),
-			Ref:  strings.TrimSpace(ownerRef.String),
-		}
-	}
-
-	createdAt, err := store.ParseTimestamp(createdAtRaw)
-	if err != nil {
+	assignScannedTaskRecord(
+		&record,
+		identifier,
+		scope,
+		workspaceID,
+		parentTaskID,
+		networkChannel,
+		description,
+		status,
+		ownerKind,
+		ownerRef,
+		createdByKind,
+		originKind,
+	)
+	if err := assignTaskRecordTimestamps(&record, createdAtRaw, updatedAtRaw, closedAtRaw); err != nil {
 		return taskpkg.Task{}, err
 	}
-	updatedAt, err := store.ParseTimestamp(updatedAtRaw)
-	if err != nil {
+	if err := assignTaskMetadata(&record.Metadata, metadataJSON, "task.metadata_json"); err != nil {
 		return taskpkg.Task{}, err
 	}
-	record.CreatedAt = createdAt
-	record.UpdatedAt = updatedAt
-	if closedAtRaw.Valid {
-		closedAt, err := store.ParseTimestamp(closedAtRaw.String)
-		if err != nil {
-			return taskpkg.Task{}, err
-		}
-		record.ClosedAt = closedAt
-	}
-
-	metadata, err := decodeTaskJSON(metadataJSON, "task.metadata_json")
-	if err != nil {
-		return taskpkg.Task{}, err
-	}
-	record.Metadata = metadata
 	record = normalizeTaskRecord(record)
 	if err := record.Validate(); err != nil {
 		return taskpkg.Task{}, err
@@ -673,9 +666,9 @@ func scanTaskRecord(scanner rowScanner) (taskpkg.Task, error) {
 	return record, nil
 }
 
-func scanTaskRunRecord(scanner rowScanner) (taskpkg.TaskRun, error) {
+func scanTaskRunRecord(scanner rowScanner) (taskpkg.Run, error) {
 	var (
-		run            taskpkg.TaskRun
+		run            taskpkg.Run
 		status         string
 		claimedByKind  sql.NullString
 		claimedByRef   sql.NullString
@@ -709,10 +702,104 @@ func scanTaskRunRecord(scanner rowScanner) (taskpkg.TaskRun, error) {
 		&runErr,
 		&resultJSON,
 	); err != nil {
-		return taskpkg.TaskRun{}, fmt.Errorf("store: scan task run: %w", err)
+		return taskpkg.Run{}, fmt.Errorf("store: scan task run: %w", err)
 	}
 
-	run.Status = taskpkg.TaskRunStatus(strings.TrimSpace(status))
+	assignScannedTaskRunRecord(
+		&run,
+		status,
+		claimedByKind,
+		claimedByRef,
+		sessionID,
+		originKind,
+		idempotencyKey,
+		networkChannel,
+		runErr,
+	)
+	if err := assignTaskRunTimestamps(&run, queuedAtRaw, claimedAtRaw, startedAtRaw, endedAtRaw); err != nil {
+		return taskpkg.Run{}, err
+	}
+	if err := assignTaskMetadata(&run.Result, resultJSON, "task_run.result_json"); err != nil {
+		return taskpkg.Run{}, err
+	}
+	run = normalizeTaskRunRecord(run)
+	if err := run.Validate(); err != nil {
+		return taskpkg.Run{}, err
+	}
+
+	return run, nil
+}
+
+func assignScannedTaskRecord(
+	record *taskpkg.Task,
+	identifier sql.NullString,
+	scope string,
+	workspaceID sql.NullString,
+	parentTaskID sql.NullString,
+	networkChannel sql.NullString,
+	description sql.NullString,
+	status string,
+	ownerKind sql.NullString,
+	ownerRef sql.NullString,
+	createdByKind string,
+	originKind string,
+) {
+	record.Identifier = taskNullStringValue(identifier)
+	record.Scope = taskpkg.Scope(strings.TrimSpace(scope))
+	record.WorkspaceID = taskNullStringValue(workspaceID)
+	record.ParentTaskID = taskNullStringValue(parentTaskID)
+	record.NetworkChannel = taskNullStringValue(networkChannel)
+	record.Description = taskNullStringValue(description)
+	record.Status = taskpkg.Status(strings.TrimSpace(status))
+	record.CreatedBy.Kind = taskpkg.ActorKind(strings.TrimSpace(createdByKind))
+	record.Origin.Kind = taskpkg.OriginKind(strings.TrimSpace(originKind))
+	if ownerKind.Valid || ownerRef.Valid {
+		record.Owner = &taskpkg.Ownership{
+			Kind: taskpkg.OwnerKind(strings.TrimSpace(ownerKind.String)),
+			Ref:  strings.TrimSpace(ownerRef.String),
+		}
+	}
+}
+
+func assignTaskRecordTimestamps(
+	record *taskpkg.Task,
+	createdAtRaw string,
+	updatedAtRaw string,
+	closedAtRaw sql.NullString,
+) error {
+	createdAt, err := store.ParseTimestamp(createdAtRaw)
+	if err != nil {
+		return err
+	}
+	updatedAt, err := store.ParseTimestamp(updatedAtRaw)
+	if err != nil {
+		return err
+	}
+	record.CreatedAt = createdAt
+	record.UpdatedAt = updatedAt
+	if !closedAtRaw.Valid {
+		return nil
+	}
+	closedAt, err := store.ParseTimestamp(closedAtRaw.String)
+	if err != nil {
+		return err
+	}
+	record.ClosedAt = closedAt
+	return nil
+}
+
+func assignScannedTaskRunRecord(
+	run *taskpkg.Run,
+	status string,
+	claimedByKind sql.NullString,
+	claimedByRef sql.NullString,
+	sessionID sql.NullString,
+	originKind string,
+	idempotencyKey sql.NullString,
+	networkChannel sql.NullString,
+	runErr sql.NullString,
+) {
+	run.Status = taskpkg.RunStatus(strings.TrimSpace(status))
 	if claimedByKind.Valid || claimedByRef.Valid {
 		run.ClaimedBy = &taskpkg.ActorIdentity{
 			Kind: taskpkg.ActorKind(strings.TrimSpace(claimedByKind.String)),
@@ -724,45 +811,48 @@ func scanTaskRunRecord(scanner rowScanner) (taskpkg.TaskRun, error) {
 	run.IdempotencyKey = taskNullStringValue(idempotencyKey)
 	run.NetworkChannel = taskNullStringValue(networkChannel)
 	run.Error = taskNullStringValue(runErr)
+}
 
+func assignTaskRunTimestamps(
+	run *taskpkg.Run,
+	queuedAtRaw string,
+	claimedAtRaw sql.NullString,
+	startedAtRaw sql.NullString,
+	endedAtRaw sql.NullString,
+) error {
 	queuedAt, err := store.ParseTimestamp(queuedAtRaw)
 	if err != nil {
-		return taskpkg.TaskRun{}, err
+		return err
 	}
 	run.QueuedAt = queuedAt
-	if claimedAtRaw.Valid {
-		claimedAt, err := store.ParseTimestamp(claimedAtRaw.String)
-		if err != nil {
-			return taskpkg.TaskRun{}, err
-		}
-		run.ClaimedAt = claimedAt
+	if err := assignNullableTaskTimestamp(&run.ClaimedAt, claimedAtRaw); err != nil {
+		return err
 	}
-	if startedAtRaw.Valid {
-		startedAt, err := store.ParseTimestamp(startedAtRaw.String)
-		if err != nil {
-			return taskpkg.TaskRun{}, err
-		}
-		run.StartedAt = startedAt
+	if err := assignNullableTaskTimestamp(&run.StartedAt, startedAtRaw); err != nil {
+		return err
 	}
-	if endedAtRaw.Valid {
-		endedAt, err := store.ParseTimestamp(endedAtRaw.String)
-		if err != nil {
-			return taskpkg.TaskRun{}, err
-		}
-		run.EndedAt = endedAt
-	}
+	return assignNullableTaskTimestamp(&run.EndedAt, endedAtRaw)
+}
 
-	result, err := decodeTaskJSON(resultJSON, "task_run.result_json")
+func assignNullableTaskTimestamp(target *time.Time, raw sql.NullString) error {
+	if !raw.Valid {
+		return nil
+	}
+	parsed, err := store.ParseTimestamp(raw.String)
 	if err != nil {
-		return taskpkg.TaskRun{}, err
+		return err
 	}
-	run.Result = result
-	run = normalizeTaskRunRecord(run)
-	if err := run.Validate(); err != nil {
-		return taskpkg.TaskRun{}, err
-	}
+	*target = parsed
+	return nil
+}
 
-	return run, nil
+func assignTaskMetadata(target *json.RawMessage, raw sql.NullString, field string) error {
+	metadata, err := decodeTaskJSON(raw, field)
+	if err != nil {
+		return err
+	}
+	*target = metadata
+	return nil
 }
 
 func normalizeTaskRecord(record taskpkg.Task) taskpkg.Task {
@@ -803,7 +893,7 @@ func normalizeTaskRecord(record taskpkg.Task) taskpkg.Task {
 	return normalized
 }
 
-func normalizeTaskRunRecord(run taskpkg.TaskRun) taskpkg.TaskRun {
+func normalizeTaskRunRecord(run taskpkg.Run) taskpkg.Run {
 	normalized := run
 	normalized.ID = strings.TrimSpace(normalized.ID)
 	normalized.TaskID = strings.TrimSpace(normalized.TaskID)
@@ -836,7 +926,7 @@ func normalizeTaskRunRecord(run taskpkg.TaskRun) taskpkg.TaskRun {
 	return normalized
 }
 
-func normalizeTaskQuery(query taskpkg.TaskQuery) taskpkg.TaskQuery {
+func normalizeTaskQuery(query taskpkg.Query) taskpkg.Query {
 	normalized := query
 	normalized.Scope = normalized.Scope.Normalize()
 	normalized.WorkspaceID = strings.TrimSpace(normalized.WorkspaceID)
@@ -848,7 +938,7 @@ func normalizeTaskQuery(query taskpkg.TaskQuery) taskpkg.TaskQuery {
 	return normalized
 }
 
-func normalizeTaskRunQuery(query taskpkg.TaskRunQuery) taskpkg.TaskRunQuery {
+func normalizeTaskRunQuery(query taskpkg.RunQuery) taskpkg.RunQuery {
 	normalized := query
 	normalized.TaskID = strings.TrimSpace(normalized.TaskID)
 	normalized.Status = normalized.Status.Normalize()
@@ -856,8 +946,8 @@ func normalizeTaskRunQuery(query taskpkg.TaskRunQuery) taskpkg.TaskRunQuery {
 	return normalized
 }
 
-func taskSummaryFromRecord(record taskpkg.Task) taskpkg.TaskSummary {
-	return taskpkg.TaskSummary{
+func taskSummaryFromRecord(record taskpkg.Task) taskpkg.Summary {
+	return taskpkg.Summary{
 		ID:             record.ID,
 		Identifier:     record.Identifier,
 		Scope:          record.Scope,

@@ -53,62 +53,89 @@ func validateTemplateNodeWithState(node parse.Node, state templateValidationStat
 	case nil:
 		return nil
 	case *parse.ListNode:
-		if n == nil {
-			return nil
-		}
-		for _, child := range n.Nodes {
-			if err := validateTemplateNodeWithState(child, state); err != nil {
-				return err
-			}
-		}
+		return validateTemplateListNode(n, state)
 	case *parse.ActionNode:
-		if n == nil {
-			return nil
-		}
-		return validatePipeNodeWithState(n.Pipe, state)
+		return validateTemplateActionNode(n, state)
 	case *parse.IfNode:
-		if n == nil {
-			return nil
-		}
-		if err := validatePipeNodeWithState(n.Pipe, state); err != nil {
-			return err
-		}
-		if err := validateTemplateNodeWithState(n.List, state); err != nil {
-			return err
-		}
-		return validateTemplateNodeWithState(n.ElseList, state)
+		return validateConditionalTemplateNode(n.Pipe, n.List, n.ElseList, state)
 	case *parse.RangeNode:
-		if n == nil {
-			return nil
-		}
-		if err := validatePipeNodeWithState(n.Pipe, state); err != nil {
-			return err
-		}
-		if err := validateTemplateNodeWithState(n.List, templateValidationState{}); err != nil {
-			return err
-		}
-		return validateTemplateNodeWithState(n.ElseList, state)
+		return validateRangeTemplateNode(n, state)
 	case *parse.WithNode:
-		if n == nil {
-			return nil
-		}
-		if err := validatePipeNodeWithState(n.Pipe, state); err != nil {
-			return err
-		}
-		if err := validateTemplateNodeWithState(n.List, withTemplateValidationState(n.Pipe, state)); err != nil {
-			return err
-		}
-		return validateTemplateNodeWithState(n.ElseList, state)
+		return validateWithTemplateNode(n, state)
 	case *parse.TemplateNode:
-		if n == nil {
-			return nil
-		}
-		return validatePipeNodeWithState(n.Pipe, state)
+		return validateTemplateInvocationNode(n, state)
 	case *parse.TextNode, *parse.CommentNode, *parse.BreakNode, *parse.ContinueNode:
 		return nil
 	}
 
 	return nil
+}
+
+func validateTemplateListNode(node *parse.ListNode, state templateValidationState) error {
+	if node == nil {
+		return nil
+	}
+	for _, child := range node.Nodes {
+		if err := validateTemplateNodeWithState(child, state); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateTemplateActionNode(node *parse.ActionNode, state templateValidationState) error {
+	if node == nil {
+		return nil
+	}
+	return validatePipeNodeWithState(node.Pipe, state)
+}
+
+func validateConditionalTemplateNode(
+	pipe *parse.PipeNode,
+	list *parse.ListNode,
+	elseList *parse.ListNode,
+	state templateValidationState,
+) error {
+	if err := validatePipeNodeWithState(pipe, state); err != nil {
+		return err
+	}
+	if err := validateTemplateNodeWithState(list, state); err != nil {
+		return err
+	}
+	return validateTemplateNodeWithState(elseList, state)
+}
+
+func validateRangeTemplateNode(node *parse.RangeNode, state templateValidationState) error {
+	if node == nil {
+		return nil
+	}
+	if err := validatePipeNodeWithState(node.Pipe, state); err != nil {
+		return err
+	}
+	if err := validateTemplateNodeWithState(node.List, templateValidationState{}); err != nil {
+		return err
+	}
+	return validateTemplateNodeWithState(node.ElseList, state)
+}
+
+func validateWithTemplateNode(node *parse.WithNode, state templateValidationState) error {
+	if node == nil {
+		return nil
+	}
+	if err := validatePipeNodeWithState(node.Pipe, state); err != nil {
+		return err
+	}
+	if err := validateTemplateNodeWithState(node.List, withTemplateValidationState(node.Pipe, state)); err != nil {
+		return err
+	}
+	return validateTemplateNodeWithState(node.ElseList, state)
+}
+
+func validateTemplateInvocationNode(node *parse.TemplateNode, state templateValidationState) error {
+	if node == nil {
+		return nil
+	}
+	return validatePipeNodeWithState(node.Pipe, state)
 }
 
 func validatePipeNodeWithState(pipe *parse.PipeNode, state templateValidationState) error {

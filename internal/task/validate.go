@@ -24,12 +24,12 @@ func (s Scope) Validate(path string) error {
 }
 
 // Normalize returns the normalized representation of the task status.
-func (s TaskStatus) Normalize() TaskStatus {
-	return TaskStatus(strings.ToLower(strings.TrimSpace(string(s))))
+func (s Status) Normalize() Status {
+	return Status(strings.ToLower(strings.TrimSpace(string(s))))
 }
 
 // Validate reports whether the task status is one of the supported lifecycle states.
-func (s TaskStatus) Validate(path string) error {
+func (s Status) Validate(path string) error {
 	switch s.Normalize() {
 	case TaskStatusPending,
 		TaskStatusBlocked,
@@ -37,7 +37,7 @@ func (s TaskStatus) Validate(path string) error {
 		TaskStatusInProgress,
 		TaskStatusCompleted,
 		TaskStatusFailed,
-		TaskStatusCancelled:
+		TaskStatusCanceled:
 		return nil
 	case "":
 		return fmt.Errorf("%w: %s is required", ErrValidation, path)
@@ -52,19 +52,19 @@ func (s TaskStatus) Validate(path string) error {
 			TaskStatusInProgress,
 			TaskStatusCompleted,
 			TaskStatusFailed,
-			TaskStatusCancelled,
+			TaskStatusCanceled,
 			s,
 		)
 	}
 }
 
 // Normalize returns the normalized representation of the task-run status.
-func (s TaskRunStatus) Normalize() TaskRunStatus {
-	return TaskRunStatus(strings.ToLower(strings.TrimSpace(string(s))))
+func (s RunStatus) Normalize() RunStatus {
+	return RunStatus(strings.ToLower(strings.TrimSpace(string(s))))
 }
 
 // Validate reports whether the task-run status is one of the supported lifecycle states.
-func (s TaskRunStatus) Validate(path string) error {
+func (s RunStatus) Validate(path string) error {
 	switch s.Normalize() {
 	case TaskRunStatusQueued,
 		TaskRunStatusClaimed,
@@ -72,7 +72,7 @@ func (s TaskRunStatus) Validate(path string) error {
 		TaskRunStatusRunning,
 		TaskRunStatusCompleted,
 		TaskRunStatusFailed,
-		TaskRunStatusCancelled:
+		TaskRunStatusCanceled:
 		return nil
 	case "":
 		return fmt.Errorf("%w: %s is required", ErrValidation, path)
@@ -87,7 +87,7 @@ func (s TaskRunStatus) Validate(path string) error {
 			TaskRunStatusRunning,
 			TaskRunStatusCompleted,
 			TaskRunStatusFailed,
-			TaskRunStatusCancelled,
+			TaskRunStatusCanceled,
 			s,
 		)
 	}
@@ -311,7 +311,7 @@ func (t Task) Validate() error {
 }
 
 // Validate reports whether the dependency edge contains the canonical persisted shape.
-func (d TaskDependency) Validate() error {
+func (d Dependency) Validate() error {
 	if strings.TrimSpace(d.TaskID) == "" {
 		return fmt.Errorf("%w: task_dependency.task_id is required", ErrValidation)
 	}
@@ -328,7 +328,7 @@ func (d TaskDependency) Validate() error {
 }
 
 // Validate reports whether the task-run record contains the canonical persisted shape.
-func (r TaskRun) Validate() error {
+func (r Run) Validate() error {
 	if strings.TrimSpace(r.ID) == "" {
 		return fmt.Errorf("%w: task_run.id is required", ErrValidation)
 	}
@@ -350,7 +350,11 @@ func (r TaskRun) Validate() error {
 		return err
 	}
 	if r.Status.Normalize() == TaskRunStatusQueued && strings.TrimSpace(r.SessionID) != "" {
-		return fmt.Errorf("%w: task_run.session_id must be empty while status is %q", ErrValidation, TaskRunStatusQueued)
+		return fmt.Errorf(
+			"%w: task_run.session_id must be empty while status is %q",
+			ErrValidation,
+			TaskRunStatusQueued,
+		)
 	}
 	if err := ValidateResultSize(r.Result, "task_run.result"); err != nil {
 		return err
@@ -368,7 +372,7 @@ func (r RunBootRecovery) Validate(path string) error {
 }
 
 // Validate reports whether the audit event contains the canonical persisted shape.
-func (e TaskEvent) Validate() error {
+func (e Event) Validate() error {
 	if strings.TrimSpace(e.ID) == "" {
 		return fmt.Errorf("%w: task_event.id is required", ErrValidation)
 	}
@@ -391,7 +395,7 @@ func (e TaskEvent) Validate() error {
 }
 
 // Validate reports whether the persisted idempotency record contains the canonical shape.
-func (r TaskRunIdempotency) Validate() error {
+func (r RunIdempotency) Validate() error {
 	if strings.TrimSpace(r.IdempotencyKey) == "" {
 		return fmt.Errorf("%w: task_run_idempotency.idempotency_key is required", ErrValidation)
 	}
@@ -412,8 +416,14 @@ func (r CreateTask) Validate(path string) error {
 	if strings.TrimSpace(r.Title) == "" {
 		return fmt.Errorf("%w: %s is required", ErrValidation, nestedPath(path, "title"))
 	}
-	if strings.TrimSpace(r.ParentTaskID) != "" && strings.TrimSpace(r.ID) != "" && strings.TrimSpace(r.ParentTaskID) == strings.TrimSpace(r.ID) {
-		return fmt.Errorf("%w: %s cannot equal %s", ErrValidation, nestedPath(path, "parent_task_id"), nestedPath(path, "id"))
+	if strings.TrimSpace(r.ParentTaskID) != "" && strings.TrimSpace(r.ID) != "" &&
+		strings.TrimSpace(r.ParentTaskID) == strings.TrimSpace(r.ID) {
+		return fmt.Errorf(
+			"%w: %s cannot equal %s",
+			ErrValidation,
+			nestedPath(path, "parent_task_id"),
+			nestedPath(path, "id"),
+		)
 	}
 	if r.Owner != nil {
 		if err := r.Owner.Validate(nestedPath(path, "owner")); err != nil {
@@ -427,8 +437,9 @@ func (r CreateTask) Validate(path string) error {
 }
 
 // Validate reports whether the task patch contains at least one mutable field and valid values.
-func (p TaskPatch) Validate(path string) error {
-	if p.Title == nil && p.Description == nil && p.Metadata == nil && p.NetworkChannel == nil && p.Owner == nil && !p.ClearOwner {
+func (p Patch) Validate(path string) error {
+	if p.Title == nil && p.Description == nil && p.Metadata == nil && p.NetworkChannel == nil && p.Owner == nil &&
+		!p.ClearOwner {
 		return fmt.Errorf("%w: %s requires at least one mutable field", ErrValidation, path)
 	}
 	if p.Title != nil && strings.TrimSpace(*p.Title) == "" {
@@ -457,7 +468,7 @@ func (r CancelTask) Validate(path string) error {
 
 // Validate reports whether the dependency-create request is internally consistent.
 func (r AddDependency) Validate(path string) error {
-	dependency := TaskDependency{
+	dependency := Dependency{
 		TaskID:          r.TaskID,
 		DependsOnTaskID: r.DependsOnTaskID,
 		Kind:            r.Kind,
@@ -511,7 +522,7 @@ func (r RunFailure) Validate(path string) error {
 }
 
 // Validate reports whether the task-query filters are internally consistent.
-func (q TaskQuery) Validate(path string) error {
+func (q Query) Validate(path string) error {
 	if q.Scope.Normalize() != "" {
 		if err := ValidateScopeBinding(q.Scope, q.WorkspaceID, path, "workspace_id"); err != nil {
 			return err
@@ -534,7 +545,7 @@ func (q TaskQuery) Validate(path string) error {
 }
 
 // Validate reports whether the task-run query filters are internally consistent.
-func (q TaskRunQuery) Validate(path string) error {
+func (q RunQuery) Validate(path string) error {
 	if q.Status.Normalize() != "" {
 		if err := q.Status.Validate(nestedPath(path, "status")); err != nil {
 			return err
@@ -547,7 +558,7 @@ func (q TaskRunQuery) Validate(path string) error {
 }
 
 // Validate reports whether the task-event query filters are internally consistent.
-func (q TaskEventQuery) Validate(path string) error {
+func (q EventQuery) Validate(path string) error {
 	if q.Limit < 0 {
 		return fmt.Errorf("%w: %s must be zero or positive: %d", ErrValidation, nestedPath(path, "limit"), q.Limit)
 	}
@@ -555,7 +566,10 @@ func (q TaskEventQuery) Validate(path string) error {
 }
 
 // Validate reports whether the session-start request contains the task and run context required by the bridge.
-func (r StartTaskSession) Validate() error {
+func (r *StartTaskSession) Validate() error {
+	if r == nil {
+		return fmt.Errorf("%w: start_task_session is required", ErrValidation)
+	}
 	if err := r.Task.Validate(); err != nil {
 		return err
 	}
@@ -701,11 +715,13 @@ func nestedPath(path string, field string) string {
 }
 
 func sameActorIdentity(left ActorIdentity, right ActorIdentity) bool {
-	return left.Kind.Normalize() == right.Kind.Normalize() && strings.TrimSpace(left.Ref) == strings.TrimSpace(right.Ref)
+	return left.Kind.Normalize() == right.Kind.Normalize() &&
+		strings.TrimSpace(left.Ref) == strings.TrimSpace(right.Ref)
 }
 
 func sameOrigin(left Origin, right Origin) bool {
-	return left.Kind.Normalize() == right.Kind.Normalize() && strings.TrimSpace(left.Ref) == strings.TrimSpace(right.Ref)
+	return left.Kind.Normalize() == right.Kind.Normalize() &&
+		strings.TrimSpace(left.Ref) == strings.TrimSpace(right.Ref)
 }
 
 func bytesTrimSpace(payload []byte) []byte {

@@ -51,7 +51,6 @@ func TestOpenInteraction(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -63,7 +62,13 @@ func TestOpenInteraction(t *testing.T) {
 				t.Fatalf("OpenInteraction().State = %q, want %q", interaction.State, StateSubmitted)
 			}
 			if interaction.Initiator != tc.env.From || interaction.Target != *tc.env.To {
-				t.Fatalf("OpenInteraction() participants = (%q,%q), want (%q,%q)", interaction.Initiator, interaction.Target, tc.env.From, *tc.env.To)
+				t.Fatalf(
+					"OpenInteraction() participants = (%q,%q), want (%q,%q)",
+					interaction.Initiator,
+					interaction.Target,
+					tc.env.From,
+					*tc.env.To,
+				)
 			}
 		})
 	}
@@ -322,7 +327,6 @@ func TestApplyInteractionEnvelope(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

@@ -39,7 +39,7 @@ func TestVerifyDiscordSignatureRejectsInvalidPublicKeySignatures(t *testing.T) {
 	message := append([]byte(timestamp), body...)
 	signature := ed25519.Sign(priv, message)
 
-	req := httptest.NewRequest(http.MethodPost, "/discord/brg-1", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/discord/brg-1", http.NoBody)
 	req.Header.Set("X-Signature-Timestamp", timestamp)
 	req.Header.Set("X-Signature-Ed25519", hex.EncodeToString(signature))
 
@@ -381,12 +381,13 @@ func TestHandleInteractionWebhookAcknowledgesImmediately(t *testing.T) {
 	provider.mu.Unlock()
 
 	recorder := httptest.NewRecorder()
-	err = provider.handleInteractionWebhook(recorder, resolvedInstanceConfig{
+	cfg := &resolvedInstanceConfig{
 		instanceID: "brg-discord",
 		managed:    testDiscordManagedInstance("brg-discord"),
 		dedup:      bridgesdk.NewDedupCache(time.Minute, 16),
 		dmPolicy:   bridgepkg.BridgeDMPolicyOpen,
-	}, bridgepkgToWebhookRequest(t, discordInteraction{
+	}
+	err = provider.handleInteractionWebhook(recorder, cfg, bridgepkgToWebhookRequest(t, discordInteraction{
 		ID:        "ixn-cmd-1",
 		Type:      discordInteractionTypeApplicationCommand,
 		Token:     "token-cmd-1",
@@ -546,7 +547,12 @@ func TestServeWebhookHTTPHandlesSignedMessageWebhookWithBatching(t *testing.T) {
 	timestamp := strconv.FormatInt(now.Unix(), 10)
 	signature := ed25519.Sign(priv, append([]byte(timestamp), body...))
 
-	req := httptest.NewRequest(http.MethodPost, "http://discord.test/discord/brg-discord", bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"http://discord.test/discord/brg-discord",
+		bytes.NewReader(body),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Signature-Timestamp", timestamp)
 	req.Header.Set("X-Signature-Ed25519", hex.EncodeToString(signature))
@@ -583,20 +589,30 @@ func TestDetermineInitialStateAndLifecycleHelpers(t *testing.T) {
 		return &discordAPIFake{postedMessageID: "msg-1"}
 	}
 
-	status, degradation, err := provider.determineInitialState(context.Background(), resolvedInstanceConfig{})
+	status, degradation, err := provider.determineInitialState(context.Background(), &resolvedInstanceConfig{})
 	if err == nil || status != bridgepkg.BridgeStatusAuthRequired || degradation == nil {
-		t.Fatalf("determineInitialState(missing token) = (%q, %#v, %v), want auth_required with error", status, degradation, err)
+		t.Fatalf(
+			"determineInitialState(missing token) = (%q, %#v, %v), want auth_required with error",
+			status,
+			degradation,
+			err,
+		)
 	}
 
-	status, degradation, err = provider.determineInitialState(context.Background(), resolvedInstanceConfig{
+	status, degradation, err = provider.determineInitialState(context.Background(), &resolvedInstanceConfig{
 		botToken:  "discord-bot-token",
 		publicKey: "bad",
 	})
 	if err == nil || status != bridgepkg.BridgeStatusAuthRequired || degradation == nil {
-		t.Fatalf("determineInitialState(invalid key) = (%q, %#v, %v), want auth_required with error", status, degradation, err)
+		t.Fatalf(
+			"determineInitialState(invalid key) = (%q, %#v, %v), want auth_required with error",
+			status,
+			degradation,
+			err,
+		)
 	}
 
-	status, degradation, err = provider.determineInitialState(context.Background(), resolvedInstanceConfig{
+	status, degradation, err = provider.determineInitialState(context.Background(), &resolvedInstanceConfig{
 		botToken:      "discord-bot-token",
 		publicKey:     hex.EncodeToString(pub),
 		applicationID: "bot-1",
@@ -611,7 +627,7 @@ func TestDetermineInitialStateAndLifecycleHelpers(t *testing.T) {
 		t.Fatalf("degradation = %#v, want nil", degradation)
 	}
 
-	status, degradation, err = provider.determineInitialState(context.Background(), resolvedInstanceConfig{
+	status, degradation, err = provider.determineInitialState(context.Background(), &resolvedInstanceConfig{
 		botToken:      "discord-bot-token",
 		publicKey:     hex.EncodeToString(pub),
 		applicationID: "other-bot",
@@ -654,7 +670,11 @@ func TestHandleInitializeAfterInitializeRetryAndShutdownHelpers(t *testing.T) {
 		t.Fatalf("retryHostCall() error = %v", err)
 	}
 
-	if err := provider.handleShutdown(context.Background(), nil, subprocess.ShutdownRequest{DeadlineMS: 10}); err != nil {
+	if err := provider.handleShutdown(
+		context.Background(),
+		nil,
+		subprocess.ShutdownRequest{DeadlineMS: 10},
+	); err != nil {
 		t.Fatalf("handleShutdown() error = %v", err)
 	}
 	provider.stop()
@@ -711,7 +731,12 @@ func TestHandleEventAndInteractionWebhookBranches(t *testing.T) {
 	provider.mu.Unlock()
 
 	recorder := httptest.NewRecorder()
-	if err := provider.handleEventWebhook(recorder, nil, cfg, bridgepkgToWebhookRequest(t, map[string]any{"type": 0}, time.Now().UTC())); err != nil {
+	if err := provider.handleEventWebhook(
+		recorder,
+		nil,
+		&cfg,
+		bridgepkgToWebhookRequest(t, map[string]any{"type": 0}, time.Now().UTC()),
+	); err != nil {
 		t.Fatalf("handleEventWebhook(ping) error = %v", err)
 	}
 	if got, want := recorder.Code, http.StatusNoContent; got != want {
@@ -719,7 +744,7 @@ func TestHandleEventAndInteractionWebhookBranches(t *testing.T) {
 	}
 
 	recorder = httptest.NewRecorder()
-	if err := provider.handleEventWebhook(recorder, nil, cfg, bridgepkgToWebhookRequest(t, map[string]any{
+	if err := provider.handleEventWebhook(recorder, nil, &cfg, bridgepkgToWebhookRequest(t, map[string]any{
 		"type": 1,
 		"event": map[string]any{
 			"id":        "evt-reaction-1",
@@ -751,7 +776,7 @@ func TestHandleEventAndInteractionWebhookBranches(t *testing.T) {
 	blockedCfg := cfg
 	blockedCfg.dedup = bridgesdk.NewDedupCache(time.Minute, 16)
 	blockedCfg.dmPolicy = bridgepkg.BridgeDMPolicyAllowlist
-	if err := provider.handleEventWebhook(recorder, nil, blockedCfg, bridgepkgToWebhookRequest(t, map[string]any{
+	if err := provider.handleEventWebhook(recorder, nil, &blockedCfg, bridgepkgToWebhookRequest(t, map[string]any{
 		"type": 1,
 		"event": map[string]any{
 			"id":        "evt-reaction-blocked",
@@ -780,7 +805,15 @@ func TestHandleEventAndInteractionWebhookBranches(t *testing.T) {
 	}
 
 	recorder = httptest.NewRecorder()
-	if err := provider.handleInteractionWebhook(recorder, cfg, bridgepkgToWebhookRequest(t, discordInteraction{ID: "ixn-ping", Type: discordInteractionTypePing}, time.Now().UTC())); err != nil {
+	if err := provider.handleInteractionWebhook(
+		recorder,
+		&cfg,
+		bridgepkgToWebhookRequest(
+			t,
+			discordInteraction{ID: "ixn-ping", Type: discordInteractionTypePing},
+			time.Now().UTC(),
+		),
+	); err != nil {
 		t.Fatalf("handleInteractionWebhook(ping) error = %v", err)
 	}
 	if got, want := strings.TrimSpace(recorder.Body.String()), `{"type":1}`; got != want {
@@ -788,7 +821,7 @@ func TestHandleEventAndInteractionWebhookBranches(t *testing.T) {
 	}
 
 	recorder = httptest.NewRecorder()
-	if err := provider.handleInteractionWebhook(recorder, cfg, bridgepkgToWebhookRequest(t, discordInteraction{
+	if err := provider.handleInteractionWebhook(recorder, &cfg, bridgepkgToWebhookRequest(t, discordInteraction{
 		ID:        "ixn-action-1",
 		Type:      discordInteractionTypeMessageComponent,
 		Token:     "ixn-token-1",
@@ -809,16 +842,16 @@ func TestAllowDiscordDirectMessagePoliciesAndUtilityHelpers(t *testing.T) {
 	t.Parallel()
 
 	user := discordUserIdentity{ID: "user-1", Username: "alice"}
-	if !allowDiscordDirectMessage(resolvedInstanceConfig{dmPolicy: bridgepkg.BridgeDMPolicyOpen}, user, true) {
+	if !allowDiscordDirectMessage(&resolvedInstanceConfig{dmPolicy: bridgepkg.BridgeDMPolicyOpen}, user, true) {
 		t.Fatal("allowDiscordDirectMessage(open) = false, want true")
 	}
-	if allowDiscordDirectMessage(resolvedInstanceConfig{
+	if allowDiscordDirectMessage(&resolvedInstanceConfig{
 		dmPolicy:     bridgepkg.BridgeDMPolicyAllowlist,
 		allowUserIDs: buildDiscordIDSet([]string{"other"}),
 	}, user, true) {
 		t.Fatal("allowDiscordDirectMessage(allowlist mismatch) = true, want false")
 	}
-	if !allowDiscordDirectMessage(resolvedInstanceConfig{
+	if !allowDiscordDirectMessage(&resolvedInstanceConfig{
 		dmPolicy:       bridgepkg.BridgeDMPolicyPairing,
 		pairedUserIDs:  buildDiscordIDSet([]string{"user-1"}),
 		allowUsernames: buildDiscordUsernameSet([]string{"alice"}),
@@ -834,7 +867,9 @@ func TestAllowDiscordDirectMessagePoliciesAndUtilityHelpers(t *testing.T) {
 	if got := parseRetryAfter("2"); got != 2*time.Second {
 		t.Fatalf("parseRetryAfter() = %s, want 2s", got)
 	}
-	if got := cloneDegradation(&bridgepkg.BridgeDegradation{Reason: bridgepkg.BridgeDegradationReasonAuthFailed}); got == nil {
+	if got := cloneDegradation(
+		&bridgepkg.BridgeDegradation{Reason: bridgepkg.BridgeDegradationReasonAuthFailed},
+	); got == nil {
 		t.Fatal("cloneDegradation() = nil, want non-nil")
 	}
 }
@@ -847,7 +882,9 @@ func TestHandleBridgesDeliverFailureAndMainHelpers(t *testing.T) {
 		t.Fatalf("newDiscordProvider() error = %v", err)
 	}
 	provider.apiFactory = func(resolvedInstanceConfig) discordAPI {
-		return &discordAPIFake{postErr: &bridgesdk.HTTPError{StatusCode: http.StatusTooManyRequests, Message: "slow down"}}
+		return &discordAPIFake{
+			postErr: &bridgesdk.HTTPError{StatusCode: http.StatusTooManyRequests, Message: "slow down"},
+		}
 	}
 	provider.mu.Lock()
 	provider.routes["brg-discord"] = resolvedInstanceConfig{
@@ -1025,7 +1062,7 @@ func TestResolveInstanceConfigErrorBranchesAndServerGuards(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/discord/missing", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/discord/missing", http.NoBody)
 	provider.serveWebhookHTTP(recorder, req)
 	if got, want := recorder.Code, http.StatusNotFound; got != want {
 		t.Fatalf("serveWebhookHTTP(not found) status = %d, want %d", got, want)
@@ -1043,18 +1080,23 @@ func TestAdditionalDiscordProviderBranches(t *testing.T) {
 		return &discordAPIGetBotUserErrorFake{err: context.DeadlineExceeded}
 	}
 
-	status, degradation, err := provider.determineInitialState(context.Background(), resolvedInstanceConfig{
+	status, degradation, err := provider.determineInitialState(context.Background(), &resolvedInstanceConfig{
 		configError: errors.New("bad config"),
 	})
 	if err == nil || status != bridgepkg.BridgeStatusDegraded || degradation == nil {
-		t.Fatalf("determineInitialState(configError) = (%q, %#v, %v), want degraded with error", status, degradation, err)
+		t.Fatalf(
+			"determineInitialState(configError) = (%q, %#v, %v), want degraded with error",
+			status,
+			degradation,
+			err,
+		)
 	}
 
 	pub, _, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("GenerateKey() error = %v", err)
 	}
-	status, degradation, err = provider.determineInitialState(context.Background(), resolvedInstanceConfig{
+	status, degradation, err = provider.determineInitialState(context.Background(), &resolvedInstanceConfig{
 		botToken:  "discord-bot-token",
 		publicKey: hex.EncodeToString(pub),
 	})
@@ -1072,16 +1114,23 @@ func TestAdditionalDiscordProviderBranches(t *testing.T) {
 		t.Fatal("isNotInitializedRPCError(rpc code) = false, want true")
 	}
 
-	if got := parseDiscordReceivedAt(time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC).Format(time.RFC3339), time.Time{}); got.IsZero() {
+	if got := parseDiscordReceivedAt(
+		time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC).Format(time.RFC3339),
+		time.Time{},
+	); got.IsZero() {
 		t.Fatal("parseDiscordReceivedAt(rfc3339) = zero, want parsed time")
 	}
 
-	if !shouldPostDiscordMessage(bridgepkg.DeliveryEvent{EventType: bridgepkg.DeliveryEventTypeResume}, deliveryState{}, bridgepkg.DeliveryRequest{}) {
+	if !shouldPostDiscordMessage(
+		bridgepkg.DeliveryEvent{EventType: bridgepkg.DeliveryEventTypeResume},
+		deliveryState{},
+		bridgepkg.DeliveryRequest{},
+	) {
 		t.Fatal("shouldPostDiscordMessage(resume without snapshot) = false, want true")
 	}
 
 	recorder := httptest.NewRecorder()
-	if err := provider.handleWebhookRequest(recorder, nil, resolvedInstanceConfig{
+	if err := provider.handleWebhookRequest(recorder, nil, &resolvedInstanceConfig{
 		instanceID: "brg-discord",
 		managed:    testDiscordManagedInstance("brg-discord"),
 		dedup:      bridgesdk.NewDedupCache(time.Minute, 16),
@@ -1109,7 +1158,7 @@ func TestDiscordWebhookAndHelperErrorBranches(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
-	err = provider.handleWebhookRequest(recorder, nil, cfg, bridgesdk.WebhookRequest{
+	err = provider.handleWebhookRequest(recorder, nil, &cfg, bridgesdk.WebhookRequest{
 		Body:       []byte("{"),
 		ReceivedAt: time.Now().UTC(),
 	})
@@ -1119,7 +1168,7 @@ func TestDiscordWebhookAndHelperErrorBranches(t *testing.T) {
 	}
 
 	recorder = httptest.NewRecorder()
-	err = provider.handleInteractionWebhook(recorder, cfg, bridgepkgToWebhookRequest(t, discordInteraction{
+	err = provider.handleInteractionWebhook(recorder, &cfg, bridgepkgToWebhookRequest(t, discordInteraction{
 		ID:    "ixn-unsupported-1",
 		Type:  999,
 		Token: "ixn-token-1",
@@ -1129,7 +1178,12 @@ func TestDiscordWebhookAndHelperErrorBranches(t *testing.T) {
 	}
 
 	recorder = httptest.NewRecorder()
-	if err := provider.handleEventWebhook(recorder, nil, cfg, bridgepkgToWebhookRequest(t, map[string]any{"type": 1}, time.Now().UTC())); err != nil {
+	if err := provider.handleEventWebhook(
+		recorder,
+		nil,
+		&cfg,
+		bridgepkgToWebhookRequest(t, map[string]any{"type": 1}, time.Now().UTC()),
+	); err != nil {
 		t.Fatalf("handleEventWebhook(missing event) error = %v", err)
 	}
 	if got, want := recorder.Code, http.StatusNoContent; got != want {
@@ -1145,7 +1199,9 @@ func TestDiscordWebhookAndHelperErrorBranches(t *testing.T) {
 	if got := referenceRemoteMessageID(nil); got != "" {
 		t.Fatalf("referenceRemoteMessageID(nil) = %q, want empty", got)
 	}
-	if got := referenceRemoteMessageID(&bridgepkg.DeliveryMessageReference{RemoteMessageID: " channel-1:msg-1 "}); got != "channel-1:msg-1" {
+	if got := referenceRemoteMessageID(
+		&bridgepkg.DeliveryMessageReference{RemoteMessageID: " channel-1:msg-1 "},
+	); got != "channel-1:msg-1" {
 		t.Fatalf("referenceRemoteMessageID(value) = %q, want channel-1:msg-1", got)
 	}
 	if _, _, err := decodeRemoteMessageID("broken"); err == nil {
@@ -1191,7 +1247,7 @@ func TestHandleDiscordEventWebhookUsesRequestContext(t *testing.T) {
 	}
 	provider.mu.Lock()
 	provider.session = injectedDiscordSession(t,
-		bridgesdk.NewHostAPIClientFromCall(func(ctx context.Context, method string, params any, result any) error {
+		bridgesdk.NewHostAPIClientFromCall(func(ctx context.Context, method string, _ any, _ any) error {
 			if method != "bridges/messages/ingest" {
 				return fmt.Errorf("unexpected host api method %q", method)
 			}
@@ -1236,8 +1292,8 @@ func TestHandleDiscordEventWebhookUsesRequestContext(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	err = provider.handleEventWebhook(
 		recorder,
-		httptest.NewRequest(http.MethodPost, "http://discord.test/discord/brg-discord", nil).WithContext(ctx),
-		cfg,
+		httptest.NewRequestWithContext(ctx, http.MethodPost, "http://discord.test/discord/brg-discord", http.NoBody),
+		&cfg,
 		bridgepkgToWebhookRequest(t, payload, now),
 	)
 	var httpErr *bridgesdk.HTTPError
@@ -1278,10 +1334,11 @@ func TestReconcileConfigMarkerAndFileHelpers(t *testing.T) {
 		},
 	}
 
-	configs, err := provider.reconcileInstanceConfigs(context.Background(), &bridgesdk.Session{}, []subprocess.InitializeBridgeManagedInstance{managed})
-	if err != nil {
-		t.Fatalf("reconcileInstanceConfigs() error = %v", err)
-	}
+	configs := provider.reconcileInstanceConfigs(
+		context.Background(),
+		&bridgesdk.Session{},
+		[]subprocess.InitializeBridgeManagedInstance{managed},
+	)
 	if len(configs) != 1 {
 		t.Fatalf("len(configs) = %d, want 1", len(configs))
 	}
@@ -1418,7 +1475,12 @@ func TestProviderHostAPIFlowWithInjectedSession(t *testing.T) {
 	if listed, err := provider.syncOwnedInstances(context.Background(), session); err != nil || len(listed) != 1 {
 		t.Fatalf("syncOwnedInstances() = (%d, %v), want (1, nil)", len(listed), err)
 	}
-	if fetched, err := provider.getOwnedInstance(context.Background(), session, instance.ID); err != nil || fetched == nil || fetched.ID != instance.ID {
+	if fetched, err := provider.getOwnedInstance(
+		context.Background(),
+		session,
+		instance.ID,
+	); err != nil || fetched == nil ||
+		fetched.ID != instance.ID {
 		t.Fatalf("getOwnedInstance() = (%#v, %v), want instance and nil", fetched, err)
 	}
 
@@ -1433,10 +1495,11 @@ func TestProviderHostAPIFlowWithInjectedSession(t *testing.T) {
 		t.Fatalf("applicationID = %q, want %q", got, want)
 	}
 
-	configs, err := provider.reconcileInstanceConfigs(context.Background(), session, []subprocess.InitializeBridgeManagedInstance{managed})
-	if err != nil {
-		t.Fatalf("reconcileInstanceConfigs() error = %v", err)
-	}
+	configs := provider.reconcileInstanceConfigs(
+		context.Background(),
+		session,
+		[]subprocess.InitializeBridgeManagedInstance{managed},
+	)
 	defer func() {
 		if provider.server != nil {
 			_ = provider.server.Close()
@@ -1610,7 +1673,10 @@ func (f *discordAPIGetBotUserErrorFake) GetBotUser(context.Context) (*discordBot
 	return nil, f.err
 }
 
-func (f *discordAPIGetBotUserErrorFake) PostMessage(context.Context, discordPostMessageRequest) (*discordPostedMessage, error) {
+func (f *discordAPIGetBotUserErrorFake) PostMessage(
+	context.Context,
+	discordPostMessageRequest,
+) (*discordPostedMessage, error) {
 	return nil, f.err
 }
 
@@ -1628,7 +1694,11 @@ func (discordErrorReader) Read([]byte) (int, error) {
 	return 0, errors.New("read failed")
 }
 
-func injectedDiscordSession(t *testing.T, host *bridgesdk.HostAPIClient, cache *bridgesdk.InstanceCache) *bridgesdk.Session {
+func injectedDiscordSession(
+	t *testing.T,
+	host *bridgesdk.HostAPIClient,
+	cache *bridgesdk.InstanceCache,
+) *bridgesdk.Session {
 	t.Helper()
 
 	session := &bridgesdk.Session{}

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -287,7 +288,12 @@ func TestVerifySlackSignature(t *testing.T) {
 	timestamp := strconv.FormatInt(now.Unix(), 10)
 	signature := slackSignature("top-secret", timestamp, body)
 
-	req := httptest.NewRequest(http.MethodPost, "http://example.com/slack/brg-1", bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"http://example.com/slack/brg-1",
+		bytes.NewReader(body),
+	)
 	req.Header.Set("X-Slack-Request-Timestamp", timestamp)
 	req.Header.Set("X-Slack-Signature", signature)
 
@@ -311,11 +317,27 @@ func TestVerifySlackSignatureValidationErrors(t *testing.T) {
 	if err := verifySlackSignature(context.Background(), nil, body, "top-secret", now); err == nil {
 		t.Fatal("verifySlackSignature(nil request) error = nil, want non-nil")
 	}
-	if err := verifySlackSignature(context.Background(), httptest.NewRequest(http.MethodPost, "http://example.com", bytes.NewReader(body)), body, "", now); err == nil {
+	if err := verifySlackSignature(
+		context.Background(),
+		httptest.NewRequestWithContext(
+			context.Background(),
+			http.MethodPost,
+			"http://example.com",
+			bytes.NewReader(body),
+		),
+		body,
+		"",
+		now,
+	); err == nil {
 		t.Fatal("verifySlackSignature(empty secret) error = nil, want non-nil")
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "http://example.com", bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"http://example.com",
+		bytes.NewReader(body),
+	)
 	if err := verifySlackSignature(context.Background(), req, body, "top-secret", now); err == nil {
 		t.Fatal("verifySlackSignature(missing headers) error = nil, want non-nil")
 	}
@@ -403,38 +425,58 @@ func TestRuntimeInitializeStartsWebhookServerAndWritesMarkers(t *testing.T) {
 		testBridgeRuntime(now, "brg-1"),
 		testBridgeRuntime(now, "brg-2"),
 	}
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesList), func(context.Context, json.RawMessage) (any, error) {
-		return []bridgepkg.BridgeInstance{managed[0].Instance, managed[1].Instance}, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesGet), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgeInstanceTargetParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		switch payload.BridgeInstanceID {
-		case "brg-1":
-			return managed[0].Instance, nil
-		case "brg-2":
-			return managed[1].Instance, nil
-		default:
-			return nil, errors.New("unexpected instance")
-		}
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesReportState), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgesInstancesReportStateParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		instance := managed[0].Instance
-		if payload.BridgeInstanceID == "brg-2" {
-			instance = managed[1].Instance
-		}
-		instance.Status = payload.Status
-		instance.Degradation = payload.Degradation
-		return instance, nil
-	})
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesList),
+		func(context.Context, json.RawMessage) (any, error) {
+			return []bridgepkg.BridgeInstance{managed[0].Instance, managed[1].Instance}, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesGet),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgeInstanceTargetParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
+			switch payload.BridgeInstanceID {
+			case "brg-1":
+				return managed[0].Instance, nil
+			case "brg-2":
+				return managed[1].Instance, nil
+			default:
+				return nil, errors.New("unexpected instance")
+			}
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesReportState),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgesInstancesReportStateParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
+			instance := managed[0].Instance
+			if payload.BridgeInstanceID == "brg-2" {
+				instance = managed[1].Instance
+			}
+			instance.Status = payload.Status
+			instance.Degradation = payload.Degradation
+			return instance, nil
+		},
+	)
 
-	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed...), nil); err != nil {
+	if err := hostPeer.Call(
+		context.Background(),
+		"initialize",
+		testInitializeRequest(now, managed...),
+		nil,
+	); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
 	}
 
@@ -446,7 +488,11 @@ func TestRuntimeInitializeStartsWebhookServerAndWritesMarkers(t *testing.T) {
 	if got, want := len(ownership.Fetched), 2; got != want {
 		t.Fatalf("len(ownership.Fetched) = %d, want %d", got, want)
 	}
-	states := waitForJSONLinesFile[stateMarker](t, env.statePath, func(items []stateMarker) bool { return len(items) >= 2 })
+	states := waitForJSONLinesFile[stateMarker](
+		t,
+		env.statePath,
+		func(items []stateMarker) bool { return len(items) >= 2 },
+	)
 	if got, want := states[0].Status.Normalize(), bridgepkg.BridgeStatusReady; got != want {
 		t.Fatalf("states[0].Status = %q, want %q", got, want)
 	}
@@ -471,26 +517,45 @@ func TestHandleShutdownWritesMarker(t *testing.T) {
 	runtime.now = func() time.Time { return now }
 	managed := testBridgeRuntime(now, "brg-1")
 
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesList), func(context.Context, json.RawMessage) (any, error) {
-		return []bridgepkg.BridgeInstance{managed.Instance}, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesGet), func(context.Context, json.RawMessage) (any, error) {
-		return managed.Instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesReportState), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgesInstancesReportStateParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		instance := managed.Instance
-		instance.Status = payload.Status
-		return instance, nil
-	})
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesList),
+		func(context.Context, json.RawMessage) (any, error) {
+			return []bridgepkg.BridgeInstance{managed.Instance}, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesGet),
+		func(context.Context, json.RawMessage) (any, error) {
+			return managed.Instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesReportState),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgesInstancesReportStateParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
+			instance := managed.Instance
+			instance.Status = payload.Status
+			return instance, nil
+		},
+	)
 
 	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed), nil); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
 	}
-	if err := runtime.handleShutdown(context.Background(), nil, subprocess.ShutdownRequest{DeadlineMS: 50}); err != nil {
+	if err := runtime.handleShutdown(
+		context.Background(),
+		nil,
+		subprocess.ShutdownRequest{DeadlineMS: 50},
+	); err != nil {
 		t.Fatalf("handleShutdown() error = %v", err)
 	}
 	lines := waitForNonEmptyLines(t, env.shutdownPath)
@@ -513,28 +578,48 @@ func TestHandleJSONWebhookChallengeAndReaction(t *testing.T) {
 	runtime.now = func() time.Time { return now }
 	managed := testBridgeRuntime(now, "brg-1")
 
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesList), func(context.Context, json.RawMessage) (any, error) {
-		return []bridgepkg.BridgeInstance{managed.Instance}, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesGet), func(context.Context, json.RawMessage) (any, error) {
-		return managed.Instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesReportState), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgesInstancesReportStateParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		instance := managed.Instance
-		instance.Status = payload.Status
-		return instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesMessagesIngest), func(_ context.Context, params json.RawMessage) (any, error) {
-		var envelope bridgepkg.InboundMessageEnvelope
-		if err := json.Unmarshal(params, &envelope); err != nil {
-			return nil, err
-		}
-		return extensioncontract.BridgesMessagesIngestResult{SessionID: "sess-1"}, nil
-	})
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesList),
+		func(context.Context, json.RawMessage) (any, error) {
+			return []bridgepkg.BridgeInstance{managed.Instance}, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesGet),
+		func(context.Context, json.RawMessage) (any, error) {
+			return managed.Instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesReportState),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgesInstancesReportStateParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
+			instance := managed.Instance
+			instance.Status = payload.Status
+			return instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesMessagesIngest),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var envelope bridgepkg.InboundMessageEnvelope
+			if err := json.Unmarshal(params, &envelope); err != nil {
+				return nil, err
+			}
+			return extensioncontract.BridgesMessagesIngestResult{SessionID: "sess-1"}, nil
+		},
+	)
 
 	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed), nil); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
@@ -560,7 +645,9 @@ func TestHandleJSONWebhookChallengeAndReaction(t *testing.T) {
 
 	reactionRecorder := httptest.NewRecorder()
 	if err := runtime.handleJSONWebhook(reactionRecorder, cfg, bridgesdk.WebhookRequest{
-		Body:       []byte(`{"type":"event_callback","team_id":"T1","event_id":"EvReaction","event":{"type":"reaction_added","user":"U1","reaction":"eyes","event_ts":"1775866803.100000","item":{"type":"message","channel":"C123","ts":"1775866803.000000"}}}`),
+		Body: []byte(
+			`{"type":"event_callback","team_id":"T1","event_id":"EvReaction","event":{"type":"reaction_added","user":"U1","reaction":"eyes","event_ts":"1775866803.100000","item":{"type":"message","channel":"C123","ts":"1775866803.000000"}}}`,
+		),
 		ReceivedAt: now,
 	}); err != nil {
 		t.Fatalf("handleJSONWebhook(reaction) error = %v", err)
@@ -568,7 +655,11 @@ func TestHandleJSONWebhookChallengeAndReaction(t *testing.T) {
 	if got, want := reactionRecorder.Code, http.StatusOK; got != want {
 		t.Fatalf("reaction status = %d, want %d", got, want)
 	}
-	ingests := waitForJSONLinesFile[ingestMarker](t, env.ingestPath, func(items []ingestMarker) bool { return len(items) >= 1 })
+	ingests := waitForJSONLinesFile[ingestMarker](
+		t,
+		env.ingestPath,
+		func(items []ingestMarker) bool { return len(items) >= 1 },
+	)
 	if got, want := ingests[len(ingests)-1].Envelope.EventFamily, bridgepkg.InboundEventFamilyReaction; got != want {
 		t.Fatalf("reaction ingest family = %q, want %q", got, want)
 	}
@@ -595,42 +686,62 @@ func TestWebhookIngressRejectsInvalidSignatureAndIngestsMessage(t *testing.T) {
 	var ingested []bridgepkg.InboundMessageEnvelope
 	var mu sync.Mutex
 
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesList), func(context.Context, json.RawMessage) (any, error) {
-		return []bridgepkg.BridgeInstance{managed.Instance}, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesGet), func(context.Context, json.RawMessage) (any, error) {
-		return managed.Instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesReportState), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgesInstancesReportStateParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		instance := managed.Instance
-		instance.Status = payload.Status
-		return instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesMessagesIngest), func(_ context.Context, params json.RawMessage) (any, error) {
-		var envelope bridgepkg.InboundMessageEnvelope
-		if err := json.Unmarshal(params, &envelope); err != nil {
-			return nil, err
-		}
-		mu.Lock()
-		ingested = append(ingested, envelope)
-		mu.Unlock()
-		return extensioncontract.BridgesMessagesIngestResult{
-			SessionID:    "sess-1",
-			RouteCreated: true,
-			RoutingKey: bridgepkg.RoutingKey{
-				Scope:            envelope.Scope,
-				WorkspaceID:      envelope.WorkspaceID,
-				BridgeInstanceID: envelope.BridgeInstanceID,
-				PeerID:           envelope.PeerID,
-				ThreadID:         envelope.ThreadID,
-				GroupID:          envelope.GroupID,
-			},
-		}, nil
-	})
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesList),
+		func(context.Context, json.RawMessage) (any, error) {
+			return []bridgepkg.BridgeInstance{managed.Instance}, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesGet),
+		func(context.Context, json.RawMessage) (any, error) {
+			return managed.Instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesReportState),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgesInstancesReportStateParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
+			instance := managed.Instance
+			instance.Status = payload.Status
+			return instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesMessagesIngest),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var envelope bridgepkg.InboundMessageEnvelope
+			if err := json.Unmarshal(params, &envelope); err != nil {
+				return nil, err
+			}
+			mu.Lock()
+			ingested = append(ingested, envelope)
+			mu.Unlock()
+			return extensioncontract.BridgesMessagesIngestResult{
+				SessionID:    "sess-1",
+				RouteCreated: true,
+				RoutingKey: bridgepkg.RoutingKey{
+					Scope:            envelope.Scope,
+					WorkspaceID:      envelope.WorkspaceID,
+					BridgeInstanceID: envelope.BridgeInstanceID,
+					PeerID:           envelope.PeerID,
+					ThreadID:         envelope.ThreadID,
+					GroupID:          envelope.GroupID,
+				},
+			}, nil
+		},
+	)
 
 	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed), nil); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
@@ -648,7 +759,12 @@ func TestWebhookIngressRejectsInvalidSignatureAndIngestsMessage(t *testing.T) {
 	body := []byte(slackMessageWebhookPayload())
 	timestamp := strconv.FormatInt(now.Unix(), 10)
 
-	invalidReq, err := http.NewRequest(http.MethodPost, webhookURL, bytes.NewReader(body))
+	invalidReq, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		webhookURL,
+		bytes.NewReader(body),
+	)
 	if err != nil {
 		t.Fatalf("http.NewRequest(invalid) error = %v", err)
 	}
@@ -666,7 +782,12 @@ func TestWebhookIngressRejectsInvalidSignatureAndIngestsMessage(t *testing.T) {
 		t.Fatalf("invalid webhook status = %d, want %d", got, want)
 	}
 
-	validReq, err := http.NewRequest(http.MethodPost, webhookURL, bytes.NewReader(body))
+	validReq, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		webhookURL,
+		bytes.NewReader(body),
+	)
 	if err != nil {
 		t.Fatalf("http.NewRequest(valid) error = %v", err)
 	}
@@ -715,39 +836,59 @@ func TestWebhookIngressHandlesSlashCommandAndBlockActions(t *testing.T) {
 		{BindingName: "signing_secret", Kind: "token", Value: "top-secret"},
 	}
 
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesList), func(context.Context, json.RawMessage) (any, error) {
-		return []bridgepkg.BridgeInstance{managed.Instance}, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesGet), func(context.Context, json.RawMessage) (any, error) {
-		return managed.Instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesReportState), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgesInstancesReportStateParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		instance := managed.Instance
-		instance.Status = payload.Status
-		return instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesMessagesIngest), func(_ context.Context, params json.RawMessage) (any, error) {
-		var envelope bridgepkg.InboundMessageEnvelope
-		if err := json.Unmarshal(params, &envelope); err != nil {
-			return nil, err
-		}
-		return extensioncontract.BridgesMessagesIngestResult{
-			SessionID:    "sess-1",
-			RouteCreated: true,
-			RoutingKey: bridgepkg.RoutingKey{
-				Scope:            envelope.Scope,
-				WorkspaceID:      envelope.WorkspaceID,
-				BridgeInstanceID: envelope.BridgeInstanceID,
-				PeerID:           envelope.PeerID,
-				ThreadID:         envelope.ThreadID,
-				GroupID:          envelope.GroupID,
-			},
-		}, nil
-	})
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesList),
+		func(context.Context, json.RawMessage) (any, error) {
+			return []bridgepkg.BridgeInstance{managed.Instance}, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesGet),
+		func(context.Context, json.RawMessage) (any, error) {
+			return managed.Instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesReportState),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgesInstancesReportStateParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
+			instance := managed.Instance
+			instance.Status = payload.Status
+			return instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesMessagesIngest),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var envelope bridgepkg.InboundMessageEnvelope
+			if err := json.Unmarshal(params, &envelope); err != nil {
+				return nil, err
+			}
+			return extensioncontract.BridgesMessagesIngestResult{
+				SessionID:    "sess-1",
+				RouteCreated: true,
+				RoutingKey: bridgepkg.RoutingKey{
+					Scope:            envelope.Scope,
+					WorkspaceID:      envelope.WorkspaceID,
+					BridgeInstanceID: envelope.BridgeInstanceID,
+					PeerID:           envelope.PeerID,
+					ThreadID:         envelope.ThreadID,
+					GroupID:          envelope.GroupID,
+				},
+			}, nil
+		},
+	)
 
 	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed), nil); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
@@ -762,13 +903,19 @@ func TestWebhookIngressHandlesSlashCommandAndBlockActions(t *testing.T) {
 	runtime.mu.RUnlock()
 	webhookURL := "http://" + serverAddr + "/slack/brg-1"
 
-	commandBody := []byte("token=t&team_id=T1&channel_id=C123&channel_name=general&user_id=U123&user_name=alice&command=%2Fagh&text=hello&trigger_id=1337.42")
+	commandBody := []byte(
+		"token=t&team_id=T1&channel_id=C123&channel_name=general&user_id=U123&user_name=alice&command=%2Fagh&text=hello&trigger_id=1337.42",
+	)
 	postSignedSlackForm(t, webhookURL, "top-secret", now, commandBody)
 
 	actionBody := []byte("payload=" + url.QueryEscape(slackBlockActionsPayloadJSON()))
 	postSignedSlackForm(t, webhookURL, "top-secret", now, actionBody)
 
-	ingests := waitForJSONLinesFile[ingestMarker](t, env.ingestPath, func(items []ingestMarker) bool { return len(items) >= 2 })
+	ingests := waitForJSONLinesFile[ingestMarker](
+		t,
+		env.ingestPath,
+		func(items []ingestMarker) bool { return len(items) >= 2 },
+	)
 	if got, want := ingests[0].Envelope.EventFamily, bridgepkg.InboundEventFamilyCommand; got != want {
 		t.Fatalf("ingests[0].Envelope.EventFamily = %q, want %q", got, want)
 	}
@@ -794,35 +941,64 @@ func TestRuntimeDeliveriesCallSlackAPI(t *testing.T) {
 		{BindingName: "signing_secret", Kind: "token", Value: "top-secret"},
 	}
 
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesList), func(context.Context, json.RawMessage) (any, error) {
-		return []bridgepkg.BridgeInstance{managed.Instance}, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesGet), func(context.Context, json.RawMessage) (any, error) {
-		return managed.Instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesReportState), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgesInstancesReportStateParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		instance := managed.Instance
-		instance.Status = payload.Status
-		return instance, nil
-	})
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesList),
+		func(context.Context, json.RawMessage) (any, error) {
+			return []bridgepkg.BridgeInstance{managed.Instance}, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesGet),
+		func(context.Context, json.RawMessage) (any, error) {
+			return managed.Instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesReportState),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgesInstancesReportStateParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
+			instance := managed.Instance
+			instance.Status = payload.Status
+			return instance, nil
+		},
+	)
 
 	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed), nil); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
 	}
 
 	var ack bridgepkg.DeliveryAck
-	if err := hostPeer.Call(context.Background(), "bridges/deliver", testDeliveryRequest("brg-1", "delivery-1", 1, bridgepkg.DeliveryEventTypeStart, false), &ack); err != nil {
+	if err := hostPeer.Call(
+		context.Background(),
+		"bridges/deliver",
+		testDeliveryRequest("brg-1", "delivery-1", 1, bridgepkg.DeliveryEventTypeStart, false),
+		&ack,
+	); err != nil {
 		t.Fatalf("hostPeer.Call(start delivery) error = %v", err)
 	}
-	if err := hostPeer.Call(context.Background(), "bridges/deliver", testDeliveryRequest("brg-1", "delivery-1", 2, bridgepkg.DeliveryEventTypeFinal, true), &ack); err != nil {
+	if err := hostPeer.Call(
+		context.Background(),
+		"bridges/deliver",
+		testDeliveryRequest("brg-1", "delivery-1", 2, bridgepkg.DeliveryEventTypeFinal, true),
+		&ack,
+	); err != nil {
 		t.Fatalf("hostPeer.Call(final delivery) error = %v", err)
 	}
 
-	records := waitForJSONLinesFile[deliveryMarker](t, env.deliveryPath, func(items []deliveryMarker) bool { return len(items) >= 2 })
+	records := waitForJSONLinesFile[deliveryMarker](
+		t,
+		env.deliveryPath,
+		func(items []deliveryMarker) bool { return len(items) >= 2 },
+	)
 	if records[0].Ack == nil || records[1].Ack == nil {
 		t.Fatalf("delivery markers = %#v, want recorded acks", records)
 	}
@@ -877,22 +1053,37 @@ func TestHandleBridgesDeliverErrorPaths(t *testing.T) {
 	runtime.now = func() time.Time { return now }
 	managed := testBridgeRuntime(now, "brg-1")
 
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesList), func(context.Context, json.RawMessage) (any, error) {
-		return []bridgepkg.BridgeInstance{managed.Instance}, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesGet), func(context.Context, json.RawMessage) (any, error) {
-		return managed.Instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesReportState), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgesInstancesReportStateParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		instance := managed.Instance
-		instance.Status = payload.Status
-		instance.Degradation = payload.Degradation
-		return instance, nil
-	})
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesList),
+		func(context.Context, json.RawMessage) (any, error) {
+			return []bridgepkg.BridgeInstance{managed.Instance}, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesGet),
+		func(context.Context, json.RawMessage) (any, error) {
+			return managed.Instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesReportState),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgesInstancesReportStateParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
+			instance := managed.Instance
+			instance.Status = payload.Status
+			instance.Degradation = payload.Degradation
+			return instance, nil
+		},
+	)
 
 	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed), nil); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
@@ -902,17 +1093,29 @@ func TestHandleBridgesDeliverErrorPaths(t *testing.T) {
 		t.Fatal("runtime.currentSession() = nil, want session")
 	}
 
-	if _, err := runtime.handleBridgesDeliver(context.Background(), session, testDeliveryRequest("missing", "delivery-x", 1, bridgepkg.DeliveryEventTypeStart, false)); err == nil {
+	if _, err := runtime.handleBridgesDeliver(
+		context.Background(),
+		session,
+		testDeliveryRequest("missing", "delivery-x", 1, bridgepkg.DeliveryEventTypeStart, false),
+	); err == nil {
 		t.Fatal("handleBridgesDeliver(missing instance) error = nil, want non-nil")
 	}
 
 	runtime.apiFactory = func(resolvedInstanceConfig) slackAPI {
 		return fakeSlackAPIError{err: &bridgesdk.AuthError{Err: errors.New("invalid_auth")}}
 	}
-	if _, err := runtime.handleBridgesDeliver(context.Background(), session, testDeliveryRequest("brg-1", "delivery-y", 1, bridgepkg.DeliveryEventTypeStart, false)); err == nil {
+	if _, err := runtime.handleBridgesDeliver(
+		context.Background(),
+		session,
+		testDeliveryRequest("brg-1", "delivery-y", 1, bridgepkg.DeliveryEventTypeStart, false),
+	); err == nil {
 		t.Fatal("handleBridgesDeliver(auth failure) error = nil, want non-nil")
 	}
-	lines := waitForJSONLinesFile[deliveryMarker](t, env.deliveryPath, func(items []deliveryMarker) bool { return len(items) >= 2 })
+	lines := waitForJSONLinesFile[deliveryMarker](
+		t,
+		env.deliveryPath,
+		func(items []deliveryMarker) bool { return len(items) >= 2 },
+	)
 	if lines[0].Error == "" || lines[1].Error == "" {
 		t.Fatalf("delivery errors = %#v, want recorded marker failures", lines)
 	}
@@ -935,33 +1138,55 @@ func TestDispatchInboundBatchMergesContent(t *testing.T) {
 	var ingested []bridgepkg.InboundMessageEnvelope
 	var mu sync.Mutex
 
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesList), func(context.Context, json.RawMessage) (any, error) {
-		return []bridgepkg.BridgeInstance{managed.Instance}, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesGet), func(context.Context, json.RawMessage) (any, error) {
-		return managed.Instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesReportState), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgesInstancesReportStateParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		instance := managed.Instance
-		instance.Status = payload.Status
-		return instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesMessagesIngest), func(_ context.Context, params json.RawMessage) (any, error) {
-		var envelope bridgepkg.InboundMessageEnvelope
-		if err := json.Unmarshal(params, &envelope); err != nil {
-			return nil, err
-		}
-		mu.Lock()
-		ingested = append(ingested, envelope)
-		mu.Unlock()
-		return extensioncontract.BridgesMessagesIngestResult{SessionID: "sess-1"}, nil
-	})
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesList),
+		func(context.Context, json.RawMessage) (any, error) {
+			return []bridgepkg.BridgeInstance{managed.Instance}, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesGet),
+		func(context.Context, json.RawMessage) (any, error) {
+			return managed.Instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesReportState),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgesInstancesReportStateParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
+			instance := managed.Instance
+			instance.Status = payload.Status
+			return instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesMessagesIngest),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var envelope bridgepkg.InboundMessageEnvelope
+			if err := json.Unmarshal(params, &envelope); err != nil {
+				return nil, err
+			}
+			mu.Lock()
+			ingested = append(ingested, envelope)
+			mu.Unlock()
+			return extensioncontract.BridgesMessagesIngestResult{SessionID: "sess-1"}, nil
+		},
+	)
 
-	managed.Instance.ProviderConfig = []byte(`{"webhook":{"listen_addr":"127.0.0.1:9999","path":"/slack/brg-1"},"batching":{"delay_ms":5,"split_delay_ms":5,"split_threshold":2}}`)
+	managed.Instance.ProviderConfig = []byte(
+		`{"webhook":{"listen_addr":"127.0.0.1:9999","path":"/slack/brg-1"},"batching":{"delay_ms":5,"split_delay_ms":5,"split_threshold":2}}`,
+	)
 	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed), nil); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
 	}
@@ -1018,7 +1243,13 @@ func TestDispatchInboundBatchMergesContent(t *testing.T) {
 	if got, want := ingested[0].IdempotencyKey, "k1:batch:2"; got != want {
 		t.Fatalf("merged idempotency key = %q, want %q", got, want)
 	}
-	if got, want := len(waitForJSONLinesFile[ingestMarker](t, env.ingestPath, func(items []ingestMarker) bool { return len(items) == 1 })), 1; got != want {
+	if got, want := len(
+		waitForJSONLinesFile[ingestMarker](
+			t,
+			env.ingestPath,
+			func(items []ingestMarker) bool { return len(items) == 1 },
+		),
+	), 1; got != want {
 		t.Fatalf("ingest markers = %d, want %d", got, want)
 	}
 }
@@ -1122,21 +1353,36 @@ func TestResolveInstanceConfigAndHelperNormalization(t *testing.T) {
 		{BindingName: "signing_secret", Kind: "token", Value: "top-secret"},
 	}
 
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesList), func(context.Context, json.RawMessage) (any, error) {
-		return []bridgepkg.BridgeInstance{managed.Instance}, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesGet), func(context.Context, json.RawMessage) (any, error) {
-		return managed.Instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesReportState), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgesInstancesReportStateParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		instance := managed.Instance
-		instance.Status = payload.Status
-		return instance, nil
-	})
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesList),
+		func(context.Context, json.RawMessage) (any, error) {
+			return []bridgepkg.BridgeInstance{managed.Instance}, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesGet),
+		func(context.Context, json.RawMessage) (any, error) {
+			return managed.Instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesReportState),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgesInstancesReportStateParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
+			instance := managed.Instance
+			instance.Status = payload.Status
+			return instance, nil
+		},
+	)
 
 	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed), nil); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
@@ -1356,7 +1602,10 @@ func TestClassifySlackAPIErrorAndDeleteMessage(t *testing.T) {
 		botToken:   "xoxb-token",
 		httpClient: &http.Client{Timeout: time.Second},
 	}
-	if err := client.DeleteMessage(context.Background(), slackDeleteMessageRequest{Channel: "C123", TS: "1775866808.100000"}); err != nil {
+	if err := client.DeleteMessage(
+		context.Background(),
+		slackDeleteMessageRequest{Channel: "C123", TS: "1775866808.100000"},
+	); err != nil {
 		t.Fatalf("DeleteMessage() error = %v", err)
 	}
 	if got, want := parseRetryAfter("3"), 3*time.Second; got != want {
@@ -1370,7 +1619,12 @@ func TestClassifySlackAPIErrorAndDeleteMessage(t *testing.T) {
 func TestSlackBotClientCallBranches(t *testing.T) {
 	t.Parallel()
 
-	if err := ((*slackBotClient)(nil)).call(context.Background(), "chat.postMessage", map[string]any{}, nil); err == nil {
+	if err := ((*slackBotClient)(nil)).call(
+		context.Background(),
+		"chat.postMessage",
+		map[string]any{},
+		nil,
+	); err == nil {
 		t.Fatal("nil client call error = nil, want non-nil")
 	}
 
@@ -1385,7 +1639,7 @@ func TestSlackBotClientCallBranches(t *testing.T) {
 	}
 
 	t.Run("rate limited", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Retry-After", "7")
 			w.WriteHeader(http.StatusTooManyRequests)
 			writeSlackAPIResponse(t, w, map[string]any{"ok": false, "error": "ratelimited"})
@@ -1404,7 +1658,7 @@ func TestSlackBotClientCallBranches(t *testing.T) {
 	})
 
 	t.Run("decode response failure", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`not-json`))
 		}))
@@ -1417,7 +1671,7 @@ func TestSlackBotClientCallBranches(t *testing.T) {
 	})
 
 	t.Run("api error classification", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			writeSlackAPIResponse(t, w, map[string]any{"ok": false, "error": "missing_scope"})
 		}))
 		defer server.Close()
@@ -1431,13 +1685,18 @@ func TestSlackBotClientCallBranches(t *testing.T) {
 	})
 
 	t.Run("decode result failure", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			writeSlackAPIResponse(t, w, map[string]any{"ok": true, "ts": "1775866808.100000"})
 		}))
 		defer server.Close()
 
 		client := &slackBotClient{baseURL: server.URL, botToken: "xoxb", httpClient: &http.Client{Timeout: time.Second}}
-		if err := client.call(context.Background(), "chat.postMessage", map[string]any{"channel": "C1"}, make(chan int)); err == nil {
+		if err := client.call(
+			context.Background(),
+			"chat.postMessage",
+			map[string]any{"channel": "C1"},
+			make(chan int),
+		); err == nil {
 			t.Fatal("decode result error = nil, want non-nil")
 		}
 	})
@@ -1523,7 +1782,7 @@ func (f fakeSlackAPI) AuthTest(context.Context) (*slackAuthIdentity, error) {
 	return &slackAuthIdentity{UserID: "U_BOT", BotID: "B_BOT"}, nil
 }
 
-func (f *fakeSlackAPI) PostMessage(_ context.Context, req slackPostMessageRequest) (*slackPostedMessage, error) {
+func (f *fakeSlackAPI) PostMessage(_ context.Context, _ slackPostMessageRequest) (*slackPostedMessage, error) {
 	f.methods = append(f.methods, "chat.postMessage")
 	if strings.TrimSpace(f.nextTS) == "" {
 		f.nextTS = "1775866805.100000"
@@ -1624,9 +1883,7 @@ func writeSlackAPIResponse(t *testing.T, w http.ResponseWriter, result any) {
 	payload := map[string]any{"ok": true}
 	switch typed := result.(type) {
 	case map[string]any:
-		for key, value := range typed {
-			payload[key] = value
-		}
+		maps.Copy(payload, typed)
 	default:
 		raw, err := json.Marshal(result)
 		if err != nil {
@@ -1679,7 +1936,7 @@ func newRuntimePeerPair(t *testing.T) (*slackProvider, *bridgesdk.Peer, func()) 
 			}
 			_ = hostConn.Close()
 			_ = runtimeConn.Close()
-			for i := 0; i < 2; i++ {
+			for range 2 {
 				err := <-errCh
 				if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, net.ErrClosed) {
 					continue
@@ -1725,7 +1982,10 @@ func testBridgeRuntime(now time.Time, instanceID string) subprocess.InitializeBr
 	}
 }
 
-func testInitializeRequest(now time.Time, managed ...subprocess.InitializeBridgeManagedInstance) subprocess.InitializeRequest {
+func testInitializeRequest(
+	_ time.Time,
+	managed ...subprocess.InitializeBridgeManagedInstance,
+) subprocess.InitializeRequest {
 	return subprocess.InitializeRequest{
 		ProtocolVersion:          "1",
 		SupportedProtocolVersion: []string{"1"},
@@ -1763,7 +2023,13 @@ func testInitializeRequest(now time.Time, managed ...subprocess.InitializeBridge
 	}
 }
 
-func testDeliveryRequest(instanceID string, deliveryID string, seq int64, eventType string, final bool) bridgepkg.DeliveryRequest {
+func testDeliveryRequest(
+	instanceID string,
+	deliveryID string,
+	seq int64,
+	eventType string,
+	final bool,
+) bridgepkg.DeliveryRequest {
 	return bridgepkg.DeliveryRequest{
 		Event: bridgepkg.DeliveryEvent{
 			DeliveryID:       deliveryID,
@@ -1789,7 +2055,12 @@ func testDeliveryRequest(instanceID string, deliveryID string, seq int64, eventT
 	}
 }
 
-func testDeleteRequest(instanceID string, deliveryID string, seq int64, remoteMessageID string) bridgepkg.DeliveryRequest {
+func testDeleteRequest(
+	instanceID string,
+	deliveryID string,
+	seq int64,
+	remoteMessageID string,
+) bridgepkg.DeliveryRequest {
 	req := testDeliveryRequest(instanceID, deliveryID, seq, bridgepkg.DeliveryEventTypeDelete, true)
 	req.Event.Operation = bridgepkg.DeliveryOperationDelete
 	req.Event.Reference = &bridgepkg.DeliveryMessageReference{RemoteMessageID: remoteMessageID}
@@ -1835,7 +2106,7 @@ func setProviderTestEnv(t *testing.T) markerEnv {
 func reserveListenAddr(t *testing.T) string {
 	t.Helper()
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("net.Listen() error = %v", err)
 	}
@@ -1849,7 +2120,7 @@ func reserveListenAddr(t *testing.T) string {
 func postSignedSlackForm(t *testing.T, webhookURL string, secret string, now time.Time, body []byte) {
 	t.Helper()
 
-	req, err := http.NewRequest(http.MethodPost, webhookURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, webhookURL, bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("http.NewRequest() error = %v", err)
 	}

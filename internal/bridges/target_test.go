@@ -64,7 +64,9 @@ func TestBuildDeliveryTargetExplicitOverridesWinOverDefaults(t *testing.T) {
 	t.Parallel()
 
 	instance := testBridgeInstanceForTargets()
-	instance.DeliveryDefaults = []byte(`{"peer_id":"peer-default","thread_id":"thread-default","group_id":"group-default","mode":"reply"}`)
+	instance.DeliveryDefaults = []byte(
+		`{"peer_id":"peer-default","thread_id":"thread-default","group_id":"group-default","mode":"reply"}`,
+	)
 
 	target, err := bridgepkg.BuildDeliveryTarget(instance, bridgepkg.ResolveDeliveryTargetRequest{
 		BridgeInstanceID: instance.ID,

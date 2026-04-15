@@ -286,7 +286,6 @@ func TestDispatchTaskBackedJobMarksRunCancelledForTaskServiceCancellation(t *tes
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -298,7 +297,7 @@ func TestDispatchTaskBackedJobMarksRunCancelledForTaskServiceCancellation(t *tes
 			}
 			dispatcher := newTestDispatcher(t, creator, store, WithDispatcherTasks(tasks))
 
-			job := testJob(AutomationScopeGlobal, "job-task-cancelled", "")
+			job := testJob(AutomationScopeGlobal, "job-task-canceled", "")
 			job.Task = &JobTaskConfig{Title: "Create durable task"}
 
 			run, err := dispatcher.Dispatch(testutil.Context(t), DispatchRequest{
@@ -566,7 +565,7 @@ func TestDispatchBackoffRetryRecordsAttemptMetadata(t *testing.T) {
 		t,
 		creator,
 		store,
-		WithDispatcherSleep(func(ctx context.Context, delay time.Duration) error {
+		WithDispatcherSleep(func(_ context.Context, delay time.Duration) error {
 			sleepMu.Lock()
 			delays = append(delays, delay)
 			sleepMu.Unlock()
@@ -739,7 +738,6 @@ func TestDispatchRequestValidateRejectsInvalidShapes(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -798,7 +796,7 @@ func TestDispatchMarksRunCancelledWhenPromptIsCancelled(t *testing.T) {
 	})
 	dispatcher := newTestDispatcher(t, creator, store)
 
-	job := testJob(AutomationScopeGlobal, "job-cancelled", "")
+	job := testJob(AutomationScopeGlobal, "job-canceled", "")
 	run, err := dispatcher.Dispatch(testutil.Context(t), DispatchRequest{
 		Kind: DispatchKindSchedule,
 		Job:  &job,
@@ -837,7 +835,7 @@ func TestRetryDelayHelpersAndContextAwareSleep(t *testing.T) {
 	cancelledCtx, cancel := context.WithCancel(testutil.Context(t))
 	cancel()
 	if err := sleepWithContext(cancelledCtx, time.Second); !errors.Is(err, context.Canceled) {
-		t.Fatalf("sleepWithContext(cancelled) error = %v, want context.Canceled", err)
+		t.Fatalf("sleepWithContext(canceled) error = %v, want context.Canceled", err)
 	}
 }
 
@@ -857,7 +855,7 @@ func TestCollectPromptErrorReturnsContextCancellationWhenStreamDoesNotClose(t *t
 	cancel()
 
 	if err := collectPromptError(ctx, events); !errors.Is(err, context.Canceled) {
-		t.Fatalf("collectPromptError(cancelled) error = %v, want context.Canceled", err)
+		t.Fatalf("collectPromptError(canceled) error = %v, want context.Canceled", err)
 	}
 }
 
@@ -911,27 +909,45 @@ type failingAutomationHookDispatcher struct {
 	err error
 }
 
-func (f failingAutomationHookDispatcher) DispatchAutomationJobPreFire(context.Context, hookspkg.AutomationJobPreFirePayload) (hookspkg.AutomationJobPreFirePayload, error) {
+func (f failingAutomationHookDispatcher) DispatchAutomationJobPreFire(
+	context.Context,
+	hookspkg.AutomationJobPreFirePayload,
+) (hookspkg.AutomationJobPreFirePayload, error) {
 	return hookspkg.AutomationJobPreFirePayload{}, f.err
 }
 
-func (f failingAutomationHookDispatcher) DispatchAutomationJobPostFire(context.Context, hookspkg.AutomationJobPostFirePayload) (hookspkg.AutomationJobPostFirePayload, error) {
+func (f failingAutomationHookDispatcher) DispatchAutomationJobPostFire(
+	context.Context,
+	hookspkg.AutomationJobPostFirePayload,
+) (hookspkg.AutomationJobPostFirePayload, error) {
 	return hookspkg.AutomationJobPostFirePayload{}, f.err
 }
 
-func (f failingAutomationHookDispatcher) DispatchAutomationTriggerPreFire(context.Context, hookspkg.AutomationTriggerPreFirePayload) (hookspkg.AutomationTriggerPreFirePayload, error) {
+func (f failingAutomationHookDispatcher) DispatchAutomationTriggerPreFire(
+	context.Context,
+	hookspkg.AutomationTriggerPreFirePayload,
+) (hookspkg.AutomationTriggerPreFirePayload, error) {
 	return hookspkg.AutomationTriggerPreFirePayload{}, f.err
 }
 
-func (f failingAutomationHookDispatcher) DispatchAutomationTriggerPostFire(context.Context, hookspkg.AutomationTriggerPostFirePayload) (hookspkg.AutomationTriggerPostFirePayload, error) {
+func (f failingAutomationHookDispatcher) DispatchAutomationTriggerPostFire(
+	context.Context,
+	hookspkg.AutomationTriggerPostFirePayload,
+) (hookspkg.AutomationTriggerPostFirePayload, error) {
 	return hookspkg.AutomationTriggerPostFirePayload{}, f.err
 }
 
-func (f failingAutomationHookDispatcher) DispatchAutomationRunCompleted(context.Context, hookspkg.AutomationRunCompletedPayload) (hookspkg.AutomationRunCompletedPayload, error) {
+func (f failingAutomationHookDispatcher) DispatchAutomationRunCompleted(
+	context.Context,
+	hookspkg.AutomationRunCompletedPayload,
+) (hookspkg.AutomationRunCompletedPayload, error) {
 	return hookspkg.AutomationRunCompletedPayload{}, f.err
 }
 
-func (f failingAutomationHookDispatcher) DispatchAutomationRunFailed(context.Context, hookspkg.AutomationRunFailedPayload) (hookspkg.AutomationRunFailedPayload, error) {
+func (f failingAutomationHookDispatcher) DispatchAutomationRunFailed(
+	context.Context,
+	hookspkg.AutomationRunFailedPayload,
+) (hookspkg.AutomationRunFailedPayload, error) {
 	return hookspkg.AutomationRunFailedPayload{}, f.err
 }
 
@@ -1076,7 +1092,11 @@ func newRecordingTaskService() *recordingTaskService {
 	return &recordingTaskService{}
 }
 
-func (s *recordingTaskService) CreateTask(_ context.Context, spec taskpkg.CreateTask, actor taskpkg.ActorContext) (*taskpkg.Task, error) {
+func (s *recordingTaskService) CreateTask(
+	_ context.Context,
+	spec taskpkg.CreateTask,
+	actor taskpkg.ActorContext,
+) (*taskpkg.Task, error) {
 	s.createCalls = append(s.createCalls, taskCreateCall{spec: spec, actor: actor})
 	if s.createErr != nil {
 		return nil, s.createErr
@@ -1090,12 +1110,16 @@ func (s *recordingTaskService) CreateTask(_ context.Context, spec taskpkg.Create
 	}, nil
 }
 
-func (s *recordingTaskService) EnqueueRun(_ context.Context, spec taskpkg.EnqueueRun, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
+func (s *recordingTaskService) EnqueueRun(
+	_ context.Context,
+	spec taskpkg.EnqueueRun,
+	actor taskpkg.ActorContext,
+) (*taskpkg.Run, error) {
 	s.enqueueCalls = append(s.enqueueCalls, taskEnqueueCall{spec: spec, actor: actor})
 	if s.enqueueErr != nil {
 		return nil, s.enqueueErr
 	}
-	return &taskpkg.TaskRun{
+	return &taskpkg.Run{
 		ID:             "task-run-1",
 		TaskID:         spec.TaskID,
 		Origin:         actor.Origin,
@@ -1109,7 +1133,10 @@ type recordingTaskActorRecorder struct {
 	deleted  []string
 }
 
-func (r *recordingTaskActorRecorder) RecordAutomationSessionTaskActor(sessionID string, actor taskpkg.ActorContext) error {
+func (r *recordingTaskActorRecorder) RecordAutomationSessionTaskActor(
+	sessionID string,
+	actor taskpkg.ActorContext,
+) error {
 	if r.recorded == nil {
 		r.recorded = make(map[string]taskpkg.ActorContext)
 	}
@@ -1205,7 +1232,12 @@ func (c *recordingSessionCreator) Prompt(ctx context.Context, id string, msg str
 	return out, nil
 }
 
-func (c *recordingSessionCreator) StopWithCause(ctx context.Context, id string, cause session.StopCause, detail string) error {
+func (c *recordingSessionCreator) StopWithCause(
+	ctx context.Context,
+	id string,
+	cause session.StopCause,
+	detail string,
+) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -1283,7 +1315,7 @@ func newTestDispatcher(t *testing.T, creator SessionCreator, store RunStore, opt
 	return dispatcher
 }
 
-func testJob(scope AutomationScope, name string, workspaceID string) Job {
+func testJob(scope Scope, name string, workspaceID string) Job {
 	return Job{
 		ID:          "job-" + name,
 		Scope:       scope,
@@ -1302,7 +1334,7 @@ func testJob(scope AutomationScope, name string, workspaceID string) Job {
 	}
 }
 
-func testTrigger(scope AutomationScope, name string, workspaceID string) Trigger {
+func testTrigger(scope Scope, name string, workspaceID string) Trigger {
 	return Trigger{
 		ID:          "trigger-" + name,
 		Scope:       scope,
@@ -1319,7 +1351,7 @@ func testTrigger(scope AutomationScope, name string, workspaceID string) Trigger
 	}
 }
 
-func testEnvelope(scope AutomationScope, workspaceID string) ActivationEnvelope {
+func testEnvelope(scope Scope, workspaceID string) ActivationEnvelope {
 	return ActivationEnvelope{
 		Kind:        "webhook",
 		Scope:       scope,

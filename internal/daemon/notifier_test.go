@@ -117,10 +117,16 @@ func TestHooksNotifierDispatchesLifecycleAgentAndStreamEvents(t *testing.T) {
 		UpdatedAt:   fixedNow,
 	}
 
-	if _, err := notifier.DispatchSessionPostCreate(testutil.Context(t), hookspkg.SessionPostCreatePayload(hookSessionLifecyclePayload(sess, hookspkg.HookSessionPostCreate, fixedNow))); err != nil {
+	if _, err := notifier.DispatchSessionPostCreate(
+		testutil.Context(t),
+		hookSessionLifecyclePayload(sess, hookspkg.HookSessionPostCreate, fixedNow),
+	); err != nil {
 		t.Fatalf("DispatchSessionPostCreate() error = %v", err)
 	}
-	if _, err := notifier.DispatchSessionPostStop(testutil.Context(t), hookspkg.SessionPostStopPayload(hookSessionLifecyclePayload(sess, hookspkg.HookSessionPostStop, fixedNow))); err != nil {
+	if _, err := notifier.DispatchSessionPostStop(
+		testutil.Context(t),
+		hookSessionLifecyclePayload(sess, hookspkg.HookSessionPostStop, fixedNow),
+	); err != nil {
 		t.Fatalf("DispatchSessionPostStop() error = %v", err)
 	}
 	if _, err := notifier.DispatchTurnStart(testutil.Context(t), hookspkg.TurnStartPayload{
@@ -229,10 +235,16 @@ func TestDaemonNativeHooksDriveObserverAndDreamCallbacks(t *testing.T) {
 		UpdatedAt:   fixedNow,
 	}
 
-	if _, err := hooks.DispatchSessionPostCreate(testutil.Context(t), hookSessionLifecyclePayload(sess, hookspkg.HookSessionPostCreate, fixedNow)); err != nil {
+	if _, err := hooks.DispatchSessionPostCreate(
+		testutil.Context(t),
+		hookSessionLifecyclePayload(sess, hookspkg.HookSessionPostCreate, fixedNow),
+	); err != nil {
 		t.Fatalf("DispatchSessionPostCreate() error = %v", err)
 	}
-	if _, err := hooks.DispatchSessionPostStop(testutil.Context(t), hookSessionLifecyclePayload(sess, hookspkg.HookSessionPostStop, fixedNow)); err != nil {
+	if _, err := hooks.DispatchSessionPostStop(
+		testutil.Context(t),
+		hookSessionLifecyclePayload(sess, hookspkg.HookSessionPostStop, fixedNow),
+	); err != nil {
 		t.Fatalf("DispatchSessionPostStop() error = %v", err)
 	}
 
@@ -320,7 +332,7 @@ func TestHooksBridgeHelperCloningAndTimestamp(t *testing.T) {
 	}
 
 	resolved := workspaceResolvedForTest("ws-1", "/tmp/ws-1")
-	scoped := scopeWorkspaceHookDecls([]hookspkg.HookDecl{original}, resolved)
+	scoped := scopeWorkspaceHookDecls([]hookspkg.HookDecl{original}, &resolved)
 	if len(scoped) != 1 {
 		t.Fatalf("len(scoped) = %d, want 1", len(scoped))
 	}
@@ -342,10 +354,21 @@ func TestHooksBridgeHelperCloningAndTimestamp(t *testing.T) {
 func TestDispatchRuntimeAndExecutorResolvers(t *testing.T) {
 	t.Parallel()
 
-	notifier := newHooksNotifier(discardLogger(), func() time.Time { return time.Date(2026, 4, 9, 16, 0, 0, 0, time.UTC) })
-	payload, err := dispatchRuntime(notifier, nil, hookspkg.HookSessionPostCreate, "seed", false, func(_ hookRuntime, _ context.Context, item string) (string, error) {
-		return item + "-unused", nil
-	})
+	notifier := newHooksNotifier(
+		discardLogger(),
+		func() time.Time { return time.Date(2026, 4, 9, 16, 0, 0, 0, time.UTC) },
+	)
+	var nilCtx context.Context
+	payload, err := dispatchRuntime(
+		nilCtx,
+		notifier,
+		hookspkg.HookSessionPostCreate,
+		"seed",
+		false,
+		func(_ hookRuntime, _ context.Context, item string) (string, error) {
+			return item + "-unused", nil
+		},
+	)
 	if err != nil {
 		t.Fatalf("dispatchRuntime(nil runtime) error = %v, want nil", err)
 	}
@@ -362,9 +385,16 @@ func TestDispatchRuntimeAndExecutorResolvers(t *testing.T) {
 	}
 	notifier.setRuntime(runtime, nil)
 
-	result, err := dispatchRuntime(notifier, context.Background(), hookspkg.HookEventPreRecord, "seed", false, func(_ hookRuntime, _ context.Context, item string) (string, error) {
-		return item + "-ok", nil
-	})
+	result, err := dispatchRuntime(
+		context.Background(),
+		notifier,
+		hookspkg.HookEventPreRecord,
+		"seed",
+		false,
+		func(_ hookRuntime, _ context.Context, item string) (string, error) {
+			return item + "-ok", nil
+		},
+	)
 	if err != nil {
 		t.Fatalf("dispatchRuntime(rebuild false) error = %v, want nil", err)
 	}
@@ -375,9 +405,16 @@ func TestDispatchRuntimeAndExecutorResolvers(t *testing.T) {
 		t.Fatalf("rebuildCalls = %d, want 0 when rebuild=false", rebuildCalls)
 	}
 
-	result, err = dispatchRuntime(notifier, context.Background(), hookspkg.HookSessionPostCreate, "seed", true, func(_ hookRuntime, _ context.Context, item string) (string, error) {
-		return item + "-after-rebuild", nil
-	})
+	result, err = dispatchRuntime(
+		context.Background(),
+		notifier,
+		hookspkg.HookSessionPostCreate,
+		"seed",
+		true,
+		func(_ hookRuntime, _ context.Context, item string) (string, error) {
+			return item + "-after-rebuild", nil
+		},
+	)
 	if err != nil {
 		t.Fatalf("dispatchRuntime(rebuild true) error = %v, want nil", err)
 	}
@@ -388,9 +425,16 @@ func TestDispatchRuntimeAndExecutorResolvers(t *testing.T) {
 		t.Fatalf("rebuildCalls = %d, want 1", rebuildCalls)
 	}
 
-	_, err = dispatchRuntime(notifier, nil, hookspkg.HookSessionPostCreate, "seed", false, func(_ hookRuntime, _ context.Context, item string) (string, error) {
-		return item, nil
-	})
+	_, err = dispatchRuntime(
+		nilCtx,
+		notifier,
+		hookspkg.HookSessionPostCreate,
+		"seed",
+		false,
+		func(_ hookRuntime, _ context.Context, item string) (string, error) {
+			return item, nil
+		},
+	)
 	if err == nil || !strings.Contains(err.Error(), "requires a non-nil context") {
 		t.Fatalf("dispatchRuntime(nil context) error = %v, want non-nil context detail", err)
 	}
@@ -472,9 +516,11 @@ func TestDispatchRuntimeAndExecutorResolvers(t *testing.T) {
 	}
 
 	resolver := daemonExecutorResolver(map[string]hookspkg.Executor{
-		"bound": hookspkg.NewTypedNativeExecutor(func(context.Context, hookspkg.RegisteredHook, hookspkg.SessionPostCreatePayload) (hookspkg.SessionPostCreatePatch, error) {
-			return hookspkg.SessionPostCreatePatch{}, nil
-		}),
+		"bound": hookspkg.NewTypedNativeExecutor(
+			func(context.Context, hookspkg.RegisteredHook, hookspkg.SessionPostCreatePayload) (hookspkg.SessionPostCreatePatch, error) {
+				return hookspkg.SessionPostCreatePatch{}, nil
+			},
+		),
 	})
 	nativeExecutor, err := resolver(hookspkg.HookDecl{Name: "bound", ExecutorKind: hookspkg.HookExecutorNative})
 	if err != nil {
@@ -484,7 +530,10 @@ func TestDispatchRuntimeAndExecutorResolvers(t *testing.T) {
 		t.Fatalf("native executor kind = %q, want %q", nativeExecutor.Kind(), hookspkg.HookExecutorNative)
 	}
 
-	if _, err := resolver(hookspkg.HookDecl{Name: "missing", ExecutorKind: hookspkg.HookExecutorNative}); err == nil || !strings.Contains(err.Error(), "missing native hook executor") {
+	if _, err := resolver(
+		hookspkg.HookDecl{Name: "missing", ExecutorKind: hookspkg.HookExecutorNative},
+	); err == nil ||
+		!strings.Contains(err.Error(), "missing native hook executor") {
 		t.Fatalf("daemonExecutorResolver(missing native) error = %v, want missing native executor error", err)
 	}
 }

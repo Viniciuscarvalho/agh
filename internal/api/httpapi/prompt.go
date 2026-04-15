@@ -166,109 +166,153 @@ func (s *promptStreamState) emit(writer core.FlushWriter, event acp.AgentEvent) 
 
 	switch event.Type {
 	case acp.EventTypeAgentMessage:
-		if err := s.ensureTextStarted(writer); err != nil {
-			return err
-		}
-		return core.WriteSSE(writer, core.SSEMessage{
-			Name: "agent_message",
-			Data: map[string]any{
-				"type":  "text-delta",
-				"id":    s.textBlockID,
-				"delta": event.Text,
-			},
-		})
+		return s.emitAgentMessage(writer, event)
 	case acp.EventTypeThought:
-		if err := s.ensureReasoningStarted(writer); err != nil {
-			return err
-		}
-		return core.WriteSSE(writer, core.SSEMessage{
-			Name: "thought",
-			Data: map[string]any{
-				"type":  "reasoning-delta",
-				"id":    s.reasoningBlockID,
-				"delta": event.Text,
-			},
-		})
+		return s.emitThought(writer, event)
 	case acp.EventTypeToolCall:
-		toolCallID := strings.TrimSpace(event.ToolCallID)
-		if toolCallID == "" {
-			toolCallID = s.messageID + "-tool"
-		}
-		if _, ok := s.toolStarted[toolCallID]; !ok {
-			s.toolStarted[toolCallID] = struct{}{}
-			toolName := strings.TrimSpace(event.Title)
-			if toolName == "" {
-				toolName = "tool"
-			}
-			if err := core.WriteSSE(writer, core.SSEMessage{
-				Name: "tool_call",
-				Data: map[string]any{
-					"type":       "tool-input-start",
-					"toolCallId": toolCallID,
-					"toolName":   toolName,
-				},
-			}); err != nil {
-				return err
-			}
-		}
-		return core.WriteSSE(writer, core.SSEMessage{
-			Name: "tool_call",
-			Data: map[string]any{
-				"type":       "data-agh-event",
-				"data":       agentEventPayloadFromEvent(event),
-				"toolCallId": toolCallID,
-			},
-		})
+		return s.emitToolCall(writer, event)
 	case acp.EventTypeToolResult:
-		toolCallID := strings.TrimSpace(event.ToolCallID)
-		if toolCallID == "" {
-			toolCallID = s.messageID + "-tool"
-		}
-		return core.WriteSSE(writer, core.SSEMessage{
-			Name: "tool_result",
-			Data: map[string]any{
-				"type":       "tool-output-available",
-				"toolCallId": toolCallID,
-				"output":     agentEventPayloadFromEvent(event),
-			},
-		})
+		return s.emitToolResult(writer, event)
 	case acp.EventTypePermission:
-		return core.WriteSSE(writer, core.SSEMessage{
-			Name: "permission",
-			Data: map[string]any{
-				"type": "data-agh-permission",
-				"data": agentEventPayloadFromEvent(event),
-			},
-		})
+		return s.emitPermission(writer, event)
 	case acp.EventTypeError:
-		if err := s.closeOpenBlocks(writer); err != nil {
-			return err
-		}
-		errorText := strings.TrimSpace(event.Error)
-		if errorText == "" {
-			errorText = strings.TrimSpace(event.Text)
-		}
-		if err := core.WriteSSE(writer, core.SSEMessage{
-			Name: "error",
-			Data: map[string]any{
-				"type":      "error",
-				"errorText": errorText,
-			},
-		}); err != nil {
-			return err
-		}
-		return s.finish(writer, event)
+		return s.emitError(writer, event)
 	case acp.EventTypeDone:
 		return s.finish(writer, event)
 	default:
-		return core.WriteSSE(writer, core.SSEMessage{
-			Name: event.Type,
-			Data: map[string]any{
-				"type": "data-agh-event",
-				"data": agentEventPayloadFromEvent(event),
-			},
-		})
+		return s.emitGenericEvent(writer, event)
 	}
+}
+
+func (s *promptStreamState) emitAgentMessage(writer core.FlushWriter, event acp.AgentEvent) error {
+	if err := s.ensureTextStarted(writer); err != nil {
+		return err
+	}
+	return core.WriteSSE(writer, core.SSEMessage{
+		Name: "agent_message",
+		Data: map[string]any{
+			"type":  "text-delta",
+			"id":    s.textBlockID,
+			"delta": event.Text,
+		},
+	})
+}
+
+func (s *promptStreamState) emitThought(writer core.FlushWriter, event acp.AgentEvent) error {
+	if err := s.ensureReasoningStarted(writer); err != nil {
+		return err
+	}
+	return core.WriteSSE(writer, core.SSEMessage{
+		Name: "thought",
+		Data: map[string]any{
+			"type":  "reasoning-delta",
+			"id":    s.reasoningBlockID,
+			"delta": event.Text,
+		},
+	})
+}
+
+func (s *promptStreamState) emitToolCall(writer core.FlushWriter, event acp.AgentEvent) error {
+	toolCallID := s.toolCallID(event)
+	if err := s.ensureToolCallStarted(writer, toolCallID, event); err != nil {
+		return err
+	}
+	return core.WriteSSE(writer, core.SSEMessage{
+		Name: "tool_call",
+		Data: map[string]any{
+			"type":       "data-agh-event",
+			"data":       agentEventPayloadFromEvent(event),
+			"toolCallId": toolCallID,
+		},
+	})
+}
+
+func (s *promptStreamState) emitToolResult(writer core.FlushWriter, event acp.AgentEvent) error {
+	return core.WriteSSE(writer, core.SSEMessage{
+		Name: "tool_result",
+		Data: map[string]any{
+			"type":       "tool-output-available",
+			"toolCallId": s.toolCallID(event),
+			"output":     agentEventPayloadFromEvent(event),
+		},
+	})
+}
+
+func (s *promptStreamState) emitPermission(writer core.FlushWriter, event acp.AgentEvent) error {
+	return core.WriteSSE(writer, core.SSEMessage{
+		Name: "permission",
+		Data: map[string]any{
+			"type": "data-agh-permission",
+			"data": agentEventPayloadFromEvent(event),
+		},
+	})
+}
+
+func (s *promptStreamState) emitError(writer core.FlushWriter, event acp.AgentEvent) error {
+	if err := s.closeOpenBlocks(writer); err != nil {
+		return err
+	}
+	if err := core.WriteSSE(writer, core.SSEMessage{
+		Name: "error",
+		Data: map[string]any{
+			"type":      "error",
+			"errorText": s.errorText(event),
+		},
+	}); err != nil {
+		return err
+	}
+	return s.finish(writer, event)
+}
+
+func (s *promptStreamState) emitGenericEvent(writer core.FlushWriter, event acp.AgentEvent) error {
+	return core.WriteSSE(writer, core.SSEMessage{
+		Name: event.Type,
+		Data: map[string]any{
+			"type": "data-agh-event",
+			"data": agentEventPayloadFromEvent(event),
+		},
+	})
+}
+
+func (s *promptStreamState) toolCallID(event acp.AgentEvent) string {
+	toolCallID := strings.TrimSpace(event.ToolCallID)
+	if toolCallID == "" {
+		return s.messageID + "-tool"
+	}
+	return toolCallID
+}
+
+func (s *promptStreamState) ensureToolCallStarted(
+	writer core.FlushWriter,
+	toolCallID string,
+	event acp.AgentEvent,
+) error {
+	if _, ok := s.toolStarted[toolCallID]; ok {
+		return nil
+	}
+
+	s.toolStarted[toolCallID] = struct{}{}
+	toolName := strings.TrimSpace(event.Title)
+	if toolName == "" {
+		toolName = "tool"
+	}
+
+	return core.WriteSSE(writer, core.SSEMessage{
+		Name: "tool_call",
+		Data: map[string]any{
+			"type":       "tool-input-start",
+			"toolCallId": toolCallID,
+			"toolName":   toolName,
+		},
+	})
+}
+
+func (s *promptStreamState) errorText(event acp.AgentEvent) string {
+	errorText := strings.TrimSpace(event.Error)
+	if errorText == "" {
+		errorText = strings.TrimSpace(event.Text)
+	}
+	return errorText
 }
 
 func (s *promptStreamState) ensureMessageStarted(writer core.FlushWriter, event acp.AgentEvent) error {

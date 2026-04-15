@@ -1567,7 +1567,7 @@
                                 "delegated",
                                 "completed",
                                 "failed",
-                                "cancelled"
+                                "canceled"
                             ],
                             "type": "string"
                         }
@@ -1641,7 +1641,7 @@
                                                             "delegated",
                                                             "completed",
                                                             "failed",
-                                                            "cancelled"
+                                                            "canceled"
                                                         ],
                                                         "type": "string"
                                                     },
@@ -1795,7 +1795,7 @@
                                                         "delegated",
                                                         "completed",
                                                         "failed",
-                                                        "cancelled"
+                                                        "canceled"
                                                     ],
                                                     "type": "string"
                                                 },
@@ -1924,7 +1924,7 @@
                                 "delegated",
                                 "completed",
                                 "failed",
-                                "cancelled"
+                                "canceled"
                             ],
                             "type": "string"
                         }
@@ -1998,7 +1998,7 @@
                                                             "delegated",
                                                             "completed",
                                                             "failed",
-                                                            "cancelled"
+                                                            "canceled"
                                                         ],
                                                         "type": "string"
                                                     },
@@ -2136,7 +2136,7 @@
                                                         "delegated",
                                                         "completed",
                                                         "failed",
-                                                        "cancelled"
+                                                        "canceled"
                                                     ],
                                                     "type": "string"
                                                 },
@@ -3308,7 +3308,7 @@
                                 "delegated",
                                 "completed",
                                 "failed",
-                                "cancelled"
+                                "canceled"
                             ],
                             "type": "string"
                         }
@@ -3382,7 +3382,7 @@
                                                             "delegated",
                                                             "completed",
                                                             "failed",
-                                                            "cancelled"
+                                                            "canceled"
                                                         ],
                                                         "type": "string"
                                                     },
@@ -7886,6 +7886,7 @@
                                                 },
                                                 "required": [
                                                     "event",
+                                                    "matcher",
                                                     "mode",
                                                     "name",
                                                     "order",
@@ -13125,7 +13126,7 @@
                                                         "running",
                                                         "completed",
                                                         "failed",
-                                                        "cancelled"
+                                                        "canceled"
                                                     ],
                                                     "type": "string"
                                                 },
@@ -13369,7 +13370,7 @@
                                                         "running",
                                                         "completed",
                                                         "failed",
-                                                        "cancelled"
+                                                        "canceled"
                                                     ],
                                                     "type": "string"
                                                 },
@@ -13612,7 +13613,7 @@
                                                         "running",
                                                         "completed",
                                                         "failed",
-                                                        "cancelled"
+                                                        "canceled"
                                                     ],
                                                     "type": "string"
                                                 },
@@ -13853,7 +13854,7 @@
                                                         "running",
                                                         "completed",
                                                         "failed",
-                                                        "cancelled"
+                                                        "canceled"
                                                     ],
                                                     "type": "string"
                                                 },
@@ -14098,7 +14099,7 @@
                                                         "running",
                                                         "completed",
                                                         "failed",
-                                                        "cancelled"
+                                                        "canceled"
                                                     ],
                                                     "type": "string"
                                                 },
@@ -14341,7 +14342,7 @@
                                                         "running",
                                                         "completed",
                                                         "failed",
-                                                        "cancelled"
+                                                        "canceled"
                                                     ],
                                                     "type": "string"
                                                 },
@@ -14489,7 +14490,7 @@
                                 "in_progress",
                                 "completed",
                                 "failed",
-                                "cancelled"
+                                "canceled"
                             ],
                             "type": "string"
                         }
@@ -14650,7 +14651,7 @@
                                                             "in_progress",
                                                             "completed",
                                                             "failed",
-                                                            "cancelled"
+                                                            "canceled"
                                                         ],
                                                         "type": "string"
                                                     },
@@ -14928,7 +14929,7 @@
                                                         "in_progress",
                                                         "completed",
                                                         "failed",
-                                                        "cancelled"
+                                                        "canceled"
                                                     ],
                                                     "type": "string"
                                                 },
@@ -15174,7 +15175,7 @@
                                                                     "in_progress",
                                                                     "completed",
                                                                     "failed",
-                                                                    "cancelled"
+                                                                    "canceled"
                                                                 ],
                                                                 "type": "string"
                                                             },
@@ -15400,7 +15401,7 @@
                                                                     "running",
                                                                     "completed",
                                                                     "failed",
-                                                                    "cancelled"
+                                                                    "canceled"
                                                                 ],
                                                                 "type": "string"
                                                             },
@@ -15523,7 +15524,7 @@
                                                                 "in_progress",
                                                                 "completed",
                                                                 "failed",
-                                                                "cancelled"
+                                                                "canceled"
                                                             ],
                                                             "type": "string"
                                                         },
@@ -15806,7 +15807,7 @@
                                                         "in_progress",
                                                         "completed",
                                                         "failed",
-                                                        "cancelled"
+                                                        "canceled"
                                                     ],
                                                     "type": "string"
                                                 },
@@ -16070,7 +16071,7 @@
                                                         "in_progress",
                                                         "completed",
                                                         "failed",
-                                                        "cancelled"
+                                                        "canceled"
                                                     ],
                                                     "type": "string"
                                                 },
@@ -16375,7 +16376,7 @@
                                                         "in_progress",
                                                         "completed",
                                                         "failed",
-                                                        "cancelled"
+                                                        "canceled"
                                                     ],
                                                     "type": "string"
                                                 },
@@ -16642,7 +16643,7 @@
                                                                     "in_progress",
                                                                     "completed",
                                                                     "failed",
-                                                                    "cancelled"
+                                                                    "canceled"
                                                                 ],
                                                                 "type": "string"
                                                             },
@@ -16868,7 +16869,7 @@
                                                                     "running",
                                                                     "completed",
                                                                     "failed",
-                                                                    "cancelled"
+                                                                    "canceled"
                                                                 ],
                                                                 "type": "string"
                                                             },
@@ -16991,7 +16992,7 @@
                                                                 "in_progress",
                                                                 "completed",
                                                                 "failed",
-                                                                "cancelled"
+                                                                "canceled"
                                                             ],
                                                             "type": "string"
                                                         },
@@ -17250,7 +17251,7 @@
                                                                     "in_progress",
                                                                     "completed",
                                                                     "failed",
-                                                                    "cancelled"
+                                                                    "canceled"
                                                                 ],
                                                                 "type": "string"
                                                             },
@@ -17476,7 +17477,7 @@
                                                                     "running",
                                                                     "completed",
                                                                     "failed",
-                                                                    "cancelled"
+                                                                    "canceled"
                                                                 ],
                                                                 "type": "string"
                                                             },
@@ -17599,7 +17600,7 @@
                                                                 "in_progress",
                                                                 "completed",
                                                                 "failed",
-                                                                "cancelled"
+                                                                "canceled"
                                                             ],
                                                             "type": "string"
                                                         },
@@ -17736,7 +17737,7 @@
                                 "running",
                                 "completed",
                                 "failed",
-                                "cancelled"
+                                "canceled"
                             ],
                             "type": "string"
                         }
@@ -17858,7 +17859,7 @@
                                                             "running",
                                                             "completed",
                                                             "failed",
-                                                            "cancelled"
+                                                            "canceled"
                                                         ],
                                                         "type": "string"
                                                     },
@@ -18088,7 +18089,7 @@
                                                         "running",
                                                         "completed",
                                                         "failed",
-                                                        "cancelled"
+                                                        "canceled"
                                                     ],
                                                     "type": "string"
                                                 },
@@ -18293,7 +18294,7 @@
                                                                     "delegated",
                                                                     "completed",
                                                                     "failed",
-                                                                    "cancelled"
+                                                                    "canceled"
                                                                 ],
                                                                 "type": "string"
                                                             },
@@ -18512,7 +18513,7 @@
                                                                     "delegated",
                                                                     "completed",
                                                                     "failed",
-                                                                    "cancelled"
+                                                                    "canceled"
                                                                 ],
                                                                 "type": "string"
                                                             },

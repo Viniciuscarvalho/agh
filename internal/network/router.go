@@ -71,9 +71,9 @@ type RouteResult struct {
 
 // Heartbeat owns one periodic greet publisher.
 type Heartbeat struct {
-	cancel func()
-	done   chan struct{}
-	once   sync.Once
+	stop chan struct{}
+	done chan struct{}
+	once sync.Once
 }
 
 // Stop cancels the heartbeat and waits for its goroutine to exit.
@@ -83,8 +83,8 @@ func (h *Heartbeat) Stop() {
 	}
 
 	h.once.Do(func() {
-		if h.cancel != nil {
-			h.cancel()
+		if h.stop != nil {
+			close(h.stop)
 		}
 	})
 	<-h.done
@@ -120,8 +120,21 @@ type Router struct {
 	interactions map[string]Interaction
 }
 
+type receiveState struct {
+	result            RouteResult
+	envelope          Envelope
+	directedTarget    LocalPeer
+	hasDirectedTarget bool
+	now               time.Time
+}
+
 // NewRouter constructs the routing runtime on top of a peer registry.
-func NewRouter(peers *PeerRegistry, transport RouterTransport, maxReplayAge time.Duration, opts ...RouterOption) (*Router, error) {
+func NewRouter(
+	peers *PeerRegistry,
+	transport RouterTransport,
+	maxReplayAge time.Duration,
+	opts ...RouterOption,
+) (*Router, error) {
 	if peers == nil {
 		return nil, fmt.Errorf("%w: peer registry is required", ErrInvalidField)
 	}
@@ -201,10 +214,9 @@ func (r *Router) StartHeartbeat(ctx context.Context, sessionID string, summary s
 		return nil, err
 	}
 
-	heartbeatCtx, cancel := context.WithCancel(ctx)
 	heartbeat := &Heartbeat{
-		cancel: cancel,
-		done:   make(chan struct{}),
+		stop: make(chan struct{}),
+		done: make(chan struct{}),
 	}
 
 	go func() {
@@ -215,10 +227,17 @@ func (r *Router) StartHeartbeat(ctx context.Context, sessionID string, summary s
 
 		for {
 			select {
-			case <-heartbeatCtx.Done():
+			case <-heartbeat.stop:
+				return
+			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if _, err := r.PublishGreet(heartbeatCtx, sessionID, summary); err != nil && errors.Is(err, ErrLocalPeerNotFound) {
+				if _, err := r.PublishGreet(
+					ctx,
+					sessionID,
+					summary,
+				); err != nil &&
+					errors.Is(err, ErrLocalPeerNotFound) {
 					return
 				}
 			}
@@ -243,7 +262,12 @@ func (r *Router) Send(ctx context.Context, req SendRequest) (SendResult, error) 
 		return SendResult{}, err
 	}
 	if envelope.IsDirected() && !r.peers.HasPresence(envelope.Channel, *envelope.To, now) {
-		return SendResult{}, fmt.Errorf("%w: peer_id=%q channel=%q", ErrTargetPeerNotFound, *envelope.To, envelope.Channel)
+		return SendResult{}, fmt.Errorf(
+			"%w: peer_id=%q channel=%q",
+			ErrTargetPeerNotFound,
+			*envelope.To,
+			envelope.Channel,
+		)
 	}
 
 	subject, err := subjectForEnvelope(envelope)
@@ -273,169 +297,255 @@ func (r *Router) Receive(ctx context.Context, payload []byte) (RouteResult, erro
 	now := r.now().UTC()
 	envelope, err := ParseEnvelope(payload, ValidateOptions{Now: now, MaxReplayAge: r.maxReplayAge})
 	if err != nil {
-		reason := reasonCodeForReceiveError(err)
-		result := RouteResult{
-			Rejected:   true,
-			ReasonCode: &reason,
-		}
-		if partial := parseEnvelopeSummary(payload); partial != nil {
-			result.Envelope = partial
-			if partial.Kind == KindDirect {
-				directedTarget, ok, resolveErr := r.resolveDirectedTarget(*partial)
-				if resolveErr != nil {
-					return RouteResult{}, resolveErr
-				}
-				if status, emit := rejectionReceiptStatus(reason); emit && ok {
-					receipt, built, buildErr := buildDirectReceipt(directedTarget, *partial, now, status, reason, nil)
-					if buildErr != nil {
-						return RouteResult{}, buildErr
-					}
-					if built {
-						result.Generated = append(result.Generated, receipt)
-						if err := r.publishGenerated(ctx, result.Generated); err != nil {
-							return RouteResult{}, err
-						}
-					}
-				}
-			}
-		}
-		return result, nil
+		return r.handleReceiveParseError(ctx, payload, now, err)
 	}
 
-	result := RouteResult{Envelope: &envelope}
-	directedTarget, ok, err := r.resolveDirectedTarget(envelope)
+	state, done, err := r.prepareReceiveState(ctx, envelope, now)
 	if err != nil {
 		return RouteResult{}, err
 	}
+	if done {
+		return state.result, nil
+	}
+	return r.dispatchReceivedEnvelope(ctx, state)
+}
+
+func (r *Router) handleReceiveParseError(
+	ctx context.Context,
+	payload []byte,
+	now time.Time,
+	parseErr error,
+) (RouteResult, error) {
+	reason := reasonCodeForReceiveError(parseErr)
+	result := RouteResult{
+		Rejected:   true,
+		ReasonCode: &reason,
+	}
+	partial := parseEnvelopeSummary(payload)
+	if partial == nil {
+		return result, nil
+	}
+	result.Envelope = partial
+	if partial.Kind != KindDirect {
+		return result, nil
+	}
+
+	directedTarget, ok, err := r.resolveDirectedTarget(*partial)
+	if err != nil {
+		return RouteResult{}, err
+	}
+	if !ok {
+		return result, nil
+	}
+	status, emit := rejectionReceiptStatus(reason)
+	result, _, err = r.appendPublishedReceipt(ctx, result, directedTarget, *partial, now, status, emit)
+	return result, err
+}
+
+func (r *Router) prepareReceiveState(
+	ctx context.Context,
+	envelope Envelope,
+	now time.Time,
+) (receiveState, bool, error) {
+	state := receiveState{
+		result:   RouteResult{Envelope: &envelope},
+		envelope: envelope,
+		now:      now,
+	}
+	directedTarget, ok, err := r.resolveDirectedTarget(envelope)
+	if err != nil {
+		return receiveState{}, false, err
+	}
+	state.directedTarget = directedTarget
+	state.hasDirectedTarget = ok
 	if envelope.IsDirected() && !ok {
 		reason := ReasonCodeNotTarget
-		result.Rejected = true
-		result.ReasonCode = &reason
-		return result, nil
+		state.result.Rejected = true
+		state.result.ReasonCode = &reason
+		return state, true, nil
+	}
+	if !r.markSeen(envelope, now) {
+		return state, false, nil
 	}
 
-	if duplicate := r.markSeen(envelope, now); duplicate {
-		reason := ReasonCodeDuplicate
-		result.Duplicate = true
-		result.Rejected = true
-		result.ReasonCode = &reason
-		if envelope.Kind == KindDirect && ok {
-			receipt, built, buildErr := buildDirectReceipt(directedTarget, envelope, now, ReceiptStatusDuplicate, reason, nil)
-			if buildErr != nil {
-				return RouteResult{}, buildErr
-			}
-			if built {
-				result.Generated = append(result.Generated, receipt)
-				if err := r.publishGenerated(ctx, result.Generated); err != nil {
-					return RouteResult{}, err
-				}
-			}
-		}
-		return result, nil
+	reason := ReasonCodeDuplicate
+	state.result.Duplicate = true
+	state.result.Rejected = true
+	state.result.ReasonCode = &reason
+	if envelope.Kind != KindDirect || !ok {
+		return state, true, nil
 	}
 
-	switch envelope.Kind {
+	result, _, err := r.appendPublishedReceipt(
+		ctx,
+		state.result,
+		directedTarget,
+		envelope,
+		now,
+		ReceiptStatusDuplicate,
+		true,
+	)
+	if err != nil {
+		return receiveState{}, false, err
+	}
+	state.result = result
+	return state, true, nil
+}
+
+func (r *Router) dispatchReceivedEnvelope(ctx context.Context, state receiveState) (RouteResult, error) {
+	switch state.envelope.Kind {
 	case KindGreet:
-		body, decodeErr := envelope.DecodeBody()
-		if decodeErr != nil {
-			return RouteResult{}, decodeErr
-		}
-		greet := body.(GreetBody)
-		if _, _, refreshErr := r.peers.RefreshRemote(envelope.Channel, greet.PeerCard, now); refreshErr != nil {
-			return RouteResult{}, refreshErr
-		}
-		return result, nil
+		return r.handleReceivedGreet(state)
 	case KindWhois:
-		return r.handleWhois(ctx, envelope, result, directedTarget, ok, now)
+		return r.handleWhois(
+			ctx,
+			state.envelope,
+			state.result,
+			state.directedTarget,
+			state.hasDirectedTarget,
+			state.now,
+		)
 	case KindSay:
-		result.Deliveries = deliveriesFromLocalPeers(r.peers.LocalPeers(envelope.Channel), envelope)
-		return result, nil
+		state.result.Deliveries = deliveriesFromLocalPeers(r.peers.LocalPeers(state.envelope.Channel), state.envelope)
+		return state.result, nil
 	case KindRecipe:
-		deliver := true
-		if envelope.InteractionID != nil && envelope.IsDirected() {
-			lifecycleResult, lifecycleErr := r.applyLifecycle(envelope, now)
-			switch {
-			case lifecycleErr == nil:
-				switch lifecycleResult.Action {
-				case LifecycleActionIgnored:
-					result.Ignored = true
-					deliver = false
-				case LifecycleActionRejectDirect:
-					reason := ReasonCodeInteractionClosed
-					result.Rejected = true
-					result.ReasonCode = &reason
-					deliver = false
-				}
-			case errors.Is(lifecycleErr, ErrInteractionActorNotAllowed), errors.Is(lifecycleErr, ErrInteractionNotFound):
-				result.Ignored = true
-				deliver = false
-			case errors.Is(lifecycleErr, ErrInvalidStateTransition):
-				reason := ReasonCodeInternal
-				result.Rejected = true
-				result.ReasonCode = &reason
-				deliver = false
-			default:
-				return RouteResult{}, lifecycleErr
-			}
-		}
-
-		if deliver {
-			if envelope.IsDirected() {
-				result.Deliveries = []Delivery{deliveryFromLocalPeer(directedTarget, envelope)}
-			} else {
-				result.Deliveries = deliveriesFromLocalPeers(r.peers.LocalPeers(envelope.Channel), envelope)
-			}
-		}
-		return result, nil
+		return r.handleReceivedRecipe(ctx, state)
 	case KindDirect, KindReceipt, KindTrace:
-		deliver := true
-		if envelope.InteractionID != nil {
-			lifecycleResult, lifecycleErr := r.applyLifecycle(envelope, now)
-			switch {
-			case lifecycleErr == nil:
-				switch lifecycleResult.Action {
-				case LifecycleActionIgnored:
-					result.Ignored = true
-					deliver = false
-				case LifecycleActionRejectDirect:
-					reason := ReasonCodeInteractionClosed
-					result.Rejected = true
-					result.ReasonCode = &reason
-					deliver = false
-					if built, ok, buildErr := buildDirectReceipt(directedTarget, envelope, now, ReceiptStatusRejected, reason, nil); buildErr != nil {
-						return RouteResult{}, buildErr
-					} else if ok {
-						result.Generated = append(result.Generated, built)
-					}
-				}
-			case errors.Is(lifecycleErr, ErrInteractionActorNotAllowed), errors.Is(lifecycleErr, ErrInteractionNotFound):
-				result.Ignored = true
-				deliver = false
-			case errors.Is(lifecycleErr, ErrInvalidStateTransition):
-				reason := ReasonCodeInternal
-				result.Rejected = true
-				result.ReasonCode = &reason
-				deliver = false
-			default:
-				return RouteResult{}, lifecycleErr
-			}
-		}
-
-		if len(result.Generated) > 0 {
-			if err := r.publishGenerated(ctx, result.Generated); err != nil {
-				return RouteResult{}, err
-			}
-		}
-		if deliver {
-			result.Deliveries = []Delivery{deliveryFromLocalPeer(directedTarget, envelope)}
-		}
-		return result, nil
+		return r.handleReceivedLifecycle(ctx, state)
 	default:
 		reason := ReasonCodeUnsupportedKind
-		result.Rejected = true
-		result.ReasonCode = &reason
+		state.result.Rejected = true
+		state.result.ReasonCode = &reason
+		return state.result, nil
+	}
+}
+
+func (r *Router) handleReceivedGreet(state receiveState) (RouteResult, error) {
+	body, err := decodeReceivedBody[GreetBody](state.envelope, "greet")
+	if err != nil {
+		return RouteResult{}, err
+	}
+	if _, _, refreshErr := r.peers.RefreshRemote(state.envelope.Channel, body.PeerCard, state.now); refreshErr != nil {
+		return RouteResult{}, refreshErr
+	}
+	return state.result, nil
+}
+
+func (r *Router) handleReceivedRecipe(ctx context.Context, state receiveState) (RouteResult, error) {
+	result, deliver, err := r.applyReceiveLifecycle(ctx, state, false)
+	if err != nil {
+		return RouteResult{}, err
+	}
+	if !deliver {
 		return result, nil
 	}
+	if state.envelope.IsDirected() {
+		result.Deliveries = []Delivery{deliveryFromLocalPeer(state.directedTarget, state.envelope)}
+		return result, nil
+	}
+	result.Deliveries = deliveriesFromLocalPeers(r.peers.LocalPeers(state.envelope.Channel), state.envelope)
+	return result, nil
+}
+
+func (r *Router) handleReceivedLifecycle(ctx context.Context, state receiveState) (RouteResult, error) {
+	result, deliver, err := r.applyReceiveLifecycle(ctx, state, true)
+	if err != nil {
+		return RouteResult{}, err
+	}
+	if deliver {
+		result.Deliveries = []Delivery{deliveryFromLocalPeer(state.directedTarget, state.envelope)}
+	}
+	return result, nil
+}
+
+func (r *Router) applyReceiveLifecycle(
+	ctx context.Context,
+	state receiveState,
+	emitRejectionReceipt bool,
+) (RouteResult, bool, error) {
+	result := state.result
+	if state.envelope.InteractionID == nil {
+		return result, true, nil
+	}
+
+	lifecycleResult, err := r.applyLifecycle(state.envelope, state.now)
+	switch {
+	case err == nil:
+		switch lifecycleResult.Action {
+		case LifecycleActionIgnored:
+			result.Ignored = true
+			return result, false, nil
+		case LifecycleActionRejectDirect:
+			reason := ReasonCodeInteractionClosed
+			result.Rejected = true
+			result.ReasonCode = &reason
+			if !emitRejectionReceipt {
+				return result, false, nil
+			}
+			return r.appendPublishedReceipt(
+				ctx,
+				result,
+				state.directedTarget,
+				state.envelope,
+				state.now,
+				ReceiptStatusRejected,
+				true,
+			)
+		default:
+			return result, true, nil
+		}
+	case errors.Is(err, ErrInteractionActorNotAllowed),
+		errors.Is(err, ErrInteractionNotFound):
+		result.Ignored = true
+		return result, false, nil
+	case errors.Is(err, ErrInvalidStateTransition):
+		reason := ReasonCodeInternal
+		result.Rejected = true
+		result.ReasonCode = &reason
+		return result, false, nil
+	default:
+		return RouteResult{}, false, err
+	}
+}
+
+func (r *Router) appendPublishedReceipt(
+	ctx context.Context,
+	result RouteResult,
+	directedTarget LocalPeer,
+	envelope Envelope,
+	now time.Time,
+	status ReceiptStatus,
+	emit bool,
+) (RouteResult, bool, error) {
+	if !emit {
+		return result, false, nil
+	}
+	receipt, built, err := buildDirectReceipt(directedTarget, envelope, now, status, *result.ReasonCode, nil)
+	if err != nil {
+		return RouteResult{}, false, err
+	}
+	if !built {
+		return result, false, nil
+	}
+
+	result.Generated = append(result.Generated, receipt)
+	if err := r.publishGenerated(ctx, result.Generated); err != nil {
+		return RouteResult{}, false, err
+	}
+	return result, false, nil
+}
+
+func decodeReceivedBody[T any](env Envelope, label string) (T, error) {
+	var zero T
+	body, err := env.DecodeBody()
+	if err != nil {
+		return zero, err
+	}
+	typed, ok := body.(T)
+	if !ok {
+		return zero, fmt.Errorf("network: unexpected %s body type %T", label, body)
+	}
+	return typed, nil
 }
 
 func (r *Router) handleWhois(
@@ -450,7 +560,10 @@ func (r *Router) handleWhois(
 	if err != nil {
 		return RouteResult{}, err
 	}
-	whois := body.(WhoisBody)
+	whois, ok := body.(WhoisBody)
+	if !ok {
+		return RouteResult{}, fmt.Errorf("network: unexpected whois body type %T", body)
+	}
 
 	switch whois.Type {
 	case WhoisTypeResponse:
@@ -474,7 +587,9 @@ func (r *Router) handleWhois(
 		}
 
 		for _, responder := range responders {
-			payload, marshalErr := marshalEnvelopeBody(WhoisBody{Type: WhoisTypeResponse, PeerCard: &responder.PeerCard})
+			payload, marshalErr := marshalEnvelopeBody(
+				WhoisBody{Type: WhoisTypeResponse, PeerCard: &responder.PeerCard},
+			)
 			if marshalErr != nil {
 				return RouteResult{}, marshalErr
 			}
@@ -684,7 +799,14 @@ func deliveryFromLocalPeer(peer LocalPeer, envelope Envelope) Delivery {
 	}
 }
 
-func buildDirectReceipt(local LocalPeer, envelope Envelope, now time.Time, status ReceiptStatus, reason ReasonCode, detail *string) (Envelope, bool, error) {
+func buildDirectReceipt(
+	local LocalPeer,
+	envelope Envelope,
+	now time.Time,
+	status ReceiptStatus,
+	reason ReasonCode,
+	detail *string,
+) (Envelope, bool, error) {
 	if envelope.Kind != KindDirect || envelope.InteractionID == nil {
 		return Envelope{}, false, nil
 	}

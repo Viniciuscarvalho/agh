@@ -1,6 +1,6 @@
 //go:build integration
 
-package extension
+package extensionpkg
 
 import (
 	"context"

@@ -38,7 +38,11 @@ const (
 
 func (h *BaseHandlers) requireTaskManager(c *gin.Context) (TaskService, bool) {
 	if h.Tasks == nil {
-		h.respondError(c, http.StatusServiceUnavailable, fmt.Errorf("%s: task service is not configured", h.transportName()))
+		h.respondError(
+			c,
+			http.StatusServiceUnavailable,
+			fmt.Errorf("%s: task service is not configured", h.transportName()),
+		)
 		return nil, false
 	}
 	return h.Tasks, true
@@ -106,7 +110,11 @@ func (h *BaseHandlers) CreateTask(c *gin.Context) {
 
 	var req contract.CreateTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.respondError(c, http.StatusBadRequest, NewTaskValidationError(fmt.Errorf("%s: decode create task request: %w", h.transportName(), err)))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewTaskValidationError(fmt.Errorf("%s: decode create task request: %w", h.transportName(), err)),
+		)
 		return
 	}
 
@@ -174,7 +182,11 @@ func (h *BaseHandlers) UpdateTask(c *gin.Context) {
 
 	var req contract.UpdateTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.respondError(c, http.StatusBadRequest, NewTaskValidationError(fmt.Errorf("%s: decode update task request: %w", h.transportName(), err)))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewTaskValidationError(fmt.Errorf("%s: decode update task request: %w", h.transportName(), err)),
+		)
 		return
 	}
 	if !req.HasChanges() {
@@ -219,7 +231,11 @@ func (h *BaseHandlers) CancelTask(c *gin.Context) {
 
 	var req contract.CancelTaskRequest
 	if err := decodeOptionalJSON(c, &req); err != nil {
-		h.respondError(c, http.StatusBadRequest, NewTaskValidationError(fmt.Errorf("%s: decode cancel task request: %w", h.transportName(), err)))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewTaskValidationError(fmt.Errorf("%s: decode cancel task request: %w", h.transportName(), err)),
+		)
 		return
 	}
 
@@ -259,7 +275,11 @@ func (h *BaseHandlers) CreateChildTask(c *gin.Context) {
 
 	var req contract.CreateTaskChildRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.respondError(c, http.StatusBadRequest, NewTaskValidationError(fmt.Errorf("%s: decode create child task request: %w", h.transportName(), err)))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewTaskValidationError(fmt.Errorf("%s: decode create child task request: %w", h.transportName(), err)),
+		)
 		return
 	}
 
@@ -299,7 +319,11 @@ func (h *BaseHandlers) AddTaskDependency(c *gin.Context) {
 
 	var req contract.AddTaskDependencyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.respondError(c, http.StatusBadRequest, NewTaskValidationError(fmt.Errorf("%s: decode add dependency request: %w", h.transportName(), err)))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewTaskValidationError(fmt.Errorf("%s: decode add dependency request: %w", h.transportName(), err)),
+		)
 		return
 	}
 
@@ -416,7 +440,11 @@ func (h *BaseHandlers) EnqueueTaskRun(c *gin.Context) {
 
 	var req contract.EnqueueTaskRunRequest
 	if err := decodeOptionalJSON(c, &req); err != nil {
-		h.respondError(c, http.StatusBadRequest, NewTaskValidationError(fmt.Errorf("%s: decode enqueue run request: %w", h.transportName(), err)))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewTaskValidationError(fmt.Errorf("%s: decode enqueue run request: %w", h.transportName(), err)),
+		)
 		return
 	}
 
@@ -456,7 +484,11 @@ func (h *BaseHandlers) ClaimTaskRun(c *gin.Context) {
 
 	var req contract.ClaimTaskRunRequest
 	if err := decodeOptionalJSON(c, &req); err != nil {
-		h.respondError(c, http.StatusBadRequest, NewTaskValidationError(fmt.Errorf("%s: decode claim run request: %w", h.transportName(), err)))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewTaskValidationError(fmt.Errorf("%s: decode claim run request: %w", h.transportName(), err)),
+		)
 		return
 	}
 
@@ -496,7 +528,11 @@ func (h *BaseHandlers) StartTaskRun(c *gin.Context) {
 
 	var req contract.StartTaskRunRequest
 	if err := decodeOptionalJSON(c, &req); err != nil {
-		h.respondError(c, http.StatusBadRequest, NewTaskValidationError(fmt.Errorf("%s: decode start run request: %w", h.transportName(), err)))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewTaskValidationError(fmt.Errorf("%s: decode start run request: %w", h.transportName(), err)),
+		)
 		return
 	}
 
@@ -536,7 +572,11 @@ func (h *BaseHandlers) AttachTaskRunSession(c *gin.Context) {
 
 	var req contract.AttachTaskRunSessionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.respondError(c, http.StatusBadRequest, NewTaskValidationError(fmt.Errorf("%s: decode attach run session request: %w", h.transportName(), err)))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewTaskValidationError(fmt.Errorf("%s: decode attach run session request: %w", h.transportName(), err)),
+		)
 		return
 	}
 
@@ -576,7 +616,11 @@ func (h *BaseHandlers) CompleteTaskRun(c *gin.Context) {
 
 	var req contract.CompleteTaskRunRequest
 	if err := decodeOptionalJSON(c, &req); err != nil {
-		h.respondError(c, http.StatusBadRequest, NewTaskValidationError(fmt.Errorf("%s: decode complete run request: %w", h.transportName(), err)))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewTaskValidationError(fmt.Errorf("%s: decode complete run request: %w", h.transportName(), err)),
+		)
 		return
 	}
 
@@ -616,7 +660,11 @@ func (h *BaseHandlers) FailTaskRun(c *gin.Context) {
 
 	var req contract.FailTaskRunRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.respondError(c, http.StatusBadRequest, NewTaskValidationError(fmt.Errorf("%s: decode fail run request: %w", h.transportName(), err)))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewTaskValidationError(fmt.Errorf("%s: decode fail run request: %w", h.transportName(), err)),
+		)
 		return
 	}
 
@@ -656,7 +704,11 @@ func (h *BaseHandlers) CancelTaskRun(c *gin.Context) {
 
 	var req contract.CancelTaskRunRequest
 	if err := decodeOptionalJSON(c, &req); err != nil {
-		h.respondError(c, http.StatusBadRequest, NewTaskValidationError(fmt.Errorf("%s: decode cancel run request: %w", h.transportName(), err)))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewTaskValidationError(fmt.Errorf("%s: decode cancel run request: %w", h.transportName(), err)),
+		)
 		return
 	}
 
@@ -681,15 +733,15 @@ func (h *BaseHandlers) CancelTaskRun(c *gin.Context) {
 	c.JSON(http.StatusOK, contract.TaskRunResponse{Run: TaskRunPayloadFromRun(run)})
 }
 
-func (h *BaseHandlers) parseTaskListQuery(ctx context.Context, c *gin.Context) (taskpkg.TaskQuery, error) {
+func (h *BaseHandlers) parseTaskListQuery(ctx context.Context, c *gin.Context) (taskpkg.Query, error) {
 	limit, err := ParseOptionalInt(c.Query("limit"))
 	if err != nil {
-		return taskpkg.TaskQuery{}, NewTaskValidationError(err)
+		return taskpkg.Query{}, NewTaskValidationError(err)
 	}
 
-	query := taskpkg.TaskQuery{
+	query := taskpkg.Query{
 		Scope:        taskpkg.Scope(strings.TrimSpace(c.Query("scope"))).Normalize(),
-		Status:       taskpkg.TaskStatus(strings.TrimSpace(c.Query("status"))).Normalize(),
+		Status:       taskpkg.Status(strings.TrimSpace(c.Query("status"))).Normalize(),
 		OwnerKind:    taskpkg.OwnerKind(strings.TrimSpace(c.Query("owner_kind"))).Normalize(),
 		OwnerRef:     strings.TrimSpace(c.Query("owner_ref")),
 		ParentTaskID: strings.TrimSpace(c.Query("parent_task_id")),
@@ -698,46 +750,54 @@ func (h *BaseHandlers) parseTaskListQuery(ctx context.Context, c *gin.Context) (
 
 	if workspaceRef := strings.TrimSpace(c.Query("workspace")); workspaceRef != "" {
 		if query.Scope.Normalize() == taskpkg.ScopeGlobal {
-			return taskpkg.TaskQuery{}, taskpkg.ValidateScopeBinding(query.Scope, workspaceRef, "task_query", "workspace")
+			return taskpkg.Query{}, taskpkg.ValidateScopeBinding(
+				query.Scope,
+				workspaceRef,
+				"task_query",
+				"workspace",
+			)
 		}
 		workspaceID, err := h.lookupWorkspaceID(ctx, workspaceRef)
 		if err != nil {
-			return taskpkg.TaskQuery{}, err
+			return taskpkg.Query{}, err
 		}
 		query.WorkspaceID = workspaceID
 	}
 
 	if networkChannel := strings.TrimSpace(c.Query("network_channel")); networkChannel != "" {
 		if err := validateTaskChannel("task_query.network_channel", networkChannel); err != nil {
-			return taskpkg.TaskQuery{}, err
+			return taskpkg.Query{}, err
 		}
 		query.NetworkChannel = networkChannel
 	}
 
 	if err := query.Validate("task_query"); err != nil {
-		return taskpkg.TaskQuery{}, err
+		return taskpkg.Query{}, err
 	}
 	return query, nil
 }
 
-func parseTaskRunListQuery(c *gin.Context) (taskpkg.TaskRunQuery, error) {
+func parseTaskRunListQuery(c *gin.Context) (taskpkg.RunQuery, error) {
 	limit, err := ParseOptionalInt(c.Query("limit"))
 	if err != nil {
-		return taskpkg.TaskRunQuery{}, NewTaskValidationError(err)
+		return taskpkg.RunQuery{}, NewTaskValidationError(err)
 	}
 
-	query := taskpkg.TaskRunQuery{
-		Status:    taskpkg.TaskRunStatus(strings.TrimSpace(c.Query("status"))).Normalize(),
+	query := taskpkg.RunQuery{
+		Status:    taskpkg.RunStatus(strings.TrimSpace(c.Query("status"))).Normalize(),
 		SessionID: strings.TrimSpace(c.Query("session_id")),
 		Limit:     limit,
 	}
 	if err := query.Validate("task_run_query"); err != nil {
-		return taskpkg.TaskRunQuery{}, err
+		return taskpkg.RunQuery{}, err
 	}
 	return query, nil
 }
 
-func (h *BaseHandlers) createTaskSpecFromRequest(ctx context.Context, req contract.CreateTaskRequest) (taskpkg.CreateTask, error) {
+func (h *BaseHandlers) createTaskSpecFromRequest(
+	ctx context.Context,
+	req contract.CreateTaskRequest,
+) (taskpkg.CreateTask, error) {
 	scope := req.Scope.Normalize()
 	workspaceID, err := h.resolveTaskWorkspaceBinding(ctx, scope, req.Workspace, "create_task")
 	if err != nil {
@@ -764,7 +824,10 @@ func (h *BaseHandlers) createTaskSpecFromRequest(ctx context.Context, req contra
 	return spec, nil
 }
 
-func (h *BaseHandlers) createChildTaskSpecFromRequest(ctx context.Context, req contract.CreateTaskChildRequest) (taskpkg.CreateTask, error) {
+func (h *BaseHandlers) createChildTaskSpecFromRequest(
+	ctx context.Context,
+	req contract.CreateTaskChildRequest,
+) (taskpkg.CreateTask, error) {
 	scope := req.Scope.Normalize()
 	workspaceID, err := h.resolveTaskWorkspaceBinding(ctx, scope, req.Workspace, "create_child_task")
 	if err != nil {
@@ -791,14 +854,14 @@ func (h *BaseHandlers) createChildTaskSpecFromRequest(ctx context.Context, req c
 	return spec, nil
 }
 
-func taskPatchFromRequest(req contract.UpdateTaskRequest) (taskpkg.TaskPatch, error) {
+func taskPatchFromRequest(req contract.UpdateTaskRequest) (taskpkg.Patch, error) {
 	if req.NetworkChannel != nil {
 		if err := validateTaskChannel("task_patch.network_channel", *req.NetworkChannel); err != nil {
-			return taskpkg.TaskPatch{}, err
+			return taskpkg.Patch{}, err
 		}
 	}
 
-	patch := taskpkg.TaskPatch{
+	patch := taskpkg.Patch{
 		Title:          trimStringPtr(req.Title),
 		Description:    trimStringPtr(req.Description),
 		Metadata:       cloneRawMessagePtr(req.Metadata),
@@ -807,7 +870,7 @@ func taskPatchFromRequest(req contract.UpdateTaskRequest) (taskpkg.TaskPatch, er
 		ClearOwner:     req.ClearOwner,
 	}
 	if err := patch.Validate("task_patch"); err != nil {
-		return taskpkg.TaskPatch{}, err
+		return taskpkg.Patch{}, err
 	}
 	return patch, nil
 }
@@ -910,7 +973,12 @@ func cancelTaskRunFromRequest(req contract.CancelTaskRunRequest) (taskpkg.Cancel
 	return cancelReq, nil
 }
 
-func (h *BaseHandlers) resolveTaskWorkspaceBinding(ctx context.Context, scope taskpkg.Scope, workspaceRef string, path string) (string, error) {
+func (h *BaseHandlers) resolveTaskWorkspaceBinding(
+	ctx context.Context,
+	scope taskpkg.Scope,
+	workspaceRef string,
+	path string,
+) (string, error) {
 	trimmed := strings.TrimSpace(workspaceRef)
 	if err := taskpkg.ValidateScopeBinding(scope, trimmed, path, "workspace"); err != nil {
 		return "", err
@@ -948,7 +1016,7 @@ func decodeOptionalJSON(c *gin.Context, dest any) error {
 }
 
 // TaskSummaryPayloadsFromSummaries converts task summaries into shared payloads.
-func TaskSummaryPayloadsFromSummaries(tasks []taskpkg.TaskSummary) []contract.TaskSummaryPayload {
+func TaskSummaryPayloadsFromSummaries(tasks []taskpkg.Summary) []contract.TaskSummaryPayload {
 	payloads := make([]contract.TaskSummaryPayload, 0, len(tasks))
 	for _, record := range tasks {
 		payloads = append(payloads, TaskSummaryPayloadFromSummary(record))
@@ -957,7 +1025,7 @@ func TaskSummaryPayloadsFromSummaries(tasks []taskpkg.TaskSummary) []contract.Ta
 }
 
 // TaskSummaryPayloadFromSummary converts one task summary into the shared payload.
-func TaskSummaryPayloadFromSummary(record taskpkg.TaskSummary) contract.TaskSummaryPayload {
+func TaskSummaryPayloadFromSummary(record taskpkg.Summary) contract.TaskSummaryPayload {
 	return contract.TaskSummaryPayload{
 		ID:             record.ID,
 		Identifier:     record.Identifier,
@@ -1003,7 +1071,7 @@ func TaskPayloadFromTask(record *taskpkg.Task) contract.TaskPayload {
 }
 
 // TaskDependencyPayloadsFromDependencies converts dependency records into shared payloads.
-func TaskDependencyPayloadsFromDependencies(dependencies []taskpkg.TaskDependency) []contract.TaskDependencyPayload {
+func TaskDependencyPayloadsFromDependencies(dependencies []taskpkg.Dependency) []contract.TaskDependencyPayload {
 	payloads := make([]contract.TaskDependencyPayload, 0, len(dependencies))
 	for _, dependency := range dependencies {
 		payloads = append(payloads, contract.TaskDependencyPayload{
@@ -1017,7 +1085,7 @@ func TaskDependencyPayloadsFromDependencies(dependencies []taskpkg.TaskDependenc
 }
 
 // TaskRunPayloadsFromRuns converts task runs into shared payloads.
-func TaskRunPayloadsFromRuns(runs []taskpkg.TaskRun) []contract.TaskRunPayload {
+func TaskRunPayloadsFromRuns(runs []taskpkg.Run) []contract.TaskRunPayload {
 	payloads := make([]contract.TaskRunPayload, 0, len(runs))
 	for _, run := range runs {
 		payloads = append(payloads, TaskRunPayloadFromRun(&run))
@@ -1026,7 +1094,7 @@ func TaskRunPayloadsFromRuns(runs []taskpkg.TaskRun) []contract.TaskRunPayload {
 }
 
 // TaskRunPayloadFromRun converts one task run into the shared payload.
-func TaskRunPayloadFromRun(run *taskpkg.TaskRun) contract.TaskRunPayload {
+func TaskRunPayloadFromRun(run *taskpkg.Run) contract.TaskRunPayload {
 	if run == nil {
 		return contract.TaskRunPayload{}
 	}
@@ -1051,7 +1119,7 @@ func TaskRunPayloadFromRun(run *taskpkg.TaskRun) contract.TaskRunPayload {
 }
 
 // TaskEventPayloadsFromEvents converts task events into shared payloads.
-func TaskEventPayloadsFromEvents(events []taskpkg.TaskEvent) []contract.TaskEventPayload {
+func TaskEventPayloadsFromEvents(events []taskpkg.Event) []contract.TaskEventPayload {
 	payloads := make([]contract.TaskEventPayload, 0, len(events))
 	for _, event := range events {
 		payloads = append(payloads, contract.TaskEventPayload{
@@ -1069,7 +1137,7 @@ func TaskEventPayloadsFromEvents(events []taskpkg.TaskEvent) []contract.TaskEven
 }
 
 // TaskDetailPayloadFromView converts one expanded task view into the shared payload.
-func TaskDetailPayloadFromView(view *taskpkg.TaskView) contract.TaskDetailPayload {
+func TaskDetailPayloadFromView(view *taskpkg.View) contract.TaskDetailPayload {
 	if view == nil {
 		return contract.TaskDetailPayload{}
 	}

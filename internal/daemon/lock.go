@@ -92,9 +92,9 @@ func acquireLock(path string, pid int, deps lockDeps) (*Lock, error) {
 	}
 
 	if err := writeLockPID(cleanPath, pid); err != nil {
-		_ = fileLock.Unlock()
-		_ = fileLock.Close()
-		return nil, err
+		unlockErr := fileLock.Unlock()
+		closeErr := fileLock.Close()
+		return nil, errors.Join(err, unlockErr, closeErr)
 	}
 
 	return &Lock{

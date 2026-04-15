@@ -79,7 +79,7 @@ func TestSessionInfoCopiesCapabilities(t *testing.T) {
 		Workspace:    t.TempDir(),
 		State:        StateActive,
 		ACPSessionID: "acp-1",
-		ACPCaps: acp.ACPCaps{
+		ACPCaps: acp.Caps{
 			SupportsLoadSession: true,
 			SupportedModes:      []string{"chat"},
 			SupportedModels:     []string{"gpt"},

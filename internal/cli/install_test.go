@@ -14,7 +14,7 @@ import (
 func TestInstallCommandWritesBootstrapConfigAndAgent(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{})
+	deps := newTestDeps(t, &stubClient{})
 	homePaths, err := deps.resolveHome()
 	if err != nil {
 		t.Fatalf("resolveHome() error = %v", err)
@@ -76,7 +76,7 @@ func TestBuildInstallWizardInputAndBundleFormats(t *testing.T) {
 	cfg.Defaults.Provider = "codex"
 	cfg.Providers["custom"] = aghconfig.ProviderConfig{DefaultModel: "custom-model"}
 
-	input := buildInstallWizardInput(cfg)
+	input := buildInstallWizardInput(&cfg)
 	if len(input.Providers) == 0 {
 		t.Fatal("buildInstallWizardInput() providers = empty, want builtin/custom providers")
 	}

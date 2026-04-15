@@ -83,7 +83,12 @@ func DeriveDaemonActorContext(actorRef string, originRef string) (ActorContext, 
 	return deriveActorContext(ActorKindDaemon, actorRef, OriginKindDaemon, originRef)
 }
 
-func deriveActorContext(actorKind ActorKind, actorRef string, originKind OriginKind, originRef string) (ActorContext, error) {
+func deriveActorContext(
+	actorKind ActorKind,
+	actorRef string,
+	originKind OriginKind,
+	originRef string,
+) (ActorContext, error) {
 	ctx := ActorContext{
 		Actor: ActorIdentity{
 			Kind: actorKind,

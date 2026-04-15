@@ -26,7 +26,7 @@ type AutomationHealthPayload struct {
 // JobPayload is the shared automation job response payload.
 type JobPayload struct {
 	ID          string                        `json:"id"`
-	Scope       automationpkg.AutomationScope `json:"scope"`
+	Scope       automationpkg.Scope           `json:"scope"`
 	Name        string                        `json:"name"`
 	AgentName   string                        `json:"agent_name"`
 	WorkspaceID string                        `json:"workspace_id,omitempty"`
@@ -45,7 +45,7 @@ type JobPayload struct {
 // TriggerPayload is the shared automation trigger response payload.
 type TriggerPayload struct {
 	ID           string                        `json:"id"`
-	Scope        automationpkg.AutomationScope `json:"scope"`
+	Scope        automationpkg.Scope           `json:"scope"`
 	Name         string                        `json:"name"`
 	AgentName    string                        `json:"agent_name"`
 	WorkspaceID  string                        `json:"workspace_id,omitempty"`
@@ -85,7 +85,7 @@ type WebhookDeliveryPayload struct {
 
 // CreateJobRequest is the shared automation job create payload.
 type CreateJobRequest struct {
-	Scope       automationpkg.AutomationScope  `json:"scope"`
+	Scope       automationpkg.Scope            `json:"scope"`
 	Name        string                         `json:"name"`
 	AgentName   string                         `json:"agent_name"`
 	WorkspaceID string                         `json:"workspace_id,omitempty"`
@@ -125,7 +125,7 @@ func (r UpdateJobRequest) HasChanges() bool {
 
 // CreateTriggerRequest is the shared automation trigger create payload.
 type CreateTriggerRequest struct {
-	Scope         automationpkg.AutomationScope  `json:"scope"`
+	Scope         automationpkg.Scope            `json:"scope"`
 	Name          string                         `json:"name"`
 	AgentName     string                         `json:"agent_name"`
 	WorkspaceID   string                         `json:"workspace_id,omitempty"`

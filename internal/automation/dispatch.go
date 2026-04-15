@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"strings"
 	"sync"
 	"text/template"
@@ -103,13 +104,31 @@ func (r DispatchRequest) Validate(path string) error {
 		return err
 	}
 	if got, want := strings.TrimSpace(r.Envelope.Kind), strings.TrimSpace(r.Trigger.Event); got != want {
-		return fmt.Errorf("%s.kind must match %s.event: %q != %q", nestedPath(path, "envelope"), nestedPath(path, "trigger"), got, want)
+		return fmt.Errorf(
+			"%s.kind must match %s.event: %q != %q",
+			nestedPath(path, "envelope"),
+			nestedPath(path, "trigger"),
+			got,
+			want,
+		)
 	}
 	if got, want := r.Envelope.Scope, r.Trigger.Scope; got != want {
-		return fmt.Errorf("%s.scope must match %s.scope: %q != %q", nestedPath(path, "envelope"), nestedPath(path, "trigger"), got, want)
+		return fmt.Errorf(
+			"%s.scope must match %s.scope: %q != %q",
+			nestedPath(path, "envelope"),
+			nestedPath(path, "trigger"),
+			got,
+			want,
+		)
 	}
 	if got, want := strings.TrimSpace(r.Envelope.WorkspaceID), strings.TrimSpace(r.Trigger.WorkspaceID); got != want {
-		return fmt.Errorf("%s.workspace_id must match %s.workspace_id: %q != %q", nestedPath(path, "envelope"), nestedPath(path, "trigger"), got, want)
+		return fmt.Errorf(
+			"%s.workspace_id must match %s.workspace_id: %q != %q",
+			nestedPath(path, "envelope"),
+			nestedPath(path, "trigger"),
+			got,
+			want,
+		)
 	}
 
 	return nil
@@ -133,24 +152,42 @@ type RunStore interface {
 // automation jobs.
 type TaskService interface {
 	CreateTask(ctx context.Context, spec taskpkg.CreateTask, actor taskpkg.ActorContext) (*taskpkg.Task, error)
-	EnqueueRun(ctx context.Context, spec taskpkg.EnqueueRun, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error)
+	EnqueueRun(ctx context.Context, spec taskpkg.EnqueueRun, actor taskpkg.ActorContext) (*taskpkg.Run, error)
 }
 
 // AutomationSessionTaskActorRecorder stores trusted task-domain provenance for
 // automation-launched sessions that may later create tasks explicitly.
-type AutomationSessionTaskActorRecorder interface {
+type SessionTaskActorRecorder interface {
 	RecordAutomationSessionTaskActor(sessionID string, actor taskpkg.ActorContext) error
 	DeleteAutomationSessionTaskActor(sessionID string)
 }
 
-// AutomationHookDispatcher emits automation lifecycle hooks around shared dispatch.
-type AutomationHookDispatcher interface {
-	DispatchAutomationJobPreFire(ctx context.Context, payload hookspkg.AutomationJobPreFirePayload) (hookspkg.AutomationJobPreFirePayload, error)
-	DispatchAutomationJobPostFire(ctx context.Context, payload hookspkg.AutomationJobPostFirePayload) (hookspkg.AutomationJobPostFirePayload, error)
-	DispatchAutomationTriggerPreFire(ctx context.Context, payload hookspkg.AutomationTriggerPreFirePayload) (hookspkg.AutomationTriggerPreFirePayload, error)
-	DispatchAutomationTriggerPostFire(ctx context.Context, payload hookspkg.AutomationTriggerPostFirePayload) (hookspkg.AutomationTriggerPostFirePayload, error)
-	DispatchAutomationRunCompleted(ctx context.Context, payload hookspkg.AutomationRunCompletedPayload) (hookspkg.AutomationRunCompletedPayload, error)
-	DispatchAutomationRunFailed(ctx context.Context, payload hookspkg.AutomationRunFailedPayload) (hookspkg.AutomationRunFailedPayload, error)
+// HookDispatcher emits automation lifecycle hooks around shared dispatch.
+type HookDispatcher interface {
+	DispatchAutomationJobPreFire(
+		ctx context.Context,
+		payload hookspkg.AutomationJobPreFirePayload,
+	) (hookspkg.AutomationJobPreFirePayload, error)
+	DispatchAutomationJobPostFire(
+		ctx context.Context,
+		payload hookspkg.AutomationJobPostFirePayload,
+	) (hookspkg.AutomationJobPostFirePayload, error)
+	DispatchAutomationTriggerPreFire(
+		ctx context.Context,
+		payload hookspkg.AutomationTriggerPreFirePayload,
+	) (hookspkg.AutomationTriggerPreFirePayload, error)
+	DispatchAutomationTriggerPostFire(
+		ctx context.Context,
+		payload hookspkg.AutomationTriggerPostFirePayload,
+	) (hookspkg.AutomationTriggerPostFirePayload, error)
+	DispatchAutomationRunCompleted(
+		ctx context.Context,
+		payload hookspkg.AutomationRunCompletedPayload,
+	) (hookspkg.AutomationRunCompletedPayload, error)
+	DispatchAutomationRunFailed(
+		ctx context.Context,
+		payload hookspkg.AutomationRunFailedPayload,
+	) (hookspkg.AutomationRunFailedPayload, error)
 }
 
 // SleepFunc waits for retry backoff with context cancellation support.
@@ -170,8 +207,8 @@ type Dispatcher struct {
 	sleep               SleepFunc
 	globalWorkspacePath string
 	maxConcurrent       int
-	hooks               AutomationHookDispatcher
-	taskActors          AutomationSessionTaskActorRecorder
+	hooks               HookDispatcher
+	taskActors          SessionTaskActorRecorder
 
 	fireLimitMu sync.Mutex
 	gate        chan struct{}
@@ -257,7 +294,7 @@ func WithDispatcherMaxConcurrent(limit int) DispatcherOption {
 }
 
 // WithDispatcherHooks injects the automation lifecycle hook dispatcher.
-func WithDispatcherHooks(hooks AutomationHookDispatcher) DispatcherOption {
+func WithDispatcherHooks(hooks HookDispatcher) DispatcherOption {
 	return func(dispatcher *Dispatcher) {
 		dispatcher.hooks = hooks
 	}
@@ -273,7 +310,7 @@ func WithDispatcherTasks(tasks TaskService) DispatcherOption {
 
 // WithDispatcherTaskActorRecorder injects the session provenance recorder used
 // to support automation-linked agent task creation.
-func WithDispatcherTaskActorRecorder(recorder AutomationSessionTaskActorRecorder) DispatcherOption {
+func WithDispatcherTaskActorRecorder(recorder SessionTaskActorRecorder) DispatcherOption {
 	return func(dispatcher *Dispatcher) {
 		dispatcher.taskActors = recorder
 	}
@@ -349,11 +386,11 @@ func (d *Dispatcher) dispatchAttempt(ctx context.Context, req DispatchRequest, a
 	if promptErr != nil {
 		return d.finishRun(ctx, scheduledRun, RunFailed, promptErr)
 	}
-	prompt, cancelled, hookErr := d.dispatchPreFireHook(ctx, req, prompt, attempt)
+	prompt, canceled, hookErr := d.dispatchPreFireHook(ctx, req, prompt, attempt)
 	if hookErr != nil {
 		return d.finishRun(ctx, scheduledRun, RunFailed, hookErr)
 	}
-	if cancelled {
+	if canceled {
 		return d.finishRun(ctx, scheduledRun, RunCancelled, nil)
 	}
 
@@ -363,10 +400,15 @@ func (d *Dispatcher) dispatchAttempt(ctx context.Context, req DispatchRequest, a
 		return d.finishRun(ctx, scheduledRun, classifyDispatchError(createErr), createErr)
 	}
 	if createdSession == nil || strings.TrimSpace(createdSession.ID) == "" {
-		return d.finishRun(ctx, scheduledRun, RunFailed, errors.New("automation: session creator returned empty session"))
+		return d.finishRun(
+			ctx,
+			scheduledRun,
+			RunFailed,
+			errors.New("automation: session creator returned empty session"),
+		)
 	}
 
-	runningRun, err := d.transitionRun(ctx, scheduledRun, func(run *Run, now time.Time) {
+	runningRun, err := d.transitionRun(ctx, scheduledRun, func(run *Run, _ time.Time) {
 		run.Status = RunRunning
 		run.SessionID = strings.TrimSpace(createdSession.ID)
 	})
@@ -379,7 +421,13 @@ func (d *Dispatcher) dispatchAttempt(ctx context.Context, req DispatchRequest, a
 
 	events, promptErr := d.sessions.Prompt(ctx, createdSession.ID, prompt)
 	if promptErr != nil {
-		return d.finishRunAfterSessionStop(ctx, runningRun, createdSession.ID, classifyDispatchError(promptErr), promptErr)
+		return d.finishRunAfterSessionStop(
+			ctx,
+			runningRun,
+			createdSession.ID,
+			classifyDispatchError(promptErr),
+			promptErr,
+		)
 	}
 	d.dispatchPostFireHook(ctx, req, *runningRun)
 
@@ -444,20 +492,30 @@ func (d *Dispatcher) reserveRun(ctx context.Context, req DispatchRequest, attemp
 	return &created, nil
 }
 
-func (d *Dispatcher) dispatchTaskBackedAttempt(ctx context.Context, req DispatchRequest, scheduledRun *Run, attempt int) (*Run, error) {
+func (d *Dispatcher) dispatchTaskBackedAttempt(
+	ctx context.Context,
+	req DispatchRequest,
+	scheduledRun *Run,
+	attempt int,
+) (*Run, error) {
 	if d.tasks == nil {
-		return d.finishRun(ctx, scheduledRun, RunFailed, errors.New("automation: task-backed job requires task service"))
+		return d.finishRun(
+			ctx,
+			scheduledRun,
+			RunFailed,
+			errors.New("automation: task-backed job requires task service"),
+		)
 	}
 
 	preFirePrompt := strings.TrimSpace(req.Prompt)
 	if preFirePrompt == "" && req.Job != nil {
 		preFirePrompt = strings.TrimSpace(req.Job.Prompt)
 	}
-	preFirePrompt, cancelled, hookErr := d.dispatchPreFireHook(ctx, req, preFirePrompt, attempt)
+	preFirePrompt, canceled, hookErr := d.dispatchPreFireHook(ctx, req, preFirePrompt, attempt)
 	if hookErr != nil {
 		return d.finishRun(ctx, scheduledRun, RunFailed, hookErr)
 	}
-	if cancelled {
+	if canceled {
 		return d.finishRun(ctx, scheduledRun, RunCancelled, nil)
 	}
 
@@ -494,7 +552,11 @@ func (d *Dispatcher) dispatchTaskBackedAttempt(ctx context.Context, req Dispatch
 	return delegatedRun, nil
 }
 
-func (d *Dispatcher) transitionRun(ctx context.Context, current *Run, mutate func(run *Run, now time.Time)) (*Run, error) {
+func (d *Dispatcher) transitionRun(
+	ctx context.Context,
+	current *Run,
+	mutate func(run *Run, now time.Time),
+) (*Run, error) {
 	if current == nil {
 		return nil, errors.New("automation: run is required")
 	}
@@ -591,7 +653,13 @@ func (d *Dispatcher) finishRun(ctx context.Context, current *Run, status RunStat
 	return updatedRun, runErr
 }
 
-func (d *Dispatcher) finishRunAfterSessionStop(ctx context.Context, current *Run, sessionID string, status RunStatus, runErr error) (*Run, error) {
+func (d *Dispatcher) finishRunAfterSessionStop(
+	ctx context.Context,
+	current *Run,
+	sessionID string,
+	status RunStatus,
+	runErr error,
+) (*Run, error) {
 	stopErr := d.stopAutomationSession(ctx, sessionID, status, runErr)
 	if stopErr == nil {
 		d.deleteAutomationSessionTaskActor(sessionID)
@@ -609,7 +677,12 @@ func (d *Dispatcher) finishRunAfterSessionStop(ctx context.Context, current *Run
 	return d.finishRun(ctx, current, status, runErr)
 }
 
-func (d *Dispatcher) stopAutomationSession(ctx context.Context, sessionID string, status RunStatus, runErr error) error {
+func (d *Dispatcher) stopAutomationSession(
+	ctx context.Context,
+	sessionID string,
+	status RunStatus,
+	runErr error,
+) error {
 	trimmedSessionID := strings.TrimSpace(sessionID)
 	if d == nil || trimmedSessionID == "" {
 		return nil
@@ -622,7 +695,12 @@ func (d *Dispatcher) stopAutomationSession(ctx context.Context, sessionID string
 	return d.sessions.StopWithCause(stopCtx, trimmedSessionID, cause, detail)
 }
 
-func (d *Dispatcher) dispatchPreFireHook(ctx context.Context, req DispatchRequest, prompt string, attempt int) (string, bool, error) {
+func (d *Dispatcher) dispatchPreFireHook(
+	ctx context.Context,
+	req DispatchRequest,
+	prompt string,
+	attempt int,
+) (string, bool, error) {
 	if d == nil || d.hooks == nil {
 		return prompt, false, nil
 	}
@@ -685,7 +763,14 @@ func (d *Dispatcher) dispatchPostFireHook(ctx context.Context, req DispatchReque
 			RunID:       strings.TrimSpace(run.ID),
 			SessionID:   strings.TrimSpace(run.SessionID),
 		}); err != nil {
-			d.logHookDispatchError("automation.dispatch.job_post_fire_hook_failed", err, "job_id", strings.TrimSpace(req.Job.ID), "run_id", strings.TrimSpace(run.ID))
+			d.logHookDispatchError(
+				"automation.dispatch.job_post_fire_hook_failed",
+				err,
+				"job_id",
+				strings.TrimSpace(req.Job.ID),
+				"run_id",
+				strings.TrimSpace(run.ID),
+			)
 		}
 	case req.Trigger != nil:
 		if _, err := d.hooks.DispatchAutomationTriggerPostFire(ctx, hookspkg.AutomationTriggerPostFirePayload{
@@ -697,12 +782,25 @@ func (d *Dispatcher) dispatchPostFireHook(ctx context.Context, req DispatchReque
 			RunID:       strings.TrimSpace(run.ID),
 			SessionID:   strings.TrimSpace(run.SessionID),
 		}); err != nil {
-			d.logHookDispatchError("automation.dispatch.trigger_post_fire_hook_failed", err, "trigger_id", strings.TrimSpace(req.Trigger.ID), "run_id", strings.TrimSpace(run.ID))
+			d.logHookDispatchError(
+				"automation.dispatch.trigger_post_fire_hook_failed",
+				err,
+				"trigger_id",
+				strings.TrimSpace(req.Trigger.ID),
+				"run_id",
+				strings.TrimSpace(run.ID),
+			)
 		}
 	}
 }
 
-func (d *Dispatcher) emitRunLifecycleHooks(ctx context.Context, req DispatchRequest, run Run, dispatchErr error, willRetry bool) {
+func (d *Dispatcher) emitRunLifecycleHooks(
+	ctx context.Context,
+	req DispatchRequest,
+	run Run,
+	dispatchErr error,
+	willRetry bool,
+) {
 	if d == nil || d.hooks == nil {
 		return
 	}
@@ -717,7 +815,12 @@ func (d *Dispatcher) emitRunLifecycleHooks(ctx context.Context, req DispatchRequ
 			Attempt:     run.Attempt,
 			DurationMS:  runDurationMilliseconds(run),
 		}); err != nil {
-			d.logHookDispatchError("automation.dispatch.run_completed_hook_failed", err, "run_id", strings.TrimSpace(run.ID))
+			d.logHookDispatchError(
+				"automation.dispatch.run_completed_hook_failed",
+				err,
+				"run_id",
+				strings.TrimSpace(run.ID),
+			)
 		}
 		return
 	}
@@ -809,7 +912,7 @@ func (r DispatchRequest) name() string {
 	return strings.TrimSpace(r.Trigger.Name)
 }
 
-func (r DispatchRequest) scope() AutomationScope {
+func (r DispatchRequest) scope() Scope {
 	if r.Job != nil {
 		return r.Job.Scope
 	}
@@ -905,7 +1008,10 @@ func automationSessionTaskActorContext(sessionID string, run *Run) (taskpkg.Acto
 	if run == nil {
 		return taskpkg.ActorContext{}, errors.New("automation: run is required for session task actor context")
 	}
-	return taskpkg.DeriveAutomationLinkedAgentSessionActorContext(strings.TrimSpace(sessionID), automationTaskOriginRef(run.ID))
+	return taskpkg.DeriveAutomationLinkedAgentSessionActorContext(
+		strings.TrimSpace(sessionID),
+		automationTaskOriginRef(run.ID),
+	)
 }
 
 func directTaskSpec(job *Job, prompt string) taskpkg.CreateTask {
@@ -935,7 +1041,7 @@ func directTaskSpec(job *Job, prompt string) taskpkg.CreateTask {
 	}
 }
 
-func taskScopeForAutomationScope(scope AutomationScope) taskpkg.Scope {
+func taskScopeForAutomationScope(scope Scope) taskpkg.Scope {
 	switch scope {
 	case AutomationScopeWorkspace:
 		return taskpkg.ScopeWorkspace
@@ -1125,9 +1231,7 @@ func cloneJSONMap(source map[string]any) map[string]any {
 		return nil
 	}
 	cloned := make(map[string]any, len(source))
-	for key, value := range source {
-		cloned[key] = value
-	}
+	maps.Copy(cloned, source)
 	return cloned
 }
 

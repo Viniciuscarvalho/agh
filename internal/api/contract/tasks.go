@@ -16,7 +16,7 @@ type TaskSummaryPayload struct {
 	ParentTaskID   string                `json:"parent_task_id,omitempty"`
 	NetworkChannel string                `json:"network_channel,omitempty"`
 	Title          string                `json:"title"`
-	Status         taskpkg.TaskStatus    `json:"status"`
+	Status         taskpkg.Status        `json:"status"`
 	Owner          *taskpkg.Ownership    `json:"owner,omitempty"`
 	CreatedBy      taskpkg.ActorIdentity `json:"created_by"`
 	Origin         taskpkg.Origin        `json:"origin"`
@@ -35,7 +35,7 @@ type TaskPayload struct {
 	NetworkChannel string                `json:"network_channel,omitempty"`
 	Title          string                `json:"title"`
 	Description    string                `json:"description,omitempty"`
-	Status         taskpkg.TaskStatus    `json:"status"`
+	Status         taskpkg.Status        `json:"status"`
 	Owner          *taskpkg.Ownership    `json:"owner,omitempty"`
 	CreatedBy      taskpkg.ActorIdentity `json:"created_by"`
 	Origin         taskpkg.Origin        `json:"origin"`
@@ -57,7 +57,7 @@ type TaskDependencyPayload struct {
 type TaskRunPayload struct {
 	ID             string                 `json:"id"`
 	TaskID         string                 `json:"task_id"`
-	Status         taskpkg.TaskRunStatus  `json:"status"`
+	Status         taskpkg.RunStatus      `json:"status"`
 	Attempt        int                    `json:"attempt"`
 	ClaimedBy      *taskpkg.ActorIdentity `json:"claimed_by,omitempty"`
 	SessionID      string                 `json:"session_id,omitempty"`
@@ -95,21 +95,21 @@ type TaskDetailPayload struct {
 
 // TaskListQuery captures the shared task list filters.
 type TaskListQuery struct {
-	Scope          taskpkg.Scope      `json:"scope,omitempty"`
-	Workspace      string             `json:"workspace,omitempty"`
-	Status         taskpkg.TaskStatus `json:"status,omitempty"`
-	OwnerKind      taskpkg.OwnerKind  `json:"owner_kind,omitempty"`
-	OwnerRef       string             `json:"owner_ref,omitempty"`
-	ParentTaskID   string             `json:"parent_task_id,omitempty"`
-	NetworkChannel string             `json:"network_channel,omitempty"`
-	Limit          int                `json:"limit,omitempty"`
+	Scope          taskpkg.Scope     `json:"scope,omitempty"`
+	Workspace      string            `json:"workspace,omitempty"`
+	Status         taskpkg.Status    `json:"status,omitempty"`
+	OwnerKind      taskpkg.OwnerKind `json:"owner_kind,omitempty"`
+	OwnerRef       string            `json:"owner_ref,omitempty"`
+	ParentTaskID   string            `json:"parent_task_id,omitempty"`
+	NetworkChannel string            `json:"network_channel,omitempty"`
+	Limit          int               `json:"limit,omitempty"`
 }
 
 // TaskRunListQuery captures the shared task-run list filters.
 type TaskRunListQuery struct {
-	Status    taskpkg.TaskRunStatus `json:"status,omitempty"`
-	SessionID string                `json:"session_id,omitempty"`
-	Limit     int                   `json:"limit,omitempty"`
+	Status    taskpkg.RunStatus `json:"status,omitempty"`
+	SessionID string            `json:"session_id,omitempty"`
+	Limit     int               `json:"limit,omitempty"`
 }
 
 // CreateTaskRequest is the shared task-create request payload.

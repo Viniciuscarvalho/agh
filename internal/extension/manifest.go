@@ -1,5 +1,5 @@
 // Package extension loads and validates declarative extension manifests.
-package extension
+package extensionpkg
 
 import (
 	"encoding/json"
@@ -37,24 +37,24 @@ var (
 
 // Manifest describes one extension without executing any extension code.
 type Manifest struct {
-	Name          string             `toml:"name" json:"name"`
-	Version       string             `toml:"version" json:"version"`
+	Name          string             `toml:"name"                  json:"name"`
+	Version       string             `toml:"version"               json:"version"`
 	Description   string             `toml:"description,omitempty" json:"description,omitempty"`
-	MinAGHVersion string             `toml:"min_agh_version" json:"min_agh_version"`
-	Resources     ResourcesConfig    `toml:"resources" json:"resources"`
-	Capabilities  CapabilitiesConfig `toml:"capabilities" json:"capabilities"`
-	Actions       ActionsConfig      `toml:"actions" json:"actions"`
-	Subprocess    SubprocessConfig   `toml:"subprocess" json:"subprocess"`
-	Security      SecurityConfig     `toml:"security" json:"security"`
-	Bridge        BridgeConfig       `toml:"bridge" json:"bridge"`
+	MinAGHVersion string             `toml:"min_agh_version"       json:"min_agh_version"`
+	Resources     ResourcesConfig    `toml:"resources"             json:"resources"`
+	Capabilities  CapabilitiesConfig `toml:"capabilities"          json:"capabilities"`
+	Actions       ActionsConfig      `toml:"actions"               json:"actions"`
+	Subprocess    SubprocessConfig   `toml:"subprocess"            json:"subprocess"`
+	Security      SecurityConfig     `toml:"security"              json:"security"`
+	Bridge        BridgeConfig       `toml:"bridge"                json:"bridge"`
 }
 
 // ResourcesConfig declares static assets bundled with an extension.
 type ResourcesConfig struct {
-	Skills     []string                   `toml:"skills,omitempty" json:"skills,omitempty"`
-	Agents     []string                   `toml:"agents,omitempty" json:"agents,omitempty"`
-	Bundles    []string                   `toml:"bundles,omitempty" json:"bundles,omitempty"`
-	Hooks      []HookConfig               `toml:"hooks,omitempty" json:"hooks,omitempty"`
+	Skills     []string                   `toml:"skills,omitempty"      json:"skills,omitempty"`
+	Agents     []string                   `toml:"agents,omitempty"      json:"agents,omitempty"`
+	Bundles    []string                   `toml:"bundles,omitempty"     json:"bundles,omitempty"`
+	Hooks      []HookConfig               `toml:"hooks,omitempty"       json:"hooks,omitempty"`
 	MCPServers map[string]MCPServerConfig `toml:"mcp_servers,omitempty" json:"mcp_servers,omitempty"`
 }
 
@@ -70,11 +70,11 @@ type ActionsConfig struct {
 
 // SubprocessConfig describes how to launch and monitor the extension process.
 type SubprocessConfig struct {
-	Command             string            `toml:"command,omitempty" json:"command,omitempty"`
-	Args                []string          `toml:"args,omitempty" json:"args,omitempty"`
-	Env                 map[string]string `toml:"env,omitempty" json:"env,omitempty"`
+	Command             string            `toml:"command,omitempty"               json:"command,omitempty"`
+	Args                []string          `toml:"args,omitempty"                  json:"args,omitempty"`
+	Env                 map[string]string `toml:"env,omitempty"                   json:"env,omitempty"`
 	HealthCheckInterval Duration          `toml:"health_check_interval,omitempty" json:"health_check_interval,omitempty"`
-	ShutdownTimeout     Duration          `toml:"shutdown_timeout,omitempty" json:"shutdown_timeout,omitempty"`
+	ShutdownTimeout     Duration          `toml:"shutdown_timeout,omitempty"      json:"shutdown_timeout,omitempty"`
 }
 
 // SecurityConfig declares the security grants the extension requests.
@@ -84,60 +84,60 @@ type SecurityConfig struct {
 
 // BridgeConfig declares provider metadata for bridge-capable extensions.
 type BridgeConfig struct {
-	Platform     string                                `toml:"platform,omitempty" json:"platform,omitempty"`
-	DisplayName  string                                `toml:"display_name,omitempty" json:"display_name,omitempty"`
-	SecretSlots  []bridgepkg.BridgeSecretSlot          `toml:"secret_slots,omitempty" json:"secret_slots,omitempty"`
+	Platform     string                                `toml:"platform,omitempty"      json:"platform,omitempty"`
+	DisplayName  string                                `toml:"display_name,omitempty"  json:"display_name,omitempty"`
+	SecretSlots  []bridgepkg.BridgeSecretSlot          `toml:"secret_slots,omitempty"  json:"secret_slots,omitempty"`
 	ConfigSchema *bridgepkg.BridgeProviderConfigSchema `toml:"config_schema,omitempty" json:"config_schema,omitempty"`
 }
 
 // HookConfig mirrors the hook declaration shape accepted from extension manifests.
 type HookConfig struct {
-	Name     string             `toml:"name" json:"name"`
-	Event    string             `toml:"event" json:"event"`
-	Mode     string             `toml:"mode,omitempty" json:"mode,omitempty"`
+	Name     string             `toml:"name"               json:"name"`
+	Event    string             `toml:"event"              json:"event"`
+	Mode     string             `toml:"mode,omitempty"     json:"mode,omitempty"`
 	Required bool               `toml:"required,omitempty" json:"required,omitempty"`
 	Priority *int               `toml:"priority,omitempty" json:"priority,omitempty"`
-	Timeout  Duration           `toml:"timeout,omitempty" json:"timeout,omitempty"`
-	Matcher  HookMatcherConfig  `toml:"matcher,omitempty" json:"matcher,omitempty"`
-	Command  string             `toml:"command,omitempty" json:"command,omitempty"`
-	Args     []string           `toml:"args,omitempty" json:"args,omitempty"`
-	Env      map[string]string  `toml:"env,omitempty" json:"env,omitempty"`
-	Executor HookExecutorConfig `toml:"executor,omitempty" json:"executor,omitempty"`
+	Timeout  Duration           `toml:"timeout,omitempty"  json:"timeout,omitempty"`
+	Matcher  HookMatcherConfig  `toml:"matcher,omitempty"  json:"matcher"`
+	Command  string             `toml:"command,omitempty"  json:"command,omitempty"`
+	Args     []string           `toml:"args,omitempty"     json:"args,omitempty"`
+	Env      map[string]string  `toml:"env,omitempty"      json:"env,omitempty"`
+	Executor HookExecutorConfig `toml:"executor,omitempty" json:"executor"`
 }
 
 // HookExecutorConfig selects the hook execution boundary and command.
 type HookExecutorConfig struct {
-	Kind    string            `toml:"kind,omitempty" json:"kind,omitempty"`
+	Kind    string            `toml:"kind,omitempty"    json:"kind,omitempty"`
 	Command string            `toml:"command,omitempty" json:"command,omitempty"`
-	Args    []string          `toml:"args,omitempty" json:"args,omitempty"`
-	Env     map[string]string `toml:"env,omitempty" json:"env,omitempty"`
+	Args    []string          `toml:"args,omitempty"    json:"args,omitempty"`
+	Env     map[string]string `toml:"env,omitempty"     json:"env,omitempty"`
 }
 
 // HookMatcherConfig narrows when a hook is eligible to run.
 type HookMatcherConfig struct {
-	AgentName          string `toml:"agent_name,omitempty" json:"agent_name,omitempty"`
-	AgentType          string `toml:"agent_type,omitempty" json:"agent_type,omitempty"`
-	WorkspaceID        string `toml:"workspace_id,omitempty" json:"workspace_id,omitempty"`
-	WorkspaceRoot      string `toml:"workspace_root,omitempty" json:"workspace_root,omitempty"`
-	SessionType        string `toml:"session_type,omitempty" json:"session_type,omitempty"`
-	InputClass         string `toml:"input_class,omitempty" json:"input_class,omitempty"`
-	ACPEventType       string `toml:"acp_event_type,omitempty" json:"acp_event_type,omitempty"`
-	TurnID             string `toml:"turn_id,omitempty" json:"turn_id,omitempty"`
-	ToolName           string `toml:"tool_name,omitempty" json:"tool_name,omitempty"`
-	ToolNamespace      string `toml:"tool_namespace,omitempty" json:"tool_namespace,omitempty"`
-	ToolReadOnly       *bool  `toml:"tool_read_only,omitempty" json:"tool_read_only,omitempty"`
-	DecisionClass      string `toml:"decision_class,omitempty" json:"decision_class,omitempty"`
-	MessageRole        string `toml:"message_role,omitempty" json:"message_role,omitempty"`
-	MessageDeltaType   string `toml:"message_delta_type,omitempty" json:"message_delta_type,omitempty"`
-	CompactionReason   string `toml:"compaction_reason,omitempty" json:"compaction_reason,omitempty"`
+	AgentName          string `toml:"agent_name,omitempty"          json:"agent_name,omitempty"`
+	AgentType          string `toml:"agent_type,omitempty"          json:"agent_type,omitempty"`
+	WorkspaceID        string `toml:"workspace_id,omitempty"        json:"workspace_id,omitempty"`
+	WorkspaceRoot      string `toml:"workspace_root,omitempty"      json:"workspace_root,omitempty"`
+	SessionType        string `toml:"session_type,omitempty"        json:"session_type,omitempty"`
+	InputClass         string `toml:"input_class,omitempty"         json:"input_class,omitempty"`
+	ACPEventType       string `toml:"acp_event_type,omitempty"      json:"acp_event_type,omitempty"`
+	TurnID             string `toml:"turn_id,omitempty"             json:"turn_id,omitempty"`
+	ToolName           string `toml:"tool_name,omitempty"           json:"tool_name,omitempty"`
+	ToolNamespace      string `toml:"tool_namespace,omitempty"      json:"tool_namespace,omitempty"`
+	ToolReadOnly       *bool  `toml:"tool_read_only,omitempty"      json:"tool_read_only,omitempty"`
+	DecisionClass      string `toml:"decision_class,omitempty"      json:"decision_class,omitempty"`
+	MessageRole        string `toml:"message_role,omitempty"        json:"message_role,omitempty"`
+	MessageDeltaType   string `toml:"message_delta_type,omitempty"  json:"message_delta_type,omitempty"`
+	CompactionReason   string `toml:"compaction_reason,omitempty"   json:"compaction_reason,omitempty"`
 	CompactionStrategy string `toml:"compaction_strategy,omitempty" json:"compaction_strategy,omitempty"`
 }
 
 // MCPServerConfig declares one MCP server bundled by the extension.
 type MCPServerConfig struct {
-	Command string            `toml:"command" json:"command"`
+	Command string            `toml:"command"        json:"command"`
 	Args    []string          `toml:"args,omitempty" json:"args,omitempty"`
-	Env     map[string]string `toml:"env,omitempty" json:"env,omitempty"`
+	Env     map[string]string `toml:"env,omitempty"  json:"env,omitempty"`
 }
 
 // Duration stores time.Duration values while decoding TOML strings and JSON
@@ -164,24 +164,24 @@ type ManifestCompatibilityError struct {
 }
 
 type manifestDocument struct {
-	Extension     manifestCore       `toml:"extension" json:"extension"`
-	Name          string             `toml:"name" json:"name"`
-	Version       string             `toml:"version" json:"version"`
+	Extension     manifestCore       `toml:"extension"             json:"extension"`
+	Name          string             `toml:"name"                  json:"name"`
+	Version       string             `toml:"version"               json:"version"`
 	Description   string             `toml:"description,omitempty" json:"description,omitempty"`
-	MinAGHVersion string             `toml:"min_agh_version" json:"min_agh_version"`
-	Resources     ResourcesConfig    `toml:"resources" json:"resources"`
-	Capabilities  CapabilitiesConfig `toml:"capabilities" json:"capabilities"`
-	Actions       ActionsConfig      `toml:"actions" json:"actions"`
-	Subprocess    SubprocessConfig   `toml:"subprocess" json:"subprocess"`
-	Security      SecurityConfig     `toml:"security" json:"security"`
-	Bridge        BridgeConfig       `toml:"bridge" json:"bridge"`
+	MinAGHVersion string             `toml:"min_agh_version"       json:"min_agh_version"`
+	Resources     ResourcesConfig    `toml:"resources"             json:"resources"`
+	Capabilities  CapabilitiesConfig `toml:"capabilities"          json:"capabilities"`
+	Actions       ActionsConfig      `toml:"actions"               json:"actions"`
+	Subprocess    SubprocessConfig   `toml:"subprocess"            json:"subprocess"`
+	Security      SecurityConfig     `toml:"security"              json:"security"`
+	Bridge        BridgeConfig       `toml:"bridge"                json:"bridge"`
 }
 
 type manifestCore struct {
-	Name          string `toml:"name" json:"name"`
-	Version       string `toml:"version" json:"version"`
+	Name          string `toml:"name"                  json:"name"`
+	Version       string `toml:"version"               json:"version"`
 	Description   string `toml:"description,omitempty" json:"description,omitempty"`
-	MinAGHVersion string `toml:"min_agh_version" json:"min_agh_version"`
+	MinAGHVersion string `toml:"min_agh_version"       json:"min_agh_version"`
 }
 
 // LoadManifest reads one extension manifest from dir, preferring TOML over JSON.
@@ -297,7 +297,12 @@ func (e *ManifestValidationError) Is(target error) bool {
 
 // Error returns the daemon-version compatibility message.
 func (e *ManifestCompatibilityError) Error() string {
-	return fmt.Sprintf("%s: current daemon version %q does not satisfy min_agh_version %q", ErrManifestIncompatible, e.CurrentVersion, e.MinVersion)
+	return fmt.Sprintf(
+		"%s: current daemon version %q does not satisfy min_agh_version %q",
+		ErrManifestIncompatible,
+		e.CurrentVersion,
+		e.MinVersion,
+	)
 }
 
 // Is matches sentinel errors for errors.Is.
@@ -929,7 +934,7 @@ func validIdentifierList(value string, allowLeadingZeroNumeric bool) bool {
 		return false
 	}
 
-	for _, segment := range strings.Split(value, ".") {
+	for segment := range strings.SplitSeq(value, ".") {
 		if segment == "" {
 			return false
 		}
@@ -986,12 +991,9 @@ func compareSemanticVersions(current, required semanticVersion) int {
 }
 
 func comparePrerelease(current, required []prereleaseIdentifier) int {
-	limit := len(current)
-	if len(required) > limit {
-		limit = len(required)
-	}
+	limit := max(len(required), len(current))
 
-	for idx := 0; idx < limit; idx++ {
+	for idx := range limit {
 		switch {
 		case idx >= len(current):
 			return -1

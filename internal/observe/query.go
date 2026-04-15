@@ -22,12 +22,18 @@ func (o *Observer) QueryTokenStats(ctx context.Context, query store.TokenStatsQu
 }
 
 // QueryPermissionLog returns permission audit rows.
-func (o *Observer) QueryPermissionLog(ctx context.Context, query store.PermissionLogQuery) ([]store.PermissionLogEntry, error) {
+func (o *Observer) QueryPermissionLog(
+	ctx context.Context,
+	query store.PermissionLogQuery,
+) ([]store.PermissionLogEntry, error) {
 	return o.registry.ListPermissionLog(ctx, query)
 }
 
 // QueryHookCatalog returns the resolved hook catalog for the supplied filter.
-func (o *Observer) QueryHookCatalog(ctx context.Context, filter hookspkg.CatalogFilter) ([]hookspkg.CatalogEntry, error) {
+func (o *Observer) QueryHookCatalog(
+	ctx context.Context,
+	filter hookspkg.CatalogFilter,
+) ([]hookspkg.CatalogEntry, error) {
 	if ctx == nil {
 		return nil, errors.New("observe: hook catalog context is required")
 	}
@@ -43,7 +49,10 @@ func (o *Observer) QueryHookCatalog(ctx context.Context, filter hookspkg.Catalog
 }
 
 // QueryHookRuns returns persisted per-session hook execution records.
-func (o *Observer) QueryHookRuns(ctx context.Context, query store.HookRunQuery) ([]hookspkg.HookRunRecord, error) {
+func (o *Observer) QueryHookRuns(
+	ctx context.Context,
+	query store.HookRunQuery,
+) (records []hookspkg.HookRunRecord, err error) {
 	if ctx == nil {
 		return nil, errors.New("observe: hook runs context is required")
 	}
@@ -65,10 +74,12 @@ func (o *Observer) QueryHookRuns(ctx context.Context, query store.HookRunQuery) 
 		return nil, err
 	}
 	defer func() {
-		_ = cleanup()
+		if cleanupErr := cleanup(); cleanupErr != nil && err == nil {
+			err = cleanupErr
+		}
 	}()
 
-	records, err := storeHandle.QueryHookRuns(ctx, query)
+	records, err = storeHandle.QueryHookRuns(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("observe: query hook runs for %q: %w", strings.TrimSpace(query.SessionID), err)
 	}
@@ -81,7 +92,7 @@ func (o *Observer) QueryHookEvents(_ context.Context, filter hookspkg.EventFilte
 }
 
 // WriteHookRecord persists one hook execution record when the session database already exists.
-func (o *Observer) WriteHookRecord(ctx context.Context, sessionID string, record hookspkg.HookRunRecord) error {
+func (o *Observer) WriteHookRecord(ctx context.Context, sessionID string, record hookspkg.HookRunRecord) (err error) {
 	if ctx == nil {
 		return errors.New("observe: write hook record context is required")
 	}
@@ -94,7 +105,9 @@ func (o *Observer) WriteHookRecord(ctx context.Context, sessionID string, record
 		return err
 	}
 	defer func() {
-		_ = cleanup()
+		if cleanupErr := cleanup(); cleanupErr != nil && err == nil {
+			err = cleanupErr
+		}
 	}()
 
 	if err := storeHandle.RecordHookRun(ctx, record); err != nil {

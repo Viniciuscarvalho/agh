@@ -50,7 +50,6 @@ func TestEqualStringSlices(t *testing.T) {
 	}
 
 	for _, tt := range testCases {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			if got := EqualStringSlices(tt.left, tt.right); got != tt.want {
@@ -68,9 +67,9 @@ func TestFreeTCPPort(t *testing.T) {
 		t.Fatalf("FreeTCPPort() = %d, want positive port", port)
 	}
 
-	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	ln, err := (&net.ListenConfig{}).Listen(Context(t), "tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
-		t.Fatalf("net.Listen(reused port %d) error = %v", port, err)
+		t.Fatalf("Listen(reused port %d) error = %v", port, err)
 	}
 	if err := ln.Close(); err != nil {
 		t.Fatalf("ln.Close() error = %v", err)

@@ -6,14 +6,14 @@ import "strings"
 
 // PathRef identifies one workspace by id plus transport-facing filesystem path.
 type PathRef struct {
-	WorkspaceID   string `json:"workspace_id,omitempty" yaml:"workspace_id,omitempty"`
+	WorkspaceID   string `json:"workspace_id,omitempty"   yaml:"workspace_id,omitempty"`
 	WorkspacePath string `json:"workspace_path,omitempty" yaml:"workspace_path,omitempty"`
 }
 
 // RootRef identifies one workspace by id plus runtime/root-directory path.
 type RootRef struct {
 	WorkspaceID string `json:"workspace_id,omitempty" yaml:"workspace_id,omitempty"`
-	Workspace   string `json:"workspace,omitempty" yaml:"workspace,omitempty"`
+	Workspace   string `json:"workspace,omitempty"    yaml:"workspace,omitempty"`
 }
 
 // NewPath constructs one normalized transport-facing workspace reference.

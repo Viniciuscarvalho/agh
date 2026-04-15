@@ -83,66 +83,8 @@ func migrateGlobalSchema(ctx context.Context, db *sql.DB) error {
 	_, hasWorkspaceID := columns["workspace_id"]
 	_, hasLegacyWorkspace := columns["workspace"]
 	if !hasWorkspaceID && hasLegacyWorkspace {
-		conn, err := db.Conn(ctx)
-		if err != nil {
-			return fmt.Errorf("store: open global schema migration connection: %w", err)
-		}
-		foreignKeysDisabled := false
-		defer func() {
-			if foreignKeysDisabled {
-				_, _ = conn.ExecContext(context.Background(), "PRAGMA foreign_keys = ON")
-			}
-			_ = conn.Close()
-		}()
-
-		if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
-			return fmt.Errorf("store: disable foreign keys for global schema migration: %w", err)
-		}
-		foreignKeysDisabled = true
-
-		tx, err := conn.BeginTx(ctx, nil)
-		if err != nil {
-			return fmt.Errorf("store: begin global schema migration transaction: %w", err)
-		}
-		defer func() {
-			_ = tx.Rollback()
-		}()
-
-		if _, err := tx.ExecContext(ctx, globalSchemaStatements[0]); err != nil {
-			return fmt.Errorf("store: create workspaces table during migration: %w", err)
-		}
-
-		sessionRows, workspaceSeeds, err := loadLegacySessions(ctx, tx)
-		if err != nil {
+		if err := migrateLegacyGlobalSessions(ctx, db); err != nil {
 			return err
-		}
-
-		workspaceIDs, err := ensureMigratedWorkspaces(ctx, tx, workspaceSeeds)
-		if err != nil {
-			return err
-		}
-
-		if err := createMigratedGlobalTables(ctx, tx); err != nil {
-			return err
-		}
-		if err := copyMigratedSessions(ctx, tx, sessionRows, workspaceIDs); err != nil {
-			return err
-		}
-		if err := copyGlobalTableIfExists(ctx, tx, "event_summaries", "event_summaries_new", `INSERT INTO event_summaries_new (id, session_id, type, agent_name, summary, timestamp) SELECT id, session_id, type, agent_name, summary, timestamp FROM event_summaries`); err != nil {
-			return err
-		}
-		if err := copyGlobalTableIfExists(ctx, tx, "token_stats", "token_stats_new", `INSERT INTO token_stats_new (id, session_id, agent_name, input_tokens, output_tokens, total_tokens, total_cost, cost_currency, turn_count, updated_at) SELECT id, session_id, agent_name, input_tokens, output_tokens, total_tokens, total_cost, cost_currency, turn_count, updated_at FROM token_stats`); err != nil {
-			return err
-		}
-		if err := copyGlobalTableIfExists(ctx, tx, "permission_log", "permission_log_new", `INSERT INTO permission_log_new (id, session_id, agent_name, action, resource, decision, policy_used, timestamp) SELECT id, session_id, agent_name, action, resource, decision, policy_used, timestamp FROM permission_log`); err != nil {
-			return err
-		}
-		if err := swapMigratedGlobalTables(ctx, tx); err != nil {
-			return err
-		}
-
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("store: commit global schema migration: %w", err)
 		}
 	}
 
@@ -150,6 +92,107 @@ func migrateGlobalSchema(ctx context.Context, db *sql.DB) error {
 		return err
 	}
 	return migrateNetworkAuditTable(ctx, db)
+}
+
+func migrateLegacyGlobalSessions(ctx context.Context, db *sql.DB) (err error) {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("store: open global schema migration connection: %w", err)
+	}
+	cleanupCtx := context.WithoutCancel(ctx)
+	foreignKeysDisabled := false
+	defer func() {
+		if foreignKeysDisabled {
+			joinCleanupError(&err, restoreForeignKeys(cleanupCtx, conn))
+		}
+		_ = conn.Close()
+	}()
+
+	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+		return fmt.Errorf("store: disable foreign keys for global schema migration: %w", err)
+	}
+	foreignKeysDisabled = true
+
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("store: begin global schema migration transaction: %w", err)
+	}
+	defer func() {
+		joinCleanupError(&err, rollbackTx(tx, "global schema migration"))
+	}()
+
+	if err := migrateLegacyGlobalTables(ctx, tx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("store: commit global schema migration: %w", err)
+	}
+	return nil
+}
+
+func migrateLegacyGlobalTables(ctx context.Context, tx *sql.Tx) error {
+	if _, err := tx.ExecContext(ctx, globalSchemaStatements[0]); err != nil {
+		return fmt.Errorf("store: create workspaces table during migration: %w", err)
+	}
+
+	sessionRows, workspaceSeeds, err := loadLegacySessions(ctx, tx)
+	if err != nil {
+		return err
+	}
+	workspaceIDs, err := ensureMigratedWorkspaces(ctx, tx, workspaceSeeds)
+	if err != nil {
+		return err
+	}
+	if err := createMigratedGlobalTables(ctx, tx); err != nil {
+		return err
+	}
+	if err := copyMigratedSessions(ctx, tx, sessionRows, workspaceIDs); err != nil {
+		return err
+	}
+	if err := copyLegacyGlobalSupportTables(ctx, tx); err != nil {
+		return err
+	}
+	return swapMigratedGlobalTables(ctx, tx)
+}
+
+func copyLegacyGlobalSupportTables(ctx context.Context, tx *sql.Tx) error {
+	for _, spec := range []struct {
+		source string
+		target string
+		query  string
+	}{
+		{
+			source: "event_summaries",
+			target: "event_summaries_new",
+			query: `INSERT INTO event_summaries_new (id, session_id, type, agent_name, summary, timestamp)
+				SELECT id, session_id, type, agent_name, summary, timestamp FROM event_summaries`,
+		},
+		{
+			source: "token_stats",
+			target: "token_stats_new",
+			query: `INSERT INTO token_stats_new (
+					id, session_id, agent_name, input_tokens, output_tokens, total_tokens,
+					total_cost, cost_currency, turn_count, updated_at
+				) SELECT
+					id, session_id, agent_name, input_tokens, output_tokens, total_tokens,
+					total_cost, cost_currency, turn_count, updated_at
+				FROM token_stats`,
+		},
+		{
+			source: "permission_log",
+			target: "permission_log_new",
+			query: `INSERT INTO permission_log_new (
+					id, session_id, agent_name, action, resource, decision, policy_used, timestamp
+				) SELECT
+					id, session_id, agent_name, action, resource, decision, policy_used, timestamp
+				FROM permission_log`,
+		},
+	} {
+		if err := copyGlobalTableIfExists(ctx, tx, spec.source, spec.target, spec.query); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func migrateBridgeInstanceColumns(ctx context.Context, db *sql.DB) error {
@@ -167,7 +210,10 @@ func migrateBridgeInstanceColumns(ctx context.Context, db *sql.DB) error {
 	}
 
 	if _, ok := columns["dm_policy"]; !ok {
-		if _, err := db.ExecContext(ctx, `ALTER TABLE bridge_instances ADD COLUMN dm_policy TEXT NOT NULL DEFAULT 'open'`); err != nil {
+		if _, err := db.ExecContext(
+			ctx,
+			`ALTER TABLE bridge_instances ADD COLUMN dm_policy TEXT NOT NULL DEFAULT 'open'`,
+		); err != nil {
 			return fmt.Errorf("store: add bridge_instances.dm_policy column: %w", err)
 		}
 	}
@@ -177,12 +223,18 @@ func migrateBridgeInstanceColumns(ctx context.Context, db *sql.DB) error {
 		}
 	}
 	if _, ok := columns["degradation_reason"]; !ok {
-		if _, err := db.ExecContext(ctx, `ALTER TABLE bridge_instances ADD COLUMN degradation_reason TEXT`); err != nil {
+		if _, err := db.ExecContext(
+			ctx,
+			`ALTER TABLE bridge_instances ADD COLUMN degradation_reason TEXT`,
+		); err != nil {
 			return fmt.Errorf("store: add bridge_instances.degradation_reason column: %w", err)
 		}
 	}
 	if _, ok := columns["degradation_message"]; !ok {
-		if _, err := db.ExecContext(ctx, `ALTER TABLE bridge_instances ADD COLUMN degradation_message TEXT`); err != nil {
+		if _, err := db.ExecContext(
+			ctx,
+			`ALTER TABLE bridge_instances ADD COLUMN degradation_message TEXT`,
+		); err != nil {
 			return fmt.Errorf("store: add bridge_instances.degradation_message column: %w", err)
 		}
 	}
@@ -240,7 +292,10 @@ func migrateSessionColumns(ctx context.Context, db *sql.DB) error {
 		}
 	}
 	if _, ok := columns["channel"]; !ok {
-		if _, err := db.ExecContext(ctx, `ALTER TABLE sessions ADD COLUMN channel TEXT NOT NULL DEFAULT ''`); err != nil {
+		if _, err := db.ExecContext(
+			ctx,
+			`ALTER TABLE sessions ADD COLUMN channel TEXT NOT NULL DEFAULT ''`,
+		); err != nil {
 			return fmt.Errorf("store: add sessions.channel column: %w", err)
 		}
 	}
@@ -265,7 +320,10 @@ func migrateBridgeColumns(ctx context.Context, db *sql.DB) error {
 		return nil
 	}
 
-	if _, err := db.ExecContext(ctx, `ALTER TABLE bridge_instances ADD COLUMN source TEXT NOT NULL DEFAULT 'dynamic'`); err != nil {
+	if _, err := db.ExecContext(
+		ctx,
+		`ALTER TABLE bridge_instances ADD COLUMN source TEXT NOT NULL DEFAULT 'dynamic'`,
+	); err != nil {
 		return fmt.Errorf("store: add bridge_instances.source column: %w", err)
 	}
 	return nil
@@ -294,7 +352,7 @@ func migrateBundleActivationColumns(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-func migrateNetworkAuditTable(ctx context.Context, db *sql.DB) error {
+func migrateNetworkAuditTable(ctx context.Context, db *sql.DB) (err error) {
 	exists, err := tableExists(ctx, db, "network_audit_log")
 	if err != nil {
 		return err
@@ -315,10 +373,11 @@ func migrateNetworkAuditTable(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		return fmt.Errorf("store: open network audit migration connection: %w", err)
 	}
+	cleanupCtx := context.WithoutCancel(ctx)
 	foreignKeysDisabled := false
 	defer func() {
 		if foreignKeysDisabled {
-			_, _ = conn.ExecContext(context.Background(), "PRAGMA foreign_keys = ON")
+			joinCleanupError(&err, restoreForeignKeys(cleanupCtx, conn))
 		}
 		_ = conn.Close()
 	}()
@@ -333,7 +392,7 @@ func migrateNetworkAuditTable(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("store: begin network audit migration transaction: %w", err)
 	}
 	defer func() {
-		_ = tx.Rollback()
+		joinCleanupError(&err, rollbackTx(tx, "network audit migration"))
 	}()
 
 	statements := []string{
@@ -372,8 +431,14 @@ func migrateNetworkAuditTable(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-func loadLegacySessions(ctx context.Context, exec sqlQueryExecutor) ([]legacySessionRow, map[string]legacyWorkspaceSeed, error) {
-	rows, err := exec.QueryContext(ctx, `SELECT id, name, agent_name, workspace, session_type, state, acp_session_id, created_at, updated_at FROM sessions ORDER BY created_at ASC, id ASC`)
+func loadLegacySessions(
+	ctx context.Context,
+	exec sqlQueryExecutor,
+) ([]legacySessionRow, map[string]legacyWorkspaceSeed, error) {
+	rows, err := exec.QueryContext(
+		ctx,
+		`SELECT id, name, agent_name, workspace, session_type, state, acp_session_id, created_at, updated_at FROM sessions ORDER BY created_at ASC, id ASC`,
+	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("store: query legacy sessions for migration: %w", err)
 	}
@@ -426,7 +491,11 @@ func loadLegacySessions(ctx context.Context, exec sqlQueryExecutor) ([]legacySes
 	return sessions, seeds, nil
 }
 
-func ensureMigratedWorkspaces(ctx context.Context, tx *sql.Tx, seeds map[string]legacyWorkspaceSeed) (map[string]string, error) {
+func ensureMigratedWorkspaces(
+	ctx context.Context,
+	tx *sql.Tx,
+	seeds map[string]legacyWorkspaceSeed,
+) (map[string]string, error) {
 	rootToID, err := loadWorkspaceIDsByRootDir(ctx, tx)
 	if err != nil {
 		return nil, err
@@ -531,7 +600,12 @@ func createMigratedGlobalTables(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
-func copyMigratedSessions(ctx context.Context, tx *sql.Tx, sessions []legacySessionRow, workspaceIDs map[string]string) error {
+func copyMigratedSessions(
+	ctx context.Context,
+	tx *sql.Tx,
+	sessions []legacySessionRow,
+	workspaceIDs map[string]string,
+) error {
 	for _, row := range sessions {
 		workspaceID, ok := workspaceIDs[strings.TrimSpace(row.Workspace)]
 		if !ok {
@@ -663,7 +737,8 @@ func loadWorkspaceNames(ctx context.Context, exec sqlQueryExecutor) (map[string]
 
 func tableExists(ctx context.Context, exec sqlQueryExecutor, table string) (bool, error) {
 	var name string
-	err := exec.QueryRowContext(ctx, `SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, strings.TrimSpace(table)).Scan(&name)
+	err := exec.QueryRowContext(ctx, `SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, strings.TrimSpace(table)).
+		Scan(&name)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -709,7 +784,12 @@ func tableColumns(ctx context.Context, exec sqlQueryExecutor, table string) (map
 	return columns, nil
 }
 
-func tableHasForeignKey(ctx context.Context, exec sqlQueryExecutor, table string, referencedTable string) (bool, error) {
+func tableHasForeignKey(
+	ctx context.Context,
+	exec sqlQueryExecutor,
+	table string,
+	referencedTable string,
+) (bool, error) {
 	name, err := store.NormalizeSQLiteIdentifier(table)
 	if err != nil {
 		return false, err
@@ -834,7 +914,11 @@ func loadReconciledLegacySessionMeta(path string, rootToID map[string]string) (b
 	case errors.Is(err, os.ErrNotExist):
 		return false, store.SessionMeta{}, nil
 	default:
-		return false, store.SessionMeta{}, fmt.Errorf("store: read session meta %q for workspace id reconciliation: %w", path, err)
+		return false, store.SessionMeta{}, fmt.Errorf(
+			"store: read session meta %q for workspace id reconciliation: %w",
+			path,
+			err,
+		)
 	}
 
 	var raw legacySessionMetaCompat

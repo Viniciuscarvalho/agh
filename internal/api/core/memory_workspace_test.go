@@ -38,10 +38,15 @@ func TestMemoryHandlersAndHelpers(t *testing.T) {
 		if err := os.MkdirAll(workspace, 0o755); err != nil {
 			t.Fatalf("MkdirAll(workspace) error = %v", err)
 		}
-		if err := store.Write(memory.ScopeGlobal, "global.md", []byte(memoryDocument(t, "Global", memory.MemoryTypeUser, "hello"))); err != nil {
+		if err := store.Write(
+			memory.ScopeGlobal,
+			"global.md",
+			[]byte(memoryDocument(t, "Global", memory.MemoryTypeUser, "hello")),
+		); err != nil {
 			t.Fatalf("Write(global) error = %v", err)
 		}
-		if err := store.ForWorkspace(workspace).Write(memory.ScopeWorkspace, "workspace.md", []byte(memoryDocument(t, "Workspace", memory.MemoryTypeProject, "world"))); err != nil {
+		if err := store.ForWorkspace(workspace).
+			Write(memory.ScopeWorkspace, "workspace.md", []byte(memoryDocument(t, "Workspace", memory.MemoryTypeProject, "world"))); err != nil {
 			t.Fatalf("Write(workspace) error = %v", err)
 		}
 
@@ -52,10 +57,10 @@ func TestMemoryHandlersAndHelpers(t *testing.T) {
 			Last:      time.Date(2026, 4, 4, 3, 30, 0, 0, time.UTC),
 		}
 		manager := testutil.StubSessionManager{
-			ListAllFn: func(context.Context) ([]*session.SessionInfo, error) {
+			ListAllFn: func(context.Context) ([]*session.Info, error) {
 				info := testutil.NewSessionInfo("sess-a")
 				info.Workspace = workspace
-				return []*session.SessionInfo{info}, nil
+				return []*session.Info{info}, nil
 			},
 		}
 		observer := testutil.StubObserver{
@@ -64,7 +69,14 @@ func TestMemoryHandlersAndHelpers(t *testing.T) {
 			},
 		}
 
-		return newHandlerFixture(t, manager, observer, testutil.StubWorkspaceService{}, store, trigger), workspace, trigger
+		return newHandlerFixture(
+			t,
+			manager,
+			observer,
+			testutil.StubWorkspaceService{},
+			store,
+			trigger,
+		), workspace, trigger
 	}
 
 	t.Run("Should list memory for a workspace", func(t *testing.T) {
@@ -78,7 +90,7 @@ func TestMemoryHandlersAndHelpers(t *testing.T) {
 			t.Fatalf("list memory status = %d, want %d", listResp.Code, http.StatusOK)
 		}
 
-		var headers []memory.MemoryHeader
+		var headers []memory.Header
 		testutil.DecodeJSONResponse(t, listResp, &headers)
 		if len(headers) != 2 {
 			t.Fatalf("memory headers len = %d, want 2", len(headers))
@@ -118,7 +130,12 @@ func TestMemoryHandlersAndHelpers(t *testing.T) {
 		}
 		writeResp := performRequest(t, fixture.Engine, http.MethodPut, "/memory/new.md", writeBody)
 		if writeResp.Code != http.StatusOK {
-			t.Fatalf("write memory status = %d, want %d; body=%s", writeResp.Code, http.StatusOK, writeResp.Body.String())
+			t.Fatalf(
+				"write memory status = %d, want %d; body=%s",
+				writeResp.Code,
+				http.StatusOK,
+				writeResp.Body.String(),
+			)
 		}
 
 		var payload contract.MemoryMutationResponse
@@ -210,7 +227,9 @@ func TestMemoryHandlersAndHelpers(t *testing.T) {
 	t.Run("Should map validation errors to bad requests", func(t *testing.T) {
 		t.Parallel()
 
-		if status := core.StatusForMemoryError(core.NewMemoryValidationError(errors.New("bad"))); status != http.StatusBadRequest {
+		if status := core.StatusForMemoryError(
+			core.NewMemoryValidationError(errors.New("bad")),
+		); status != http.StatusBadRequest {
 			t.Fatalf("StatusForMemoryError(validation) = %d, want %d", status, http.StatusBadRequest)
 		}
 	})
@@ -293,14 +312,21 @@ func TestWorkspaceHandlersDelegateToService(t *testing.T) {
 			},
 		}
 		manager := testutil.StubSessionManager{
-			ListAllFn: func(context.Context) ([]*session.SessionInfo, error) {
+			ListAllFn: func(context.Context) ([]*session.Info, error) {
 				info := testutil.NewSessionInfo("sess-a")
 				info.WorkspaceID = workspace.ID
-				return []*session.SessionInfo{info}, nil
+				return []*session.Info{info}, nil
 			},
 		}
 
-		return newHandlerFixture(t, manager, testutil.StubObserver{}, workspaces, nil, nil), workspace, resolved, &updateCalled, &deleteCalled, &resolveCalled, rootDir, addDir
+		return newHandlerFixture(
+			t,
+			manager,
+			testutil.StubObserver{},
+			workspaces,
+			nil,
+			nil,
+		), workspace, resolved, &updateCalled, &deleteCalled, &resolveCalled, rootDir, addDir
 	}
 
 	t.Run("Should create a workspace", func(t *testing.T) {
@@ -325,7 +351,8 @@ func TestWorkspaceHandlersDelegateToService(t *testing.T) {
 			Workspace contract.WorkspacePayload `json:"workspace"`
 		}
 		testutil.DecodeJSONResponse(t, createResp, &payload)
-		if payload.Workspace.RootDir != rootDir || len(payload.Workspace.AddDirs) != 1 || payload.Workspace.AddDirs[0] != addDir {
+		if payload.Workspace.RootDir != rootDir || len(payload.Workspace.AddDirs) != 1 ||
+			payload.Workspace.AddDirs[0] != addDir {
 			t.Fatalf("create workspace payload = %#v", payload.Workspace)
 		}
 	})
@@ -370,7 +397,13 @@ func TestWorkspaceHandlersDelegateToService(t *testing.T) {
 		t.Parallel()
 
 		fixture, workspace, _, updateCalled, _, _, _, _ := setup(t)
-		updateResp := performRequest(t, fixture.Engine, http.MethodPatch, "/workspaces/"+workspace.ID, []byte(`{"name":"beta"}`))
+		updateResp := performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPatch,
+			"/workspaces/"+workspace.ID,
+			[]byte(`{"name":"beta"}`),
+		)
 		if updateResp.Code != http.StatusOK || !*updateCalled {
 			t.Fatalf("update status=%d called=%v", updateResp.Code, *updateCalled)
 		}
@@ -438,11 +471,18 @@ func TestWorkspaceUpdateSupportsAddDirsAndDefaultAgent(t *testing.T) {
 		}
 		fixture := newHandlerFixture(t, testutil.StubSessionManager{}, testutil.StubObserver{}, workspaces, nil, nil)
 
-		resp := performRequest(t, fixture.Engine, http.MethodPatch, "/workspaces/ws_alpha", []byte(`{"add_dirs":["`+addDir+`"],"default_agent":"coder"}`))
+		resp := performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPatch,
+			"/workspaces/ws_alpha",
+			[]byte(`{"add_dirs":["`+addDir+`"],"default_agent":"coder"}`),
+		)
 		if resp.Code != http.StatusOK {
 			t.Fatalf("update add_dirs/default_agent status = %d, want %d", resp.Code, http.StatusOK)
 		}
-		if captured.AdditionalDirs == nil || len(*captured.AdditionalDirs) != 1 || (*captured.AdditionalDirs)[0] != addDir {
+		if captured.AdditionalDirs == nil || len(*captured.AdditionalDirs) != 1 ||
+			(*captured.AdditionalDirs)[0] != addDir {
 			t.Fatalf("captured add dirs = %#v", captured.AdditionalDirs)
 		}
 		if captured.DefaultAgent == nil || *captured.DefaultAgent != "coder" {
@@ -451,10 +491,10 @@ func TestWorkspaceUpdateSupportsAddDirsAndDefaultAgent(t *testing.T) {
 	})
 }
 
-func memoryDocument(t *testing.T, name string, typ memory.MemoryType, body string) string {
+func memoryDocument(t *testing.T, name string, typ memory.Type, body string) string {
 	t.Helper()
 
-	header := memory.MemoryHeader{
+	header := memory.Header{
 		Name:        name,
 		Description: "desc",
 		Type:        typ,

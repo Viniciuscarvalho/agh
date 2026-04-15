@@ -55,7 +55,7 @@ type Service struct {
 	lock               consolidationLocker
 	now                func() time.Time
 	countSessionsSince func(time.Time) (int, error)
-	workspaceResolver  workspacepkg.WorkspaceResolver
+	workspaceResolver  workspacepkg.RuntimeResolver
 
 	mu         sync.Mutex
 	runMu      sync.Mutex
@@ -66,7 +66,7 @@ type Service struct {
 type persistedSessionMetadata struct {
 	State       string     `json:"state,omitempty"`
 	SessionType string     `json:"session_type,omitempty"`
-	UpdatedAt   time.Time  `json:"updated_at,omitempty"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 	StoppedAt   *time.Time `json:"stopped_at,omitempty"`
 }
 
@@ -111,7 +111,7 @@ func WithMemoryStore(store *Store) Option {
 
 // WithWorkspaceResolver wires workspace resolution for consolidation runs that
 // need a workspace root path.
-func WithWorkspaceResolver(resolver workspacepkg.WorkspaceResolver) Option {
+func WithWorkspaceResolver(resolver workspacepkg.RuntimeResolver) Option {
 	return func(service *Service) {
 		service.workspaceResolver = resolver
 	}
@@ -235,9 +235,18 @@ func (s *Service) Run(ctx context.Context, spawn SessionSpawner, workspaceRef st
 
 	workspaceID, err := s.prepareWorkspace(ctx, workspaceRef)
 	if err != nil {
-		s.logger.Debug("memory: consolidation run failed before spawn; rolling back lock", "workspace_ref", strings.TrimSpace(workspaceRef), "error", err)
+		s.logger.Debug(
+			"memory: consolidation run failed before spawn; rolling back lock",
+			"workspace_ref",
+			strings.TrimSpace(workspaceRef),
+			"error",
+			err,
+		)
 		rollbackErr := s.completeRun(false, priorMtime)
-		return errors.Join(fmt.Errorf("memory: prepare workspace %q: %w", strings.TrimSpace(workspaceRef), err), rollbackErr)
+		return errors.Join(
+			fmt.Errorf("memory: prepare workspace %q: %w", strings.TrimSpace(workspaceRef), err),
+			rollbackErr,
+		)
 	}
 
 	s.logger.Debug("memory: starting consolidation run", "goal", s.goal, "workspace_id", workspaceID)

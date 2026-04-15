@@ -90,7 +90,7 @@ func TestBootSequenceReady(t *testing.T) {
 
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(discardLogger()),
 	)
 	if err != nil {
@@ -129,7 +129,7 @@ func TestBootWiresTaskRuntimeWithDedicatedSessionBridge(t *testing.T) {
 
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(discardLogger()),
 	)
 	if err != nil {
@@ -251,7 +251,7 @@ func TestBootRecoversOrphanedTaskRunsAndRecordsAudit(t *testing.T) {
 	runningTask := createTask("Running run")
 
 	now := time.Date(2026, 4, 14, 19, 0, 0, 0, time.UTC)
-	for _, run := range []taskpkg.TaskRun{
+	for _, run := range []taskpkg.Run{
 		{
 			ID:        "run-claimed",
 			TaskID:    claimedTask.ID,
@@ -292,14 +292,14 @@ func TestBootRecoversOrphanedTaskRunsAndRecordsAudit(t *testing.T) {
 	}
 
 	sessions := &fakeSessionManager{
-		infos: []*session.SessionInfo{
+		infos: []*session.Info{
 			{ID: "sess-stopped", State: session.StateStopped},
 		},
 	}
 
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(discardLogger()),
 	)
 	if err != nil {
@@ -351,7 +351,7 @@ func TestBootRecoversOrphanedTaskRunsAndRecordsAudit(t *testing.T) {
 		t.Fatalf("runningRun.Status = %q, want %q", got, want)
 	}
 
-	claimedEvents, err := d.tasks.store.ListTaskEvents(testutil.Context(t), taskpkg.TaskEventQuery{TaskID: claimedTask.ID})
+	claimedEvents, err := d.tasks.store.ListTaskEvents(testutil.Context(t), taskpkg.EventQuery{TaskID: claimedTask.ID})
 	if err != nil {
 		t.Fatalf("ListTaskEvents(claimed) error = %v", err)
 	}
@@ -359,7 +359,7 @@ func TestBootRecoversOrphanedTaskRunsAndRecordsAudit(t *testing.T) {
 		t.Fatalf("claimed task events = %#v, want task.run_recovered", taskEventTypes(claimedEvents))
 	}
 
-	startingEvents, err := d.tasks.store.ListTaskEvents(testutil.Context(t), taskpkg.TaskEventQuery{TaskID: startingTask.ID})
+	startingEvents, err := d.tasks.store.ListTaskEvents(testutil.Context(t), taskpkg.EventQuery{TaskID: startingTask.ID})
 	if err != nil {
 		t.Fatalf("ListTaskEvents(starting) error = %v", err)
 	}
@@ -378,7 +378,7 @@ func TestBootPublishesRunningAutomationBeforeServersStart(t *testing.T) {
 
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(discardLogger()),
 	)
 	if err != nil {
@@ -474,7 +474,7 @@ func TestBootPreservesAutomationEnabledOverlaysAcrossRestart(t *testing.T) {
 	newDaemon := func() *Daemon {
 		d, err := New(
 			WithHomePaths(homePaths),
-			WithConfig(cfg),
+			WithConfig(&cfg),
 			WithLogger(discardLogger()),
 		)
 		if err != nil {
@@ -627,7 +627,7 @@ func TestShutdownCancelsActiveAutomationPrompt(t *testing.T) {
 
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(discardLogger()),
 	)
 	if err != nil {
@@ -701,7 +701,7 @@ func TestBootNetworkEnabledDeliversInboundAndShutsDownCleanly(t *testing.T) {
 
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(discardLogger()),
 	)
 	if err != nil {
@@ -797,7 +797,7 @@ func TestBootNetworkShutdownTracksInterruptedInFlightDelivery(t *testing.T) {
 
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(logger),
 	)
 	if err != nil {
@@ -898,7 +898,7 @@ func TestBootLoadsExtensionsRebuildsHooksAndStopsOnShutdown(t *testing.T) {
 
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(discardLogger()),
 	)
 	if err != nil {
@@ -992,7 +992,7 @@ func TestBootContinuesAfterCorruptExtensionAndKeepsHealthyExtensions(t *testing.
 
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(logger),
 	)
 	if err != nil {
@@ -1058,7 +1058,7 @@ func TestRunGracefulShutdownViaContextCancellation(t *testing.T) {
 
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(discardLogger()),
 	)
 	if err != nil {
@@ -1097,7 +1097,7 @@ func TestRunGracefulShutdownViaSignal(t *testing.T) {
 
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(discardLogger()),
 		WithSignalBridge(signalCh),
 	)
@@ -1135,7 +1135,7 @@ func TestShutdownPersistsShutdownStopReason(t *testing.T) {
 
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(discardLogger()),
 	)
 	if err != nil {
@@ -1188,7 +1188,7 @@ func TestBootInitializesMemoryStoreAndAssemblerIntegration(t *testing.T) {
 
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(discardLogger()),
 	)
 	if err != nil {
@@ -1247,7 +1247,7 @@ func TestBootLoadsBundledSkillsIntoPromptAssemblerInSkillsOnlyMode(t *testing.T)
 
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(discardLogger()),
 	)
 	if err != nil {
@@ -1289,7 +1289,8 @@ func TestBootLoadsBundledSkillsIntoPromptAssemblerInSkillsOnlyMode(t *testing.T)
 		t.Fatal("skills registry does not contain bundled skill agh-session-guide")
 	}
 
-	prompt, err := capturedDeps.PromptAssembler.Assemble(context.Background(), testPromptAgent("Base prompt."), workspacepkg.ResolvedWorkspace{})
+	workspace := workspacepkg.ResolvedWorkspace{}
+	prompt, err := capturedDeps.PromptAssembler.Assemble(context.Background(), testPromptAgent("Base prompt."), &workspace)
 	if err != nil {
 		t.Fatalf("PromptAssembler.Assemble() error = %v", err)
 	}
@@ -1307,7 +1308,7 @@ func TestBootLeavesSkillDependenciesNilWhenSkillsDisabled(t *testing.T) {
 
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(discardLogger()),
 	)
 	if err != nil {
@@ -1402,7 +1403,7 @@ body
 	var capturedDeps SessionManagerDeps
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(discardLogger()),
 	)
 	if err != nil {
@@ -1480,7 +1481,7 @@ func TestBootSkillsWatcherRebuildsHooksBeforeNextDispatch(t *testing.T) {
 	var capturedDeps SessionManagerDeps
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(discardLogger()),
 	)
 	if err != nil {
@@ -1567,7 +1568,7 @@ func TestRunDreamTickerAndSpawnerIntegration(t *testing.T) {
 		},
 	}
 	sessions := &fakeSessionManager{
-		infos: []*session.SessionInfo{
+		infos: []*session.Info{
 			{
 				ID:          "sess-user",
 				WorkspaceID: resolvedWorkspace.ID,
@@ -1579,7 +1580,7 @@ func TestRunDreamTickerAndSpawnerIntegration(t *testing.T) {
 
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(discardLogger()),
 	)
 	if err != nil {
@@ -1685,7 +1686,7 @@ func TestBootStartsBridgeExtensionWithBoundRuntime(t *testing.T) {
 
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(discardLogger()),
 		WithBridgeSecretResolver(resolver),
 	)
@@ -1785,7 +1786,7 @@ func TestBootStartsBridgeExtensionWithDefaultEnvSecretResolver(t *testing.T) {
 
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(discardLogger()),
 	)
 	if err != nil {
@@ -1870,7 +1871,7 @@ func TestBootFailsWhenDefaultBridgeSecretEnvIsMissing(t *testing.T) {
 
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(discardLogger()),
 	)
 	if err != nil {
@@ -1985,7 +1986,7 @@ func TestBootStartsBridgeExtensionWithMultipleOwnedInstances(t *testing.T) {
 
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(discardLogger()),
 		WithBridgeSecretResolver(resolver),
 	)
@@ -2066,7 +2067,7 @@ func TestCreateEnabledBridgeAfterBootReloadsErroredExtension(t *testing.T) {
 
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(discardLogger()),
 	)
 	if err != nil {
@@ -2168,7 +2169,7 @@ func TestBridgeRuntimeRestartPreservesRouteContinuity(t *testing.T) {
 
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(discardLogger()),
 	)
 	if err != nil {
@@ -2316,7 +2317,7 @@ func TestDaemonShutdownClosesBridgeRuntimeCleanly(t *testing.T) {
 
 	d, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithLogger(discardLogger()),
 	)
 	if err != nil {
@@ -2682,7 +2683,7 @@ func assertLifecycleHookPayload(t *testing.T, path string, wantEvent hookspkg.Ho
 	})
 }
 
-func containsTaskEventType(events []taskpkg.TaskEvent, want string) bool {
+func containsTaskEventType(events []taskpkg.Event, want string) bool {
 	for _, event := range events {
 		if event.EventType == want {
 			return true
@@ -2691,7 +2692,7 @@ func containsTaskEventType(events []taskpkg.TaskEvent, want string) bool {
 	return false
 }
 
-func taskEventTypes(events []taskpkg.TaskEvent) []string {
+func taskEventTypes(events []taskpkg.Event) []string {
 	types := make([]string, 0, len(events))
 	for _, event := range events {
 		types = append(types, event.EventType)

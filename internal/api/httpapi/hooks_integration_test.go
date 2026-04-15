@@ -159,7 +159,7 @@ func TestHTTPHookRunsEndpointReturnsExecutionHistoryWithPatchDiffs(t *testing.T)
 	closeHookRunSessionDB(t, db)
 
 	manager := stubSessionManager{
-		StatusFn: func(_ context.Context, id string) (*session.SessionInfo, error) {
+		StatusFn: func(_ context.Context, id string) (*session.Info, error) {
 			return newSessionInfo(id), nil
 		},
 	}
@@ -305,7 +305,7 @@ func TestHTTPHookRunsEndpointFiltersByOutcomeAndLast(t *testing.T) {
 	closeHookRunSessionDB(t, db)
 
 	manager := stubSessionManager{
-		StatusFn: func(_ context.Context, id string) (*session.SessionInfo, error) {
+		StatusFn: func(_ context.Context, id string) (*session.Info, error) {
 			return newSessionInfo(id), nil
 		},
 	}
@@ -392,7 +392,7 @@ func TestHTTPHookRunsEndpointDispatchStoreQueryCycle(t *testing.T) {
 	}
 
 	manager := stubSessionManager{
-		StatusFn: func(_ context.Context, id string) (*session.SessionInfo, error) {
+		StatusFn: func(_ context.Context, id string) (*session.Info, error) {
 			return newSessionInfo(id), nil
 		},
 	}

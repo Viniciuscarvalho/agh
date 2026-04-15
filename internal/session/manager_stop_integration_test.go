@@ -84,7 +84,7 @@ func TestManagerIntegrationStopFinalizesWrappedACPProcess(t *testing.T) {
 		acp.WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
 		acp.WithStopTimeout(100*time.Millisecond),
 	)
-	h.resolver.upsert(workspacepkg.ResolvedWorkspace{
+	h.resolver.upsert(&workspacepkg.ResolvedWorkspace{
 		Workspace: workspacepkg.Workspace{
 			ID:      h.workspaceID,
 			RootDir: h.workspace,
@@ -131,7 +131,7 @@ func TestManagerIntegrationKillProcessPersistsAgentCrashedStopReason(t *testing.
 		acp.WithStopTimeout(100*time.Millisecond),
 	)
 	command := sessionStopHelperCommand(t)
-	h.resolver.upsert(workspacepkg.ResolvedWorkspace{
+	h.resolver.upsert(&workspacepkg.ResolvedWorkspace{
 		Workspace: workspacepkg.Workspace{
 			ID:      h.workspaceID,
 			RootDir: h.workspace,
@@ -335,7 +335,7 @@ func TestManagerIntegrationResumeFailsWhenAgentRemoved(t *testing.T) {
 	}
 	waitForStoppedSession(t, h.manager, session)
 
-	h.resolver.upsert(workspacepkg.ResolvedWorkspace{
+	h.resolver.upsert(&workspacepkg.ResolvedWorkspace{
 		Workspace: workspacepkg.Workspace{
 			ID:      h.workspaceID,
 			RootDir: h.workspace,
@@ -437,7 +437,7 @@ func newRealACPIntegrationHarness(t *testing.T, command string) *harness {
 		acp.WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
 		acp.WithStopTimeout(100*time.Millisecond),
 	)
-	h.resolver.upsert(workspacepkg.ResolvedWorkspace{
+	h.resolver.upsert(&workspacepkg.ResolvedWorkspace{
 		Workspace: workspacepkg.Workspace{
 			ID:      h.workspaceID,
 			RootDir: h.workspace,

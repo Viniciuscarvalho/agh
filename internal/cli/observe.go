@@ -34,7 +34,7 @@ func newObserveEventsCommand(deps commandDeps) *cobra.Command {
 		Use:   "events",
 		Short: "Read cross-session observability events",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -76,7 +76,7 @@ func newObserveHealthCommand(deps commandDeps) *cobra.Command {
 		Use:   "health",
 		Short: "Show observability health",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -190,7 +190,13 @@ func observeHealthBundle(health HealthStatus) outputBundle {
 		},
 		toon: func() (string, error) {
 			return renderToonObject("observe_health", []string{
-				"status", "uptime_seconds", "active_sessions", "active_agents", "global_db_size_bytes", "session_db_size_bytes", "version",
+				"status",
+				"uptime_seconds",
+				"active_sessions",
+				"active_agents",
+				"global_db_size_bytes",
+				"session_db_size_bytes",
+				"version",
 			}, []string{
 				health.Status,
 				strconv.FormatInt(health.UptimeSeconds, 10),

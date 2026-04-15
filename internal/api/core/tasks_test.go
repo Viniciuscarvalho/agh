@@ -22,7 +22,7 @@ func TestTaskPayloadBuildersPreserveIdentityOwnershipAndRunBindings(t *testing.T
 	runResult := json.RawMessage(`{"ok":true}`)
 	eventPayload := json.RawMessage(`{"action":"claim"}`)
 
-	view := &taskpkg.TaskView{
+	view := &taskpkg.View{
 		Task: taskpkg.Task{
 			ID:             "task-1",
 			Identifier:     "TASK-1",
@@ -40,7 +40,7 @@ func TestTaskPayloadBuildersPreserveIdentityOwnershipAndRunBindings(t *testing.T
 			UpdatedAt:      time.Date(2026, 4, 14, 10, 1, 0, 0, time.UTC),
 			Metadata:       taskMetadata,
 		},
-		Children: []taskpkg.TaskSummary{{
+		Children: []taskpkg.Summary{{
 			ID:        "task-child",
 			Title:     "Follow up",
 			Scope:     taskpkg.ScopeWorkspace,
@@ -50,13 +50,13 @@ func TestTaskPayloadBuildersPreserveIdentityOwnershipAndRunBindings(t *testing.T
 			CreatedAt: time.Date(2026, 4, 14, 10, 2, 0, 0, time.UTC),
 			UpdatedAt: time.Date(2026, 4, 14, 10, 2, 0, 0, time.UTC),
 		}},
-		Dependencies: []taskpkg.TaskDependency{{
+		Dependencies: []taskpkg.Dependency{{
 			TaskID:          "task-1",
 			DependsOnTaskID: "task-blocker",
 			Kind:            taskpkg.DependencyKindBlocks,
 			CreatedAt:       time.Date(2026, 4, 14, 10, 3, 0, 0, time.UTC),
 		}},
-		Runs: []taskpkg.TaskRun{{
+		Runs: []taskpkg.Run{{
 			ID:             "run-1",
 			TaskID:         "task-1",
 			Status:         taskpkg.TaskRunStatusRunning,
@@ -70,7 +70,7 @@ func TestTaskPayloadBuildersPreserveIdentityOwnershipAndRunBindings(t *testing.T
 			StartedAt:      time.Date(2026, 4, 14, 10, 4, 0, 0, time.UTC),
 			Result:         runResult,
 		}},
-		Events: []taskpkg.TaskEvent{{
+		Events: []taskpkg.Event{{
 			ID:        "evt-1",
 			TaskID:    "task-1",
 			RunID:     "run-1",
@@ -134,7 +134,6 @@ func TestStatusForTaskError(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -157,16 +156,46 @@ func TestBaseHandlersTaskValidationAndErrorMapping(t *testing.T) {
 				return nil, nil
 			},
 		}
-		fixture := newHandlerFixtureWithTasks(t, testutil.StubSessionManager{}, testutil.StubObserver{}, tasks, testutil.StubWorkspaceService{}, nil, nil)
+		fixture := newHandlerFixtureWithTasks(
+			t,
+			testutil.StubSessionManager{},
+			testutil.StubObserver{},
+			tasks,
+			testutil.StubWorkspaceService{},
+			nil,
+			nil,
+		)
 
-		resp := performRequest(t, fixture.Engine, http.MethodPost, "/tasks", []byte(`{"scope":"workspace","title":"Broken"}`))
+		resp := performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPost,
+			"/tasks",
+			[]byte(`{"scope":"workspace","title":"Broken"}`),
+		)
 		if resp.Code != http.StatusBadRequest {
-			t.Fatalf("workspace create status = %d, want %d; body=%s", resp.Code, http.StatusBadRequest, resp.Body.String())
+			t.Fatalf(
+				"workspace create status = %d, want %d; body=%s",
+				resp.Code,
+				http.StatusBadRequest,
+				resp.Body.String(),
+			)
 		}
 
-		resp = performRequest(t, fixture.Engine, http.MethodPost, "/tasks", []byte(`{"scope":"global","title":"Broken","network_channel":"bad.channel"}`))
+		resp = performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPost,
+			"/tasks",
+			[]byte(`{"scope":"global","title":"Broken","network_channel":"bad.channel"}`),
+		)
 		if resp.Code != http.StatusBadRequest {
-			t.Fatalf("channel create status = %d, want %d; body=%s", resp.Code, http.StatusBadRequest, resp.Body.String())
+			t.Fatalf(
+				"channel create status = %d, want %d; body=%s",
+				resp.Code,
+				http.StatusBadRequest,
+				resp.Body.String(),
+			)
 		}
 	})
 
@@ -178,7 +207,7 @@ func TestBaseHandlersTaskValidationAndErrorMapping(t *testing.T) {
 				t.Fatal("CreateTask should not be called when workspace lookup fails")
 				return nil, nil
 			},
-			UpdateTaskFn: func(context.Context, string, taskpkg.TaskPatch, taskpkg.ActorContext) (*taskpkg.Task, error) {
+			UpdateTaskFn: func(context.Context, string, taskpkg.Patch, taskpkg.ActorContext) (*taskpkg.Task, error) {
 				t.Fatal("UpdateTask should not be called for invalid owner input")
 				return nil, nil
 			},
@@ -188,16 +217,46 @@ func TestBaseHandlersTaskValidationAndErrorMapping(t *testing.T) {
 				return workspacepkg.Workspace{}, workspacepkg.ErrWorkspaceNotFound
 			},
 		}
-		fixture := newHandlerFixtureWithTasks(t, testutil.StubSessionManager{}, testutil.StubObserver{}, tasks, workspaces, nil, nil)
+		fixture := newHandlerFixtureWithTasks(
+			t,
+			testutil.StubSessionManager{},
+			testutil.StubObserver{},
+			tasks,
+			workspaces,
+			nil,
+			nil,
+		)
 
-		resp := performRequest(t, fixture.Engine, http.MethodPost, "/tasks", []byte(`{"scope":"workspace","workspace":"missing","title":"Broken"}`))
+		resp := performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPost,
+			"/tasks",
+			[]byte(`{"scope":"workspace","workspace":"missing","title":"Broken"}`),
+		)
 		if resp.Code != http.StatusNotFound {
-			t.Fatalf("workspace lookup status = %d, want %d; body=%s", resp.Code, http.StatusNotFound, resp.Body.String())
+			t.Fatalf(
+				"workspace lookup status = %d, want %d; body=%s",
+				resp.Code,
+				http.StatusNotFound,
+				resp.Body.String(),
+			)
 		}
 
-		resp = performRequest(t, fixture.Engine, http.MethodPatch, "/tasks/task-1", []byte(`{"owner":{"kind":"bogus","ref":"ops"}}`))
+		resp = performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPatch,
+			"/tasks/task-1",
+			[]byte(`{"owner":{"kind":"bogus","ref":"ops"}}`),
+		)
 		if resp.Code != http.StatusBadRequest {
-			t.Fatalf("invalid owner status = %d, want %d; body=%s", resp.Code, http.StatusBadRequest, resp.Body.String())
+			t.Fatalf(
+				"invalid owner status = %d, want %d; body=%s",
+				resp.Code,
+				http.StatusBadRequest,
+				resp.Body.String(),
+			)
 		}
 	})
 
@@ -206,7 +265,7 @@ func TestBaseHandlersTaskValidationAndErrorMapping(t *testing.T) {
 
 		workspaceLookups := 0
 		tasks := testutil.StubTaskManager{
-			ListTasksFn: func(context.Context, taskpkg.TaskQuery, taskpkg.ActorContext) ([]taskpkg.TaskSummary, error) {
+			ListTasksFn: func(context.Context, taskpkg.Query, taskpkg.ActorContext) ([]taskpkg.Summary, error) {
 				t.Fatal("ListTasks should not be called when global scope includes workspace filter")
 				return nil, nil
 			},
@@ -225,21 +284,51 @@ func TestBaseHandlersTaskValidationAndErrorMapping(t *testing.T) {
 				return workspacepkg.Workspace{}, workspacepkg.ErrWorkspaceNotFound
 			},
 		}
-		fixture := newHandlerFixtureWithTasks(t, testutil.StubSessionManager{}, testutil.StubObserver{}, tasks, workspaces, nil, nil)
+		fixture := newHandlerFixtureWithTasks(
+			t,
+			testutil.StubSessionManager{},
+			testutil.StubObserver{},
+			tasks,
+			workspaces,
+			nil,
+			nil,
+		)
 
 		resp := performRequest(t, fixture.Engine, http.MethodGet, "/tasks?scope=global&workspace=missing", nil)
 		if resp.Code != http.StatusBadRequest {
 			t.Fatalf("global list status = %d, want %d; body=%s", resp.Code, http.StatusBadRequest, resp.Body.String())
 		}
 
-		resp = performRequest(t, fixture.Engine, http.MethodPost, "/tasks", []byte(`{"scope":"global","workspace":"missing","title":"Broken"}`))
+		resp = performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPost,
+			"/tasks",
+			[]byte(`{"scope":"global","workspace":"missing","title":"Broken"}`),
+		)
 		if resp.Code != http.StatusBadRequest {
-			t.Fatalf("global create status = %d, want %d; body=%s", resp.Code, http.StatusBadRequest, resp.Body.String())
+			t.Fatalf(
+				"global create status = %d, want %d; body=%s",
+				resp.Code,
+				http.StatusBadRequest,
+				resp.Body.String(),
+			)
 		}
 
-		resp = performRequest(t, fixture.Engine, http.MethodPost, "/tasks/task-root/children", []byte(`{"scope":"global","workspace":"missing","title":"Broken child"}`))
+		resp = performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPost,
+			"/tasks/task-root/children",
+			[]byte(`{"scope":"global","workspace":"missing","title":"Broken child"}`),
+		)
 		if resp.Code != http.StatusBadRequest {
-			t.Fatalf("global child create status = %d, want %d; body=%s", resp.Code, http.StatusBadRequest, resp.Body.String())
+			t.Fatalf(
+				"global child create status = %d, want %d; body=%s",
+				resp.Code,
+				http.StatusBadRequest,
+				resp.Body.String(),
+			)
 		}
 
 		if workspaceLookups != 0 {
@@ -251,17 +340,25 @@ func TestBaseHandlersTaskValidationAndErrorMapping(t *testing.T) {
 		t.Parallel()
 
 		tasks := testutil.StubTaskManager{
-			GetTaskFn: func(context.Context, string, taskpkg.ActorContext) (*taskpkg.TaskView, error) {
+			GetTaskFn: func(context.Context, string, taskpkg.ActorContext) (*taskpkg.View, error) {
 				return nil, taskpkg.ErrTaskNotFound
 			},
-			UpdateTaskFn: func(context.Context, string, taskpkg.TaskPatch, taskpkg.ActorContext) (*taskpkg.Task, error) {
+			UpdateTaskFn: func(context.Context, string, taskpkg.Patch, taskpkg.ActorContext) (*taskpkg.Task, error) {
 				return nil, taskpkg.ErrPermissionDenied
 			},
-			StartRunFn: func(context.Context, string, taskpkg.StartRun, taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
+			StartRunFn: func(context.Context, string, taskpkg.StartRun, taskpkg.ActorContext) (*taskpkg.Run, error) {
 				return nil, taskpkg.ErrInvalidStatusTransition
 			},
 		}
-		fixture := newHandlerFixtureWithTasks(t, testutil.StubSessionManager{}, testutil.StubObserver{}, tasks, testutil.StubWorkspaceService{}, nil, nil)
+		fixture := newHandlerFixtureWithTasks(
+			t,
+			testutil.StubSessionManager{},
+			testutil.StubObserver{},
+			tasks,
+			testutil.StubWorkspaceService{},
+			nil,
+			nil,
+		)
 
 		resp := performRequest(t, fixture.Engine, http.MethodGet, "/tasks/missing", nil)
 		if resp.Code != http.StatusNotFound {
@@ -270,7 +367,12 @@ func TestBaseHandlersTaskValidationAndErrorMapping(t *testing.T) {
 
 		resp = performRequest(t, fixture.Engine, http.MethodPatch, "/tasks/task-1", []byte(`{"title":"rename"}`))
 		if resp.Code != http.StatusForbidden {
-			t.Fatalf("update forbidden status = %d, want %d; body=%s", resp.Code, http.StatusForbidden, resp.Body.String())
+			t.Fatalf(
+				"update forbidden status = %d, want %d; body=%s",
+				resp.Code,
+				http.StatusForbidden,
+				resp.Body.String(),
+			)
 		}
 
 		resp = performRequest(t, fixture.Engine, http.MethodPost, "/task-runs/run-1/start", []byte(`{}`))
@@ -285,17 +387,17 @@ func TestBaseHandlersTaskHappyPathEndpoints(t *testing.T) {
 
 	now := time.Date(2026, 4, 14, 12, 0, 0, 0, time.UTC)
 
-	var listedQuery taskpkg.TaskQuery
+	var listedQuery taskpkg.Query
 	var createdSpec taskpkg.CreateTask
 	var childSpec taskpkg.CreateTask
-	var updatedPatch taskpkg.TaskPatch
+	var updatedPatch taskpkg.Patch
 	var cancelledTask taskpkg.CancelTask
 	var addedDependency taskpkg.AddDependency
 	var removedTaskID string
 	var removedDependsOnID string
 	var enqueuedRun taskpkg.EnqueueRun
 	var listedRunTaskID string
-	var listedRunQuery taskpkg.TaskRunQuery
+	var listedRunQuery taskpkg.RunQuery
 	var claimedRun taskpkg.ClaimRun
 	var startedRun taskpkg.StartRun
 	var attachedRunID string
@@ -304,7 +406,7 @@ func TestBaseHandlersTaskHappyPathEndpoints(t *testing.T) {
 	var failedRun taskpkg.RunFailure
 	var cancelledRun taskpkg.CancelRun
 
-	taskView := &taskpkg.TaskView{
+	taskView := &taskpkg.View{
 		Task: taskpkg.Task{
 			ID:             "task-1",
 			Scope:          taskpkg.ScopeWorkspace,
@@ -320,13 +422,13 @@ func TestBaseHandlersTaskHappyPathEndpoints(t *testing.T) {
 			UpdatedAt:      now,
 			Metadata:       json.RawMessage(`{"priority":"high"}`),
 		},
-		Dependencies: []taskpkg.TaskDependency{{
+		Dependencies: []taskpkg.Dependency{{
 			TaskID:          "task-1",
 			DependsOnTaskID: "task-blocker",
 			Kind:            taskpkg.DependencyKindBlocks,
 			CreatedAt:       now,
 		}},
-		Runs: []taskpkg.TaskRun{
+		Runs: []taskpkg.Run{
 			{
 				ID:        "run-1",
 				TaskID:    "task-1",
@@ -346,7 +448,7 @@ func TestBaseHandlersTaskHappyPathEndpoints(t *testing.T) {
 				QueuedAt: now,
 			},
 		},
-		Events: []taskpkg.TaskEvent{{
+		Events: []taskpkg.Event{{
 			ID:        "evt-1",
 			TaskID:    "task-1",
 			EventType: "task.created",
@@ -358,9 +460,9 @@ func TestBaseHandlersTaskHappyPathEndpoints(t *testing.T) {
 
 	getTaskCalls := 0
 	tasks := testutil.StubTaskManager{
-		ListTasksFn: func(_ context.Context, query taskpkg.TaskQuery, _ taskpkg.ActorContext) ([]taskpkg.TaskSummary, error) {
+		ListTasksFn: func(_ context.Context, query taskpkg.Query, _ taskpkg.ActorContext) ([]taskpkg.Summary, error) {
 			listedQuery = query
-			return []taskpkg.TaskSummary{{
+			return []taskpkg.Summary{{
 				ID:             "task-1",
 				Scope:          query.Scope,
 				WorkspaceID:    query.WorkspaceID,
@@ -385,19 +487,19 @@ func TestBaseHandlersTaskHappyPathEndpoints(t *testing.T) {
 			record.Metadata = spec.Metadata
 			return &record, nil
 		},
-		GetTaskFn: func(_ context.Context, id string, _ taskpkg.ActorContext) (*taskpkg.TaskView, error) {
+		GetTaskFn: func(_ context.Context, id string, _ taskpkg.ActorContext) (*taskpkg.View, error) {
 			getTaskCalls++
 			if id != "task-1" {
 				t.Fatalf("GetTask id = %q, want %q", id, "task-1")
 			}
 			return taskView, nil
 		},
-		ListTaskRunsFn: func(_ context.Context, taskID string, query taskpkg.TaskRunQuery, _ taskpkg.ActorContext) ([]taskpkg.TaskRun, error) {
+		ListTaskRunsFn: func(_ context.Context, taskID string, query taskpkg.RunQuery, _ taskpkg.ActorContext) ([]taskpkg.Run, error) {
 			listedRunTaskID = taskID
 			listedRunQuery = query
-			return []taskpkg.TaskRun{taskView.Runs[0]}, nil
+			return []taskpkg.Run{taskView.Runs[0]}, nil
 		},
-		UpdateTaskFn: func(_ context.Context, _ string, patch taskpkg.TaskPatch, _ taskpkg.ActorContext) (*taskpkg.Task, error) {
+		UpdateTaskFn: func(_ context.Context, _ string, patch taskpkg.Patch, _ taskpkg.ActorContext) (*taskpkg.Task, error) {
 			updatedPatch = patch
 			record := taskView.Task
 			if patch.Title != nil {
@@ -408,7 +510,7 @@ func TestBaseHandlersTaskHappyPathEndpoints(t *testing.T) {
 		CancelTaskFn: func(_ context.Context, _ string, req taskpkg.CancelTask, _ taskpkg.ActorContext) (*taskpkg.Task, error) {
 			cancelledTask = req
 			record := taskView.Task
-			record.Status = taskpkg.TaskStatusCancelled
+			record.Status = taskpkg.TaskStatusCanceled
 			return &record, nil
 		},
 		CreateChildTaskFn: func(_ context.Context, parentTaskID string, spec taskpkg.CreateTask, actor taskpkg.ActorContext) (*taskpkg.Task, error) {
@@ -439,9 +541,9 @@ func TestBaseHandlersTaskHappyPathEndpoints(t *testing.T) {
 			removedDependsOnID = dependsOnID
 			return nil
 		},
-		EnqueueRunFn: func(_ context.Context, spec taskpkg.EnqueueRun, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
+		EnqueueRunFn: func(_ context.Context, spec taskpkg.EnqueueRun, actor taskpkg.ActorContext) (*taskpkg.Run, error) {
 			enqueuedRun = spec
-			return &taskpkg.TaskRun{
+			return &taskpkg.Run{
 				ID:             "run-3",
 				TaskID:         spec.TaskID,
 				Status:         taskpkg.TaskRunStatusQueued,
@@ -452,9 +554,9 @@ func TestBaseHandlersTaskHappyPathEndpoints(t *testing.T) {
 				QueuedAt:       now,
 			}, nil
 		},
-		ClaimRunFn: func(_ context.Context, _ string, claim taskpkg.ClaimRun, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
+		ClaimRunFn: func(_ context.Context, _ string, claim taskpkg.ClaimRun, actor taskpkg.ActorContext) (*taskpkg.Run, error) {
 			claimedRun = claim
-			return &taskpkg.TaskRun{
+			return &taskpkg.Run{
 				ID:        "run-1",
 				TaskID:    "task-1",
 				Status:    taskpkg.TaskRunStatusClaimed,
@@ -465,9 +567,9 @@ func TestBaseHandlersTaskHappyPathEndpoints(t *testing.T) {
 				ClaimedAt: now,
 			}, nil
 		},
-		StartRunFn: func(_ context.Context, _ string, req taskpkg.StartRun, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
+		StartRunFn: func(_ context.Context, _ string, req taskpkg.StartRun, actor taskpkg.ActorContext) (*taskpkg.Run, error) {
 			startedRun = req
-			return &taskpkg.TaskRun{
+			return &taskpkg.Run{
 				ID:        "run-1",
 				TaskID:    "task-1",
 				Status:    taskpkg.TaskRunStatusRunning,
@@ -478,10 +580,10 @@ func TestBaseHandlersTaskHappyPathEndpoints(t *testing.T) {
 				StartedAt: now,
 			}, nil
 		},
-		AttachRunSessionFn: func(_ context.Context, runID string, sessionID string, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
+		AttachRunSessionFn: func(_ context.Context, runID string, sessionID string, actor taskpkg.ActorContext) (*taskpkg.Run, error) {
 			attachedRunID = runID
 			attachedSessionID = sessionID
-			return &taskpkg.TaskRun{
+			return &taskpkg.Run{
 				ID:        runID,
 				TaskID:    "task-1",
 				Status:    taskpkg.TaskRunStatusStarting,
@@ -491,9 +593,9 @@ func TestBaseHandlersTaskHappyPathEndpoints(t *testing.T) {
 				QueuedAt:  now,
 			}, nil
 		},
-		CompleteRunFn: func(_ context.Context, _ string, result taskpkg.RunResult, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
+		CompleteRunFn: func(_ context.Context, _ string, result taskpkg.RunResult, actor taskpkg.ActorContext) (*taskpkg.Run, error) {
 			completedRun = result
-			return &taskpkg.TaskRun{
+			return &taskpkg.Run{
 				ID:       "run-1",
 				TaskID:   "task-1",
 				Status:   taskpkg.TaskRunStatusCompleted,
@@ -504,9 +606,9 @@ func TestBaseHandlersTaskHappyPathEndpoints(t *testing.T) {
 				Result:   result.Value,
 			}, nil
 		},
-		FailRunFn: func(_ context.Context, _ string, failure taskpkg.RunFailure, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
+		FailRunFn: func(_ context.Context, _ string, failure taskpkg.RunFailure, actor taskpkg.ActorContext) (*taskpkg.Run, error) {
 			failedRun = failure
-			return &taskpkg.TaskRun{
+			return &taskpkg.Run{
 				ID:       "run-2",
 				TaskID:   "task-1",
 				Status:   taskpkg.TaskRunStatusFailed,
@@ -517,12 +619,12 @@ func TestBaseHandlersTaskHappyPathEndpoints(t *testing.T) {
 				Error:    failure.Error,
 			}, nil
 		},
-		CancelRunFn: func(_ context.Context, _ string, req taskpkg.CancelRun, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
+		CancelRunFn: func(_ context.Context, _ string, req taskpkg.CancelRun, actor taskpkg.ActorContext) (*taskpkg.Run, error) {
 			cancelledRun = req
-			return &taskpkg.TaskRun{
+			return &taskpkg.Run{
 				ID:       "run-2",
 				TaskID:   "task-1",
-				Status:   taskpkg.TaskRunStatusCancelled,
+				Status:   taskpkg.TaskRunStatusCanceled,
 				Attempt:  2,
 				Origin:   actor.Origin,
 				QueuedAt: now,
@@ -539,14 +641,36 @@ func TestBaseHandlersTaskHappyPathEndpoints(t *testing.T) {
 		},
 	}
 
-	fixture := newHandlerFixtureWithTasks(t, testutil.StubSessionManager{}, testutil.StubObserver{}, tasks, workspaces, nil, nil)
+	fixture := newHandlerFixtureWithTasks(
+		t,
+		testutil.StubSessionManager{},
+		testutil.StubObserver{},
+		tasks,
+		workspaces,
+		nil,
+		nil,
+	)
 
-	resp := performRequest(t, fixture.Engine, http.MethodGet, "/tasks?scope=workspace&workspace=alpha&status=ready&owner_kind=pool&owner_ref=reviewers&parent_task_id=task-root&network_channel=builders&limit=2", nil)
+	resp := performRequest(
+		t,
+		fixture.Engine,
+		http.MethodGet,
+		"/tasks?scope=workspace&workspace=alpha&status=ready&owner_kind=pool&owner_ref=reviewers&parent_task_id=task-root&network_channel=builders&limit=2",
+		nil,
+	)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("list status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
 	}
 
-	resp = performRequest(t, fixture.Engine, http.MethodPost, "/tasks", []byte(`{"scope":"workspace","workspace":"alpha","title":"Review task API","description":"Check handler wiring","network_channel":"builders","owner":{"kind":"pool","ref":"reviewers"},"metadata":{"priority":"high"}}`))
+	resp = performRequest(
+		t,
+		fixture.Engine,
+		http.MethodPost,
+		"/tasks",
+		[]byte(
+			`{"scope":"workspace","workspace":"alpha","title":"Review task API","description":"Check handler wiring","network_channel":"builders","owner":{"kind":"pool","ref":"reviewers"},"metadata":{"priority":"high"}}`,
+		),
+	)
 	if resp.Code != http.StatusCreated {
 		t.Fatalf("create status = %d, want %d; body=%s", resp.Code, http.StatusCreated, resp.Body.String())
 	}
@@ -556,22 +680,46 @@ func TestBaseHandlersTaskHappyPathEndpoints(t *testing.T) {
 		t.Fatalf("get status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
 	}
 
-	resp = performRequest(t, fixture.Engine, http.MethodPatch, "/tasks/task-1", []byte(`{"title":"Renamed task","network_channel":"builders","metadata":{"priority":"medium"}}`))
+	resp = performRequest(
+		t,
+		fixture.Engine,
+		http.MethodPatch,
+		"/tasks/task-1",
+		[]byte(`{"title":"Renamed task","network_channel":"builders","metadata":{"priority":"medium"}}`),
+	)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("update status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
 	}
 
-	resp = performRequest(t, fixture.Engine, http.MethodPost, "/tasks/task-1/cancel", []byte(`{"reason":"no longer needed","metadata":{"source":"test"}}`))
+	resp = performRequest(
+		t,
+		fixture.Engine,
+		http.MethodPost,
+		"/tasks/task-1/cancel",
+		[]byte(`{"reason":"no longer needed","metadata":{"source":"test"}}`),
+	)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("cancel task status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
 	}
 
-	resp = performRequest(t, fixture.Engine, http.MethodPost, "/tasks/task-root/children", []byte(`{"scope":"workspace","workspace":"alpha","title":"Child task","description":"Follow-up work"}`))
+	resp = performRequest(
+		t,
+		fixture.Engine,
+		http.MethodPost,
+		"/tasks/task-root/children",
+		[]byte(`{"scope":"workspace","workspace":"alpha","title":"Child task","description":"Follow-up work"}`),
+	)
 	if resp.Code != http.StatusCreated {
 		t.Fatalf("create child status = %d, want %d; body=%s", resp.Code, http.StatusCreated, resp.Body.String())
 	}
 
-	resp = performRequest(t, fixture.Engine, http.MethodPost, "/tasks/task-1/dependencies", []byte(`{"depends_on_task_id":"task-blocker"}`))
+	resp = performRequest(
+		t,
+		fixture.Engine,
+		http.MethodPost,
+		"/tasks/task-1/dependencies",
+		[]byte(`{"depends_on_task_id":"task-blocker"}`),
+	)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("add dependency status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
 	}
@@ -581,62 +729,115 @@ func TestBaseHandlersTaskHappyPathEndpoints(t *testing.T) {
 		t.Fatalf("remove dependency status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
 	}
 
-	resp = performRequest(t, fixture.Engine, http.MethodGet, "/tasks/task-1/runs?status=running&session_id=sess-1&limit=1", nil)
+	resp = performRequest(
+		t,
+		fixture.Engine,
+		http.MethodGet,
+		"/tasks/task-1/runs?status=running&session_id=sess-1&limit=1",
+		nil,
+	)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("list runs status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
 	}
 
-	resp = performRequest(t, fixture.Engine, http.MethodPost, "/tasks/task-1/runs", []byte(`{"idempotency_key":"key-3","network_channel":"builders"}`))
+	resp = performRequest(
+		t,
+		fixture.Engine,
+		http.MethodPost,
+		"/tasks/task-1/runs",
+		[]byte(`{"idempotency_key":"key-3","network_channel":"builders"}`),
+	)
 	if resp.Code != http.StatusCreated {
 		t.Fatalf("enqueue status = %d, want %d; body=%s", resp.Code, http.StatusCreated, resp.Body.String())
 	}
 
-	resp = performRequest(t, fixture.Engine, http.MethodPost, "/task-runs/run-1/claim", []byte(`{"idempotency_key":"claim-1"}`))
+	resp = performRequest(
+		t,
+		fixture.Engine,
+		http.MethodPost,
+		"/task-runs/run-1/claim",
+		[]byte(`{"idempotency_key":"claim-1"}`),
+	)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("claim status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
 	}
 
-	resp = performRequest(t, fixture.Engine, http.MethodPost, "/task-runs/run-1/start", []byte(`{"idempotency_key":"start-1"}`))
+	resp = performRequest(
+		t,
+		fixture.Engine,
+		http.MethodPost,
+		"/task-runs/run-1/start",
+		[]byte(`{"idempotency_key":"start-1"}`),
+	)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("start status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
 	}
 
-	resp = performRequest(t, fixture.Engine, http.MethodPost, "/task-runs/run-1/attach-session", []byte(`{"session_id":"sess-1"}`))
+	resp = performRequest(
+		t,
+		fixture.Engine,
+		http.MethodPost,
+		"/task-runs/run-1/attach-session",
+		[]byte(`{"session_id":"sess-1"}`),
+	)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("attach status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
 	}
 
-	resp = performRequest(t, fixture.Engine, http.MethodPost, "/task-runs/run-1/complete", []byte(`{"result":{"ok":true}}`))
+	resp = performRequest(
+		t,
+		fixture.Engine,
+		http.MethodPost,
+		"/task-runs/run-1/complete",
+		[]byte(`{"result":{"ok":true}}`),
+	)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("complete status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
 	}
 
-	resp = performRequest(t, fixture.Engine, http.MethodPost, "/task-runs/run-2/fail", []byte(`{"error":"boom","metadata":{"step":"claim"}}`))
+	resp = performRequest(
+		t,
+		fixture.Engine,
+		http.MethodPost,
+		"/task-runs/run-2/fail",
+		[]byte(`{"error":"boom","metadata":{"step":"claim"}}`),
+	)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("fail status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
 	}
 
-	resp = performRequest(t, fixture.Engine, http.MethodPost, "/task-runs/run-2/cancel", []byte(`{"reason":"operator cancelled","metadata":{"step":"cancel"}}`))
+	resp = performRequest(
+		t,
+		fixture.Engine,
+		http.MethodPost,
+		"/task-runs/run-2/cancel",
+		[]byte(`{"reason":"operator canceled","metadata":{"step":"cancel"}}`),
+	)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("cancel run status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
 	}
 
-	if listedQuery.WorkspaceID != "ws-alpha" || listedQuery.Scope != taskpkg.ScopeWorkspace || listedQuery.NetworkChannel != "builders" {
+	if listedQuery.WorkspaceID != "ws-alpha" || listedQuery.Scope != taskpkg.ScopeWorkspace ||
+		listedQuery.NetworkChannel != "builders" {
 		t.Fatalf("listed query = %#v", listedQuery)
 	}
-	if listedQuery.Status != taskpkg.TaskStatusReady || listedQuery.OwnerKind != taskpkg.OwnerKindPool || listedQuery.OwnerRef != "reviewers" || listedQuery.Limit != 2 {
+	if listedQuery.Status != taskpkg.TaskStatusReady || listedQuery.OwnerKind != taskpkg.OwnerKindPool ||
+		listedQuery.OwnerRef != "reviewers" ||
+		listedQuery.Limit != 2 {
 		t.Fatalf("listed query = %#v", listedQuery)
 	}
 	if listedRunTaskID != "task-1" {
 		t.Fatalf("listed run task id = %q, want %q", listedRunTaskID, "task-1")
 	}
-	if listedRunQuery.Status != taskpkg.TaskRunStatusRunning || listedRunQuery.SessionID != "sess-1" || listedRunQuery.Limit != 1 {
+	if listedRunQuery.Status != taskpkg.TaskRunStatusRunning || listedRunQuery.SessionID != "sess-1" ||
+		listedRunQuery.Limit != 1 {
 		t.Fatalf("listed run query = %#v", listedRunQuery)
 	}
 	if getTaskCalls != 3 {
 		t.Fatalf("GetTask() calls = %d, want 3 detail reads without extra run-list fetch", getTaskCalls)
 	}
-	if createdSpec.WorkspaceID != "ws-alpha" || createdSpec.NetworkChannel != "builders" || createdSpec.Owner == nil || createdSpec.Owner.Ref != "reviewers" {
+	if createdSpec.WorkspaceID != "ws-alpha" || createdSpec.NetworkChannel != "builders" || createdSpec.Owner == nil ||
+		createdSpec.Owner.Ref != "reviewers" {
 		t.Fatalf("created spec = %#v", createdSpec)
 	}
 	if childSpec.WorkspaceID != "ws-alpha" || childSpec.Title != "Child task" {
@@ -646,7 +847,7 @@ func TestBaseHandlersTaskHappyPathEndpoints(t *testing.T) {
 		t.Fatalf("updated patch = %#v", updatedPatch)
 	}
 	if cancelledTask.Reason != "no longer needed" {
-		t.Fatalf("cancelled task = %#v", cancelledTask)
+		t.Fatalf("canceled task = %#v", cancelledTask)
 	}
 	if addedDependency.Kind != taskpkg.DependencyKindBlocks || addedDependency.DependsOnTaskID != "task-blocker" {
 		t.Fatalf("added dependency = %#v", addedDependency)
@@ -672,15 +873,23 @@ func TestBaseHandlersTaskHappyPathEndpoints(t *testing.T) {
 	if failedRun.Error != "boom" {
 		t.Fatalf("failed run = %#v", failedRun)
 	}
-	if cancelledRun.Reason != "operator cancelled" {
-		t.Fatalf("cancelled run = %#v", cancelledRun)
+	if cancelledRun.Reason != "operator canceled" {
+		t.Fatalf("canceled run = %#v", cancelledRun)
 	}
 }
 
 func TestBaseHandlersTaskActorResolverErrors(t *testing.T) {
 	t.Parallel()
 
-	fixture := newHandlerFixtureWithTasks(t, testutil.StubSessionManager{}, testutil.StubObserver{}, testutil.StubTaskManager{}, testutil.StubWorkspaceService{}, nil, nil)
+	fixture := newHandlerFixtureWithTasks(
+		t,
+		testutil.StubSessionManager{},
+		testutil.StubObserver{},
+		testutil.StubTaskManager{},
+		testutil.StubWorkspaceService{},
+		nil,
+		nil,
+	)
 	fixture.Handlers.TaskActorContextResolver = func(*gin.Context, string) (taskpkg.ActorContext, error) {
 		return taskpkg.ActorContext{}, errors.New("resolver failed")
 	}
@@ -695,8 +904,16 @@ func TestBaseHandlersTaskActorResolverErrors(t *testing.T) {
 		{method: http.MethodGet, path: "/tasks/task-1"},
 		{method: http.MethodPatch, path: "/tasks/task-1", body: []byte(`{"title":"Renamed task"}`)},
 		{method: http.MethodPost, path: "/tasks/task-1/cancel", body: []byte(`{}`)},
-		{method: http.MethodPost, path: "/tasks/task-root/children", body: []byte(`{"scope":"global","title":"Child task"}`)},
-		{method: http.MethodPost, path: "/tasks/task-1/dependencies", body: []byte(`{"depends_on_task_id":"task-blocker"}`)},
+		{
+			method: http.MethodPost,
+			path:   "/tasks/task-root/children",
+			body:   []byte(`{"scope":"global","title":"Child task"}`),
+		},
+		{
+			method: http.MethodPost,
+			path:   "/tasks/task-1/dependencies",
+			body:   []byte(`{"depends_on_task_id":"task-blocker"}`),
+		},
 		{method: http.MethodDelete, path: "/tasks/task-1/dependencies/task-blocker"},
 		{method: http.MethodGet, path: "/tasks/task-1/runs"},
 		{method: http.MethodPost, path: "/tasks/task-1/runs", body: []byte(`{}`)},
@@ -709,11 +926,17 @@ func TestBaseHandlersTaskActorResolverErrors(t *testing.T) {
 	}
 
 	for _, request := range requests {
-		request := request
 		t.Run(request.method+" "+request.path, func(t *testing.T) {
 			resp := performRequest(t, fixture.Engine, request.method, request.path, request.body)
 			if resp.Code != http.StatusInternalServerError {
-				t.Fatalf("%s %s status = %d, want %d; body=%s", request.method, request.path, resp.Code, http.StatusInternalServerError, resp.Body.String())
+				t.Fatalf(
+					"%s %s status = %d, want %d; body=%s",
+					request.method,
+					request.path,
+					resp.Code,
+					http.StatusInternalServerError,
+					resp.Body.String(),
+				)
 			}
 		})
 	}
@@ -722,7 +945,15 @@ func TestBaseHandlersTaskActorResolverErrors(t *testing.T) {
 func TestBaseHandlersTaskServiceUnavailable(t *testing.T) {
 	t.Parallel()
 
-	fixture := newHandlerFixtureWithTasks(t, testutil.StubSessionManager{}, testutil.StubObserver{}, testutil.StubTaskManager{}, testutil.StubWorkspaceService{}, nil, nil)
+	fixture := newHandlerFixtureWithTasks(
+		t,
+		testutil.StubSessionManager{},
+		testutil.StubObserver{},
+		testutil.StubTaskManager{},
+		testutil.StubWorkspaceService{},
+		nil,
+		nil,
+	)
 	fixture.Handlers.Tasks = nil
 
 	requests := []struct {
@@ -735,8 +966,16 @@ func TestBaseHandlersTaskServiceUnavailable(t *testing.T) {
 		{method: http.MethodGet, path: "/tasks/task-1"},
 		{method: http.MethodPatch, path: "/tasks/task-1", body: []byte(`{"title":"Renamed task"}`)},
 		{method: http.MethodPost, path: "/tasks/task-1/cancel", body: []byte(`{}`)},
-		{method: http.MethodPost, path: "/tasks/task-root/children", body: []byte(`{"scope":"global","title":"Child task"}`)},
-		{method: http.MethodPost, path: "/tasks/task-1/dependencies", body: []byte(`{"depends_on_task_id":"task-blocker"}`)},
+		{
+			method: http.MethodPost,
+			path:   "/tasks/task-root/children",
+			body:   []byte(`{"scope":"global","title":"Child task"}`),
+		},
+		{
+			method: http.MethodPost,
+			path:   "/tasks/task-1/dependencies",
+			body:   []byte(`{"depends_on_task_id":"task-blocker"}`),
+		},
 		{method: http.MethodDelete, path: "/tasks/task-1/dependencies/task-blocker"},
 		{method: http.MethodGet, path: "/tasks/task-1/runs"},
 		{method: http.MethodPost, path: "/tasks/task-1/runs", body: []byte(`{}`)},
@@ -749,11 +988,17 @@ func TestBaseHandlersTaskServiceUnavailable(t *testing.T) {
 	}
 
 	for _, request := range requests {
-		request := request
 		t.Run(request.method+" "+request.path, func(t *testing.T) {
 			resp := performRequest(t, fixture.Engine, request.method, request.path, request.body)
 			if resp.Code != http.StatusServiceUnavailable {
-				t.Fatalf("%s %s status = %d, want %d; body=%s", request.method, request.path, resp.Code, http.StatusServiceUnavailable, resp.Body.String())
+				t.Fatalf(
+					"%s %s status = %d, want %d; body=%s",
+					request.method,
+					request.path,
+					resp.Code,
+					http.StatusServiceUnavailable,
+					resp.Body.String(),
+				)
 			}
 		})
 	}
@@ -762,56 +1007,64 @@ func TestBaseHandlersTaskServiceUnavailable(t *testing.T) {
 func TestBaseHandlersTaskManagerErrors(t *testing.T) {
 	t.Parallel()
 
-	fixture := newHandlerFixtureWithTasks(t, testutil.StubSessionManager{}, testutil.StubObserver{}, testutil.StubTaskManager{
-		ListTasksFn: func(context.Context, taskpkg.TaskQuery, taskpkg.ActorContext) ([]taskpkg.TaskSummary, error) {
-			return nil, taskpkg.ErrPermissionDenied
+	fixture := newHandlerFixtureWithTasks(
+		t,
+		testutil.StubSessionManager{},
+		testutil.StubObserver{},
+		testutil.StubTaskManager{
+			ListTasksFn: func(context.Context, taskpkg.Query, taskpkg.ActorContext) ([]taskpkg.Summary, error) {
+				return nil, taskpkg.ErrPermissionDenied
+			},
+			CreateTaskFn: func(context.Context, taskpkg.CreateTask, taskpkg.ActorContext) (*taskpkg.Task, error) {
+				return nil, taskpkg.ErrPermissionDenied
+			},
+			GetTaskFn: func(context.Context, string, taskpkg.ActorContext) (*taskpkg.View, error) {
+				return nil, taskpkg.ErrTaskNotFound
+			},
+			ListTaskRunsFn: func(context.Context, string, taskpkg.RunQuery, taskpkg.ActorContext) ([]taskpkg.Run, error) {
+				return nil, taskpkg.ErrTaskNotFound
+			},
+			UpdateTaskFn: func(context.Context, string, taskpkg.Patch, taskpkg.ActorContext) (*taskpkg.Task, error) {
+				return nil, taskpkg.ErrPermissionDenied
+			},
+			CancelTaskFn: func(context.Context, string, taskpkg.CancelTask, taskpkg.ActorContext) (*taskpkg.Task, error) {
+				return nil, taskpkg.ErrInvalidStatusTransition
+			},
+			CreateChildTaskFn: func(context.Context, string, taskpkg.CreateTask, taskpkg.ActorContext) (*taskpkg.Task, error) {
+				return nil, taskpkg.ErrPermissionDenied
+			},
+			AddDependencyFn: func(context.Context, taskpkg.AddDependency, taskpkg.ActorContext) error {
+				return taskpkg.ErrCycleDetected
+			},
+			RemoveDependencyFn: func(context.Context, string, string, taskpkg.ActorContext) error {
+				return taskpkg.ErrTaskDependencyNotFound
+			},
+			EnqueueRunFn: func(context.Context, taskpkg.EnqueueRun, taskpkg.ActorContext) (*taskpkg.Run, error) {
+				return nil, taskpkg.ErrInvalidStatusTransition
+			},
+			ClaimRunFn: func(context.Context, string, taskpkg.ClaimRun, taskpkg.ActorContext) (*taskpkg.Run, error) {
+				return nil, taskpkg.ErrTaskRunNotFound
+			},
+			StartRunFn: func(context.Context, string, taskpkg.StartRun, taskpkg.ActorContext) (*taskpkg.Run, error) {
+				return nil, taskpkg.ErrInvalidStatusTransition
+			},
+			AttachRunSessionFn: func(context.Context, string, string, taskpkg.ActorContext) (*taskpkg.Run, error) {
+				return nil, taskpkg.ErrSessionAlreadyBound
+			},
+			CompleteRunFn: func(context.Context, string, taskpkg.RunResult, taskpkg.ActorContext) (*taskpkg.Run, error) {
+				return nil, taskpkg.ErrTaskRunNotFound
+			},
+			FailRunFn: func(context.Context, string, taskpkg.RunFailure, taskpkg.ActorContext) (*taskpkg.Run, error) {
+				return nil, taskpkg.ErrTaskRunNotFound
+			},
+			CancelRunFn: func(context.Context, string, taskpkg.CancelRun, taskpkg.ActorContext) (*taskpkg.Run, error) {
+				return nil, taskpkg.ErrTaskRunNotFound
+			},
 		},
-		CreateTaskFn: func(context.Context, taskpkg.CreateTask, taskpkg.ActorContext) (*taskpkg.Task, error) {
-			return nil, taskpkg.ErrPermissionDenied
-		},
-		GetTaskFn: func(context.Context, string, taskpkg.ActorContext) (*taskpkg.TaskView, error) {
-			return nil, taskpkg.ErrTaskNotFound
-		},
-		ListTaskRunsFn: func(context.Context, string, taskpkg.TaskRunQuery, taskpkg.ActorContext) ([]taskpkg.TaskRun, error) {
-			return nil, taskpkg.ErrTaskNotFound
-		},
-		UpdateTaskFn: func(context.Context, string, taskpkg.TaskPatch, taskpkg.ActorContext) (*taskpkg.Task, error) {
-			return nil, taskpkg.ErrPermissionDenied
-		},
-		CancelTaskFn: func(context.Context, string, taskpkg.CancelTask, taskpkg.ActorContext) (*taskpkg.Task, error) {
-			return nil, taskpkg.ErrInvalidStatusTransition
-		},
-		CreateChildTaskFn: func(context.Context, string, taskpkg.CreateTask, taskpkg.ActorContext) (*taskpkg.Task, error) {
-			return nil, taskpkg.ErrPermissionDenied
-		},
-		AddDependencyFn: func(context.Context, taskpkg.AddDependency, taskpkg.ActorContext) error {
-			return taskpkg.ErrCycleDetected
-		},
-		RemoveDependencyFn: func(context.Context, string, string, taskpkg.ActorContext) error {
-			return taskpkg.ErrTaskDependencyNotFound
-		},
-		EnqueueRunFn: func(context.Context, taskpkg.EnqueueRun, taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
-			return nil, taskpkg.ErrInvalidStatusTransition
-		},
-		ClaimRunFn: func(context.Context, string, taskpkg.ClaimRun, taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
-			return nil, taskpkg.ErrTaskRunNotFound
-		},
-		StartRunFn: func(context.Context, string, taskpkg.StartRun, taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
-			return nil, taskpkg.ErrInvalidStatusTransition
-		},
-		AttachRunSessionFn: func(context.Context, string, string, taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
-			return nil, taskpkg.ErrSessionAlreadyBound
-		},
-		CompleteRunFn: func(context.Context, string, taskpkg.RunResult, taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
-			return nil, taskpkg.ErrTaskRunNotFound
-		},
-		FailRunFn: func(context.Context, string, taskpkg.RunFailure, taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
-			return nil, taskpkg.ErrTaskRunNotFound
-		},
-		CancelRunFn: func(context.Context, string, taskpkg.CancelRun, taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
-			return nil, taskpkg.ErrTaskRunNotFound
-		},
-	}, testutil.StubWorkspaceService{}, nil, nil)
+		testutil.StubWorkspaceService{},
+		nil,
+		nil,
+	)
 
 	requests := []struct {
 		method string
@@ -820,29 +1073,65 @@ func TestBaseHandlersTaskManagerErrors(t *testing.T) {
 		want   int
 	}{
 		{method: http.MethodGet, path: "/tasks", want: http.StatusForbidden},
-		{method: http.MethodPost, path: "/tasks", body: []byte(`{"scope":"global","title":"Review task API"}`), want: http.StatusForbidden},
+		{
+			method: http.MethodPost,
+			path:   "/tasks",
+			body:   []byte(`{"scope":"global","title":"Review task API"}`),
+			want:   http.StatusForbidden,
+		},
 		{method: http.MethodGet, path: "/tasks/task-1", want: http.StatusNotFound},
-		{method: http.MethodPatch, path: "/tasks/task-1", body: []byte(`{"title":"Renamed task"}`), want: http.StatusForbidden},
+		{
+			method: http.MethodPatch,
+			path:   "/tasks/task-1",
+			body:   []byte(`{"title":"Renamed task"}`),
+			want:   http.StatusForbidden,
+		},
 		{method: http.MethodPost, path: "/tasks/task-1/cancel", body: []byte(`{}`), want: http.StatusConflict},
-		{method: http.MethodPost, path: "/tasks/task-root/children", body: []byte(`{"scope":"global","title":"Child task"}`), want: http.StatusForbidden},
-		{method: http.MethodPost, path: "/tasks/task-1/dependencies", body: []byte(`{"depends_on_task_id":"task-blocker"}`), want: http.StatusConflict},
+		{
+			method: http.MethodPost,
+			path:   "/tasks/task-root/children",
+			body:   []byte(`{"scope":"global","title":"Child task"}`),
+			want:   http.StatusForbidden,
+		},
+		{
+			method: http.MethodPost,
+			path:   "/tasks/task-1/dependencies",
+			body:   []byte(`{"depends_on_task_id":"task-blocker"}`),
+			want:   http.StatusConflict,
+		},
 		{method: http.MethodDelete, path: "/tasks/task-1/dependencies/task-blocker", want: http.StatusNotFound},
 		{method: http.MethodGet, path: "/tasks/task-1/runs", want: http.StatusNotFound},
 		{method: http.MethodPost, path: "/tasks/task-1/runs", body: []byte(`{}`), want: http.StatusConflict},
 		{method: http.MethodPost, path: "/task-runs/run-1/claim", body: []byte(`{}`), want: http.StatusNotFound},
 		{method: http.MethodPost, path: "/task-runs/run-1/start", body: []byte(`{}`), want: http.StatusConflict},
-		{method: http.MethodPost, path: "/task-runs/run-1/attach-session", body: []byte(`{"session_id":"sess-1"}`), want: http.StatusConflict},
+		{
+			method: http.MethodPost,
+			path:   "/task-runs/run-1/attach-session",
+			body:   []byte(`{"session_id":"sess-1"}`),
+			want:   http.StatusConflict,
+		},
 		{method: http.MethodPost, path: "/task-runs/run-1/complete", body: []byte(`{}`), want: http.StatusNotFound},
-		{method: http.MethodPost, path: "/task-runs/run-1/fail", body: []byte(`{"error":"boom"}`), want: http.StatusNotFound},
+		{
+			method: http.MethodPost,
+			path:   "/task-runs/run-1/fail",
+			body:   []byte(`{"error":"boom"}`),
+			want:   http.StatusNotFound,
+		},
 		{method: http.MethodPost, path: "/task-runs/run-1/cancel", body: []byte(`{}`), want: http.StatusNotFound},
 	}
 
 	for _, request := range requests {
-		request := request
 		t.Run(request.method+" "+request.path, func(t *testing.T) {
 			resp := performRequest(t, fixture.Engine, request.method, request.path, request.body)
 			if resp.Code != request.want {
-				t.Fatalf("%s %s status = %d, want %d; body=%s", request.method, request.path, resp.Code, request.want, resp.Body.String())
+				t.Fatalf(
+					"%s %s status = %d, want %d; body=%s",
+					request.method,
+					request.path,
+					resp.Code,
+					request.want,
+					resp.Body.String(),
+				)
 			}
 		})
 	}
@@ -851,7 +1140,15 @@ func TestBaseHandlersTaskManagerErrors(t *testing.T) {
 func TestBaseHandlersTaskDecodeErrors(t *testing.T) {
 	t.Parallel()
 
-	fixture := newHandlerFixtureWithTasks(t, testutil.StubSessionManager{}, testutil.StubObserver{}, testutil.StubTaskManager{}, testutil.StubWorkspaceService{}, nil, nil)
+	fixture := newHandlerFixtureWithTasks(
+		t,
+		testutil.StubSessionManager{},
+		testutil.StubObserver{},
+		testutil.StubTaskManager{},
+		testutil.StubWorkspaceService{},
+		nil,
+		nil,
+	)
 
 	requests := []struct {
 		method string
@@ -873,11 +1170,17 @@ func TestBaseHandlersTaskDecodeErrors(t *testing.T) {
 	}
 
 	for _, request := range requests {
-		request := request
 		t.Run(request.method+" "+request.path, func(t *testing.T) {
 			resp := performRequest(t, fixture.Engine, request.method, request.path, request.body)
 			if resp.Code != http.StatusBadRequest {
-				t.Fatalf("%s %s status = %d, want %d; body=%s", request.method, request.path, resp.Code, http.StatusBadRequest, resp.Body.String())
+				t.Fatalf(
+					"%s %s status = %d, want %d; body=%s",
+					request.method,
+					request.path,
+					resp.Code,
+					http.StatusBadRequest,
+					resp.Body.String(),
+				)
 			}
 		})
 	}

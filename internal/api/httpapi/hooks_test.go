@@ -75,7 +75,13 @@ func TestHookCatalogHandlerReturnsResolvedHooksAndWorkspaceFilter(t *testing.T) 
 	}
 
 	engine := newTestRouter(t, newTestHandlersWithWorkspace(t, stubSessionManager{}, observer, workspaces, homePaths))
-	recorder := performRequest(t, engine, http.MethodGet, "/api/hooks/catalog?workspace=alpha&agent=coder&event=session.post_create&source=config&mode=sync", nil)
+	recorder := performRequest(
+		t,
+		engine,
+		http.MethodGet,
+		"/api/hooks/catalog?workspace=alpha&agent=coder&event=session.post_create&source=config&mode=sync",
+		nil,
+	)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
 	}
@@ -87,13 +93,15 @@ func TestHookCatalogHandlerReturnsResolvedHooksAndWorkspaceFilter(t *testing.T) 
 	if got, want := len(response.Hooks), 2; got != want {
 		t.Fatalf("len(hooks) = %d, want %d", got, want)
 	}
-	if response.Hooks[0].Name != "native-first" || response.Hooks[0].Order != 1 || response.Hooks[0].Source != "native" {
+	if response.Hooks[0].Name != "native-first" || response.Hooks[0].Order != 1 ||
+		response.Hooks[0].Source != "native" {
 		t.Fatalf("hooks[0] = %#v", response.Hooks[0])
 	}
 	if response.Hooks[0].ExecutorKind != string(hookspkg.HookExecutorNative) {
 		t.Fatalf("hooks[0].ExecutorKind = %q, want %q", response.Hooks[0].ExecutorKind, hookspkg.HookExecutorNative)
 	}
-	if response.Hooks[1].Name != "config-second" || response.Hooks[1].Order != 2 || response.Hooks[1].Source != "config" {
+	if response.Hooks[1].Name != "config-second" || response.Hooks[1].Order != 2 ||
+		response.Hooks[1].Source != "config" {
 		t.Fatalf("hooks[1] = %#v", response.Hooks[1])
 	}
 	if response.Hooks[1].ExecutorKind != string(hookspkg.HookExecutorSubprocess) {
@@ -107,7 +115,7 @@ func TestHookRunsHandlerReturnsExecutionHistoryWithPatchDiffs(t *testing.T) {
 	homePaths := newTestHomePaths(t)
 	since := time.Date(2026, 4, 9, 17, 59, 0, 0, time.UTC)
 	manager := stubSessionManager{
-		StatusFn: func(_ context.Context, id string) (*session.SessionInfo, error) {
+		StatusFn: func(_ context.Context, id string) (*session.Info, error) {
 			if id != "sess-hook" {
 				t.Fatalf("Status() id = %q, want sess-hook", id)
 			}
@@ -150,7 +158,13 @@ func TestHookRunsHandlerReturnsExecutionHistoryWithPatchDiffs(t *testing.T) {
 	}
 
 	engine := newTestRouter(t, newTestHandlers(t, manager, observer, homePaths))
-	recorder := performRequest(t, engine, http.MethodGet, "/api/hooks/runs?session=sess-hook&event=permission.request&outcome=denied&since=2026-04-09T17:59:00Z&last=20", nil)
+	recorder := performRequest(
+		t,
+		engine,
+		http.MethodGet,
+		"/api/hooks/runs?session=sess-hook&event=permission.request&outcome=denied&since=2026-04-09T17:59:00Z&last=20",
+		nil,
+	)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
 	}
@@ -188,7 +202,7 @@ func TestHookRunsHandlerRejectsInvalidEvent(t *testing.T) {
 
 	homePaths := newTestHomePaths(t)
 	manager := stubSessionManager{
-		StatusFn: func(_ context.Context, id string) (*session.SessionInfo, error) {
+		StatusFn: func(_ context.Context, id string) (*session.Info, error) {
 			return newSessionInfo(id), nil
 		},
 	}
@@ -225,7 +239,7 @@ func TestHookRunsHandlerRejectsInvalidOutcome(t *testing.T) {
 
 	homePaths := newTestHomePaths(t)
 	manager := stubSessionManager{
-		StatusFn: func(_ context.Context, id string) (*session.SessionInfo, error) {
+		StatusFn: func(_ context.Context, id string) (*session.Info, error) {
 			return newSessionInfo(id), nil
 		},
 	}
@@ -242,7 +256,7 @@ func TestHookRunsHandlerRejectsInvalidSince(t *testing.T) {
 
 	homePaths := newTestHomePaths(t)
 	manager := stubSessionManager{
-		StatusFn: func(_ context.Context, id string) (*session.SessionInfo, error) {
+		StatusFn: func(_ context.Context, id string) (*session.Info, error) {
 			return newSessionInfo(id), nil
 		},
 	}
@@ -259,7 +273,7 @@ func TestHookRunsHandlerRejectsInvalidLast(t *testing.T) {
 
 	homePaths := newTestHomePaths(t)
 	manager := stubSessionManager{
-		StatusFn: func(_ context.Context, id string) (*session.SessionInfo, error) {
+		StatusFn: func(_ context.Context, id string) (*session.Info, error) {
 			return newSessionInfo(id), nil
 		},
 	}
@@ -311,7 +325,6 @@ func TestHookEventsHandlerReturnsPayloads(t *testing.T) {
 	if response.Events[0].Event != hookspkg.HookToolPreCall.String() || !response.Events[0].SyncEligible {
 		t.Fatalf("events[0] = %#v", response.Events[0])
 	}
-
 }
 
 func TestHookEventsHandlerRejectsInvalidFamily(t *testing.T) {

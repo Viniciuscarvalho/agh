@@ -61,7 +61,7 @@ type DeliveryBroker interface {
 type DeliveryProjectionEvent struct {
 	Type        string    `json:"type"`
 	TurnID      string    `json:"turn_id"`
-	Timestamp   time.Time `json:"timestamp,omitempty"`
+	Timestamp   time.Time `json:"timestamp"`
 	Text        string    `json:"text,omitempty"`
 	Error       string    `json:"error,omitempty"`
 	Fingerprint string    `json:"fingerprint,omitempty"`
@@ -140,7 +140,7 @@ type DeliverySnapshot struct {
 	DeliveryTarget         DeliveryTarget            `json:"delivery_target"`
 	LatestSeq              int64                     `json:"latest_seq"`
 	LatestEventType        string                    `json:"latest_event_type"`
-	CurrentContent         MessageContent            `json:"current_content,omitempty"`
+	CurrentContent         MessageContent            `json:"current_content"`
 	Operation              DeliveryOperation         `json:"operation,omitempty"`
 	Reference              *DeliveryMessageReference `json:"reference,omitempty"`
 	ProviderMetadata       json.RawMessage           `json:"provider_metadata,omitempty"`
@@ -157,62 +157,17 @@ type DeliverySnapshot struct {
 // negotiated bridge delivery.
 func (s DeliverySnapshot) Validate() error {
 	normalized := s.normalize()
-	if err := requireField(normalized.DeliveryID, "delivery snapshot id"); err != nil {
+	if err := normalized.validateIdentity(); err != nil {
 		return err
 	}
-	if err := requireField(normalized.SessionID, "delivery snapshot session id"); err != nil {
+	if err := normalized.validateRouting(); err != nil {
 		return err
 	}
-	if err := requireField(normalized.TurnID, "delivery snapshot turn id"); err != nil {
+	if err := normalized.validateSequences(); err != nil {
 		return err
 	}
-	if err := requireField(normalized.BridgeInstanceID, "delivery snapshot bridge instance id"); err != nil {
+	if err := normalized.validateOperationReference(); err != nil {
 		return err
-	}
-	if err := normalized.RoutingKey.Validate(); err != nil {
-		return err
-	}
-	if normalized.RoutingKey.BridgeInstanceID != normalized.BridgeInstanceID {
-		return errors.New("bridges: delivery snapshot bridge instance id must match routing key")
-	}
-	if err := normalized.DeliveryTarget.Validate(); err != nil {
-		return err
-	}
-	if normalized.DeliveryTarget.BridgeInstanceID != normalized.BridgeInstanceID {
-		return errors.New("bridges: delivery snapshot bridge instance id must match delivery target")
-	}
-	if normalized.LatestSeq < 0 {
-		return fmt.Errorf("bridges: invalid delivery snapshot latest sequence %d", normalized.LatestSeq)
-	}
-	if normalized.LastSentSeq < 0 {
-		return fmt.Errorf("bridges: invalid delivery snapshot last sent sequence %d", normalized.LastSentSeq)
-	}
-	if normalized.LastAckedSeq < 0 {
-		return fmt.Errorf("bridges: invalid delivery snapshot last acked sequence %d", normalized.LastAckedSeq)
-	}
-	if normalized.LastAckedSeq > normalized.LastSentSeq {
-		return errors.New("bridges: delivery snapshot last acked sequence cannot exceed last sent sequence")
-	}
-	if normalized.LastSentSeq > normalized.LatestSeq {
-		return errors.New("bridges: delivery snapshot last sent sequence cannot exceed latest sequence")
-	}
-	if normalized.UpdatedAt.IsZero() {
-		return errors.New("bridges: delivery snapshot updated at is required")
-	}
-	if err := normalized.Operation.Validate(); err != nil {
-		return err
-	}
-	if normalized.Operation == DeliveryOperationPost {
-		if normalized.Reference != nil {
-			return errors.New("bridges: delivery snapshot post operation cannot include a reference")
-		}
-	} else {
-		if normalized.Reference == nil {
-			return fmt.Errorf("bridges: delivery snapshot %s operation requires a reference", normalized.Operation)
-		}
-		if err := normalized.Reference.Validate(); err != nil {
-			return err
-		}
 	}
 	if _, err := normalizeRawJSON(normalized.ProviderMetadata, "delivery snapshot provider metadata"); err != nil {
 		return err
@@ -221,6 +176,76 @@ func (s DeliverySnapshot) Validate() error {
 		return err
 	}
 	return nil
+}
+
+func (s DeliverySnapshot) validateIdentity() error {
+	if err := requireField(s.DeliveryID, "delivery snapshot id"); err != nil {
+		return err
+	}
+	if err := requireField(s.SessionID, "delivery snapshot session id"); err != nil {
+		return err
+	}
+	if err := requireField(s.TurnID, "delivery snapshot turn id"); err != nil {
+		return err
+	}
+	if err := requireField(s.BridgeInstanceID, "delivery snapshot bridge instance id"); err != nil {
+		return err
+	}
+	if s.UpdatedAt.IsZero() {
+		return errors.New("bridges: delivery snapshot updated at is required")
+	}
+	return nil
+}
+
+func (s DeliverySnapshot) validateRouting() error {
+	if err := s.RoutingKey.Validate(); err != nil {
+		return err
+	}
+	if s.RoutingKey.BridgeInstanceID != s.BridgeInstanceID {
+		return errors.New("bridges: delivery snapshot bridge instance id must match routing key")
+	}
+	if err := s.DeliveryTarget.Validate(); err != nil {
+		return err
+	}
+	if s.DeliveryTarget.BridgeInstanceID != s.BridgeInstanceID {
+		return errors.New("bridges: delivery snapshot bridge instance id must match delivery target")
+	}
+	return nil
+}
+
+func (s DeliverySnapshot) validateSequences() error {
+	if s.LatestSeq < 0 {
+		return fmt.Errorf("bridges: invalid delivery snapshot latest sequence %d", s.LatestSeq)
+	}
+	if s.LastSentSeq < 0 {
+		return fmt.Errorf("bridges: invalid delivery snapshot last sent sequence %d", s.LastSentSeq)
+	}
+	if s.LastAckedSeq < 0 {
+		return fmt.Errorf("bridges: invalid delivery snapshot last acked sequence %d", s.LastAckedSeq)
+	}
+	if s.LastAckedSeq > s.LastSentSeq {
+		return errors.New("bridges: delivery snapshot last acked sequence cannot exceed last sent sequence")
+	}
+	if s.LastSentSeq > s.LatestSeq {
+		return errors.New("bridges: delivery snapshot last sent sequence cannot exceed latest sequence")
+	}
+	return nil
+}
+
+func (s DeliverySnapshot) validateOperationReference() error {
+	if err := s.Operation.Validate(); err != nil {
+		return err
+	}
+	if s.Operation == DeliveryOperationPost {
+		if s.Reference != nil {
+			return errors.New("bridges: delivery snapshot post operation cannot include a reference")
+		}
+		return nil
+	}
+	if s.Reference == nil {
+		return fmt.Errorf("bridges: delivery snapshot %s operation requires a reference", s.Operation)
+	}
+	return s.Reference.Validate()
 }
 
 // PromptDeliveryRegistration binds one session prompt turn to a routed bridge

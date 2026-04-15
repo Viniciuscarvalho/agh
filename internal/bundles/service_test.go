@@ -89,7 +89,11 @@ func (s *memoryStore) ListBundleActivations(_ context.Context) ([]Activation, er
 	return items, nil
 }
 
-func (s *memoryStore) ReplaceBundleActivationInventory(_ context.Context, activationID string, items []InventoryItem) error {
+func (s *memoryStore) ReplaceBundleActivationInventory(
+	_ context.Context,
+	activationID string,
+	items []InventoryItem,
+) error {
 	s.inventory[activationID] = append([]InventoryItem(nil), items...)
 	return nil
 }
@@ -169,7 +173,10 @@ func (r memoryWorkspaceResolver) Resolve(ctx context.Context, idOrPath string) (
 	return workspacepkg.ResolvedWorkspace{}, workspacepkg.ErrWorkspaceNotFound
 }
 
-func (r memoryWorkspaceResolver) ResolveOrRegister(ctx context.Context, path string) (workspacepkg.ResolvedWorkspace, error) {
+func (r memoryWorkspaceResolver) ResolveOrRegister(
+	ctx context.Context,
+	path string,
+) (workspacepkg.ResolvedWorkspace, error) {
 	if r.resolveOrRegisterFn != nil {
 		return r.resolveOrRegisterFn(ctx, path)
 	}

@@ -48,6 +48,18 @@ func WriteSSE(writer FlushWriter, msg SSEMessage) error {
 	return WriteSSERaw(writer, msg.ID, string(payload), msg.Name)
 }
 
+func (h *BaseHandlers) writeSSEBestEffort(writer FlushWriter, msg SSEMessage) {
+	if err := WriteSSE(writer, msg); err != nil && h != nil && h.Logger != nil {
+		h.Logger.Warn("api: failed to emit sse message", "event", msg.Name, "error", err)
+	}
+}
+
+func (h *BaseHandlers) logSSEWriteFailure(eventName string, err error) {
+	if err != nil && h != nil && h.Logger != nil {
+		h.Logger.Warn("api: failed to emit sse message", "event", eventName, "error", err)
+	}
+}
+
 // WriteSSERaw writes one SSE message using a pre-encoded payload.
 func WriteSSERaw(writer FlushWriter, id string, raw string, names ...string) error {
 	if writer == nil {

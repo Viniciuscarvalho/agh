@@ -188,16 +188,13 @@ func TestConsolidationLockTryAcquireAllowsOnlyOneConcurrentWriter(t *testing.T) 
 	var successCount atomic.Int32
 
 	for range 2 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			lock := NewConsolidationLock(path)
 			<-start
 			if _, ok, err := lock.TryAcquire(); err == nil && ok {
 				successCount.Add(1)
 			}
-		}()
+		})
 	}
 
 	close(start)

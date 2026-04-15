@@ -174,23 +174,23 @@ func TestAllowGChatDirectMessagePoliciesAndModeValidation(t *testing.T) {
 
 	user := gchatUserIdentity{ID: "users/123", Username: "alice@example.com", DisplayName: "Alice"}
 
-	if !allowGChatDirectMessage(resolvedInstanceConfig{dmPolicy: bridgepkg.BridgeDMPolicyOpen}, user, true) {
+	if !allowGChatDirectMessage(&resolvedInstanceConfig{dmPolicy: bridgepkg.BridgeDMPolicyOpen}, user, true) {
 		t.Fatal("allowGChatDirectMessage(open) = false, want true")
 	}
-	if !allowGChatDirectMessage(resolvedInstanceConfig{
+	if !allowGChatDirectMessage(&resolvedInstanceConfig{
 		dmPolicy:       bridgepkg.BridgeDMPolicyAllowlist,
 		allowUserIDs:   map[string]struct{}{"users/123": {}},
 		allowUsernames: map[string]struct{}{"alice@example.com": {}},
 	}, user, true) {
 		t.Fatal("allowGChatDirectMessage(allowlist) = false, want true")
 	}
-	if !allowGChatDirectMessage(resolvedInstanceConfig{
+	if !allowGChatDirectMessage(&resolvedInstanceConfig{
 		dmPolicy:        bridgepkg.BridgeDMPolicyPairing,
 		pairedUsernames: map[string]struct{}{"alice@example.com": {}},
 	}, user, true) {
 		t.Fatal("allowGChatDirectMessage(pairing) = false, want true")
 	}
-	if allowGChatDirectMessage(resolvedInstanceConfig{dmPolicy: bridgepkg.BridgeDMPolicyAllowlist}, user, true) {
+	if allowGChatDirectMessage(&resolvedInstanceConfig{dmPolicy: bridgepkg.BridgeDMPolicyAllowlist}, user, true) {
 		t.Fatal("allowGChatDirectMessage(rejected) = true, want false")
 	}
 	if !validGChatMode(gchatModeDirect) || !validGChatMode(gchatModePubSub) || !validGChatMode(gchatModeHybrid) {
@@ -263,16 +263,21 @@ func TestVerifyGChatBearerTokens(t *testing.T) {
 	server := newGChatProviderTestServer(t)
 	defer server.Close()
 
-	directReq := httptest.NewRequest(http.MethodPost, "http://example.test/gchat", strings.NewReader(`{"chat":{}}`))
+	directReq := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"http://example.test/gchat",
+		strings.NewReader(`{"chat":{}}`),
+	)
 	directReq.Header.Set("Authorization", "Bearer "+server.signDirectToken(t, "123456789"))
-	if err := verifyDirectBearerToken(context.Background(), directReq, resolvedInstanceConfig{
+	if err := verifyDirectBearerToken(context.Background(), directReq, &resolvedInstanceConfig{
 		projectNumber:  "123456789",
 		directIssuer:   gchatDefaultDirectIssuer,
 		directCertsURL: server.DirectCertsURL(),
 	}); err != nil {
 		t.Fatalf("verifyDirectBearerToken(valid) error = %v", err)
 	}
-	if err := verifyDirectBearerToken(context.Background(), directReq, resolvedInstanceConfig{
+	if err := verifyDirectBearerToken(context.Background(), directReq, &resolvedInstanceConfig{
 		projectNumber:  "wrong",
 		directIssuer:   gchatDefaultDirectIssuer,
 		directCertsURL: server.DirectCertsURL(),
@@ -280,9 +285,22 @@ func TestVerifyGChatBearerTokens(t *testing.T) {
 		t.Fatal("verifyDirectBearerToken(wrong audience) error = nil, want non-nil")
 	}
 
-	pubsubReq := httptest.NewRequest(http.MethodPost, "http://example.test/gchat", strings.NewReader(`{"message":{"data":"e30="},"subscription":"sub"}`))
-	pubsubReq.Header.Set("Authorization", "Bearer "+server.signPubSubToken(t, "https://example.test/pubsub", "push@example.iam.gserviceaccount.com", true))
-	if err := verifyPubSubBearerToken(context.Background(), pubsubReq, resolvedInstanceConfig{
+	pubsubReq := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"http://example.test/gchat",
+		strings.NewReader(`{"message":{"data":"e30="},"subscription":"sub"}`),
+	)
+	pubsubReq.Header.Set(
+		"Authorization",
+		"Bearer "+server.signPubSubToken(
+			t,
+			"https://example.test/pubsub",
+			"push@example.iam.gserviceaccount.com",
+			true,
+		),
+	)
+	if err := verifyPubSubBearerToken(context.Background(), pubsubReq, &resolvedInstanceConfig{
 		pubsubAudience:            "https://example.test/pubsub",
 		pubsubIssuer:              gchatDefaultPubSubIssuerURL,
 		pubsubCertsURL:            server.PubSubCertsURL(),
@@ -290,7 +308,7 @@ func TestVerifyGChatBearerTokens(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("verifyPubSubBearerToken(valid) error = %v", err)
 	}
-	if err := verifyPubSubBearerToken(context.Background(), pubsubReq, resolvedInstanceConfig{
+	if err := verifyPubSubBearerToken(context.Background(), pubsubReq, &resolvedInstanceConfig{
 		pubsubAudience:            "https://example.test/pubsub",
 		pubsubIssuer:              gchatDefaultPubSubIssuerURL,
 		pubsubCertsURL:            server.PubSubCertsURL(),
@@ -299,9 +317,22 @@ func TestVerifyGChatBearerTokens(t *testing.T) {
 		t.Fatal("verifyPubSubBearerToken(wrong email) error = nil, want non-nil")
 	}
 
-	unverifiedReq := httptest.NewRequest(http.MethodPost, "http://example.test/gchat", strings.NewReader(`{"message":{"data":"e30="},"subscription":"sub"}`))
-	unverifiedReq.Header.Set("Authorization", "Bearer "+server.signPubSubToken(t, "https://example.test/pubsub", "push@example.iam.gserviceaccount.com", false))
-	if err := verifyPubSubBearerToken(context.Background(), unverifiedReq, resolvedInstanceConfig{
+	unverifiedReq := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"http://example.test/gchat",
+		strings.NewReader(`{"message":{"data":"e30="},"subscription":"sub"}`),
+	)
+	unverifiedReq.Header.Set(
+		"Authorization",
+		"Bearer "+server.signPubSubToken(
+			t,
+			"https://example.test/pubsub",
+			"push@example.iam.gserviceaccount.com",
+			false,
+		),
+	)
+	if err := verifyPubSubBearerToken(context.Background(), unverifiedReq, &resolvedInstanceConfig{
 		pubsubAudience:            "https://example.test/pubsub",
 		pubsubIssuer:              gchatDefaultPubSubIssuerURL,
 		pubsubCertsURL:            server.PubSubCertsURL(),
@@ -327,32 +358,47 @@ func TestHandleBridgesDeliverKeepsLastErrorWhenReadyReportFails(t *testing.T) {
 	var reportMu sync.Mutex
 	reportCalls := 0
 
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesList), func(context.Context, json.RawMessage) (any, error) {
-		return []bridgepkg.BridgeInstance{managed.Instance}, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesGet), func(context.Context, json.RawMessage) (any, error) {
-		return managed.Instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesReportState), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgesInstancesReportStateParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesList),
+		func(context.Context, json.RawMessage) (any, error) {
+			return []bridgepkg.BridgeInstance{managed.Instance}, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesGet),
+		func(context.Context, json.RawMessage) (any, error) {
+			return managed.Instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesReportState),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgesInstancesReportStateParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
 
-		reportMu.Lock()
-		reportCalls++
-		callNumber := reportCalls
-		reportMu.Unlock()
+			reportMu.Lock()
+			reportCalls++
+			callNumber := reportCalls
+			reportMu.Unlock()
 
-		if callNumber > 1 {
-			return nil, subprocess.NewRPCError(-32099, "report ready failed", nil)
-		}
+			if callNumber > 1 {
+				return nil, subprocess.NewRPCError(-32099, "report ready failed", nil)
+			}
 
-		instance := managed.Instance
-		instance.Status = payload.Status
-		instance.Degradation = payload.Degradation
-		return instance, nil
-	})
+			instance := managed.Instance
+			instance.Status = payload.Status
+			instance.Degradation = payload.Degradation
+			return instance, nil
+		},
+	)
 
 	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed), nil); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
@@ -376,7 +422,11 @@ func TestHandleBridgesDeliverKeepsLastErrorWhenReadyReportFails(t *testing.T) {
 	delete(runtime.reportedStatus, managed.Instance.ID)
 	runtime.mu.Unlock()
 
-	ack, err := runtime.handleBridgesDeliver(context.Background(), session, testDeliveryRequest(managed.Instance.ID, "delivery-ready-state", 1, bridgepkg.DeliveryEventTypeStart, false))
+	ack, err := runtime.handleBridgesDeliver(
+		context.Background(),
+		session,
+		testDeliveryRequest(managed.Instance.ID, "delivery-ready-state", 1, bridgepkg.DeliveryEventTypeStart, false),
+	)
 	if err != nil {
 		t.Fatalf("handleBridgesDeliver() error = %v", err)
 	}
@@ -394,7 +444,7 @@ func TestRuntimeInitializeWebhookAndDeliveryFlow(t *testing.T) {
 	mockAPI := newGChatProviderTestServer(t)
 	t.Setenv(gchatListenAddrEnv, listenAddr)
 	t.Setenv(gchatAPIBaseEnv, mockAPI.URL())
-	t.Setenv(gchatTokenURLEnv, mockAPI.TokenURL())
+	t.Setenv(gchatAuthEndpointEnv, mockAPI.TokenURL())
 	t.Setenv(gchatDirectCertsEnv, mockAPI.DirectCertsURL())
 	t.Setenv(gchatPubSubCertsEnv, mockAPI.PubSubCertsURL())
 
@@ -422,43 +472,63 @@ func TestRuntimeInitializeWebhookAndDeliveryFlow(t *testing.T) {
 	var ingested []bridgepkg.InboundMessageEnvelope
 	var mu sync.Mutex
 
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesList), func(context.Context, json.RawMessage) (any, error) {
-		return []bridgepkg.BridgeInstance{managed.Instance}, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesGet), func(context.Context, json.RawMessage) (any, error) {
-		return managed.Instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesReportState), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgesInstancesReportStateParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		instance := managed.Instance
-		instance.Status = payload.Status
-		instance.Degradation = payload.Degradation
-		return instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesMessagesIngest), func(_ context.Context, params json.RawMessage) (any, error) {
-		var envelope bridgepkg.InboundMessageEnvelope
-		if err := json.Unmarshal(params, &envelope); err != nil {
-			return nil, err
-		}
-		mu.Lock()
-		ingested = append(ingested, envelope)
-		mu.Unlock()
-		return extensioncontract.BridgesMessagesIngestResult{
-			SessionID:    "sess-1",
-			RouteCreated: true,
-			RoutingKey: bridgepkg.RoutingKey{
-				Scope:            envelope.Scope,
-				WorkspaceID:      envelope.WorkspaceID,
-				BridgeInstanceID: envelope.BridgeInstanceID,
-				PeerID:           envelope.PeerID,
-				ThreadID:         envelope.ThreadID,
-				GroupID:          envelope.GroupID,
-			},
-		}, nil
-	})
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesList),
+		func(context.Context, json.RawMessage) (any, error) {
+			return []bridgepkg.BridgeInstance{managed.Instance}, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesGet),
+		func(context.Context, json.RawMessage) (any, error) {
+			return managed.Instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesReportState),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgesInstancesReportStateParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
+			instance := managed.Instance
+			instance.Status = payload.Status
+			instance.Degradation = payload.Degradation
+			return instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesMessagesIngest),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var envelope bridgepkg.InboundMessageEnvelope
+			if err := json.Unmarshal(params, &envelope); err != nil {
+				return nil, err
+			}
+			mu.Lock()
+			ingested = append(ingested, envelope)
+			mu.Unlock()
+			return extensioncontract.BridgesMessagesIngestResult{
+				SessionID:    "sess-1",
+				RouteCreated: true,
+				RoutingKey: bridgepkg.RoutingKey{
+					Scope:            envelope.Scope,
+					WorkspaceID:      envelope.WorkspaceID,
+					BridgeInstanceID: envelope.BridgeInstanceID,
+					PeerID:           envelope.PeerID,
+					ThreadID:         envelope.ThreadID,
+					GroupID:          envelope.GroupID,
+				},
+			}, nil
+		},
+	)
 
 	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed), nil); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
@@ -479,7 +549,12 @@ func TestRuntimeInitializeWebhookAndDeliveryFlow(t *testing.T) {
 	runtime.mu.RUnlock()
 	webhookURL := "http://" + serverAddr + "/gchat/brg-gchat"
 
-	directReq, err := http.NewRequest(http.MethodPost, webhookURL, strings.NewReader(directWebhookPayload()))
+	directReq, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		webhookURL,
+		strings.NewReader(directWebhookPayload()),
+	)
 	if err != nil {
 		t.Fatalf("http.NewRequest(direct) error = %v", err)
 	}
@@ -494,12 +569,25 @@ func TestRuntimeInitializeWebhookAndDeliveryFlow(t *testing.T) {
 		t.Fatalf("direct webhook status = %d, want %d", got, want)
 	}
 
-	pubsubReq, err := http.NewRequest(http.MethodPost, webhookURL, strings.NewReader(pubSubReactionPayload()))
+	pubsubReq, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		webhookURL,
+		strings.NewReader(pubSubReactionPayload()),
+	)
 	if err != nil {
 		t.Fatalf("http.NewRequest(pubsub) error = %v", err)
 	}
 	pubsubReq.Header.Set("Content-Type", "application/json")
-	pubsubReq.Header.Set("Authorization", "Bearer "+mockAPI.signPubSubToken(t, "https://example.test/pubsub", "push@example.iam.gserviceaccount.com", true))
+	pubsubReq.Header.Set(
+		"Authorization",
+		"Bearer "+mockAPI.signPubSubToken(
+			t,
+			"https://example.test/pubsub",
+			"push@example.iam.gserviceaccount.com",
+			true,
+		),
+	)
 	pubsubResp, err := http.DefaultClient.Do(pubsubReq)
 	if err != nil {
 		t.Fatalf("http.DefaultClient.Do(pubsub) error = %v", err)
@@ -520,13 +608,27 @@ func TestRuntimeInitializeWebhookAndDeliveryFlow(t *testing.T) {
 	}
 
 	var ack bridgepkg.DeliveryAck
-	if err := hostPeer.Call(context.Background(), "bridges/deliver", testDeliveryRequest("brg-gchat", "delivery-1", 1, bridgepkg.DeliveryEventTypeStart, false), &ack); err != nil {
+	if err := hostPeer.Call(
+		context.Background(),
+		"bridges/deliver",
+		testDeliveryRequest("brg-gchat", "delivery-1", 1, bridgepkg.DeliveryEventTypeStart, false),
+		&ack,
+	); err != nil {
 		t.Fatalf("hostPeer.Call(start delivery) error = %v", err)
 	}
-	if err := hostPeer.Call(context.Background(), "bridges/deliver", testDeliveryRequest("brg-gchat", "delivery-1", 2, bridgepkg.DeliveryEventTypeFinal, true), &ack); err != nil {
+	if err := hostPeer.Call(
+		context.Background(),
+		"bridges/deliver",
+		testDeliveryRequest("brg-gchat", "delivery-1", 2, bridgepkg.DeliveryEventTypeFinal, true),
+		&ack,
+	); err != nil {
 		t.Fatalf("hostPeer.Call(final delivery) error = %v", err)
 	}
-	records := waitForJSONLinesFile[deliveryMarker](t, env.deliveryPath, func(items []deliveryMarker) bool { return len(items) >= 2 })
+	records := waitForJSONLinesFile[deliveryMarker](
+		t,
+		env.deliveryPath,
+		func(items []deliveryMarker) bool { return len(items) >= 2 },
+	)
 	if records[0].Ack == nil || records[1].Ack == nil {
 		t.Fatalf("delivery markers = %#v, want recorded acks", records)
 	}
@@ -546,7 +648,9 @@ func TestRuntimePubSubMessageAndDirectDeliveryPaths(t *testing.T) {
 	mockAPI := newGChatProviderTestServer(t)
 	t.Setenv(gchatListenAddrEnv, listenAddr)
 	t.Setenv(gchatAPIBaseEnv, mockAPI.URL())
-	t.Setenv(gchatTokenURLEnv, mockAPI.TokenURL())
+	t.Setenv(gchatAuthEndpointEnv, mockAPI.TokenURL())
+	t.Setenv(gchatDirectCertsEnv, mockAPI.DirectCertsURL())
+	t.Setenv(gchatPubSubCertsEnv, mockAPI.PubSubCertsURL())
 
 	runtime, hostPeer, cleanup := newRuntimePeerPair(t)
 	defer cleanup()
@@ -560,46 +664,64 @@ func TestRuntimePubSubMessageAndDirectDeliveryPaths(t *testing.T) {
 			"path":        "/gchat/brg-gchat",
 		},
 		"verification": map[string]any{
-			"direct_certs_url":             mockAPI.DirectCertsURL(),
 			"pubsub_audience":              "https://example.test/pubsub",
-			"pubsub_certs_url":             mockAPI.PubSubCertsURL(),
 			"pubsub_service_account_email": "push@example.iam.gserviceaccount.com",
 		},
 	})
 
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesList), func(context.Context, json.RawMessage) (any, error) {
-		return []bridgepkg.BridgeInstance{managed.Instance}, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesGet), func(context.Context, json.RawMessage) (any, error) {
-		return managed.Instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesReportState), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgesInstancesReportStateParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		instance := managed.Instance
-		instance.Status = payload.Status
-		instance.Degradation = payload.Degradation
-		return instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesMessagesIngest), func(_ context.Context, params json.RawMessage) (any, error) {
-		var envelope bridgepkg.InboundMessageEnvelope
-		if err := json.Unmarshal(params, &envelope); err != nil {
-			return nil, err
-		}
-		return extensioncontract.BridgesMessagesIngestResult{
-			SessionID: "sess-2",
-			RoutingKey: bridgepkg.RoutingKey{
-				Scope:            envelope.Scope,
-				WorkspaceID:      envelope.WorkspaceID,
-				BridgeInstanceID: envelope.BridgeInstanceID,
-				GroupID:          envelope.GroupID,
-				ThreadID:         envelope.ThreadID,
-				PeerID:           envelope.PeerID,
-			},
-		}, nil
-	})
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesList),
+		func(context.Context, json.RawMessage) (any, error) {
+			return []bridgepkg.BridgeInstance{managed.Instance}, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesGet),
+		func(context.Context, json.RawMessage) (any, error) {
+			return managed.Instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesReportState),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgesInstancesReportStateParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
+			instance := managed.Instance
+			instance.Status = payload.Status
+			instance.Degradation = payload.Degradation
+			return instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesMessagesIngest),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var envelope bridgepkg.InboundMessageEnvelope
+			if err := json.Unmarshal(params, &envelope); err != nil {
+				return nil, err
+			}
+			return extensioncontract.BridgesMessagesIngestResult{
+				SessionID: "sess-2",
+				RoutingKey: bridgepkg.RoutingKey{
+					Scope:            envelope.Scope,
+					WorkspaceID:      envelope.WorkspaceID,
+					BridgeInstanceID: envelope.BridgeInstanceID,
+					GroupID:          envelope.GroupID,
+					ThreadID:         envelope.ThreadID,
+					PeerID:           envelope.PeerID,
+				},
+			}, nil
+		},
+	)
 
 	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed), nil); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
@@ -609,13 +731,16 @@ func TestRuntimePubSubMessageAndDirectDeliveryPaths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("waitForInstanceConfig() error = %v", err)
 	}
+	if cfg.configError != nil {
+		t.Fatalf("waitForInstanceConfig() configError = %v, want nil", cfg.configError)
+	}
 	session := runtime.currentSession()
 	if session == nil {
 		t.Fatal("runtime.currentSession() = nil, want non-nil")
 	}
 
 	recorder := httptest.NewRecorder()
-	err = runtime.handlePubSubWebhook(context.Background(), recorder, cfg, bridgesdk.WebhookRequest{
+	err = runtime.handlePubSubWebhook(context.Background(), recorder, &cfg, bridgesdk.WebhookRequest{
 		Body:       []byte(pubSubMessagePayload(now)),
 		ReceivedAt: now,
 	})
@@ -715,7 +840,11 @@ func TestGChatLifecycleAndRetryHelpers(t *testing.T) {
 
 	shutdownPath := filepath.Join(t.TempDir(), "shutdown.log")
 	provider.env.shutdownPath = shutdownPath
-	if err := provider.handleShutdown(context.Background(), nil, subprocess.ShutdownRequest{DeadlineMS: 50}); err != nil {
+	if err := provider.handleShutdown(
+		context.Background(),
+		nil,
+		subprocess.ShutdownRequest{DeadlineMS: 50},
+	); err != nil {
 		t.Fatalf("handleShutdown() error = %v", err)
 	}
 	payload, err := os.ReadFile(shutdownPath)
@@ -765,29 +894,49 @@ func TestResolveInstanceConfigAndInitialState(t *testing.T) {
 	runtime, hostPeer, cleanup := newRuntimePeerPair(t)
 	defer cleanup()
 
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesList), func(context.Context, json.RawMessage) (any, error) {
-		return []bridgepkg.BridgeInstance{managed.Instance}, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesGet), func(context.Context, json.RawMessage) (any, error) {
-		return managed.Instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesReportState), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgesInstancesReportStateParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		instance := managed.Instance
-		instance.Status = payload.Status
-		instance.Degradation = payload.Degradation
-		return instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesMessagesIngest), func(context.Context, json.RawMessage) (any, error) {
-		return extensioncontract.BridgesMessagesIngestResult{SessionID: "sess-1"}, nil
-	})
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesList),
+		func(context.Context, json.RawMessage) (any, error) {
+			return []bridgepkg.BridgeInstance{managed.Instance}, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesGet),
+		func(context.Context, json.RawMessage) (any, error) {
+			return managed.Instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesReportState),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgesInstancesReportStateParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
+			instance := managed.Instance
+			instance.Status = payload.Status
+			instance.Degradation = payload.Degradation
+			return instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesMessagesIngest),
+		func(context.Context, json.RawMessage) (any, error) {
+			return extensioncontract.BridgesMessagesIngestResult{SessionID: "sess-1"}, nil
+		},
+	)
 
 	t.Setenv(gchatListenAddrEnv, reserveListenAddr(t))
 	t.Setenv(gchatAPIBaseEnv, server.URL())
-	t.Setenv(gchatTokenURLEnv, server.TokenURL())
+	t.Setenv(gchatAuthEndpointEnv, server.TokenURL())
 	t.Setenv(gchatDirectCertsEnv, server.DirectCertsURL())
 	t.Setenv(gchatPubSubCertsEnv, server.PubSubCertsURL())
 
@@ -847,7 +996,7 @@ func TestResolveInstanceConfigAndInitialState(t *testing.T) {
 		t.Fatalf("cfg.allowUsernames = %#v, want alice@example.com", cfg.allowUsernames)
 	}
 
-	status, degradation, err := provider.determineInitialState(context.Background(), cfg)
+	status, degradation, err := provider.determineInitialState(context.Background(), &cfg)
 	if err != nil {
 		t.Fatalf("determineInitialState(ready) error = %v", err)
 	}
@@ -858,7 +1007,7 @@ func TestResolveInstanceConfigAndInitialState(t *testing.T) {
 		t.Fatalf("determineInitialState(ready) degradation = %#v, want nil", degradation)
 	}
 
-	degradedStatus, degraded, err := provider.determineInitialState(context.Background(), resolvedInstanceConfig{
+	degradedStatus, degraded, err := provider.determineInitialState(context.Background(), &resolvedInstanceConfig{
 		configError: errors.New("bad config"),
 	})
 	if err == nil {
@@ -871,7 +1020,7 @@ func TestResolveInstanceConfigAndInitialState(t *testing.T) {
 		t.Fatalf("determineInitialState(configError) degradation = %#v, want tenant config invalid", degraded)
 	}
 
-	authStatus, authDegradation, err := provider.determineInitialState(context.Background(), resolvedInstanceConfig{})
+	authStatus, authDegradation, err := provider.determineInitialState(context.Background(), &resolvedInstanceConfig{})
 	if err == nil {
 		t.Fatal("determineInitialState(missing creds) error = nil, want non-nil")
 	}
@@ -887,8 +1036,12 @@ func TestResolveInstanceConfigAndInitialState(t *testing.T) {
 		{BindingName: "credentials_json", Kind: "json", Value: testCredentialsJSON(t)},
 	}
 	cfgMissingProject := provider.resolveInstanceConfig(session, managedMissingProject)
-	if cfgMissingProject.configError == nil || !strings.Contains(cfgMissingProject.configError.Error(), "project_number") {
-		t.Fatalf("resolveInstanceConfig(missing project) configError = %v, want project_number error", cfgMissingProject.configError)
+	if cfgMissingProject.configError == nil ||
+		!strings.Contains(cfgMissingProject.configError.Error(), "project_number") {
+		t.Fatalf(
+			"resolveInstanceConfig(missing project) configError = %v, want project_number error",
+			cfgMissingProject.configError,
+		)
 	}
 
 	authProvider, err := newGChatProvider(io.Discard)
@@ -898,7 +1051,7 @@ func TestResolveInstanceConfigAndInitialState(t *testing.T) {
 	authProvider.apiFactory = func(resolvedInstanceConfig) gchatAPI {
 		return authFailingGChatAPI{}
 	}
-	authRequiredStatus, authRequiredDegradation, err := authProvider.determineInitialState(context.Background(), cfg)
+	authRequiredStatus, authRequiredDegradation, err := authProvider.determineInitialState(context.Background(), &cfg)
 	if err == nil {
 		t.Fatal("determineInitialState(auth failure) error = nil, want non-nil")
 	}
@@ -916,7 +1069,10 @@ func TestResolveInstanceConfigAndInitialState(t *testing.T) {
 	rateLimitProvider.apiFactory = func(resolvedInstanceConfig) gchatAPI {
 		return rateLimitFailingGChatAPI{}
 	}
-	rateLimitedStatus, rateLimitedDegradation, err := rateLimitProvider.determineInitialState(context.Background(), cfg)
+	rateLimitedStatus, rateLimitedDegradation, err := rateLimitProvider.determineInitialState(
+		context.Background(),
+		&cfg,
+	)
 	if err == nil {
 		t.Fatal("determineInitialState(rate limit) error = nil, want non-nil")
 	}
@@ -930,22 +1086,34 @@ func TestResolveInstanceConfigAndInitialState(t *testing.T) {
 	managedUnsupportedMode := testBridgeRuntime(t, now, "brg-unsupported-mode")
 	managedUnsupportedMode.Instance.ProviderConfig = mustJSON(t, map[string]any{"mode": "weird"})
 	cfgUnsupportedMode := provider.resolveInstanceConfig(session, managedUnsupportedMode)
-	if cfgUnsupportedMode.configError == nil || !strings.Contains(cfgUnsupportedMode.configError.Error(), "unsupported") {
-		t.Fatalf("resolveInstanceConfig(unsupported mode) configError = %v, want unsupported mode", cfgUnsupportedMode.configError)
+	if cfgUnsupportedMode.configError == nil ||
+		!strings.Contains(cfgUnsupportedMode.configError.Error(), "unsupported") {
+		t.Fatalf(
+			"resolveInstanceConfig(unsupported mode) configError = %v, want unsupported mode",
+			cfgUnsupportedMode.configError,
+		)
 	}
 
 	managedPubSubMissingAudience := testBridgeRuntime(t, now, "brg-pubsub-missing")
 	managedPubSubMissingAudience.Instance.ProviderConfig = mustJSON(t, map[string]any{"mode": "pubsub"})
 	cfgPubSubMissingAudience := provider.resolveInstanceConfig(session, managedPubSubMissingAudience)
-	if cfgPubSubMissingAudience.configError == nil || !strings.Contains(cfgPubSubMissingAudience.configError.Error(), "pubsub_audience") {
-		t.Fatalf("resolveInstanceConfig(pubsub missing audience) configError = %v, want pubsub_audience error", cfgPubSubMissingAudience.configError)
+	if cfgPubSubMissingAudience.configError == nil ||
+		!strings.Contains(cfgPubSubMissingAudience.configError.Error(), "pubsub_audience") {
+		t.Fatalf(
+			"resolveInstanceConfig(pubsub missing audience) configError = %v, want pubsub_audience error",
+			cfgPubSubMissingAudience.configError,
+		)
 	}
 
 	managedBadConfig := testBridgeRuntime(t, now, "brg-bad-config")
 	managedBadConfig.Instance.ProviderConfig = []byte(`{`)
 	cfgBadConfig := provider.resolveInstanceConfig(session, managedBadConfig)
-	if cfgBadConfig.configError == nil || !strings.Contains(cfgBadConfig.configError.Error(), "decode provider_config") {
-		t.Fatalf("resolveInstanceConfig(bad provider_config) configError = %v, want decode error", cfgBadConfig.configError)
+	if cfgBadConfig.configError == nil ||
+		!strings.Contains(cfgBadConfig.configError.Error(), "decode provider_config") {
+		t.Fatalf(
+			"resolveInstanceConfig(bad provider_config) configError = %v, want decode error",
+			cfgBadConfig.configError,
+		)
 	}
 
 	t.Setenv(gchatDirectCertsEnv, "")
@@ -961,8 +1129,12 @@ func TestResolveInstanceConfigAndInitialState(t *testing.T) {
 		},
 	})
 	cfgBlockedCerts := provider.resolveInstanceConfig(session, managedBlockedCerts)
-	if cfgBlockedCerts.configError == nil || !strings.Contains(cfgBlockedCerts.configError.Error(), "pubsub_certs_url") {
-		t.Fatalf("resolveInstanceConfig(blocked cert host) configError = %v, want pubsub_certs_url allowlist error", cfgBlockedCerts.configError)
+	if cfgBlockedCerts.configError == nil ||
+		!strings.Contains(cfgBlockedCerts.configError.Error(), "pubsub_certs_url") {
+		t.Fatalf(
+			"resolveInstanceConfig(blocked cert host) configError = %v, want pubsub_certs_url allowlist error",
+			cfgBlockedCerts.configError,
+		)
 	}
 
 	managedAllowedCerts := testBridgeRuntime(t, now, "brg-allowed-certs")
@@ -1022,7 +1194,14 @@ func TestGChatTransportAndClassificationHelpers(t *testing.T) {
 	if _, err := client.GetMessage(context.Background(), "spaces/AAA/messages/msg-react"); err != nil {
 		t.Fatalf("GetMessage() error = %v", err)
 	}
-	if err := client.callJSON(context.Background(), http.MethodGet, "/v1/missing", nil, nil, &map[string]any{}); err == nil {
+	if err := client.callJSON(
+		context.Background(),
+		http.MethodGet,
+		"/v1/missing",
+		nil,
+		nil,
+		&map[string]any{},
+	); err == nil {
 		t.Fatal("callJSON(missing) error = nil, want non-nil")
 	}
 
@@ -1037,16 +1216,30 @@ func TestGChatTransportAndClassificationHelpers(t *testing.T) {
 	}
 
 	if _, ok := classifyGChatHTTPError(http.StatusUnauthorized, "", `{"error":{"message":"denied"}}`).(*bridgesdk.AuthError); !ok {
-		t.Fatalf("classifyGChatHTTPError(401) = %T, want *bridgesdk.AuthError", classifyGChatHTTPError(http.StatusUnauthorized, "", `{"error":{"message":"denied"}}`))
+		t.Fatalf(
+			"classifyGChatHTTPError(401) = %T, want *bridgesdk.AuthError",
+			classifyGChatHTTPError(http.StatusUnauthorized, "", `{"error":{"message":"denied"}}`),
+		)
 	}
-	if rateErr, ok := classifyGChatHTTPError(http.StatusTooManyRequests, "9", "").(*bridgesdk.RateLimitError); !ok || rateErr.RetryAfter != 9*time.Second {
-		t.Fatalf("classifyGChatHTTPError(429) = %#v, want rate limit with retry-after 9s", classifyGChatHTTPError(http.StatusTooManyRequests, "9", ""))
+	if rateErr, ok := classifyGChatHTTPError(http.StatusTooManyRequests, "9", "").(*bridgesdk.RateLimitError); !ok ||
+		rateErr.RetryAfter != 9*time.Second {
+		t.Fatalf(
+			"classifyGChatHTTPError(429) = %#v, want rate limit with retry-after 9s",
+			classifyGChatHTTPError(http.StatusTooManyRequests, "9", ""),
+		)
 	}
 	if _, ok := classifyGChatHTTPError(http.StatusServiceUnavailable, "", "").(*bridgesdk.TransientError); !ok {
-		t.Fatalf("classifyGChatHTTPError(503) = %T, want *bridgesdk.TransientError", classifyGChatHTTPError(http.StatusServiceUnavailable, "", ""))
+		t.Fatalf(
+			"classifyGChatHTTPError(503) = %T, want *bridgesdk.TransientError",
+			classifyGChatHTTPError(http.StatusServiceUnavailable, "", ""),
+		)
 	}
-	if httpErr, ok := classifyGChatHTTPError(http.StatusTeapot, "", "").(*bridgesdk.HTTPError); !ok || httpErr.StatusCode != http.StatusTeapot {
-		t.Fatalf("classifyGChatHTTPError(418) = %#v, want HTTP 418 error", classifyGChatHTTPError(http.StatusTeapot, "", ""))
+	if httpErr, ok := classifyGChatHTTPError(http.StatusTeapot, "", "").(*bridgesdk.HTTPError); !ok ||
+		httpErr.StatusCode != http.StatusTeapot {
+		t.Fatalf(
+			"classifyGChatHTTPError(418) = %#v, want HTTP 418 error",
+			classifyGChatHTTPError(http.StatusTeapot, "", ""),
+		)
 	}
 
 	if got, want := normalizeWebhookPath("gchat/test"), "/gchat/test"; got != want {
@@ -1061,7 +1254,10 @@ func TestGChatTransportAndClassificationHelpers(t *testing.T) {
 	if !issuerMatches("https://accounts.google.com", "accounts.google.com", "https://accounts.google.com") {
 		t.Fatal("issuerMatches() = false, want true")
 	}
-	if got := cloneDegradation(&bridgepkg.BridgeDegradation{Reason: bridgepkg.BridgeDegradationReasonRateLimited, Message: "slow"}); got == nil || got.Reason != bridgepkg.BridgeDegradationReasonRateLimited {
+	if got := cloneDegradation(
+		&bridgepkg.BridgeDegradation{Reason: bridgepkg.BridgeDegradationReasonRateLimited, Message: "slow"},
+	); got == nil ||
+		got.Reason != bridgepkg.BridgeDegradationReasonRateLimited {
 		t.Fatalf("cloneDegradation() = %#v, want cloned value", got)
 	}
 }
@@ -1083,32 +1279,52 @@ func TestGChatWebhookHandlersUseRequestContext(t *testing.T) {
 		},
 	})
 
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesList), func(context.Context, json.RawMessage) (any, error) {
-		return []bridgepkg.BridgeInstance{managed.Instance}, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesGet), func(context.Context, json.RawMessage) (any, error) {
-		return managed.Instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesReportState), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgesInstancesReportStateParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		instance := managed.Instance
-		instance.Status = payload.Status
-		instance.Degradation = payload.Degradation
-		return instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesMessagesIngest), func(ctx context.Context, _ json.RawMessage) (any, error) {
-		if !errors.Is(ctx.Err(), context.Canceled) {
-			t.Fatalf("bridges/messages/ingest ctx.Err() = %v, want context.Canceled", ctx.Err())
-		}
-		return nil, context.Canceled
-	})
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesList),
+		func(context.Context, json.RawMessage) (any, error) {
+			return []bridgepkg.BridgeInstance{managed.Instance}, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesGet),
+		func(context.Context, json.RawMessage) (any, error) {
+			return managed.Instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesReportState),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgesInstancesReportStateParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
+			instance := managed.Instance
+			instance.Status = payload.Status
+			instance.Degradation = payload.Degradation
+			return instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesMessagesIngest),
+		func(ctx context.Context, _ json.RawMessage) (any, error) {
+			if !errors.Is(ctx.Err(), context.Canceled) {
+				t.Fatalf("bridges/messages/ingest ctx.Err() = %v, want context.Canceled", ctx.Err())
+			}
+			return nil, context.Canceled
+		},
+	)
 
 	t.Setenv(gchatListenAddrEnv, reserveListenAddr(t))
 	t.Setenv(gchatAPIBaseEnv, server.URL())
-	t.Setenv(gchatTokenURLEnv, server.TokenURL())
+	t.Setenv(gchatAuthEndpointEnv, server.TokenURL())
 	t.Setenv(gchatDirectCertsEnv, server.DirectCertsURL())
 	t.Setenv(gchatPubSubCertsEnv, server.PubSubCertsURL())
 
@@ -1122,8 +1338,11 @@ func TestGChatWebhookHandlersUseRequestContext(t *testing.T) {
 	}
 	runtime.apiFactory = func(resolvedInstanceConfig) gchatAPI {
 		return &contextCheckingGChatAPI{
-			t:       t,
-			message: gchatMessage{Name: "spaces/AAA/messages/msg-react", Space: &gchatSpace{Name: "spaces/AAA", Type: "SPACE"}},
+			t: t,
+			message: gchatMessage{
+				Name:  "spaces/AAA/messages/msg-react",
+				Space: &gchatSpace{Name: "spaces/AAA", Type: "SPACE"},
+			},
 		}
 	}
 
@@ -1134,7 +1353,7 @@ func TestGChatWebhookHandlersUseRequestContext(t *testing.T) {
 	err = runtime.handleDirectWebhook(
 		canceledCtx,
 		recorder,
-		cfg,
+		&cfg,
 		bridgesdk.WebhookRequest{Body: []byte(directWebhookPayload()), ReceivedAt: now},
 	)
 	var httpErr *bridgesdk.HTTPError
@@ -1146,7 +1365,7 @@ func TestGChatWebhookHandlersUseRequestContext(t *testing.T) {
 	err = runtime.handlePubSubWebhook(
 		canceledCtx,
 		recorder,
-		cfg,
+		&cfg,
 		bridgesdk.WebhookRequest{Body: []byte(pubSubReactionPayload()), ReceivedAt: now},
 	)
 	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusInternalServerError {
@@ -1190,7 +1409,7 @@ func TestGoogleX509KeyCacheReusesFreshKeysAndFallsBackToStaleEntries(t *testing.
 }
 
 func TestGoogleX509KeyCacheUsesBoundedClientTimeout(t *testing.T) {
-	slowServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	slowServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(100 * time.Millisecond)
 		_ = json.NewEncoder(w).Encode(map[string]string{"kid": "bad"})
 	}))
@@ -1208,7 +1427,9 @@ func TestGChatPayloadAndRoutingHelpers(t *testing.T) {
 	if got, want := detectGChatWebhookShape([]byte(`{"chat":{}}`)), gchatModeDirect; got != want {
 		t.Fatalf("detectGChatWebhookShape(direct) = %q, want %q", got, want)
 	}
-	if got, want := detectGChatWebhookShape([]byte(`{"subscription":"sub","message":{"data":"e30="}}`)), gchatModePubSub; got != want {
+	if got, want := detectGChatWebhookShape(
+		[]byte(`{"subscription":"sub","message":{"data":"e30="}}`),
+	), gchatModePubSub; got != want {
 		t.Fatalf("detectGChatWebhookShape(pubsub) = %q, want %q", got, want)
 	}
 	if got := detectGChatWebhookShape([]byte(`{"invalid":true}`)); got != "" {
@@ -1264,9 +1485,14 @@ func TestGChatPayloadAndRoutingHelpers(t *testing.T) {
 
 	server := newGChatProviderTestServer(t)
 	defer server.Close()
-	directReq := httptest.NewRequest(http.MethodPost, "http://example.test/gchat", strings.NewReader(`{"chat":{}}`))
+	directReq := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"http://example.test/gchat",
+		strings.NewReader(`{"chat":{}}`),
+	)
 	directReq.Header.Set("Authorization", "Bearer "+server.signDirectToken(t, "123456789"))
-	if err := verifyGChatWebhookBearer(context.Background(), directReq, []byte(`{"chat":{}}`), resolvedInstanceConfig{
+	if err := verifyGChatWebhookBearer(context.Background(), directReq, []byte(`{"chat":{}}`), &resolvedInstanceConfig{
 		mode:           gchatModeDirect,
 		projectNumber:  "123456789",
 		directIssuer:   gchatDefaultDirectIssuer,
@@ -1275,23 +1501,65 @@ func TestGChatPayloadAndRoutingHelpers(t *testing.T) {
 		t.Fatalf("verifyGChatWebhookBearer(direct) error = %v", err)
 	}
 
-	pubsubReq := httptest.NewRequest(http.MethodPost, "http://example.test/gchat", strings.NewReader(`{"subscription":"sub","message":{"data":"e30="}}`))
-	pubsubReq.Header.Set("Authorization", "Bearer "+server.signPubSubToken(t, "https://example.test/pubsub", "push@example.iam.gserviceaccount.com", true))
-	if err := verifyGChatWebhookBearer(context.Background(), pubsubReq, []byte(`{"subscription":"sub","message":{"data":"e30="}}`), resolvedInstanceConfig{
-		mode:                      gchatModePubSub,
-		pubsubAudience:            "https://example.test/pubsub",
-		pubsubIssuer:              gchatDefaultPubSubIssuerURL,
-		pubsubCertsURL:            server.PubSubCertsURL(),
-		pubsubServiceAccountEmail: "push@example.iam.gserviceaccount.com",
-	}); err != nil {
+	pubsubReq := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"http://example.test/gchat",
+		strings.NewReader(`{"subscription":"sub","message":{"data":"e30="}}`),
+	)
+	pubsubReq.Header.Set(
+		"Authorization",
+		"Bearer "+server.signPubSubToken(
+			t,
+			"https://example.test/pubsub",
+			"push@example.iam.gserviceaccount.com",
+			true,
+		),
+	)
+	if err := verifyGChatWebhookBearer(
+		context.Background(),
+		pubsubReq,
+		[]byte(`{"subscription":"sub","message":{"data":"e30="}}`),
+		&resolvedInstanceConfig{
+			mode:                      gchatModePubSub,
+			pubsubAudience:            "https://example.test/pubsub",
+			pubsubIssuer:              gchatDefaultPubSubIssuerURL,
+			pubsubCertsURL:            server.PubSubCertsURL(),
+			pubsubServiceAccountEmail: "push@example.iam.gserviceaccount.com",
+		},
+	); err != nil {
 		t.Fatalf("verifyGChatWebhookBearer(pubsub) error = %v", err)
 	}
 
-	if err := verifyGChatWebhookBearer(context.Background(), httptest.NewRequest(http.MethodPost, "http://example.test/gchat", strings.NewReader(`{"bad":true}`)), []byte(`{"bad":true}`), resolvedInstanceConfig{mode: gchatModeHybrid}); err == nil {
+	if err := verifyGChatWebhookBearer(
+		context.Background(),
+		httptest.NewRequestWithContext(
+			context.Background(),
+			http.MethodPost,
+			"http://example.test/gchat",
+			strings.NewReader(`{"bad":true}`),
+		),
+		[]byte(`{"bad":true}`),
+		&resolvedInstanceConfig{mode: gchatModeHybrid},
+	); err == nil {
 		t.Fatal("verifyGChatWebhookBearer(invalid) error = nil, want non-nil")
 	}
 
-	if got, want := normalizeReceivedAt(time.Date(2026, 4, 15, 0, 0, 0, 0, time.UTC), "2026-04-15T01:02:03Z"), time.Date(2026, 4, 15, 1, 2, 3, 0, time.UTC); !got.Equal(want) {
+	if got, want := normalizeReceivedAt(
+		time.Date(2026, 4, 15, 0, 0, 0, 0, time.UTC),
+		"2026-04-15T01:02:03Z",
+	), time.Date(
+		2026,
+		4,
+		15,
+		1,
+		2,
+		3,
+		0,
+		time.UTC,
+	); !got.Equal(
+		want,
+	) {
 		t.Fatalf("normalizeReceivedAt(parsed) = %s, want %s", got, want)
 	}
 }
@@ -1338,8 +1606,13 @@ func TestGChatWebhookAndBatchErrorPaths(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	err = provider.handleWebhookRequest(
 		recorder,
-		httptest.NewRequest(http.MethodPost, "http://example.test/gchat", strings.NewReader(`{"bad":true}`)),
-		cfg,
+		httptest.NewRequestWithContext(
+			context.Background(),
+			http.MethodPost,
+			"http://example.test/gchat",
+			strings.NewReader(`{"bad":true}`),
+		),
+		&cfg,
 		bridgesdk.WebhookRequest{Body: []byte(`{"bad":true}`), ReceivedAt: now},
 	)
 	var httpErr *bridgesdk.HTTPError
@@ -1348,13 +1621,23 @@ func TestGChatWebhookAndBatchErrorPaths(t *testing.T) {
 	}
 
 	recorder = httptest.NewRecorder()
-	err = provider.handleDirectWebhook(context.Background(), recorder, cfg, bridgesdk.WebhookRequest{Body: []byte(`{`), ReceivedAt: now})
+	err = provider.handleDirectWebhook(
+		context.Background(),
+		recorder,
+		&cfg,
+		bridgesdk.WebhookRequest{Body: []byte(`{`), ReceivedAt: now},
+	)
 	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusBadRequest {
 		t.Fatalf("handleDirectWebhook(invalid json) error = %v, want HTTP 400", err)
 	}
 
 	recorder = httptest.NewRecorder()
-	err = provider.handleDirectWebhook(context.Background(), recorder, cfg, bridgesdk.WebhookRequest{Body: []byte(`{"chat":null}`), ReceivedAt: now})
+	err = provider.handleDirectWebhook(
+		context.Background(),
+		recorder,
+		&cfg,
+		bridgesdk.WebhookRequest{Body: []byte(`{"chat":null}`), ReceivedAt: now},
+	)
 	if err != nil {
 		t.Fatalf("handleDirectWebhook(nil chat) error = %v", err)
 	}
@@ -1389,19 +1672,34 @@ func TestGChatWebhookAndBatchErrorPaths(t *testing.T) {
 		},
 	})
 	recorder = httptest.NewRecorder()
-	err = provider.handleDirectWebhook(context.Background(), recorder, cfg, bridgesdk.WebhookRequest{Body: actionPayload, ReceivedAt: now})
+	err = provider.handleDirectWebhook(
+		context.Background(),
+		recorder,
+		&cfg,
+		bridgesdk.WebhookRequest{Body: actionPayload, ReceivedAt: now},
+	)
 	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("handleDirectWebhook(uninitialized session) error = %v, want HTTP 500", err)
 	}
 
 	recorder = httptest.NewRecorder()
-	err = provider.handlePubSubWebhook(context.Background(), recorder, cfg, bridgesdk.WebhookRequest{Body: []byte(`{"message":{"data":"%%%"}}`), ReceivedAt: now})
+	err = provider.handlePubSubWebhook(
+		context.Background(),
+		recorder,
+		&cfg,
+		bridgesdk.WebhookRequest{Body: []byte(`{"message":{"data":"%%%"}}`), ReceivedAt: now},
+	)
 	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusBadRequest {
 		t.Fatalf("handlePubSubWebhook(invalid payload) error = %v, want HTTP 400", err)
 	}
 
 	recorder = httptest.NewRecorder()
-	err = provider.handlePubSubWebhook(context.Background(), recorder, cfg, bridgesdk.WebhookRequest{Body: []byte(pubSubReactionPayload()), ReceivedAt: now})
+	err = provider.handlePubSubWebhook(
+		context.Background(),
+		recorder,
+		&cfg,
+		bridgesdk.WebhookRequest{Body: []byte(pubSubReactionPayload()), ReceivedAt: now},
+	)
 	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("handlePubSubWebhook(uninitialized session) error = %v, want HTTP 500", err)
 	}
@@ -1486,7 +1784,11 @@ func TestHandleBridgesDeliverRejectsUnknownInstance(t *testing.T) {
 	}
 	provider.env.deliveryPath = filepath.Join(t.TempDir(), "delivery.jsonl")
 
-	_, err = provider.handleBridgesDeliver(context.Background(), nil, testDeliveryRequest("missing", "delivery-1", 1, bridgepkg.DeliveryEventTypeStart, false))
+	_, err = provider.handleBridgesDeliver(
+		context.Background(),
+		nil,
+		testDeliveryRequest("missing", "delivery-1", 1, bridgepkg.DeliveryEventTypeStart, false),
+	)
 	if err == nil || !strings.Contains(err.Error(), "unmanaged instance") {
 		t.Fatalf("handleBridgesDeliver() error = %v, want unmanaged instance error", err)
 	}
@@ -1499,31 +1801,83 @@ func TestHandleBridgesDeliverRejectsUnknownInstance(t *testing.T) {
 	}
 }
 
+func TestHandleBridgesDeliverRejectsConfigError(t *testing.T) {
+	t.Parallel()
+
+	provider, err := newGChatProvider(io.Discard)
+	if err != nil {
+		t.Fatalf("newGChatProvider() error = %v", err)
+	}
+	provider.env.deliveryPath = filepath.Join(t.TempDir(), "delivery.jsonl")
+	provider.routes["brg-gchat"] = resolvedInstanceConfig{
+		instanceID: "brg-gchat",
+		configError: errors.New(
+			"gchat: provider_config.verification.direct_certs_url host \"example.test\" is not allowed",
+		),
+	}
+
+	_, err = provider.handleBridgesDeliver(
+		context.Background(),
+		nil,
+		testDeliveryRequest("brg-gchat", "delivery-1", 1, bridgepkg.DeliveryEventTypeStart, false),
+	)
+	if err == nil || !strings.Contains(err.Error(), "is not allowed") {
+		t.Fatalf("handleBridgesDeliver() error = %v, want configError", err)
+	}
+	payload, readErr := os.ReadFile(provider.env.deliveryPath)
+	if readErr != nil {
+		t.Fatalf("os.ReadFile(delivery marker) error = %v", readErr)
+	}
+	if !strings.Contains(string(payload), "is not allowed") {
+		t.Fatalf("delivery marker = %q, want configError", string(payload))
+	}
+}
+
 func TestReconcileInstanceConfigsDetectsSharedWebhookPaths(t *testing.T) {
 	now := time.Date(2026, 4, 15, 20, 28, 0, 0, time.UTC)
 	runtime, hostPeer, cleanup := newRuntimePeerPair(t)
 	defer cleanup()
 
 	seed := testBridgeRuntime(t, now, "seed")
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesList), func(context.Context, json.RawMessage) (any, error) {
-		return []bridgepkg.BridgeInstance{seed.Instance}, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesGet), func(context.Context, json.RawMessage) (any, error) {
-		return seed.Instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesInstancesReportState), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgesInstancesReportStateParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		instance := seed.Instance
-		instance.Status = payload.Status
-		instance.Degradation = payload.Degradation
-		return instance, nil
-	})
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesMessagesIngest), func(context.Context, json.RawMessage) (any, error) {
-		return extensioncontract.BridgesMessagesIngestResult{SessionID: "sess-1"}, nil
-	})
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesList),
+		func(context.Context, json.RawMessage) (any, error) {
+			return []bridgepkg.BridgeInstance{seed.Instance}, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesGet),
+		func(context.Context, json.RawMessage) (any, error) {
+			return seed.Instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesReportState),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgesInstancesReportStateParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
+			instance := seed.Instance
+			instance.Status = payload.Status
+			instance.Degradation = payload.Degradation
+			return instance, nil
+		},
+	)
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesMessagesIngest),
+		func(context.Context, json.RawMessage) (any, error) {
+			return extensioncontract.BridgesMessagesIngestResult{SessionID: "sess-1"}, nil
+		},
+	)
 
 	t.Setenv(gchatListenAddrEnv, reserveListenAddr(t))
 	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, seed), nil); err != nil {
@@ -1565,10 +1919,11 @@ func TestReconcileInstanceConfigsDetectsSharedWebhookPaths(t *testing.T) {
 		},
 	})
 
-	configs, err := provider.reconcileInstanceConfigs(context.Background(), session, []subprocess.InitializeBridgeManagedInstance{first, second})
-	if err != nil {
-		t.Fatalf("reconcileInstanceConfigs() error = %v", err)
-	}
+	configs := provider.reconcileInstanceConfigs(
+		context.Background(),
+		session,
+		[]subprocess.InitializeBridgeManagedInstance{first, second},
+	)
 	if got, want := len(configs), 2; got != want {
 		t.Fatalf("len(configs) = %d, want %d", got, want)
 	}
@@ -1588,18 +1943,16 @@ func TestReconcileInstanceConfigsDetectsSharedWebhookPaths(t *testing.T) {
 			"pubsub_service_account_email": "push@example.iam.gserviceaccount.com",
 		},
 	})
-	configs, err = provider.reconcileInstanceConfigs(context.Background(), session, []subprocess.InitializeBridgeManagedInstance{first, third})
-	if err != nil {
-		t.Fatalf("reconcileInstanceConfigs(incompatible listen) error = %v", err)
-	}
+	configs = provider.reconcileInstanceConfigs(
+		context.Background(),
+		session,
+		[]subprocess.InitializeBridgeManagedInstance{first, third},
+	)
 	if configs[1].configError == nil || !strings.Contains(configs[1].configError.Error(), "incompatible listen_addr") {
 		t.Fatalf("configs[1].configError = %v, want incompatible listen_addr error", configs[1].configError)
 	}
 
-	empty, err := provider.reconcileInstanceConfigs(context.Background(), session, nil)
-	if err != nil {
-		t.Fatalf("reconcileInstanceConfigs(nil) error = %v", err)
-	}
+	empty := provider.reconcileInstanceConfigs(context.Background(), session, nil)
 	if len(empty) != 0 {
 		t.Fatalf("reconcileInstanceConfigs(nil) len = %d, want 0", len(empty))
 	}
@@ -1682,8 +2035,8 @@ func (f *fakeGChatAPI) GetMessage(_ context.Context, messageName string) (*gchat
 	defer f.mu.Unlock()
 	f.fetched = append(f.fetched, messageName)
 	if msg, ok := f.messagesMap[messageName]; ok {
-		copy := msg
-		return &copy, nil
+		msgCopy := msg
+		return &msgCopy, nil
 	}
 	return nil, errors.New("not found")
 }
@@ -1713,11 +2066,11 @@ func (c *contextCheckingGChatAPI) GetMessage(ctx context.Context, messageName st
 		c.t.Fatalf("GetMessage ctx.Err() = %v, want context.Canceled", ctx.Err())
 	}
 	if c.message.Name != "" {
-		copy := c.message
-		if strings.TrimSpace(copy.Name) == "" {
-			copy.Name = messageName
+		messageCopy := c.message
+		if strings.TrimSpace(messageCopy.Name) == "" {
+			messageCopy.Name = messageName
 		}
-		return &copy, nil
+		return &messageCopy, nil
 	}
 	return nil, context.Canceled
 }
@@ -1810,7 +2163,8 @@ func (s *gchatProviderTestServer) serveHTTP(w http.ResponseWriter, r *http.Reque
 		_ = json.NewEncoder(w).Encode(map[string]string{"pubsub-kid": s.pubSubCertPEM})
 		return
 	case r.Method == http.MethodPost && r.URL.Path == "/oauth2/token":
-		_ = json.NewEncoder(w).Encode(gchatTokenResponse{AccessToken: "token-123", ExpiresIn: 3600, TokenType: "Bearer"})
+		_ = json.NewEncoder(w).
+			Encode(gchatTokenResponse{AccessToken: "token-123", ExpiresIn: 3600, TokenType: "Bearer"})
 		return
 	}
 
@@ -1839,7 +2193,8 @@ func (s *gchatProviderTestServer) serveHTTP(w http.ResponseWriter, r *http.Reque
 				Thread: &gchatThread{Name: firstNonEmpty(threadName, "spaces/AAA/threads/thread-created")},
 			}
 			s.mu.Unlock()
-			_ = json.NewEncoder(w).Encode(gchatSentMessage{Name: name, Thread: &gchatThread{Name: firstNonEmpty(threadName, "spaces/AAA/threads/thread-created")}})
+			_ = json.NewEncoder(w).
+				Encode(gchatSentMessage{Name: name, Thread: &gchatThread{Name: firstNonEmpty(threadName, "spaces/AAA/threads/thread-created")}})
 			return
 		case r.Method == http.MethodPut:
 			name := strings.TrimPrefix(r.URL.Path, "/v1/")
@@ -1881,7 +2236,12 @@ func (s *gchatProviderTestServer) signDirectToken(t *testing.T, audience string)
 	return signed
 }
 
-func (s *gchatProviderTestServer) signPubSubToken(t *testing.T, audience string, email string, emailVerified bool) string {
+func (s *gchatProviderTestServer) signPubSubToken(
+	t *testing.T,
+	audience string,
+	email string,
+	emailVerified bool,
+) string {
 	t.Helper()
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
 		"iss":            gchatDefaultPubSubIssuerURL,
@@ -1948,7 +2308,7 @@ func newRuntimePeerPair(t *testing.T) (*gchatProvider, *bridgesdk.Peer, func()) 
 			}
 			_ = hostConn.Close()
 			_ = runtimeConn.Close()
-			for i := 0; i < 2; i++ {
+			for range 2 {
 				err := <-errCh
 				if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, net.ErrClosed) {
 					continue
@@ -1996,7 +2356,10 @@ func testBridgeRuntime(t *testing.T, now time.Time, instanceID string) subproces
 	}
 }
 
-func testInitializeRequest(now time.Time, managed ...subprocess.InitializeBridgeManagedInstance) subprocess.InitializeRequest {
+func testInitializeRequest(
+	_ time.Time,
+	managed ...subprocess.InitializeBridgeManagedInstance,
+) subprocess.InitializeRequest {
 	return subprocess.InitializeRequest{
 		ProtocolVersion:          "1",
 		SupportedProtocolVersion: []string{"1"},
@@ -2034,7 +2397,13 @@ func testInitializeRequest(now time.Time, managed ...subprocess.InitializeBridge
 	}
 }
 
-func testDeliveryRequest(instanceID string, deliveryID string, seq int64, eventType string, final bool) bridgepkg.DeliveryRequest {
+func testDeliveryRequest(
+	instanceID string,
+	deliveryID string,
+	seq int64,
+	eventType string,
+	final bool,
+) bridgepkg.DeliveryRequest {
 	threadID := encodeGChatThreadID(gchatThreadRef{
 		SpaceName:  "spaces/AAA",
 		ThreadName: "spaces/AAA/threads/thread-1",
@@ -2064,7 +2433,12 @@ func testDeliveryRequest(instanceID string, deliveryID string, seq int64, eventT
 	}
 }
 
-func testDeleteRequest(instanceID string, deliveryID string, seq int64, remoteMessageID string) bridgepkg.DeliveryRequest {
+func testDeleteRequest(
+	instanceID string,
+	deliveryID string,
+	seq int64,
+	remoteMessageID string,
+) bridgepkg.DeliveryRequest {
 	req := testDeliveryRequest(instanceID, deliveryID, seq, bridgepkg.DeliveryEventTypeDelete, true)
 	req.Event.Operation = bridgepkg.DeliveryOperationDelete
 	req.Event.Reference = &bridgepkg.DeliveryMessageReference{RemoteMessageID: remoteMessageID}
@@ -2179,7 +2553,7 @@ func testCredentialsJSON(t *testing.T) string {
 	encoded, err := json.Marshal(serviceAccountCredentials{
 		ClientEmail: "bot@example.iam.gserviceaccount.com",
 		PrivateKey:  string(pemKey),
-		TokenURI:    gchatDefaultTokenURL,
+		TokenURI:    gchatDefaultAuthEndpointURL,
 	})
 	if err != nil {
 		t.Fatalf("json.Marshal(credentials) error = %v", err)
@@ -2226,7 +2600,7 @@ func setProviderTestEnv(t *testing.T) markerEnv {
 func reserveListenAddr(t *testing.T) string {
 	t.Helper()
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("net.Listen() error = %v", err)
 	}

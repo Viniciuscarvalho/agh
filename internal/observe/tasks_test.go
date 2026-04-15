@@ -56,7 +56,7 @@ func TestQueryTaskSummaryAggregatesByScopeOriginChannelAndOwner(t *testing.T) {
 		ClosedAt:       h.now.Add(4 * time.Minute),
 	})
 
-	createObserveRun(t, h, taskpkg.TaskRun{
+	createObserveRun(t, h, taskpkg.Run{
 		ID:       "run-global-queued",
 		TaskID:   "task-global-ready",
 		Status:   taskpkg.TaskRunStatusQueued,
@@ -64,7 +64,7 @@ func TestQueryTaskSummaryAggregatesByScopeOriginChannelAndOwner(t *testing.T) {
 		Origin:   taskOrigin(taskpkg.OriginKindCLI, "agh task run"),
 		QueuedAt: h.now.Add(10 * time.Minute),
 	})
-	createObserveRun(t, h, taskpkg.TaskRun{
+	createObserveRun(t, h, taskpkg.Run{
 		ID:             "run-workspace-running",
 		TaskID:         "task-workspace-blocked",
 		Status:         taskpkg.TaskRunStatusRunning,
@@ -77,7 +77,7 @@ func TestQueryTaskSummaryAggregatesByScopeOriginChannelAndOwner(t *testing.T) {
 		ClaimedAt:      h.now.Add(12 * time.Minute),
 		StartedAt:      h.now.Add(13 * time.Minute),
 	})
-	createObserveRun(t, h, taskpkg.TaskRun{
+	createObserveRun(t, h, taskpkg.Run{
 		ID:             "run-workspace-completed",
 		TaskID:         "task-workspace-completed",
 		Status:         taskpkg.TaskRunStatusCompleted,
@@ -152,7 +152,7 @@ func TestTaskHealthFlagsStuckRunsByConfiguredThresholds(t *testing.T) {
 	}
 
 	liveStartedAt := h.observer.now().Add(-5 * time.Minute)
-	h.source.sessions = []*session.SessionInfo{
+	h.source.sessions = []*session.Info{
 		{
 			ID:           "sess-live-running",
 			Name:         "LIVE",
@@ -193,7 +193,7 @@ func TestTaskHealthFlagsStuckRunsByConfiguredThresholds(t *testing.T) {
 	}
 
 	now := h.observer.now()
-	createObserveRun(t, h, taskpkg.TaskRun{
+	createObserveRun(t, h, taskpkg.Run{
 		ID:        "run-claimed-stale",
 		TaskID:    "task-claimed",
 		Status:    taskpkg.TaskRunStatusClaimed,
@@ -202,7 +202,7 @@ func TestTaskHealthFlagsStuckRunsByConfiguredThresholds(t *testing.T) {
 		QueuedAt:  now.Add(-40 * time.Minute),
 		ClaimedAt: now.Add(-20 * time.Minute),
 	})
-	createObserveRun(t, h, taskpkg.TaskRun{
+	createObserveRun(t, h, taskpkg.Run{
 		ID:             "run-starting-fresh",
 		TaskID:         "task-starting-recent",
 		Status:         taskpkg.TaskRunStatusStarting,
@@ -213,7 +213,7 @@ func TestTaskHealthFlagsStuckRunsByConfiguredThresholds(t *testing.T) {
 		ClaimedAt:      now.Add(-4 * time.Minute),
 		NetworkChannel: "ops",
 	})
-	createObserveRun(t, h, taskpkg.TaskRun{
+	createObserveRun(t, h, taskpkg.Run{
 		ID:             "run-starting-stale",
 		TaskID:         "task-starting-stale",
 		Status:         taskpkg.TaskRunStatusStarting,
@@ -224,7 +224,7 @@ func TestTaskHealthFlagsStuckRunsByConfiguredThresholds(t *testing.T) {
 		ClaimedAt:      now.Add(-12 * time.Minute),
 		NetworkChannel: "ops",
 	})
-	createObserveRun(t, h, taskpkg.TaskRun{
+	createObserveRun(t, h, taskpkg.Run{
 		ID:             "run-running-stale",
 		TaskID:         "task-running-stale",
 		Status:         taskpkg.TaskRunStatusRunning,
@@ -282,7 +282,7 @@ func TestQueryTaskMetricsCountsDuplicateIngressAndChannelMismatch(t *testing.T) 
 		CreatedAt:      h.now,
 		UpdatedAt:      h.now,
 	})
-	createObserveRun(t, h, taskpkg.TaskRun{
+	createObserveRun(t, h, taskpkg.Run{
 		ID:             "run-net",
 		TaskID:         "task-net",
 		Status:         taskpkg.TaskRunStatusQueued,
@@ -292,7 +292,7 @@ func TestQueryTaskMetricsCountsDuplicateIngressAndChannelMismatch(t *testing.T) 
 		IdempotencyKey: "idem-1",
 		QueuedAt:       h.now.Add(time.Minute),
 	})
-	createObserveEvent(t, h, taskpkg.TaskEvent{
+	createObserveEvent(t, h, taskpkg.Event{
 		ID:        "evt-run-enqueued",
 		TaskID:    "task-net",
 		RunID:     "run-net",
@@ -387,14 +387,29 @@ func TestTaskObserveQueryValidationAndConfigOption(t *testing.T) {
 		t.Fatalf("observer.taskHealthConfig = %#v, want %#v", observer.taskHealthConfig, cfg)
 	}
 
-	if err := (TaskSummaryQuery{Scope: taskpkg.Scope("bogus")}).Validate(); !errors.Is(err, taskpkg.ErrValidation) || !strings.Contains(err.Error(), "scope") {
+	if err := (TaskSummaryQuery{Scope: taskpkg.Scope("bogus")}).Validate(); !errors.Is(err, taskpkg.ErrValidation) ||
+		!strings.Contains(err.Error(), "scope") {
 		t.Fatalf("TaskSummaryQuery.Validate(invalid scope) error = %v, want ErrValidation mentioning scope", err)
 	}
-	if err := (TaskSummaryQuery{OwnerKind: taskpkg.OwnerKind("bogus")}).Validate(); !errors.Is(err, taskpkg.ErrValidation) || !strings.Contains(err.Error(), "owner_kind") {
-		t.Fatalf("TaskSummaryQuery.Validate(invalid owner kind) error = %v, want ErrValidation mentioning owner_kind", err)
+	if err := (TaskSummaryQuery{OwnerKind: taskpkg.OwnerKind("bogus")}).Validate(); !errors.Is(
+		err,
+		taskpkg.ErrValidation,
+	) ||
+		!strings.Contains(err.Error(), "owner_kind") {
+		t.Fatalf(
+			"TaskSummaryQuery.Validate(invalid owner kind) error = %v, want ErrValidation mentioning owner_kind",
+			err,
+		)
 	}
-	if err := (TaskMetricsQuery{OriginKind: taskpkg.OriginKind("bogus")}).Validate(); !errors.Is(err, taskpkg.ErrValidation) || !strings.Contains(err.Error(), "origin_kind") {
-		t.Fatalf("TaskMetricsQuery.Validate(invalid origin kind) error = %v, want ErrValidation mentioning origin_kind", err)
+	if err := (TaskMetricsQuery{OriginKind: taskpkg.OriginKind("bogus")}).Validate(); !errors.Is(
+		err,
+		taskpkg.ErrValidation,
+	) ||
+		!strings.Contains(err.Error(), "origin_kind") {
+		t.Fatalf(
+			"TaskMetricsQuery.Validate(invalid origin kind) error = %v, want ErrValidation mentioning origin_kind",
+			err,
+		)
 	}
 }
 
@@ -423,14 +438,14 @@ func createObserveTask(t *testing.T, h *harness, record taskpkg.Task) {
 	}
 }
 
-func createObserveRun(t *testing.T, h *harness, run taskpkg.TaskRun) {
+func createObserveRun(t *testing.T, h *harness, run taskpkg.Run) {
 	t.Helper()
 	if err := h.registry.CreateTaskRun(testutil.Context(t), run); err != nil {
 		t.Fatalf("CreateTaskRun(%q) error = %v", run.ID, err)
 	}
 }
 
-func createObserveEvent(t *testing.T, h *harness, event taskpkg.TaskEvent) {
+func createObserveEvent(t *testing.T, h *harness, event taskpkg.Event) {
 	t.Helper()
 	if err := h.registry.CreateTaskEvent(testutil.Context(t), event); err != nil {
 		t.Fatalf("CreateTaskEvent(%q) error = %v", event.ID, err)
@@ -470,7 +485,13 @@ func mustJSON(t *testing.T, value any) json.RawMessage {
 	return raw
 }
 
-func containsTaskTotal(rows []TaskStatusTotal, scope taskpkg.Scope, status taskpkg.TaskStatus, channel string, count int) bool {
+func containsTaskTotal(
+	rows []TaskStatusTotal,
+	scope taskpkg.Scope,
+	status taskpkg.Status,
+	channel string,
+	count int,
+) bool {
 	for _, item := range rows {
 		if item.Scope == scope && item.Status == status && item.NetworkChannel == channel && item.Count == count {
 			return true
@@ -488,7 +509,13 @@ func containsTaskOriginTotal(rows []TaskOriginTotal, origin taskpkg.OriginKind, 
 	return false
 }
 
-func containsRunTotal(rows []TaskRunTotal, status taskpkg.TaskRunStatus, origin taskpkg.OriginKind, channel string, count int) bool {
+func containsRunTotal(
+	rows []TaskRunTotal,
+	status taskpkg.RunStatus,
+	origin taskpkg.OriginKind,
+	channel string,
+	count int,
+) bool {
 	for _, item := range rows {
 		if item.Status == status && item.OriginKind == origin && item.NetworkChannel == channel && item.Count == count {
 			return true
@@ -515,7 +542,7 @@ func containsQueueDepth(rows []TaskQueueDepth, channel string, count int) bool {
 	return false
 }
 
-func containsStuckRun(rows []StuckTaskRun, runID string, status taskpkg.TaskRunStatus) bool {
+func containsStuckRun(rows []StuckTaskRun, runID string, status taskpkg.RunStatus) bool {
 	for _, item := range rows {
 		if item.RunID == runID && item.Status == status {
 			return true

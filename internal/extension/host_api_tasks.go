@@ -1,4 +1,4 @@
-package extension
+package extensionpkg
 
 import (
 	"context"
@@ -36,7 +36,7 @@ func (h *HostAPIHandler) handleTasks(ctx context.Context, raw json.RawMessage) (
 
 	tasks, err := manager.ListTasks(ctx, query, actor)
 	if err != nil {
-		return nil, mapTaskRPCError("task", "", err)
+		return nil, mapTaskRPCError("", err)
 	}
 	return taskSummaryPayloadsFromSummaries(tasks), nil
 }
@@ -63,7 +63,7 @@ func (h *HostAPIHandler) handleTasksGet(ctx context.Context, raw json.RawMessage
 
 	view, err := manager.GetTask(ctx, taskID, actor)
 	if err != nil {
-		return nil, mapTaskRPCError("task", taskID, err)
+		return nil, mapTaskRPCError(taskID, err)
 	}
 	return taskDetailPayloadFromView(view), nil
 }
@@ -90,7 +90,7 @@ func (h *HostAPIHandler) handleTasksCreate(ctx context.Context, raw json.RawMess
 
 	record, err := manager.CreateTask(ctx, spec, actor)
 	if err != nil {
-		return nil, mapTaskRPCError("task", spec.ID, err)
+		return nil, mapTaskRPCError(spec.ID, err)
 	}
 	return taskPayloadFromTask(record), nil
 }
@@ -124,7 +124,7 @@ func (h *HostAPIHandler) handleTasksUpdate(ctx context.Context, raw json.RawMess
 
 	record, err := manager.UpdateTask(ctx, taskID, patch, actor)
 	if err != nil {
-		return nil, mapTaskRPCError("task", taskID, err)
+		return nil, mapTaskRPCError(taskID, err)
 	}
 	return taskPayloadFromTask(record), nil
 }
@@ -155,7 +155,7 @@ func (h *HostAPIHandler) handleTasksCancel(ctx context.Context, raw json.RawMess
 
 	record, err := manager.CancelTask(ctx, taskID, cancelReq, actor)
 	if err != nil {
-		return nil, mapTaskRPCError("task", taskID, err)
+		return nil, mapTaskRPCError(taskID, err)
 	}
 	return taskPayloadFromTask(record), nil
 }
@@ -186,7 +186,7 @@ func (h *HostAPIHandler) handleTasksRuns(ctx context.Context, raw json.RawMessag
 
 	runs, err := manager.ListTaskRuns(ctx, taskID, query, actor)
 	if err != nil {
-		return nil, mapTaskRPCError("task", taskID, err)
+		return nil, mapTaskRPCError(taskID, err)
 	}
 	return taskRunPayloadsFromRuns(runs), nil
 }
@@ -217,7 +217,7 @@ func (h *HostAPIHandler) handleTasksRunsEnqueue(ctx context.Context, raw json.Ra
 
 	run, err := manager.EnqueueRun(ctx, spec, actor)
 	if err != nil {
-		return nil, mapTaskRPCError("task", taskID, err)
+		return nil, mapTaskRPCError(taskID, err)
 	}
 	return taskRunPayloadFromRun(run), nil
 }
@@ -248,7 +248,7 @@ func (h *HostAPIHandler) handleTasksRunsClaim(ctx context.Context, raw json.RawM
 
 	run, err := manager.ClaimRun(ctx, runID, claim, actor)
 	if err != nil {
-		return nil, mapTaskRPCError("task_run", runID, err)
+		return nil, mapTaskRPCError(runID, err)
 	}
 	return taskRunPayloadFromRun(run), nil
 }
@@ -279,7 +279,7 @@ func (h *HostAPIHandler) handleTasksRunsStart(ctx context.Context, raw json.RawM
 
 	run, err := manager.StartRun(ctx, runID, startReq, actor)
 	if err != nil {
-		return nil, mapTaskRPCError("task_run", runID, err)
+		return nil, mapTaskRPCError(runID, err)
 	}
 	return taskRunPayloadFromRun(run), nil
 }
@@ -310,7 +310,7 @@ func (h *HostAPIHandler) handleTasksRunsAttachSession(ctx context.Context, raw j
 
 	run, err := manager.AttachRunSession(ctx, runID, sessionID, actor)
 	if err != nil {
-		return nil, mapTaskRPCError("task_run", runID, err)
+		return nil, mapTaskRPCError(runID, err)
 	}
 	return taskRunPayloadFromRun(run), nil
 }
@@ -341,7 +341,7 @@ func (h *HostAPIHandler) handleTasksRunsComplete(ctx context.Context, raw json.R
 
 	run, err := manager.CompleteRun(ctx, runID, result, actor)
 	if err != nil {
-		return nil, mapTaskRPCError("task_run", runID, err)
+		return nil, mapTaskRPCError(runID, err)
 	}
 	return taskRunPayloadFromRun(run), nil
 }
@@ -372,7 +372,7 @@ func (h *HostAPIHandler) handleTasksRunsFail(ctx context.Context, raw json.RawMe
 
 	run, err := manager.FailRun(ctx, runID, failure, actor)
 	if err != nil {
-		return nil, mapTaskRPCError("task_run", runID, err)
+		return nil, mapTaskRPCError(runID, err)
 	}
 	return taskRunPayloadFromRun(run), nil
 }
@@ -403,7 +403,7 @@ func (h *HostAPIHandler) handleTasksRunsCancel(ctx context.Context, raw json.Raw
 
 	run, err := manager.CancelRun(ctx, runID, cancelReq, actor)
 	if err != nil {
-		return nil, mapTaskRPCError("task_run", runID, err)
+		return nil, mapTaskRPCError(runID, err)
 	}
 	return taskRunPayloadFromRun(run), nil
 }
@@ -431,8 +431,11 @@ func (h *HostAPIHandler) taskActorContext(ctx context.Context) (taskpkg.ActorCon
 	return actor, nil
 }
 
-func (h *HostAPIHandler) taskQueryFromParams(ctx context.Context, params hostAPITasksParams) (taskpkg.TaskQuery, error) {
-	query := taskpkg.TaskQuery{
+func (h *HostAPIHandler) taskQueryFromParams(
+	ctx context.Context,
+	params hostAPITasksParams,
+) (taskpkg.Query, error) {
+	query := taskpkg.Query{
 		Scope:        params.Scope.Normalize(),
 		Status:       params.Status.Normalize(),
 		OwnerKind:    params.OwnerKind.Normalize(),
@@ -442,44 +445,47 @@ func (h *HostAPIHandler) taskQueryFromParams(ctx context.Context, params hostAPI
 	}
 	if query.Scope.Normalize() != "" {
 		if err := query.Scope.Validate("task_query.scope"); err != nil {
-			return taskpkg.TaskQuery{}, invalidParamsRPCError(err)
+			return taskpkg.Query{}, invalidParamsRPCError(err)
 		}
 	}
 	if workspaceRef := strings.TrimSpace(params.Workspace); workspaceRef != "" {
 		if query.Scope.Normalize() == taskpkg.ScopeGlobal {
 			if err := taskpkg.ValidateScopeBinding(query.Scope, workspaceRef, "task_query", "workspace"); err != nil {
-				return taskpkg.TaskQuery{}, invalidParamsRPCError(err)
+				return taskpkg.Query{}, invalidParamsRPCError(err)
 			}
 		}
 		workspaceID, err := h.resolveTaskWorkspaceID(ctx, workspaceRef)
 		if err != nil {
-			return taskpkg.TaskQuery{}, err
+			return taskpkg.Query{}, err
 		}
 		query.WorkspaceID = workspaceID
 	}
 	if err := validateTaskChannel("task_query.network_channel", params.NetworkChannel); err != nil {
-		return taskpkg.TaskQuery{}, err
+		return taskpkg.Query{}, err
 	}
 	query.NetworkChannel = strings.TrimSpace(params.NetworkChannel)
 	if err := query.Validate("task_query"); err != nil {
-		return taskpkg.TaskQuery{}, invalidParamsRPCError(err)
+		return taskpkg.Query{}, invalidParamsRPCError(err)
 	}
 	return query, nil
 }
 
-func taskRunQueryFromParams(params apicontract.TaskRunListQuery) (taskpkg.TaskRunQuery, error) {
-	query := taskpkg.TaskRunQuery{
+func taskRunQueryFromParams(params apicontract.TaskRunListQuery) (taskpkg.RunQuery, error) {
+	query := taskpkg.RunQuery{
 		Status:    params.Status.Normalize(),
 		SessionID: strings.TrimSpace(params.SessionID),
 		Limit:     params.Limit,
 	}
 	if err := query.Validate("task_run_query"); err != nil {
-		return taskpkg.TaskRunQuery{}, invalidParamsRPCError(err)
+		return taskpkg.RunQuery{}, invalidParamsRPCError(err)
 	}
 	return query, nil
 }
 
-func (h *HostAPIHandler) createTaskSpecFromRequest(ctx context.Context, req apicontract.CreateTaskRequest) (taskpkg.CreateTask, error) {
+func (h *HostAPIHandler) createTaskSpecFromRequest(
+	ctx context.Context,
+	req apicontract.CreateTaskRequest,
+) (taskpkg.CreateTask, error) {
 	scope := req.Scope.Normalize()
 	if err := scope.Validate("create_task.scope"); err != nil {
 		return taskpkg.CreateTask{}, invalidParamsRPCError(err)
@@ -509,14 +515,14 @@ func (h *HostAPIHandler) createTaskSpecFromRequest(ctx context.Context, req apic
 	return spec, nil
 }
 
-func taskPatchFromRequest(req apicontract.UpdateTaskRequest) (taskpkg.TaskPatch, error) {
+func taskPatchFromRequest(req apicontract.UpdateTaskRequest) (taskpkg.Patch, error) {
 	if req.NetworkChannel != nil {
 		if err := validateTaskChannel("task_patch.network_channel", *req.NetworkChannel); err != nil {
-			return taskpkg.TaskPatch{}, err
+			return taskpkg.Patch{}, err
 		}
 	}
 
-	patch := taskpkg.TaskPatch{
+	patch := taskpkg.Patch{
 		Title:          trimStringPtr(req.Title),
 		Description:    trimStringPtr(req.Description),
 		Metadata:       cloneRawMessagePtr(req.Metadata),
@@ -525,7 +531,7 @@ func taskPatchFromRequest(req apicontract.UpdateTaskRequest) (taskpkg.TaskPatch,
 		ClearOwner:     req.ClearOwner,
 	}
 	if err := patch.Validate("task_patch"); err != nil {
-		return taskpkg.TaskPatch{}, invalidParamsRPCError(err)
+		return taskpkg.Patch{}, invalidParamsRPCError(err)
 	}
 	return patch, nil
 }
@@ -611,7 +617,12 @@ func cancelTaskRunFromRequest(req apicontract.CancelTaskRunRequest) (taskpkg.Can
 	return cancelReq, nil
 }
 
-func (h *HostAPIHandler) resolveTaskWorkspaceBinding(ctx context.Context, scope taskpkg.Scope, workspaceRef string, path string) (string, error) {
+func (h *HostAPIHandler) resolveTaskWorkspaceBinding(
+	ctx context.Context,
+	scope taskpkg.Scope,
+	workspaceRef string,
+	path string,
+) (string, error) {
 	trimmed := strings.TrimSpace(workspaceRef)
 	if err := taskpkg.ValidateScopeBinding(scope, trimmed, path, "workspace"); err != nil {
 		return "", invalidParamsRPCError(err)
@@ -652,7 +663,7 @@ func validateTaskChannel(path string, channel string) error {
 	return nil
 }
 
-func mapTaskRPCError(resource string, id string, err error) error {
+func mapTaskRPCError(id string, err error) error {
 	switch {
 	case err == nil:
 		return nil
@@ -681,7 +692,7 @@ func mapTaskRPCError(resource string, id string, err error) error {
 	}
 }
 
-func taskSummaryPayloadsFromSummaries(tasks []taskpkg.TaskSummary) []apicontract.TaskSummaryPayload {
+func taskSummaryPayloadsFromSummaries(tasks []taskpkg.Summary) []apicontract.TaskSummaryPayload {
 	payloads := make([]apicontract.TaskSummaryPayload, 0, len(tasks))
 	for _, record := range tasks {
 		payloads = append(payloads, taskSummaryPayloadFromSummary(record))
@@ -689,7 +700,7 @@ func taskSummaryPayloadsFromSummaries(tasks []taskpkg.TaskSummary) []apicontract
 	return payloads
 }
 
-func taskSummaryPayloadFromSummary(record taskpkg.TaskSummary) apicontract.TaskSummaryPayload {
+func taskSummaryPayloadFromSummary(record taskpkg.Summary) apicontract.TaskSummaryPayload {
 	return apicontract.TaskSummaryPayload{
 		ID:             record.ID,
 		Identifier:     record.Identifier,
@@ -733,7 +744,7 @@ func taskPayloadFromTask(record *taskpkg.Task) apicontract.TaskPayload {
 	}
 }
 
-func taskDependencyPayloadsFromDependencies(dependencies []taskpkg.TaskDependency) []apicontract.TaskDependencyPayload {
+func taskDependencyPayloadsFromDependencies(dependencies []taskpkg.Dependency) []apicontract.TaskDependencyPayload {
 	payloads := make([]apicontract.TaskDependencyPayload, 0, len(dependencies))
 	for _, dependency := range dependencies {
 		payloads = append(payloads, apicontract.TaskDependencyPayload{
@@ -746,7 +757,7 @@ func taskDependencyPayloadsFromDependencies(dependencies []taskpkg.TaskDependenc
 	return payloads
 }
 
-func taskRunPayloadsFromRuns(runs []taskpkg.TaskRun) []apicontract.TaskRunPayload {
+func taskRunPayloadsFromRuns(runs []taskpkg.Run) []apicontract.TaskRunPayload {
 	payloads := make([]apicontract.TaskRunPayload, 0, len(runs))
 	for _, run := range runs {
 		payloads = append(payloads, taskRunPayloadFromRun(&run))
@@ -754,7 +765,7 @@ func taskRunPayloadsFromRuns(runs []taskpkg.TaskRun) []apicontract.TaskRunPayloa
 	return payloads
 }
 
-func taskRunPayloadFromRun(run *taskpkg.TaskRun) apicontract.TaskRunPayload {
+func taskRunPayloadFromRun(run *taskpkg.Run) apicontract.TaskRunPayload {
 	if run == nil {
 		return apicontract.TaskRunPayload{}
 	}
@@ -786,7 +797,7 @@ func optionalTime(value time.Time) *time.Time {
 	return &cloned
 }
 
-func taskEventPayloadsFromEvents(events []taskpkg.TaskEvent) []apicontract.TaskEventPayload {
+func taskEventPayloadsFromEvents(events []taskpkg.Event) []apicontract.TaskEventPayload {
 	payloads := make([]apicontract.TaskEventPayload, 0, len(events))
 	for _, event := range events {
 		payloads = append(payloads, apicontract.TaskEventPayload{
@@ -803,7 +814,7 @@ func taskEventPayloadsFromEvents(events []taskpkg.TaskEvent) []apicontract.TaskE
 	return payloads
 }
 
-func taskDetailPayloadFromView(view *taskpkg.TaskView) apicontract.TaskDetailPayload {
+func taskDetailPayloadFromView(view *taskpkg.View) apicontract.TaskDetailPayload {
 	if view == nil {
 		return apicontract.TaskDetailPayload{}
 	}
@@ -817,13 +828,14 @@ func taskDetailPayloadFromView(view *taskpkg.TaskView) apicontract.TaskDetailPay
 	}
 }
 
-func filterTaskRuns(runs []taskpkg.TaskRun, query taskpkg.TaskRunQuery) []taskpkg.TaskRun {
-	filtered := make([]taskpkg.TaskRun, 0, len(runs))
+func filterTaskRuns(runs []taskpkg.Run, query taskpkg.RunQuery) []taskpkg.Run {
+	filtered := make([]taskpkg.Run, 0, len(runs))
 	for _, run := range runs {
 		if query.Status.Normalize() != "" && run.Status.Normalize() != query.Status.Normalize() {
 			continue
 		}
-		if strings.TrimSpace(query.SessionID) != "" && strings.TrimSpace(run.SessionID) != strings.TrimSpace(query.SessionID) {
+		if strings.TrimSpace(query.SessionID) != "" &&
+			strings.TrimSpace(run.SessionID) != strings.TrimSpace(query.SessionID) {
 			continue
 		}
 		filtered = append(filtered, run)

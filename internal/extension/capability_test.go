@@ -1,4 +1,4 @@
-package extension
+package extensionpkg
 
 import (
 	"errors"
@@ -208,7 +208,6 @@ func TestCapabilityCheckerAutomationMethodsMapToExpectedCapabilities(t *testing.
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.method, func(t *testing.T) {
 			t.Parallel()
 
@@ -329,9 +328,16 @@ func TestCapabilityCheckerRegisterShouldApplyMarketplaceTierCeiling(t *testing.T
 
 	grant := checker.grants["ext"]
 	if !slices.Equal(grant.actions, []string{"memory/recall", "sessions/list", "skills/list"}) {
-		t.Fatalf("grant.actions = %v, want %v", grant.actions, []string{"memory/recall", "sessions/list", "skills/list"})
+		t.Fatalf(
+			"grant.actions = %v, want %v",
+			grant.actions,
+			[]string{"memory/recall", "sessions/list", "skills/list"},
+		)
 	}
-	if !slices.Equal(grant.security, []string{"memory.read", "observe.read", "session.read", "skills.read", "tool.read"}) {
+	if !slices.Equal(
+		grant.security,
+		[]string{"memory.read", "observe.read", "session.read", "skills.read", "tool.read"},
+	) {
 		t.Fatalf(
 			"grant.security = %v, want %v",
 			grant.security,
@@ -366,7 +372,12 @@ func TestCapabilityCheckerCheckShouldHonorFamilyWildcardGrant(t *testing.T) {
 	}
 }
 
-func newTestCapabilityChecker(extName string, source ExtensionSource, actions []string, security []string) *CapabilityChecker {
+func newTestCapabilityChecker(
+	extName string,
+	source ExtensionSource,
+	actions []string,
+	security []string,
+) *CapabilityChecker {
 	checker := &CapabilityChecker{}
 	checker.Register(extName, source, &Manifest{
 		Actions: ActionsConfig{

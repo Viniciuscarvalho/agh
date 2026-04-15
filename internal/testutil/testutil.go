@@ -51,10 +51,20 @@ func FreeTCPPort(t testing.TB) int {
 		maxAttempts = portSpan
 	)
 
-	start := int((uint64(os.Getpid())*131 + uint64(tcpPortCounter.Add(1))) % portSpan)
-	for attempt := 0; attempt < maxAttempts; attempt++ {
+	pid := os.Getpid()
+	if pid < 0 {
+		t.Fatalf("os.Getpid() = %d, want non-negative pid", pid)
+	}
+
+	listenerContext, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	listenConfig := net.ListenConfig{}
+	seed := int64(pid)*131 + int64(tcpPortCounter.Add(1))
+	start := int(seed % int64(portSpan))
+	for attempt := range maxAttempts {
 		port := minPort + ((start + attempt) % portSpan)
-		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		ln, err := listenConfig.Listen(listenerContext, "tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		if err != nil {
 			continue
 		}

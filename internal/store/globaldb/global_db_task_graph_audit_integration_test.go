@@ -37,7 +37,7 @@ func TestGlobalDBCreateDependencyCycleFailsTransactionally(t *testing.T) {
 		}
 	}
 
-	for _, dependency := range []taskpkg.TaskDependency{
+	for _, dependency := range []taskpkg.Dependency{
 		taskDependencyForTest(taskA.ID, taskB.ID),
 		taskDependencyForTest(taskB.ID, taskC.ID),
 	} {
@@ -83,7 +83,7 @@ func TestGlobalDBTaskRunIdempotencyDeduplicatesDuplicateWrites(t *testing.T) {
 	runTwo.QueuedAt = runTwo.QueuedAt.Add(time.Minute)
 	runTwo.Origin = taskpkg.Origin{Kind: taskpkg.OriginKindAutomation, Ref: "rule:nightly"}
 	runTwo.IdempotencyKey = "idem-duplicate"
-	for _, run := range []taskpkg.TaskRun{runOne, runTwo} {
+	for _, run := range []taskpkg.Run{runOne, runTwo} {
 		if err := first.CreateTaskRun(ctx, run); err != nil {
 			t.Fatalf("CreateTaskRun(%q) error = %v", run.ID, err)
 		}

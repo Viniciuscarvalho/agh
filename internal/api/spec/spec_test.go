@@ -45,7 +45,14 @@ func TestDocumentTracksRequiredFieldsAndEnums(t *testing.T) {
 				sessionSchema := sessionsSchema.Items.Value
 				assertRequired(t, sessionSchema, "id", "agent_name", "state", "created_at", "updated_at")
 				assertNotRequired(t, sessionSchema, "workspace_id", "workspace_path", "stop_reason", "stop_detail")
-				assertEnumValues(t, propertySchema(t, sessionSchema, "state"), "starting", "active", "stopping", "stopped")
+				assertEnumValues(
+					t,
+					propertySchema(t, sessionSchema, "state"),
+					"starting",
+					"active",
+					"stopping",
+					"stopped",
+				)
 				assertEnumValues(t, propertySchema(t, sessionSchema, "stop_reason"),
 					"completed",
 					"user_canceled",
@@ -119,7 +126,18 @@ func TestDocumentTracksRequiredFieldsAndEnums(t *testing.T) {
 				createTrigger := operationFor(t, doc, "/api/automation/triggers", "POST")
 				createTriggerSchema := jsonRequestSchema(t, createTrigger)
 				assertRequired(t, createTriggerSchema, "scope", "name", "agent_name", "prompt", "event")
-				assertNotRequired(t, createTriggerSchema, "workspace_id", "filter", "enabled", "retry", "fire_limit", "webhook_id", "endpoint_slug", "webhook_secret")
+				assertNotRequired(
+					t,
+					createTriggerSchema,
+					"workspace_id",
+					"filter",
+					"enabled",
+					"retry",
+					"fire_limit",
+					"webhook_id",
+					"endpoint_slug",
+					"webhook_secret",
+				)
 				assertEnumValues(t, propertySchema(t, createTriggerSchema, "scope"), "global", "workspace")
 
 				healthOperation := operationFor(t, doc, "/api/observe/health", "GET")
@@ -144,7 +162,16 @@ func TestDocumentTracksRequiredFieldsAndEnums(t *testing.T) {
 				runOperation := operationFor(t, doc, "/api/automation/runs/{id}", "GET")
 				runSchema := jsonResponseSchema(t, runOperation, 200)
 				runPayloadSchema := propertySchema(t, runSchema, "run")
-				assertEnumValues(t, propertySchema(t, runPayloadSchema, "status"), "cancelled", "completed", "delegated", "failed", "running", "scheduled")
+				assertEnumValues(
+					t,
+					propertySchema(t, runPayloadSchema, "status"),
+					"canceled",
+					"completed",
+					"delegated",
+					"failed",
+					"running",
+					"scheduled",
+				)
 			},
 		},
 		{
@@ -154,11 +181,38 @@ func TestDocumentTracksRequiredFieldsAndEnums(t *testing.T) {
 
 				createBridge := operationFor(t, doc, "/api/bridges", "POST")
 				createBridgeSchema := jsonRequestSchema(t, createBridge)
-				assertRequired(t, createBridgeSchema, "scope", "platform", "extension_name", "display_name", "enabled", "status", "routing_policy")
-				assertNotRequired(t, createBridgeSchema, "workspace_id", "dm_policy", "provider_config", "delivery_defaults", "degradation")
+				assertRequired(
+					t,
+					createBridgeSchema,
+					"scope",
+					"platform",
+					"extension_name",
+					"display_name",
+					"enabled",
+					"status",
+					"routing_policy",
+				)
+				assertNotRequired(
+					t,
+					createBridgeSchema,
+					"workspace_id",
+					"dm_policy",
+					"provider_config",
+					"delivery_defaults",
+					"degradation",
+				)
 				assertEnumValues(t, propertySchema(t, createBridgeSchema, "scope"), "global", "workspace")
 				assertEnumValues(t, propertySchema(t, createBridgeSchema, "dm_policy"), "open", "allowlist", "pairing")
-				assertEnumValues(t, propertySchema(t, createBridgeSchema, "status"), "auth_required", "degraded", "disabled", "error", "ready", "starting")
+				assertEnumValues(
+					t,
+					propertySchema(t, createBridgeSchema, "status"),
+					"auth_required",
+					"degraded",
+					"disabled",
+					"error",
+					"ready",
+					"starting",
+				)
 
 				providerConfigSchema := propertySchema(t, createBridgeSchema, "provider_config")
 				assertSchemaIncludesType(t, providerConfigSchema, openapi3.TypeObject)
@@ -211,7 +265,16 @@ func TestDocumentTracksRequiredFieldsAndEnums(t *testing.T) {
 					t.Fatal("expected providers to define an items schema")
 				}
 				providerSchema := providerItems.Items.Value
-				assertRequired(t, providerSchema, "platform", "extension_name", "display_name", "enabled", "state", "health")
+				assertRequired(
+					t,
+					providerSchema,
+					"platform",
+					"extension_name",
+					"display_name",
+					"enabled",
+					"state",
+					"health",
+				)
 				assertNotRequired(t, providerSchema, "description", "health_message", "secret_slots", "config_schema")
 
 				getBridge := operationFor(t, doc, "/api/bridges/{id}", "GET")
@@ -250,7 +313,16 @@ func TestDocumentTracksRequiredFieldsAndEnums(t *testing.T) {
 					t.Fatal("expected bindings to define an items schema")
 				}
 				bindingSchema := bindingsSchema.Items.Value
-				assertRequired(t, bindingSchema, "bridge_instance_id", "binding_name", "vault_ref", "kind", "created_at", "updated_at")
+				assertRequired(
+					t,
+					bindingSchema,
+					"bridge_instance_id",
+					"binding_name",
+					"vault_ref",
+					"kind",
+					"created_at",
+					"updated_at",
+				)
 
 				putBinding := operationFor(t, doc, "/api/bridges/{id}/secret-bindings/{binding_name}", "PUT")
 				assertParameter(t, putBinding, "id", openapi3.ParameterInPath, true)
@@ -294,7 +366,6 @@ func TestDocumentTracksRequiredFieldsAndEnums(t *testing.T) {
 				}
 
 				for _, operation := range operations {
-					operation := operation
 					t.Run(operation.method+" "+operation.path, func(t *testing.T) {
 						t.Parallel()
 						operationFor(t, doc, operation.path, operation.method)
@@ -310,7 +381,17 @@ func TestDocumentTracksRequiredFieldsAndEnums(t *testing.T) {
 				createTask := operationFor(t, doc, "/api/tasks", "POST")
 				createTaskSchema := jsonRequestSchema(t, createTask)
 				assertRequired(t, createTaskSchema, "scope", "title")
-				assertNotRequired(t, createTaskSchema, "id", "identifier", "workspace", "network_channel", "description", "owner", "metadata")
+				assertNotRequired(
+					t,
+					createTaskSchema,
+					"id",
+					"identifier",
+					"workspace",
+					"network_channel",
+					"description",
+					"owner",
+					"metadata",
+				)
 				assertEnumValues(t, propertySchema(t, createTaskSchema, "scope"), "global", "workspace")
 
 				createTaskResponse := jsonResponseSchema(t, createTask, 201)
@@ -324,7 +405,7 @@ func TestDocumentTracksRequiredFieldsAndEnums(t *testing.T) {
 					string(taskpkg.TaskStatusInProgress),
 					string(taskpkg.TaskStatusCompleted),
 					string(taskpkg.TaskStatusFailed),
-					string(taskpkg.TaskStatusCancelled),
+					string(taskpkg.TaskStatusCanceled),
 				)
 				assertEnumValues(t, propertySchema(t, propertySchema(t, taskSchema, "owner"), "kind"),
 					string(taskpkg.OwnerKindHuman),
@@ -369,7 +450,7 @@ func TestDocumentTracksRequiredFieldsAndEnums(t *testing.T) {
 					string(taskpkg.TaskRunStatusRunning),
 					string(taskpkg.TaskRunStatusCompleted),
 					string(taskpkg.TaskRunStatusFailed),
-					string(taskpkg.TaskRunStatusCancelled),
+					string(taskpkg.TaskRunStatusCanceled),
 				)
 				assertEnumValues(t, propertySchema(t, propertySchema(t, runSchema, "origin"), "kind"),
 					string(taskpkg.OriginKindCLI),
@@ -387,7 +468,11 @@ func TestDocumentTracksRequiredFieldsAndEnums(t *testing.T) {
 				addDependencySchema := jsonRequestSchema(t, addDependency)
 				assertRequired(t, addDependencySchema, "depends_on_task_id")
 				assertNotRequired(t, addDependencySchema, "kind")
-				assertEnumValues(t, propertySchema(t, addDependencySchema, "kind"), string(taskpkg.DependencyKindBlocks))
+				assertEnumValues(
+					t,
+					propertySchema(t, addDependencySchema, "kind"),
+					string(taskpkg.DependencyKindBlocks),
+				)
 
 				attachRun := operationFor(t, doc, "/api/task-runs/{id}/attach-session", "POST")
 				attachRunSchema := jsonRequestSchema(t, attachRun)
@@ -397,7 +482,6 @@ func TestDocumentTracksRequiredFieldsAndEnums(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			tt.check(t, doc)
@@ -445,21 +529,20 @@ func TestSchemaCustomizerCoversAdditionalEnums(t *testing.T) {
 		name string
 		typ  any
 	}{
-		{name: "TaskScope", typ: taskpkg.Scope(taskpkg.ScopeGlobal)},
-		{name: "TaskStatus", typ: taskpkg.TaskStatus(taskpkg.TaskStatusReady)},
-		{name: "TaskRunStatus", typ: taskpkg.TaskRunStatus(taskpkg.TaskRunStatusQueued)},
-		{name: "TaskActorKind", typ: taskpkg.ActorKind(taskpkg.ActorKindHuman)},
-		{name: "TaskOwnerKind", typ: taskpkg.OwnerKind(taskpkg.OwnerKindPool)},
-		{name: "TaskOriginKind", typ: taskpkg.OriginKind(taskpkg.OriginKindHTTP)},
-		{name: "TaskDependencyKind", typ: taskpkg.DependencyKind(taskpkg.DependencyKindBlocks)},
-		{name: "HookSkillSource", typ: hooks.HookSkillSource(hooks.HookSkillSourceBundled)},
-		{name: "HookExecutorKind", typ: hooks.HookExecutorKind(hooks.HookExecutorNative)},
+		{name: "TaskScope", typ: taskpkg.ScopeGlobal},
+		{name: "TaskStatus", typ: taskpkg.TaskStatusReady},
+		{name: "TaskRunStatus", typ: taskpkg.TaskRunStatusQueued},
+		{name: "TaskActorKind", typ: taskpkg.ActorKindHuman},
+		{name: "TaskOwnerKind", typ: taskpkg.OwnerKindPool},
+		{name: "TaskOriginKind", typ: taskpkg.OriginKindHTTP},
+		{name: "TaskDependencyKind", typ: taskpkg.DependencyKindBlocks},
+		{name: "HookSkillSource", typ: hooks.HookSkillSourceBundled},
+		{name: "HookExecutorKind", typ: hooks.HookExecutorNative},
 		{name: "ToolSource", typ: tools.ToolSource(0)},
 		{name: "HostAPIMethod", typ: extensionprotocol.HostAPIMethod("memory.read")},
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -505,12 +588,28 @@ func TestEnumHelpersReturnStableValues(t *testing.T) {
 		{
 			name: "task status values",
 			got:  taskStatusValues(),
-			want: []string{"pending", "blocked", "ready", "in_progress", "completed", "failed", "cancelled"},
+			want: []string{
+				string(taskpkg.TaskStatusPending),
+				string(taskpkg.TaskStatusBlocked),
+				string(taskpkg.TaskStatusReady),
+				string(taskpkg.TaskStatusInProgress),
+				string(taskpkg.TaskStatusCompleted),
+				string(taskpkg.TaskStatusFailed),
+				string(taskpkg.TaskStatusCanceled),
+			},
 		},
 		{
 			name: "task run status values",
 			got:  taskRunStatusValues(),
-			want: []string{"queued", "claimed", "starting", "running", "completed", "failed", "cancelled"},
+			want: []string{
+				string(taskpkg.TaskRunStatusQueued),
+				string(taskpkg.TaskRunStatusClaimed),
+				string(taskpkg.TaskRunStatusStarting),
+				string(taskpkg.TaskRunStatusRunning),
+				string(taskpkg.TaskRunStatusCompleted),
+				string(taskpkg.TaskRunStatusFailed),
+				string(taskpkg.TaskRunStatusCanceled),
+			},
 		},
 		{
 			name: "task actor kind values",
@@ -525,7 +624,17 @@ func TestEnumHelpersReturnStableValues(t *testing.T) {
 		{
 			name: "task origin kind values",
 			got:  taskOriginKindValues(),
-			want: []string{"cli", "web", "uds", "http", "automation", "extension", "network", "agent_session", "daemon"},
+			want: []string{
+				"cli",
+				"web",
+				"uds",
+				"http",
+				"automation",
+				"extension",
+				"network",
+				"agent_session",
+				"daemon",
+			},
 		},
 		{
 			name: "task dependency kind values",
@@ -535,7 +644,6 @@ func TestEnumHelpersReturnStableValues(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			if !slices.Equal(tt.got, tt.want) {
@@ -677,7 +785,8 @@ func assertSchemaHasAdditionalProperties(t *testing.T, schema *openapi3.Schema, 
 	t.Helper()
 
 	if want {
-		if schema.AdditionalProperties.Schema == nil && (schema.AdditionalProperties.Has == nil || !*schema.AdditionalProperties.Has) {
+		if schema.AdditionalProperties.Schema == nil &&
+			(schema.AdditionalProperties.Has == nil || !*schema.AdditionalProperties.Has) {
 			t.Fatalf("expected additionalProperties to be allowed, got %#v", schema.AdditionalProperties)
 		}
 		return
@@ -691,10 +800,5 @@ func assertSchemaHasAdditionalProperties(t *testing.T, schema *openapi3.Schema, 
 }
 
 func contains(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, target)
 }

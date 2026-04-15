@@ -88,7 +88,6 @@ func TestClassifyPreviousStop(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -129,7 +128,7 @@ func TestValidateInfrastructure(t *testing.T) {
 
 		h := newHarness(t)
 		missingWorkspace := filepath.Join(t.TempDir(), "missing-workspace")
-		h.resolver.upsert(workspacepkg.ResolvedWorkspace{
+		h.resolver.upsert(&workspacepkg.ResolvedWorkspace{
 			Workspace: workspacepkg.Workspace{
 				ID:      h.workspaceID,
 				RootDir: missingWorkspace,
@@ -198,7 +197,7 @@ func TestValidateInfrastructure(t *testing.T) {
 
 		h := newHarness(t)
 		missingWorkspace := filepath.Join(t.TempDir(), "missing-workspace")
-		h.resolver.upsert(workspacepkg.ResolvedWorkspace{
+		h.resolver.upsert(&workspacepkg.ResolvedWorkspace{
 			Workspace: workspacepkg.Workspace{
 				ID:      h.workspaceID,
 				RootDir: missingWorkspace,

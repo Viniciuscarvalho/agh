@@ -36,9 +36,9 @@ var ErrStubWorkspaceServiceNotImplemented = errors.New("stub workspace service m
 
 type StubSessionManager struct {
 	CreateFn        func(context.Context, session.CreateOpts) (*session.Session, error)
-	ListFn          func() []*session.SessionInfo
-	ListAllFn       func(context.Context) ([]*session.SessionInfo, error)
-	StatusFn        func(context.Context, string) (*session.SessionInfo, error)
+	ListFn          func() []*session.Info
+	ListAllFn       func(context.Context) ([]*session.Info, error)
+	StatusFn        func(context.Context, string) (*session.Info, error)
 	EventsFn        func(context.Context, string, store.EventQuery) ([]store.SessionEvent, error)
 	HistoryFn       func(context.Context, string, store.EventQuery) ([]store.TurnHistory, error)
 	TranscriptFn    func(context.Context, string) ([]transcript.Message, error)
@@ -56,42 +56,50 @@ func (s StubSessionManager) Create(ctx context.Context, opts session.CreateOpts)
 	return nil, nil
 }
 
-func (s StubSessionManager) List() []*session.SessionInfo {
+func (s StubSessionManager) List() []*session.Info {
 	if s.ListFn != nil {
 		return s.ListFn()
 	}
 	if s.ListAllFn != nil {
 		infos, err := s.ListAllFn(context.Background())
 		if err != nil {
-			return []*session.SessionInfo{}
+			return []*session.Info{}
 		}
 		return infos
 	}
 	return nil
 }
 
-func (s StubSessionManager) ListAll(ctx context.Context) ([]*session.SessionInfo, error) {
+func (s StubSessionManager) ListAll(ctx context.Context) ([]*session.Info, error) {
 	if s.ListAllFn != nil {
 		return s.ListAllFn(ctx)
 	}
 	return nil, nil
 }
 
-func (s StubSessionManager) Status(ctx context.Context, id string) (*session.SessionInfo, error) {
+func (s StubSessionManager) Status(ctx context.Context, id string) (*session.Info, error) {
 	if s.StatusFn != nil {
 		return s.StatusFn(ctx, id)
 	}
 	return nil, session.ErrSessionNotFound
 }
 
-func (s StubSessionManager) Events(ctx context.Context, id string, query store.EventQuery) ([]store.SessionEvent, error) {
+func (s StubSessionManager) Events(
+	ctx context.Context,
+	id string,
+	query store.EventQuery,
+) ([]store.SessionEvent, error) {
 	if s.EventsFn != nil {
 		return s.EventsFn(ctx, id, query)
 	}
 	return nil, nil
 }
 
-func (s StubSessionManager) History(ctx context.Context, id string, query store.EventQuery) ([]store.TurnHistory, error) {
+func (s StubSessionManager) History(
+	ctx context.Context,
+	id string,
+	query store.EventQuery,
+) ([]store.TurnHistory, error) {
 	if s.HistoryFn != nil {
 		return s.HistoryFn(ctx, id, query)
 	}
@@ -112,7 +120,12 @@ func (s StubSessionManager) Stop(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s StubSessionManager) StopWithCause(ctx context.Context, id string, cause session.StopCause, detail string) error {
+func (s StubSessionManager) StopWithCause(
+	ctx context.Context,
+	id string,
+	cause session.StopCause,
+	detail string,
+) error {
 	if s.StopWithCauseFn != nil {
 		return s.StopWithCauseFn(ctx, id, cause, detail)
 	}
@@ -180,25 +193,28 @@ type StubAutomationManager struct {
 type StubTaskManager struct {
 	CreateTaskFn       func(context.Context, taskpkg.CreateTask, taskpkg.ActorContext) (*taskpkg.Task, error)
 	CreateChildTaskFn  func(context.Context, string, taskpkg.CreateTask, taskpkg.ActorContext) (*taskpkg.Task, error)
-	UpdateTaskFn       func(context.Context, string, taskpkg.TaskPatch, taskpkg.ActorContext) (*taskpkg.Task, error)
+	UpdateTaskFn       func(context.Context, string, taskpkg.Patch, taskpkg.ActorContext) (*taskpkg.Task, error)
 	CancelTaskFn       func(context.Context, string, taskpkg.CancelTask, taskpkg.ActorContext) (*taskpkg.Task, error)
 	AddDependencyFn    func(context.Context, taskpkg.AddDependency, taskpkg.ActorContext) error
 	RemoveDependencyFn func(context.Context, string, string, taskpkg.ActorContext) error
-	EnqueueRunFn       func(context.Context, taskpkg.EnqueueRun, taskpkg.ActorContext) (*taskpkg.TaskRun, error)
-	ClaimRunFn         func(context.Context, string, taskpkg.ClaimRun, taskpkg.ActorContext) (*taskpkg.TaskRun, error)
-	StartRunFn         func(context.Context, string, taskpkg.StartRun, taskpkg.ActorContext) (*taskpkg.TaskRun, error)
-	AttachRunSessionFn func(context.Context, string, string, taskpkg.ActorContext) (*taskpkg.TaskRun, error)
-	CompleteRunFn      func(context.Context, string, taskpkg.RunResult, taskpkg.ActorContext) (*taskpkg.TaskRun, error)
-	FailRunFn          func(context.Context, string, taskpkg.RunFailure, taskpkg.ActorContext) (*taskpkg.TaskRun, error)
-	CancelRunFn        func(context.Context, string, taskpkg.CancelRun, taskpkg.ActorContext) (*taskpkg.TaskRun, error)
-	GetTaskFn          func(context.Context, string, taskpkg.ActorContext) (*taskpkg.TaskView, error)
-	ListTaskRunsFn     func(context.Context, string, taskpkg.TaskRunQuery, taskpkg.ActorContext) ([]taskpkg.TaskRun, error)
-	ListTasksFn        func(context.Context, taskpkg.TaskQuery, taskpkg.ActorContext) ([]taskpkg.TaskSummary, error)
+	EnqueueRunFn       func(context.Context, taskpkg.EnqueueRun, taskpkg.ActorContext) (*taskpkg.Run, error)
+	ClaimRunFn         func(context.Context, string, taskpkg.ClaimRun, taskpkg.ActorContext) (*taskpkg.Run, error)
+	StartRunFn         func(context.Context, string, taskpkg.StartRun, taskpkg.ActorContext) (*taskpkg.Run, error)
+	AttachRunSessionFn func(context.Context, string, string, taskpkg.ActorContext) (*taskpkg.Run, error)
+	CompleteRunFn      func(context.Context, string, taskpkg.RunResult, taskpkg.ActorContext) (*taskpkg.Run, error)
+	FailRunFn          func(context.Context, string, taskpkg.RunFailure, taskpkg.ActorContext) (*taskpkg.Run, error)
+	CancelRunFn        func(context.Context, string, taskpkg.CancelRun, taskpkg.ActorContext) (*taskpkg.Run, error)
+	GetTaskFn          func(context.Context, string, taskpkg.ActorContext) (*taskpkg.View, error)
+	ListTaskRunsFn     func(context.Context, string, taskpkg.RunQuery, taskpkg.ActorContext) ([]taskpkg.Run, error)
+	ListTasksFn        func(context.Context, taskpkg.Query, taskpkg.ActorContext) ([]taskpkg.Summary, error)
 }
 
 var _ core.TaskService = (*StubTaskManager)(nil)
 
-func (s StubAutomationManager) ListJobs(ctx context.Context, query automationpkg.JobListQuery) ([]automationpkg.Job, error) {
+func (s StubAutomationManager) ListJobs(
+	ctx context.Context,
+	query automationpkg.JobListQuery,
+) ([]automationpkg.Job, error) {
 	if s.ListJobsFn != nil {
 		return s.ListJobsFn(ctx, query)
 	}
@@ -250,7 +266,10 @@ func (s StubAutomationManager) TriggerJob(ctx context.Context, id string) (autom
 	return automationpkg.Run{}, nil
 }
 
-func (s StubAutomationManager) ListTriggers(ctx context.Context, query automationpkg.TriggerListQuery) ([]automationpkg.Trigger, error) {
+func (s StubAutomationManager) ListTriggers(
+	ctx context.Context,
+	query automationpkg.TriggerListQuery,
+) ([]automationpkg.Trigger, error) {
 	if s.ListTriggersFn != nil {
 		return s.ListTriggersFn(ctx, query)
 	}
@@ -274,14 +293,22 @@ func (s StubAutomationManager) GetTrigger(ctx context.Context, id string) (autom
 	return automationpkg.Trigger{}, automationpkg.ErrTriggerNotFound
 }
 
-func (s StubAutomationManager) CreateTrigger(ctx context.Context, trigger automationpkg.Trigger, secret string) (automationpkg.Trigger, error) {
+func (s StubAutomationManager) CreateTrigger(
+	ctx context.Context,
+	trigger automationpkg.Trigger,
+	secret string,
+) (automationpkg.Trigger, error) {
 	if s.CreateTriggerFn != nil {
 		return s.CreateTriggerFn(ctx, trigger, secret)
 	}
 	return trigger, nil
 }
 
-func (s StubAutomationManager) UpdateTrigger(ctx context.Context, trigger automationpkg.Trigger, secret *string) (automationpkg.Trigger, error) {
+func (s StubAutomationManager) UpdateTrigger(
+	ctx context.Context,
+	trigger automationpkg.Trigger,
+	secret *string,
+) (automationpkg.Trigger, error) {
 	if s.UpdateTriggerFn != nil {
 		return s.UpdateTriggerFn(ctx, trigger, secret)
 	}
@@ -295,7 +322,10 @@ func (s StubAutomationManager) DeleteTrigger(ctx context.Context, id string) err
 	return nil
 }
 
-func (s StubAutomationManager) ListRuns(ctx context.Context, query automationpkg.RunQuery) ([]automationpkg.Run, error) {
+func (s StubAutomationManager) ListRuns(
+	ctx context.Context,
+	query automationpkg.RunQuery,
+) ([]automationpkg.Run, error) {
 	if s.ListRunsFn != nil {
 		return s.ListRunsFn(ctx, query)
 	}
@@ -333,126 +363,208 @@ func (s StubAutomationManager) SetJobEnabled(ctx context.Context, id string, ena
 	return automationpkg.Job{}, nil
 }
 
-func (s StubAutomationManager) SetTriggerEnabled(ctx context.Context, id string, enabled bool) (automationpkg.Trigger, error) {
+func (s StubAutomationManager) SetTriggerEnabled(
+	ctx context.Context,
+	id string,
+	enabled bool,
+) (automationpkg.Trigger, error) {
 	if s.SetTriggerEnabledFn != nil {
 		return s.SetTriggerEnabledFn(ctx, id, enabled)
 	}
 	return automationpkg.Trigger{}, nil
 }
 
-func (s StubAutomationManager) HandleWebhook(ctx context.Context, request automationpkg.WebhookRequest) (automationpkg.TriggerResult, error) {
+func (s StubAutomationManager) HandleWebhook(
+	ctx context.Context,
+	request automationpkg.WebhookRequest,
+) (automationpkg.TriggerResult, error) {
 	if s.HandleWebhookFn != nil {
 		return s.HandleWebhookFn(ctx, request)
 	}
 	return automationpkg.TriggerResult{}, nil
 }
 
-func (s StubTaskManager) CreateTask(ctx context.Context, spec taskpkg.CreateTask, actor taskpkg.ActorContext) (*taskpkg.Task, error) {
+func (s StubTaskManager) CreateTask(
+	ctx context.Context,
+	spec taskpkg.CreateTask,
+	actor taskpkg.ActorContext,
+) (*taskpkg.Task, error) {
 	if s.CreateTaskFn != nil {
 		return s.CreateTaskFn(ctx, spec, actor)
 	}
 	return nil, taskpkg.ErrTaskNotFound
 }
 
-func (s StubTaskManager) CreateChildTask(ctx context.Context, parentTaskID string, spec taskpkg.CreateTask, actor taskpkg.ActorContext) (*taskpkg.Task, error) {
+func (s StubTaskManager) CreateChildTask(
+	ctx context.Context,
+	parentTaskID string,
+	spec taskpkg.CreateTask,
+	actor taskpkg.ActorContext,
+) (*taskpkg.Task, error) {
 	if s.CreateChildTaskFn != nil {
 		return s.CreateChildTaskFn(ctx, parentTaskID, spec, actor)
 	}
 	return nil, taskpkg.ErrTaskNotFound
 }
 
-func (s StubTaskManager) UpdateTask(ctx context.Context, id string, patch taskpkg.TaskPatch, actor taskpkg.ActorContext) (*taskpkg.Task, error) {
+func (s StubTaskManager) UpdateTask(
+	ctx context.Context,
+	id string,
+	patch taskpkg.Patch,
+	actor taskpkg.ActorContext,
+) (*taskpkg.Task, error) {
 	if s.UpdateTaskFn != nil {
 		return s.UpdateTaskFn(ctx, id, patch, actor)
 	}
 	return nil, taskpkg.ErrTaskNotFound
 }
 
-func (s StubTaskManager) CancelTask(ctx context.Context, id string, req taskpkg.CancelTask, actor taskpkg.ActorContext) (*taskpkg.Task, error) {
+func (s StubTaskManager) CancelTask(
+	ctx context.Context,
+	id string,
+	req taskpkg.CancelTask,
+	actor taskpkg.ActorContext,
+) (*taskpkg.Task, error) {
 	if s.CancelTaskFn != nil {
 		return s.CancelTaskFn(ctx, id, req, actor)
 	}
 	return nil, taskpkg.ErrTaskNotFound
 }
 
-func (s StubTaskManager) AddDependency(ctx context.Context, spec taskpkg.AddDependency, actor taskpkg.ActorContext) error {
+func (s StubTaskManager) AddDependency(
+	ctx context.Context,
+	spec taskpkg.AddDependency,
+	actor taskpkg.ActorContext,
+) error {
 	if s.AddDependencyFn != nil {
 		return s.AddDependencyFn(ctx, spec, actor)
 	}
 	return taskpkg.ErrTaskNotFound
 }
 
-func (s StubTaskManager) RemoveDependency(ctx context.Context, taskID string, dependsOnID string, actor taskpkg.ActorContext) error {
+func (s StubTaskManager) RemoveDependency(
+	ctx context.Context,
+	taskID string,
+	dependsOnID string,
+	actor taskpkg.ActorContext,
+) error {
 	if s.RemoveDependencyFn != nil {
 		return s.RemoveDependencyFn(ctx, taskID, dependsOnID, actor)
 	}
 	return taskpkg.ErrTaskNotFound
 }
 
-func (s StubTaskManager) EnqueueRun(ctx context.Context, spec taskpkg.EnqueueRun, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
+func (s StubTaskManager) EnqueueRun(
+	ctx context.Context,
+	spec taskpkg.EnqueueRun,
+	actor taskpkg.ActorContext,
+) (*taskpkg.Run, error) {
 	if s.EnqueueRunFn != nil {
 		return s.EnqueueRunFn(ctx, spec, actor)
 	}
 	return nil, taskpkg.ErrTaskRunNotFound
 }
 
-func (s StubTaskManager) ClaimRun(ctx context.Context, runID string, claim taskpkg.ClaimRun, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
+func (s StubTaskManager) ClaimRun(
+	ctx context.Context,
+	runID string,
+	claim taskpkg.ClaimRun,
+	actor taskpkg.ActorContext,
+) (*taskpkg.Run, error) {
 	if s.ClaimRunFn != nil {
 		return s.ClaimRunFn(ctx, runID, claim, actor)
 	}
 	return nil, taskpkg.ErrTaskRunNotFound
 }
 
-func (s StubTaskManager) StartRun(ctx context.Context, runID string, req taskpkg.StartRun, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
+func (s StubTaskManager) StartRun(
+	ctx context.Context,
+	runID string,
+	req taskpkg.StartRun,
+	actor taskpkg.ActorContext,
+) (*taskpkg.Run, error) {
 	if s.StartRunFn != nil {
 		return s.StartRunFn(ctx, runID, req, actor)
 	}
 	return nil, taskpkg.ErrTaskRunNotFound
 }
 
-func (s StubTaskManager) AttachRunSession(ctx context.Context, runID string, sessionID string, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
+func (s StubTaskManager) AttachRunSession(
+	ctx context.Context,
+	runID string,
+	sessionID string,
+	actor taskpkg.ActorContext,
+) (*taskpkg.Run, error) {
 	if s.AttachRunSessionFn != nil {
 		return s.AttachRunSessionFn(ctx, runID, sessionID, actor)
 	}
 	return nil, taskpkg.ErrTaskRunNotFound
 }
 
-func (s StubTaskManager) CompleteRun(ctx context.Context, runID string, result taskpkg.RunResult, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
+func (s StubTaskManager) CompleteRun(
+	ctx context.Context,
+	runID string,
+	result taskpkg.RunResult,
+	actor taskpkg.ActorContext,
+) (*taskpkg.Run, error) {
 	if s.CompleteRunFn != nil {
 		return s.CompleteRunFn(ctx, runID, result, actor)
 	}
 	return nil, taskpkg.ErrTaskRunNotFound
 }
 
-func (s StubTaskManager) FailRun(ctx context.Context, runID string, failure taskpkg.RunFailure, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
+func (s StubTaskManager) FailRun(
+	ctx context.Context,
+	runID string,
+	failure taskpkg.RunFailure,
+	actor taskpkg.ActorContext,
+) (*taskpkg.Run, error) {
 	if s.FailRunFn != nil {
 		return s.FailRunFn(ctx, runID, failure, actor)
 	}
 	return nil, taskpkg.ErrTaskRunNotFound
 }
 
-func (s StubTaskManager) CancelRun(ctx context.Context, runID string, req taskpkg.CancelRun, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
+func (s StubTaskManager) CancelRun(
+	ctx context.Context,
+	runID string,
+	req taskpkg.CancelRun,
+	actor taskpkg.ActorContext,
+) (*taskpkg.Run, error) {
 	if s.CancelRunFn != nil {
 		return s.CancelRunFn(ctx, runID, req, actor)
 	}
 	return nil, taskpkg.ErrTaskRunNotFound
 }
 
-func (s StubTaskManager) GetTask(ctx context.Context, id string, actor taskpkg.ActorContext) (*taskpkg.TaskView, error) {
+func (s StubTaskManager) GetTask(
+	ctx context.Context,
+	id string,
+	actor taskpkg.ActorContext,
+) (*taskpkg.View, error) {
 	if s.GetTaskFn != nil {
 		return s.GetTaskFn(ctx, id, actor)
 	}
 	return nil, taskpkg.ErrTaskNotFound
 }
 
-func (s StubTaskManager) ListTaskRuns(ctx context.Context, taskID string, query taskpkg.TaskRunQuery, actor taskpkg.ActorContext) ([]taskpkg.TaskRun, error) {
+func (s StubTaskManager) ListTaskRuns(
+	ctx context.Context,
+	taskID string,
+	query taskpkg.RunQuery,
+	actor taskpkg.ActorContext,
+) ([]taskpkg.Run, error) {
 	if s.ListTaskRunsFn != nil {
 		return s.ListTaskRunsFn(ctx, taskID, query, actor)
 	}
 	return nil, nil
 }
 
-func (s StubTaskManager) ListTasks(ctx context.Context, query taskpkg.TaskQuery, actor taskpkg.ActorContext) ([]taskpkg.TaskSummary, error) {
+func (s StubTaskManager) ListTasks(
+	ctx context.Context,
+	query taskpkg.Query,
+	actor taskpkg.ActorContext,
+) ([]taskpkg.Summary, error) {
 	if s.ListTasksFn != nil {
 		return s.ListTasksFn(ctx, query, actor)
 	}
@@ -470,7 +582,7 @@ type StubNetworkService struct {
 	SendFn         func(context.Context, network.SendRequest) (string, error)
 	ListPeersFn    func(context.Context, string) ([]network.PeerInfo, error)
 	ListChannelsFn func(context.Context) ([]network.ChannelInfo, error)
-	StatusFn       func(context.Context) (*network.NetworkStatus, error)
+	StatusFn       func(context.Context) (*network.Status, error)
 	InboxFn        func(context.Context, string) ([]network.Envelope, error)
 }
 
@@ -500,7 +612,7 @@ func (s StubNetworkService) ListChannels(ctx context.Context) ([]network.Channel
 	return nil, nil
 }
 
-func (s StubNetworkService) Status(ctx context.Context) (*network.NetworkStatus, error) {
+func (s StubNetworkService) Status(ctx context.Context) (*network.Status, error) {
 	if s.StatusFn != nil {
 		return s.StatusFn(ctx)
 	}
@@ -514,14 +626,20 @@ func (s StubNetworkService) Inbox(ctx context.Context, sessionID string) ([]netw
 	return nil, nil
 }
 
-func (s StubNetworkStore) ListNetworkAudit(ctx context.Context, query store.NetworkAuditQuery) ([]store.NetworkAuditEntry, error) {
+func (s StubNetworkStore) ListNetworkAudit(
+	ctx context.Context,
+	query store.NetworkAuditQuery,
+) ([]store.NetworkAuditEntry, error) {
 	if s.ListNetworkAuditFn != nil {
 		return s.ListNetworkAuditFn(ctx, query)
 	}
 	return nil, nil
 }
 
-func (s StubNetworkStore) ListNetworkMessages(ctx context.Context, query store.NetworkMessageQuery) ([]store.NetworkMessageEntry, error) {
+func (s StubNetworkStore) ListNetworkMessages(
+	ctx context.Context,
+	query store.NetworkMessageQuery,
+) ([]store.NetworkMessageEntry, error) {
 	if s.ListNetworkMessagesFn != nil {
 		return s.ListNetworkMessagesFn(ctx, query)
 	}
@@ -542,7 +660,10 @@ func (s StubObserver) QueryBridgeHealth(ctx context.Context) ([]observe.BridgeIn
 	return nil, nil
 }
 
-func (s StubObserver) QueryHookCatalog(ctx context.Context, filter hookspkg.CatalogFilter) ([]hookspkg.CatalogEntry, error) {
+func (s StubObserver) QueryHookCatalog(
+	ctx context.Context,
+	filter hookspkg.CatalogFilter,
+) ([]hookspkg.CatalogEntry, error) {
 	if s.QueryHookCatalogFn != nil {
 		return s.QueryHookCatalogFn(ctx, filter)
 	}
@@ -556,7 +677,10 @@ func (s StubObserver) QueryHookRuns(ctx context.Context, query store.HookRunQuer
 	return nil, nil
 }
 
-func (s StubObserver) QueryHookEvents(ctx context.Context, filter hookspkg.EventFilter) ([]hookspkg.EventDescriptor, error) {
+func (s StubObserver) QueryHookEvents(
+	ctx context.Context,
+	filter hookspkg.EventFilter,
+) ([]hookspkg.EventDescriptor, error) {
 	if s.QueryHookEventsFn != nil {
 		return s.QueryHookEventsFn(ctx, filter)
 	}
@@ -578,15 +702,21 @@ type StubBridgeService struct {
 	ResolveOrCreateRouteFn  func(context.Context, bridgepkg.BridgeRoute) (*bridgepkg.BridgeRoute, bool, error)
 	UpsertRouteFn           func(context.Context, bridgepkg.BridgeRoute) (*bridgepkg.BridgeRoute, error)
 	ListRoutesFn            func(context.Context, string) ([]bridgepkg.BridgeRoute, error)
-	ResolveDeliveryTargetFn func(context.Context, bridgepkg.ResolveDeliveryTargetRequest) (*bridgepkg.DeliveryTarget, error)
-	StartInstanceFn         func(context.Context, string) (*bridgepkg.BridgeInstance, error)
-	StopInstanceFn          func(context.Context, string) (*bridgepkg.BridgeInstance, error)
-	RestartInstanceFn       func(context.Context, string) (*bridgepkg.BridgeInstance, error)
+	ResolveDeliveryTargetFn func(
+		context.Context,
+		bridgepkg.ResolveDeliveryTargetRequest,
+	) (*bridgepkg.DeliveryTarget, error)
+	StartInstanceFn   func(context.Context, string) (*bridgepkg.BridgeInstance, error)
+	StopInstanceFn    func(context.Context, string) (*bridgepkg.BridgeInstance, error)
+	RestartInstanceFn func(context.Context, string) (*bridgepkg.BridgeInstance, error)
 }
 
 var _ core.BridgeService = (*StubBridgeService)(nil)
 
-func (s StubBridgeService) CreateInstance(ctx context.Context, req bridgepkg.CreateInstanceRequest) (*bridgepkg.BridgeInstance, error) {
+func (s StubBridgeService) CreateInstance(
+	ctx context.Context,
+	req bridgepkg.CreateInstanceRequest,
+) (*bridgepkg.BridgeInstance, error) {
 	if s.CreateInstanceFn != nil {
 		return s.CreateInstanceFn(ctx, req)
 	}
@@ -614,7 +744,10 @@ func (s StubBridgeService) ListProviders(ctx context.Context) ([]bridgepkg.Bridg
 	return nil, nil
 }
 
-func (s StubBridgeService) ListSecretBindings(ctx context.Context, bridgeInstanceID string) ([]bridgepkg.BridgeSecretBinding, error) {
+func (s StubBridgeService) ListSecretBindings(
+	ctx context.Context,
+	bridgeInstanceID string,
+) ([]bridgepkg.BridgeSecretBinding, error) {
 	if s.ListSecretBindingsFn != nil {
 		return s.ListSecretBindingsFn(ctx, bridgeInstanceID)
 	}
@@ -635,21 +768,30 @@ func (s StubBridgeService) DeleteSecretBinding(ctx context.Context, bridgeInstan
 	return bridgepkg.ErrBridgeSecretBindingNotFound
 }
 
-func (s StubBridgeService) UpdateInstance(ctx context.Context, req bridgepkg.UpdateInstanceRequest) (*bridgepkg.BridgeInstance, error) {
+func (s StubBridgeService) UpdateInstance(
+	ctx context.Context,
+	req bridgepkg.UpdateInstanceRequest,
+) (*bridgepkg.BridgeInstance, error) {
 	if s.UpdateInstanceFn != nil {
 		return s.UpdateInstanceFn(ctx, req)
 	}
 	return nil, bridgepkg.ErrBridgeInstanceNotFound
 }
 
-func (s StubBridgeService) UpdateInstanceState(ctx context.Context, req bridgepkg.UpdateInstanceStateRequest) (*bridgepkg.BridgeInstance, error) {
+func (s StubBridgeService) UpdateInstanceState(
+	ctx context.Context,
+	req bridgepkg.UpdateInstanceStateRequest,
+) (*bridgepkg.BridgeInstance, error) {
 	if s.UpdateInstanceStateFn != nil {
 		return s.UpdateInstanceStateFn(ctx, req)
 	}
 	return nil, bridgepkg.ErrBridgeInstanceNotFound
 }
 
-func (s StubBridgeService) BuildRoutingKey(ctx context.Context, key bridgepkg.RoutingKey) (bridgepkg.RoutingKey, error) {
+func (s StubBridgeService) BuildRoutingKey(
+	ctx context.Context,
+	key bridgepkg.RoutingKey,
+) (bridgepkg.RoutingKey, error) {
 	if s.BuildRoutingKeyFn != nil {
 		return s.BuildRoutingKeyFn(ctx, key)
 	}
@@ -663,14 +805,20 @@ func (s StubBridgeService) ResolveRoute(ctx context.Context, key bridgepkg.Routi
 	return nil, bridgepkg.ErrBridgeRouteNotFound
 }
 
-func (s StubBridgeService) ResolveOrCreateRoute(ctx context.Context, route bridgepkg.BridgeRoute) (*bridgepkg.BridgeRoute, bool, error) {
+func (s StubBridgeService) ResolveOrCreateRoute(
+	ctx context.Context,
+	route bridgepkg.BridgeRoute,
+) (*bridgepkg.BridgeRoute, bool, error) {
 	if s.ResolveOrCreateRouteFn != nil {
 		return s.ResolveOrCreateRouteFn(ctx, route)
 	}
 	return nil, false, bridgepkg.ErrBridgeRouteNotFound
 }
 
-func (s StubBridgeService) UpsertRoute(ctx context.Context, route bridgepkg.BridgeRoute) (*bridgepkg.BridgeRoute, error) {
+func (s StubBridgeService) UpsertRoute(
+	ctx context.Context,
+	route bridgepkg.BridgeRoute,
+) (*bridgepkg.BridgeRoute, error) {
 	if s.UpsertRouteFn != nil {
 		return s.UpsertRouteFn(ctx, route)
 	}
@@ -684,7 +832,10 @@ func (s StubBridgeService) ListRoutes(ctx context.Context, bridgeInstanceID stri
 	return nil, nil
 }
 
-func (s StubBridgeService) ResolveDeliveryTarget(ctx context.Context, req bridgepkg.ResolveDeliveryTargetRequest) (*bridgepkg.DeliveryTarget, error) {
+func (s StubBridgeService) ResolveDeliveryTarget(
+	ctx context.Context,
+	req bridgepkg.ResolveDeliveryTargetRequest,
+) (*bridgepkg.DeliveryTarget, error) {
 	if s.ResolveDeliveryTargetFn != nil {
 		return s.ResolveDeliveryTargetFn(ctx, req)
 	}
@@ -722,7 +873,10 @@ type StubWorkspaceService struct {
 	ResolveOrRegisterFn func(context.Context, string) (workspacepkg.ResolvedWorkspace, error)
 }
 
-func (s StubWorkspaceService) Register(ctx context.Context, opts workspacepkg.RegisterOptions) (workspacepkg.Workspace, error) {
+func (s StubWorkspaceService) Register(
+	ctx context.Context,
+	opts workspacepkg.RegisterOptions,
+) (workspacepkg.Workspace, error) {
 	if s.RegisterFn != nil {
 		return s.RegisterFn(ctx, opts)
 	}
@@ -764,7 +918,10 @@ func (s StubWorkspaceService) Resolve(ctx context.Context, ref string) (workspac
 	return workspacepkg.ResolvedWorkspace{}, workspacepkg.ErrWorkspaceNotFound
 }
 
-func (s StubWorkspaceService) ResolveOrRegister(ctx context.Context, path string) (workspacepkg.ResolvedWorkspace, error) {
+func (s StubWorkspaceService) ResolveOrRegister(
+	ctx context.Context,
+	path string,
+) (workspacepkg.ResolvedWorkspace, error) {
 	if s.ResolveOrRegisterFn != nil {
 		return s.ResolveOrRegisterFn(ctx, path)
 	}
@@ -774,7 +931,7 @@ func (s StubWorkspaceService) ResolveOrRegister(ctx context.Context, path string
 type StubSkillsRegistry struct {
 	GetFn          func(name string) (*skills.Skill, bool)
 	ListFn         func() []*skills.Skill
-	ForWorkspaceFn func(ctx context.Context, resolved workspacepkg.ResolvedWorkspace) ([]*skills.Skill, error)
+	ForWorkspaceFn func(ctx context.Context, resolved *workspacepkg.ResolvedWorkspace) ([]*skills.Skill, error)
 	LoadContentFn  func(ctx context.Context, skill *skills.Skill) (string, error)
 	SetEnabledFn   func(name string, resolved *workspacepkg.ResolvedWorkspace, enabled bool) error
 }
@@ -793,7 +950,10 @@ func (s StubSkillsRegistry) List() []*skills.Skill {
 	return nil
 }
 
-func (s StubSkillsRegistry) ForWorkspace(ctx context.Context, resolved workspacepkg.ResolvedWorkspace) ([]*skills.Skill, error) {
+func (s StubSkillsRegistry) ForWorkspace(
+	ctx context.Context,
+	resolved *workspacepkg.ResolvedWorkspace,
+) ([]*skills.Skill, error) {
 	if s.ForWorkspaceFn != nil {
 		return s.ForWorkspaceFn(ctx, resolved)
 	}
@@ -847,14 +1007,14 @@ permissions: approve-reads
 ---
 
 You are `+name+`.
-`), 0o644); err != nil {
+`), 0o600); err != nil {
 		t.Fatalf("os.WriteFile(AGENT.md) error = %v", err)
 	}
 }
 
-func NewSessionInfo(id string) *session.SessionInfo {
+func NewSessionInfo(id string) *session.Info {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
-	return &session.SessionInfo{
+	return &session.Info{
 		ID:          id,
 		Name:        "demo",
 		AgentName:   "coder",
@@ -885,10 +1045,21 @@ func PerformRequest(t *testing.T, engine http.Handler, method, path string, body
 	return PerformRequestWithHeaders(t, engine, method, path, body, nil)
 }
 
-func PerformRequestWithHeaders(t *testing.T, engine http.Handler, method, path string, body []byte, headers map[string]string) *httptest.ResponseRecorder {
+func PerformRequestWithHeaders(
+	t *testing.T,
+	engine http.Handler,
+	method, path string,
+	body []byte,
+	headers map[string]string,
+) *httptest.ResponseRecorder {
 	t.Helper()
 
-	req := httptest.NewRequest(method, path, bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		method,
+		path,
+		bytes.NewReader(body),
+	)
 	if len(body) > 0 {
 		req.Header.Set("Content-Type", "application/json")
 	}

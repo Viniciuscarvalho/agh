@@ -23,7 +23,7 @@ func newAgentListCommand(deps commandDeps) *cobra.Command {
 		Use:   "list",
 		Short: "List installed agent definitions",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -43,7 +43,7 @@ func newAgentInfoCommand(deps commandDeps) *cobra.Command {
 		Short: "Show one agent definition",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}

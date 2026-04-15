@@ -14,8 +14,9 @@ import {
   Waypoints,
   Wrench,
 } from "lucide-react";
-import { useMemo, type ReactNode } from "react";
+import { type ReactNode } from "react";
 
+import { useSessionsByAgent } from "@/hooks/use-sessions-by-agent";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
@@ -23,27 +24,6 @@ import { AgentIcon, type AgentPayload } from "@/systems/agent";
 import { ConnectionStatus } from "@/systems/daemon";
 import type { SessionPayload, SessionState as SessionStateType } from "@/systems/session";
 import type { WorkspacePayload } from "@/systems/workspace";
-
-function useSessionsByAgent(sessions: SessionPayload[] | undefined) {
-  return useMemo(() => {
-    if (!sessions) return {};
-
-    const grouped: Record<string, SessionPayload[]> = {};
-    for (const session of sessions) {
-      const key = session.agent_name;
-      if (!grouped[key]) grouped[key] = [];
-      grouped[key].push(session);
-    }
-
-    for (const key of Object.keys(grouped)) {
-      grouped[key].sort(
-        (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-      );
-    }
-
-    return grouped;
-  }, [sessions]);
-}
 
 interface IconRailProps {
   workspaces: WorkspacePayload[] | undefined;

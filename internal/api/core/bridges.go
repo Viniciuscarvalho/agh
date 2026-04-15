@@ -82,7 +82,11 @@ func (h *BaseHandlers) CreateBridge(c *gin.Context) {
 
 	var req contract.CreateBridgeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.respondError(c, http.StatusBadRequest, fmt.Errorf("%s: decode create bridge request: %w", h.transportName(), err))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			fmt.Errorf("%s: decode create bridge request: %w", h.transportName(), err),
+		)
 		return
 	}
 
@@ -126,7 +130,11 @@ func (h *BaseHandlers) UpdateBridge(c *gin.Context) {
 
 	var req contract.UpdateBridgeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.respondError(c, http.StatusBadRequest, fmt.Errorf("%s: decode update bridge request: %w", h.transportName(), err))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			fmt.Errorf("%s: decode update bridge request: %w", h.transportName(), err),
+		)
 		return
 	}
 
@@ -198,7 +206,7 @@ func (h *BaseHandlers) StreamBridgeHealth(c *gin.Context) {
 		case <-ticker.C:
 			nextSnapshot, pollErr := h.bridgeHealthStreamSnapshot(c.Request.Context())
 			if pollErr != nil {
-				_ = WriteSSE(writer, SSEMessage{
+				h.writeSSEBestEffort(writer, SSEMessage{
 					Name: "error",
 					Data: contract.ErrorPayload{Error: pollErr.Error()},
 				})
@@ -260,7 +268,11 @@ func (h *BaseHandlers) PutBridgeSecretBinding(c *gin.Context) {
 
 	var req contract.PutBridgeSecretBindingRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.respondError(c, http.StatusBadRequest, fmt.Errorf("%s: decode bridge secret binding request: %w", h.transportName(), err))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			fmt.Errorf("%s: decode bridge secret binding request: %w", h.transportName(), err),
+		)
 		return
 	}
 
@@ -302,7 +314,11 @@ func (h *BaseHandlers) TestBridgeDelivery(c *gin.Context) {
 
 	var req contract.BridgeTestDeliveryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.respondError(c, http.StatusBadRequest, fmt.Errorf("%s: decode test delivery request: %w", h.transportName(), err))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			fmt.Errorf("%s: decode test delivery request: %w", h.transportName(), err),
+		)
 		return
 	}
 
@@ -324,7 +340,10 @@ func (h *BaseHandlers) TestBridgeDelivery(c *gin.Context) {
 	})
 }
 
-func (h *BaseHandlers) transitionBridge(c *gin.Context, fn func(*BaseHandlers, *gin.Context) (*contract.BridgeResponse, error)) {
+func (h *BaseHandlers) transitionBridge(
+	c *gin.Context,
+	fn func(*BaseHandlers, *gin.Context) (*contract.BridgeResponse, error),
+) {
 	if h == nil {
 		RespondError(c, http.StatusServiceUnavailable, errBridgeServiceUnavailable, false)
 		return
@@ -411,7 +430,10 @@ func (h *BaseHandlers) respondBridge(c *gin.Context, status int, instance bridge
 	c.JSON(status, *resp)
 }
 
-func (h *BaseHandlers) bridgeResponse(ctx context.Context, instance bridgepkg.BridgeInstance) (*contract.BridgeResponse, error) {
+func (h *BaseHandlers) bridgeResponse(
+	ctx context.Context,
+	instance bridgepkg.BridgeInstance,
+) (*contract.BridgeResponse, error) {
 	health, err := h.bridgeHealthLookup(ctx, strings.TrimSpace(instance.ID))
 	if err != nil {
 		return nil, err
@@ -438,7 +460,10 @@ func (h *BaseHandlers) bridgeHealthStreamSnapshot(ctx context.Context) (contract
 	}, nil
 }
 
-func (h *BaseHandlers) writeBridgeHealthSnapshot(writer FlushWriter, snapshot contract.BridgeHealthStreamPayload) error {
+func (h *BaseHandlers) writeBridgeHealthSnapshot(
+	writer FlushWriter,
+	snapshot contract.BridgeHealthStreamPayload,
+) error {
 	return WriteSSE(writer, SSEMessage{
 		ID:   bridgeHealthSnapshotID(snapshot),
 		Name: "snapshot",
@@ -475,7 +500,10 @@ func (h *BaseHandlers) bridgeHealthMap(ctx context.Context) (map[string]contract
 	return health, nil
 }
 
-func (h *BaseHandlers) bridgeHealthLookup(ctx context.Context, bridgeInstanceID string) (contract.BridgeHealthPayload, error) {
+func (h *BaseHandlers) bridgeHealthLookup(
+	ctx context.Context,
+	bridgeInstanceID string,
+) (contract.BridgeHealthPayload, error) {
 	healthMap, err := h.bridgeHealthMap(ctx)
 	if err != nil {
 		return contract.BridgeHealthPayload{}, err

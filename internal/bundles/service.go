@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -111,7 +112,7 @@ type Service struct {
 	bridges           BridgeManagedSyncer
 	extensions        ExtensionInfoLister
 	loadExtension     ExtensionLoader
-	workspaceResolver workspacepkg.WorkspaceResolver
+	workspaceResolver workspacepkg.RuntimeResolver
 	configuredDefault string
 	logger            *slog.Logger
 	now               func() time.Time
@@ -135,7 +136,7 @@ func WithBridges(syncer BridgeManagedSyncer) Option {
 	}
 }
 
-func WithWorkspaceResolver(resolver workspacepkg.WorkspaceResolver) Option {
+func WithWorkspaceResolver(resolver workspacepkg.RuntimeResolver) Option {
 	return func(s *Service) {
 		s.workspaceResolver = resolver
 	}
@@ -349,7 +350,7 @@ func (s *Service) GetActivation(ctx context.Context, id string) (ActivationPrevi
 	if err != nil {
 		return ActivationPreview{}, err
 	}
-	resolved, err := s.resolveActivation(ctx, activation)
+	resolved, err := s.resolveActivation(activation)
 	if err != nil {
 		return ActivationPreview{}, err
 	}
@@ -466,87 +467,248 @@ func (s *Service) reconcileLocked(ctx context.Context) error {
 		return err
 	}
 
-	desiredJobs := make([]automationpkg.Job, 0)
-	desiredTriggers := make([]automationpkg.Trigger, 0)
-	desiredBridges := make([]bridgepkg.BridgeInstance, 0)
-	inventoryByActivation := make(map[string][]InventoryItem, len(activations))
-	declaredChannels := make([]DeclaredChannel, 0)
-
-	effectiveDefault := strings.TrimSpace(s.configuredDefault)
-	effectiveSource := "config"
-	claimedActivation := ""
-	var errs []error
-
-	for _, activation := range activations {
-		resolved, resolveErr := s.resolveActivation(ctx, activation)
-		if resolveErr != nil {
-			errs = append(errs, resolveErr)
-			inventoryByActivation[activation.ID] = nil
-			continue
-		}
-		inventoryByActivation[activation.ID] = cloneInventoryItems(resolved.inventory)
-		declaredChannels = append(declaredChannels, resolved.channels...)
-		s.warnSpecHashDrift(ctx, activation, resolved.specContentHash)
-
-		if activation.BindPrimaryChannelAsDefault {
-			primary := strings.TrimSpace(resolved.profile.Channels.Primary)
-			switch {
-			case primary == "":
-				errs = append(errs, fmt.Errorf("bundles: activation %q cannot bind an empty primary channel", activation.ID))
-			case claimedActivation != "" && claimedActivation != activation.ID:
-				errs = append(errs, fmt.Errorf("%w: %s and %s", ErrDefaultChannelBusy, claimedActivation, activation.ID))
-			default:
-				claimedActivation = activation.ID
-				effectiveDefault = primary
-				effectiveSource = activation.ID
-			}
-		}
-
-		desiredJobs = append(desiredJobs, resolved.jobs...)
-		desiredTriggers = append(desiredTriggers, resolved.triggers...)
-		desiredBridges = append(desiredBridges, resolved.bridges...)
-	}
-	if len(errs) > 0 {
-		return errors.Join(errs...)
+	state, err := s.collectDesiredState(ctx, activations)
+	if err != nil {
+		return err
 	}
 
-	if s.automation == nil {
-		if len(desiredJobs) > 0 || len(desiredTriggers) > 0 {
-			errs = append(errs, errors.New("bundles: automation syncer is required for bundle automations"))
-		}
-	} else if _, syncErr := s.automation.SyncManagedDefinitions(
-		ctx,
-		automationpkg.JobSourcePackage,
-		desiredJobs,
-		desiredTriggers,
-		nil,
-	); syncErr != nil {
+	errs := make([]error, 0)
+	if syncErr := s.syncDesiredResources(ctx, state); syncErr != nil {
 		errs = append(errs, syncErr)
 	}
+	if inventoryErr := s.recordActivationInventory(ctx, activations, state.inventoryByActivation); inventoryErr != nil {
+		errs = append(errs, inventoryErr)
+	}
+	s.applyNetworkSettings(state.effectiveDefault, state.effectiveSource, state.declaredChannels)
+	return errors.Join(errs...)
+}
 
-	if len(desiredBridges) > 0 {
-		if s.bridges == nil {
-			errs = append(errs, errors.New("bundles: bridge syncer is required for bundle bridges"))
-		} else if _, bridgeErr := s.bridges.SyncManagedInstances(ctx, bridgepkg.BridgeInstanceSourcePackage, desiredBridges); bridgeErr != nil {
-			errs = append(errs, bridgeErr)
+type resolvedActivation struct {
+	activation      Activation
+	extension       *extensionpkg.Extension
+	bundle          extensionpkg.BundleSpec
+	profile         extensionpkg.BundleProfile
+	specContentHash string
+	jobs            []automationpkg.Job
+	triggers        []automationpkg.Trigger
+	bridges         []bridgepkg.BridgeInstance
+	channels        []DeclaredChannel
+	inventory       []InventoryItem
+}
+
+type reconcileState struct {
+	desiredJobs           []automationpkg.Job
+	desiredTriggers       []automationpkg.Trigger
+	desiredBridges        []bridgepkg.BridgeInstance
+	inventoryByActivation map[string][]InventoryItem
+	declaredChannels      []DeclaredChannel
+	effectiveDefault      string
+	effectiveSource       string
+}
+
+func (s *Service) resolveRequest(ctx context.Context, req ActivateRequest) (resolvedActivation, error) {
+	scope := req.Scope.Normalize()
+	if scope == "" {
+		scope = ScopeGlobal
+	}
+
+	workspaceID, err := s.resolveWorkspace(ctx, scope, req.Workspace)
+	if err != nil {
+		return resolvedActivation{}, err
+	}
+
+	activation := Activation{
+		ID: stableID(
+			"act",
+			strings.TrimSpace(req.ExtensionName),
+			strings.TrimSpace(req.BundleName),
+			strings.TrimSpace(req.ProfileName),
+			string(scope),
+			workspaceID,
+		),
+		ExtensionName:               strings.TrimSpace(req.ExtensionName),
+		BundleName:                  strings.TrimSpace(req.BundleName),
+		ProfileName:                 strings.TrimSpace(req.ProfileName),
+		Scope:                       scope,
+		WorkspaceID:                 workspaceID,
+		BindPrimaryChannelAsDefault: req.BindPrimaryChannelAsDefault,
+	}
+	resolved, err := s.resolveActivation(activation)
+	if err != nil {
+		return resolvedActivation{}, err
+	}
+	resolved.activation.SpecContentHash = resolved.specContentHash
+	return resolved, nil
+}
+
+func (s *Service) resolveActivation(activation Activation) (resolvedActivation, error) {
+	if err := activation.Validate(); err != nil {
+		return resolvedActivation{}, err
+	}
+
+	ext, bundle, profile, specContentHash, err := s.resolveActivationDefinition(activation)
+	if err != nil {
+		return resolvedActivation{}, err
+	}
+	resolved := resolvedActivation{
+		activation:      activation,
+		extension:       ext,
+		bundle:          cloneBundleSpec(bundle),
+		profile:         cloneBundleProfile(profile),
+		specContentHash: specContentHash,
+	}
+
+	resolved.channels = declaredChannelsForProfile(activation, bundle, profile)
+	resolved.jobs, resolved.triggers, resolved.bridges, resolved.inventory, err = s.materializeActivationResources(
+		activation,
+		ext,
+		bundle,
+		profile,
+	)
+	if err != nil {
+		return resolvedActivation{}, err
+	}
+	return resolved, nil
+}
+
+func (s *Service) collectDesiredState(ctx context.Context, activations []Activation) (reconcileState, error) {
+	state := reconcileState{
+		desiredJobs:           make([]automationpkg.Job, 0),
+		desiredTriggers:       make([]automationpkg.Trigger, 0),
+		desiredBridges:        make([]bridgepkg.BridgeInstance, 0),
+		inventoryByActivation: make(map[string][]InventoryItem, len(activations)),
+		declaredChannels:      make([]DeclaredChannel, 0),
+		effectiveDefault:      strings.TrimSpace(s.configuredDefault),
+		effectiveSource:       "config",
+	}
+
+	claimedActivation := ""
+	errs := make([]error, 0)
+	for _, activation := range activations {
+		resolved, resolveErr := s.resolveActivation(activation)
+		if resolveErr != nil {
+			errs = append(errs, resolveErr)
+			state.inventoryByActivation[activation.ID] = nil
+			continue
 		}
-	} else if s.bridges != nil {
-		if _, bridgeErr := s.bridges.SyncManagedInstances(ctx, bridgepkg.BridgeInstanceSourcePackage, nil); bridgeErr != nil {
-			errs = append(errs, bridgeErr)
+
+		state.inventoryByActivation[activation.ID] = cloneInventoryItems(resolved.inventory)
+		state.declaredChannels = append(state.declaredChannels, resolved.channels...)
+		state.desiredJobs = append(state.desiredJobs, resolved.jobs...)
+		state.desiredTriggers = append(state.desiredTriggers, resolved.triggers...)
+		state.desiredBridges = append(state.desiredBridges, resolved.bridges...)
+		s.warnSpecHashDrift(ctx, activation, resolved.specContentHash)
+
+		claimedActivation, state.effectiveDefault, state.effectiveSource, resolveErr = resolveActivationDefaultChannel(
+			activation,
+			resolved.profile,
+			claimedActivation,
+			state.effectiveDefault,
+			state.effectiveSource,
+		)
+		if resolveErr != nil {
+			errs = append(errs, resolveErr)
 		}
 	}
 
+	if len(errs) > 0 {
+		return reconcileState{}, errors.Join(errs...)
+	}
+	return state, nil
+}
+
+func resolveActivationDefaultChannel(
+	activation Activation,
+	profile extensionpkg.BundleProfile,
+	claimedActivation string,
+	effectiveDefault string,
+	effectiveSource string,
+) (string, string, string, error) {
+	if !activation.BindPrimaryChannelAsDefault {
+		return claimedActivation, effectiveDefault, effectiveSource, nil
+	}
+
+	primary := strings.TrimSpace(profile.Channels.Primary)
+	switch {
+	case primary == "":
+		return claimedActivation, effectiveDefault, effectiveSource, fmt.Errorf(
+			"bundles: activation %q cannot bind an empty primary channel",
+			activation.ID,
+		)
+	case claimedActivation != "" && claimedActivation != activation.ID:
+		return claimedActivation, effectiveDefault, effectiveSource, fmt.Errorf(
+			"%w: %s and %s",
+			ErrDefaultChannelBusy,
+			claimedActivation,
+			activation.ID,
+		)
+	default:
+		return activation.ID, primary, activation.ID, nil
+	}
+}
+
+func (s *Service) syncDesiredResources(ctx context.Context, state reconcileState) error {
+	errs := make([]error, 0)
+	if s.automation == nil {
+		if len(state.desiredJobs) > 0 || len(state.desiredTriggers) > 0 {
+			errs = append(errs, errors.New("bundles: automation syncer is required for bundle automations"))
+		}
+	} else if _, err := s.automation.SyncManagedDefinitions(
+		ctx,
+		automationpkg.JobSourcePackage,
+		state.desiredJobs,
+		state.desiredTriggers,
+		nil,
+	); err != nil {
+		errs = append(errs, err)
+	}
+
+	if len(state.desiredBridges) > 0 {
+		if s.bridges == nil {
+			errs = append(errs, errors.New("bundles: bridge syncer is required for bundle bridges"))
+		} else if _, err := s.bridges.SyncManagedInstances(
+			ctx,
+			bridgepkg.BridgeInstanceSourcePackage,
+			state.desiredBridges,
+		); err != nil {
+			errs = append(errs, err)
+		}
+	} else if s.bridges != nil {
+		if _, err := s.bridges.SyncManagedInstances(
+			ctx,
+			bridgepkg.BridgeInstanceSourcePackage,
+			nil,
+		); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (s *Service) recordActivationInventory(
+	ctx context.Context,
+	activations []Activation,
+	inventoryByActivation map[string][]InventoryItem,
+) error {
 	recordedAt := s.now().UTC()
+	errs := make([]error, 0)
 	for _, activation := range activations {
 		items := cloneInventoryItems(inventoryByActivation[activation.ID])
 		for idx := range items {
 			items[idx].RecordedAtUTC = recordedAt
 		}
-		if replaceErr := s.store.ReplaceBundleActivationInventory(ctx, activation.ID, items); replaceErr != nil {
-			errs = append(errs, replaceErr)
+		if err := s.store.ReplaceBundleActivationInventory(ctx, activation.ID, items); err != nil {
+			errs = append(errs, err)
 		}
 	}
+	return errors.Join(errs...)
+}
 
+func (s *Service) applyNetworkSettings(
+	effectiveDefault string,
+	effectiveSource string,
+	declaredChannels []DeclaredChannel,
+) {
 	slices.SortFunc(declaredChannels, func(left, right DeclaredChannel) int {
 		if cmp := strings.Compare(left.ExtensionName, right.ExtensionName); cmp != 0 {
 			return cmp
@@ -568,85 +730,50 @@ func (s *Service) reconcileLocked(ctx context.Context) error {
 		DeclaredChannels:         append([]DeclaredChannel(nil), declaredChannels...),
 	}
 	s.settingsMu.Unlock()
-
-	return errors.Join(errs...)
 }
 
-type resolvedActivation struct {
-	activation      Activation
-	extension       *extensionpkg.Extension
-	bundle          extensionpkg.BundleSpec
-	profile         extensionpkg.BundleProfile
-	specContentHash string
-	jobs            []automationpkg.Job
-	triggers        []automationpkg.Trigger
-	bridges         []bridgepkg.BridgeInstance
-	channels        []DeclaredChannel
-	inventory       []InventoryItem
-}
-
-func (s *Service) resolveRequest(ctx context.Context, req ActivateRequest) (resolvedActivation, error) {
-	scope := req.Scope.Normalize()
-	if scope == "" {
-		scope = ScopeGlobal
-	}
-
-	workspaceID, err := s.resolveWorkspace(ctx, scope, req.Workspace)
-	if err != nil {
-		return resolvedActivation{}, err
-	}
-
-	activation := Activation{
-		ID:                          stableID("act", strings.TrimSpace(req.ExtensionName), strings.TrimSpace(req.BundleName), strings.TrimSpace(req.ProfileName), string(scope), workspaceID),
-		ExtensionName:               strings.TrimSpace(req.ExtensionName),
-		BundleName:                  strings.TrimSpace(req.BundleName),
-		ProfileName:                 strings.TrimSpace(req.ProfileName),
-		Scope:                       scope,
-		WorkspaceID:                 workspaceID,
-		BindPrimaryChannelAsDefault: req.BindPrimaryChannelAsDefault,
-	}
-	resolved, err := s.resolveActivation(ctx, activation)
-	if err != nil {
-		return resolvedActivation{}, err
-	}
-	resolved.activation.SpecContentHash = resolved.specContentHash
-	return resolved, nil
-}
-
-func (s *Service) resolveActivation(ctx context.Context, activation Activation) (resolvedActivation, error) {
-	if err := activation.Validate(); err != nil {
-		return resolvedActivation{}, err
-	}
-
+func (s *Service) resolveActivationDefinition(
+	activation Activation,
+) (*extensionpkg.Extension, extensionpkg.BundleSpec, extensionpkg.BundleProfile, string, error) {
 	ext, err := s.loadExtension(activation.ExtensionName)
 	if err != nil {
-		return resolvedActivation{}, err
+		return nil, extensionpkg.BundleSpec{}, extensionpkg.BundleProfile{}, "", err
 	}
 	if ext == nil {
-		return resolvedActivation{}, extensionpkg.ErrExtensionNotFound
+		return nil, extensionpkg.BundleSpec{}, extensionpkg.BundleProfile{}, "", extensionpkg.ErrExtensionNotFound
 	}
 
 	bundle, ok := findBundle(ext.Bundles, activation.BundleName)
 	if !ok {
-		return resolvedActivation{}, fmt.Errorf("%w: %s/%s", ErrBundleNotFound, activation.ExtensionName, activation.BundleName)
+		return nil, extensionpkg.BundleSpec{}, extensionpkg.BundleProfile{}, "", fmt.Errorf(
+			"%w: %s/%s",
+			ErrBundleNotFound,
+			activation.ExtensionName,
+			activation.BundleName,
+		)
 	}
 	profile, ok := findProfile(bundle.Profiles, activation.ProfileName)
 	if !ok {
-		return resolvedActivation{}, fmt.Errorf("%w: %s/%s/%s", ErrProfileNotFound, activation.ExtensionName, activation.BundleName, activation.ProfileName)
+		return nil, extensionpkg.BundleSpec{}, extensionpkg.BundleProfile{}, "", fmt.Errorf(
+			"%w: %s/%s/%s",
+			ErrProfileNotFound,
+			activation.ExtensionName,
+			activation.BundleName,
+			activation.ProfileName,
+		)
 	}
 	specContentHash, err := bundleProfileSpecContentHash(bundle, profile)
 	if err != nil {
-		return resolvedActivation{}, err
+		return nil, extensionpkg.BundleSpec{}, extensionpkg.BundleProfile{}, "", err
 	}
+	return ext, bundle, profile, specContentHash, nil
+}
 
-	resolved := resolvedActivation{
-		activation:      activation,
-		extension:       ext,
-		bundle:          cloneBundleSpec(bundle),
-		profile:         cloneBundleProfile(profile),
-		specContentHash: specContentHash,
-	}
-
+func declaredChannelsForProfile(
+	activation Activation,
+	bundle extensionpkg.BundleSpec,
+	profile extensionpkg.BundleProfile,
+) []DeclaredChannel {
 	channels := make([]DeclaredChannel, 0, len(profile.Channels.Items))
 	for _, item := range profile.Channels.Items {
 		channels = append(channels, DeclaredChannel{
@@ -660,15 +787,26 @@ func (s *Service) resolveActivation(ctx context.Context, activation Activation) 
 			Primary:       strings.TrimSpace(profile.Channels.Primary) == strings.TrimSpace(item.Name),
 		})
 	}
-	resolved.channels = channels
+	return channels
+}
 
+func (s *Service) materializeActivationResources(
+	activation Activation,
+	ext *extensionpkg.Extension,
+	bundle extensionpkg.BundleSpec,
+	profile extensionpkg.BundleProfile,
+) ([]automationpkg.Job, []automationpkg.Trigger, []bridgepkg.BridgeInstance, []InventoryItem, error) {
+	jobs := make([]automationpkg.Job, 0, len(profile.Jobs))
+	triggers := make([]automationpkg.Trigger, 0, len(profile.Triggers))
+	bridges := make([]bridgepkg.BridgeInstance, 0, len(profile.Bridges))
 	inventory := make([]InventoryItem, 0, len(profile.Jobs)+len(profile.Triggers)+len(profile.Bridges))
+
 	for _, jobDef := range profile.Jobs {
-		job, materializeErr := materializeJob(activation, bundle, profile, jobDef)
-		if materializeErr != nil {
-			return resolvedActivation{}, materializeErr
+		job, err := materializeJob(activation, bundle, profile, jobDef)
+		if err != nil {
+			return nil, nil, nil, nil, err
 		}
-		resolved.jobs = append(resolved.jobs, job)
+		jobs = append(jobs, job)
 		inventory = append(inventory, InventoryItem{
 			ActivationID: activation.ID,
 			ResourceKind: "automation_job",
@@ -677,11 +815,11 @@ func (s *Service) resolveActivation(ctx context.Context, activation Activation) 
 		})
 	}
 	for _, triggerDef := range profile.Triggers {
-		trigger, materializeErr := materializeTrigger(activation, bundle, profile, triggerDef)
-		if materializeErr != nil {
-			return resolvedActivation{}, materializeErr
+		trigger, err := materializeTrigger(activation, bundle, profile, triggerDef)
+		if err != nil {
+			return nil, nil, nil, nil, err
 		}
-		resolved.triggers = append(resolved.triggers, trigger)
+		triggers = append(triggers, trigger)
 		inventory = append(inventory, InventoryItem{
 			ActivationID: activation.ID,
 			ResourceKind: "automation_trigger",
@@ -690,11 +828,11 @@ func (s *Service) resolveActivation(ctx context.Context, activation Activation) 
 		})
 	}
 	for _, bridgeDef := range profile.Bridges {
-		instance, materializeErr := s.materializeBridge(ctx, activation, ext, bundle, profile, bridgeDef)
-		if materializeErr != nil {
-			return resolvedActivation{}, materializeErr
+		instance, err := s.materializeBridge(activation, ext, bundle, profile, bridgeDef)
+		if err != nil {
+			return nil, nil, nil, nil, err
 		}
-		resolved.bridges = append(resolved.bridges, instance)
+		bridges = append(bridges, instance)
 		inventory = append(inventory, InventoryItem{
 			ActivationID: activation.ID,
 			ResourceKind: "bridge_instance",
@@ -702,12 +840,10 @@ func (s *Service) resolveActivation(ctx context.Context, activation Activation) 
 			ResourceName: instance.DisplayName,
 		})
 	}
-	resolved.inventory = inventory
-	return resolved, nil
+	return jobs, triggers, bridges, inventory, nil
 }
 
 func (s *Service) materializeBridge(
-	ctx context.Context,
 	activation Activation,
 	owner *extensionpkg.Extension,
 	bundle extensionpkg.BundleSpec,
@@ -730,7 +866,10 @@ func (s *Service) materializeBridge(
 				return bridgepkg.BridgeInstance{}, err
 			}
 			if provider == nil || provider.Manifest == nil {
-				return bridgepkg.BridgeInstance{}, fmt.Errorf("bundles: bridge provider %q is unavailable", extensionName)
+				return bridgepkg.BridgeInstance{}, fmt.Errorf(
+					"bundles: bridge provider %q is unavailable",
+					extensionName,
+				)
 			}
 			platform = strings.TrimSpace(provider.Manifest.Bridge.Platform)
 		}
@@ -919,7 +1058,7 @@ func replaceActivation(items []Activation, next Activation) []Activation {
 	return out
 }
 
-func automationScopeFromActivation(scope Scope) automationpkg.AutomationScope {
+func automationScopeFromActivation(scope Scope) automationpkg.Scope {
 	if scope == ScopeWorkspace {
 		return automationpkg.AutomationScopeWorkspace
 	}
@@ -1019,9 +1158,7 @@ func cloneStringMap(value map[string]string) map[string]string {
 		return nil
 	}
 	cloned := make(map[string]string, len(value))
-	for key, item := range value {
-		cloned[key] = item
-	}
+	maps.Copy(cloned, value)
 	return cloned
 }
 
@@ -1095,7 +1232,12 @@ func (s *Service) joinRollbackFailure(
 	)
 	return errors.Join(
 		reconcileErr,
-		fmt.Errorf("bundles: %s for activation %q: %w", strings.TrimSpace(action), strings.TrimSpace(activationID), rollbackErr),
+		fmt.Errorf(
+			"bundles: %s for activation %q: %w",
+			strings.TrimSpace(action),
+			strings.TrimSpace(activationID),
+			rollbackErr,
+		),
 	)
 }
 

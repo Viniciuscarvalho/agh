@@ -34,7 +34,7 @@ func TestMapTeamsActivityFamiliesAndDMPolicy(t *testing.T) {
 
 	cfg := resolvedInstanceConfig{
 		instanceID: "brg-teams",
-		managed: subprocess.InitializeBridgeManagedInstance{
+		managed: &subprocess.InitializeBridgeManagedInstance{
 			Instance: bridgepkg.BridgeInstance{
 				ID:          "brg-teams",
 				Scope:       bridgepkg.ScopeWorkspace,
@@ -115,7 +115,9 @@ func TestMapTeamsActivityFamiliesAndDMPolicy(t *testing.T) {
 	invokeActivity := actionActivity
 	invokeActivity.Type = "invoke"
 	invokeActivity.ID = "activity-3"
-	invokeActivity.Value = json.RawMessage(`{"action":{"data":{"actionId":"escalate","value":"high"}}}`)
+	invokeActivity.Value = json.RawMessage(
+		`{"action":{"data":{"actionId":"escalate","value":"high"}}}`,
+	)
 	items, err = mapTeamsActivity(invokeActivity, cfg, time.Time{})
 	if err != nil {
 		t.Fatalf("mapTeamsActivity(invoke action) error = %v", err)
@@ -151,8 +153,16 @@ func TestMapTeamsActivityFamiliesAndDMPolicy(t *testing.T) {
 		t.Fatalf("items[1].Envelope.Reaction.Added = %t, want %t", got, want)
 	}
 
-	user := teamsUserIdentity{ID: "29:user-1", Username: "alice example", DisplayName: "Alice Example"}
-	if !allowTeamsDirectMessage(resolvedInstanceConfig{dmPolicy: bridgepkg.BridgeDMPolicyOpen}, user, true) {
+	user := teamsUserIdentity{
+		ID:          "29:user-1",
+		Username:    "alice example",
+		DisplayName: "Alice Example",
+	}
+	if !allowTeamsDirectMessage(
+		resolvedInstanceConfig{dmPolicy: bridgepkg.BridgeDMPolicyOpen},
+		user,
+		true,
+	) {
 		t.Fatal("allowTeamsDirectMessage(open) = false, want true")
 	}
 	if !allowTeamsDirectMessage(resolvedInstanceConfig{
@@ -168,7 +178,11 @@ func TestMapTeamsActivityFamiliesAndDMPolicy(t *testing.T) {
 	}, user, true) {
 		t.Fatal("allowTeamsDirectMessage(pairing) = false, want true")
 	}
-	if allowTeamsDirectMessage(resolvedInstanceConfig{dmPolicy: bridgepkg.BridgeDMPolicyAllowlist}, user, true) {
+	if allowTeamsDirectMessage(
+		resolvedInstanceConfig{dmPolicy: bridgepkg.BridgeDMPolicyAllowlist},
+		user,
+		true,
+	) {
 		t.Fatal("allowTeamsDirectMessage(rejected) = true, want false")
 	}
 }
@@ -213,9 +227,16 @@ func TestExecuteTeamsDeliveryConversationAndProactiveDM(t *testing.T) {
 		},
 	}
 
-	startAck, state, err := executeTeamsDelivery(context.Background(), api, cfg, startReq, deliveryState{}, func(string, string) (teamsUserContext, bool) {
-		return teamsUserContext{}, false
-	})
+	startAck, state, err := executeTeamsDelivery(
+		context.Background(),
+		api,
+		cfg,
+		startReq,
+		deliveryState{},
+		func(string, string) (teamsUserContext, bool) {
+			return teamsUserContext{}, false
+		},
+	)
 	if err != nil {
 		t.Fatalf("executeTeamsDelivery(start) error = %v", err)
 	}
@@ -231,9 +252,16 @@ func TestExecuteTeamsDeliveryConversationAndProactiveDM(t *testing.T) {
 	finalReq.Event.EventType = bridgepkg.DeliveryEventTypeFinal
 	finalReq.Event.Final = true
 	finalReq.Event.Content.Text = "hello world"
-	finalAck, state, err := executeTeamsDelivery(context.Background(), api, cfg, finalReq, state, func(string, string) (teamsUserContext, bool) {
-		return teamsUserContext{}, false
-	})
+	finalAck, state, err := executeTeamsDelivery(
+		context.Background(),
+		api,
+		cfg,
+		finalReq,
+		state,
+		func(string, string) (teamsUserContext, bool) {
+			return teamsUserContext{}, false
+		},
+	)
 	if err != nil {
 		t.Fatalf("executeTeamsDelivery(final) error = %v", err)
 	}
@@ -248,11 +276,20 @@ func TestExecuteTeamsDeliveryConversationAndProactiveDM(t *testing.T) {
 	deleteReq.Event.Seq = 3
 	deleteReq.Event.EventType = bridgepkg.DeliveryEventTypeDelete
 	deleteReq.Event.Operation = bridgepkg.DeliveryOperationDelete
-	deleteReq.Event.Reference = &bridgepkg.DeliveryMessageReference{RemoteMessageID: finalAck.RemoteMessageID}
+	deleteReq.Event.Reference = &bridgepkg.DeliveryMessageReference{
+		RemoteMessageID: finalAck.RemoteMessageID,
+	}
 	deleteReq.Event.Content.Text = ""
-	_, _, err = executeTeamsDelivery(context.Background(), api, cfg, deleteReq, state, func(string, string) (teamsUserContext, bool) {
-		return teamsUserContext{}, false
-	})
+	_, _, err = executeTeamsDelivery(
+		context.Background(),
+		api,
+		cfg,
+		deleteReq,
+		state,
+		func(string, string) (teamsUserContext, bool) {
+			return teamsUserContext{}, false
+		},
+	)
 	if err != nil {
 		t.Fatalf("executeTeamsDelivery(delete) error = %v", err)
 	}
@@ -280,15 +317,22 @@ func TestExecuteTeamsDeliveryConversationAndProactiveDM(t *testing.T) {
 			Content:   bridgepkg.MessageContent{Text: "ping"},
 		},
 	}
-	_, _, err = executeTeamsDelivery(context.Background(), api, cfg, proactiveReq, deliveryState{}, func(instanceID string, userID string) (teamsUserContext, bool) {
-		if instanceID != "brg-teams" || userID != "29:user-2" {
-			return teamsUserContext{}, false
-		}
-		return teamsUserContext{
-			ServiceURL: "https://smba.trafficmanager.net/teams/",
-			TenantID:   "11111111-2222-3333-4444-555555555555",
-		}, true
-	})
+	_, _, err = executeTeamsDelivery(
+		context.Background(),
+		api,
+		cfg,
+		proactiveReq,
+		deliveryState{},
+		func(instanceID string, userID string) (teamsUserContext, bool) {
+			if instanceID != "brg-teams" || userID != "29:user-2" {
+				return teamsUserContext{}, false
+			}
+			return teamsUserContext{
+				ServiceURL: "https://smba.trafficmanager.net/teams/",
+				TenantID:   "11111111-2222-3333-4444-555555555555",
+			}, true
+		},
+	)
 	if err != nil {
 		t.Fatalf("executeTeamsDelivery(proactive) error = %v", err)
 	}
@@ -298,7 +342,9 @@ func TestExecuteTeamsDeliveryConversationAndProactiveDM(t *testing.T) {
 
 	resumeReq := proactiveReq
 	resumeReq.Event.EventType = bridgepkg.DeliveryEventTypeResume
-	resumeReq.Event.Resume = &bridgepkg.DeliveryResumeState{LatestEventType: bridgepkg.DeliveryEventTypeFinal}
+	resumeReq.Event.Resume = &bridgepkg.DeliveryResumeState{
+		LatestEventType: bridgepkg.DeliveryEventTypeFinal,
+	}
 	resumeReq.Snapshot = &bridgepkg.DeliverySnapshot{
 		DeliveryID:       "delivery-2",
 		SessionID:        "sess-1",
@@ -315,9 +361,16 @@ func TestExecuteTeamsDeliveryConversationAndProactiveDM(t *testing.T) {
 		Final:            true,
 		UpdatedAt:        time.Date(2026, 4, 15, 18, 10, 0, 0, time.UTC),
 	}
-	resumeAck, _, err := executeTeamsDelivery(context.Background(), api, cfg, resumeReq, deliveryState{}, func(string, string) (teamsUserContext, bool) {
-		return teamsUserContext{}, false
-	})
+	resumeAck, _, err := executeTeamsDelivery(
+		context.Background(),
+		api,
+		cfg,
+		resumeReq,
+		deliveryState{},
+		func(string, string) (teamsUserContext, bool) {
+			return teamsUserContext{}, false
+		},
+	)
 	if err != nil {
 		t.Fatalf("executeTeamsDelivery(resume) error = %v", err)
 	}
@@ -333,13 +386,13 @@ func TestResolveInstanceConfigAndDetermineInitialState(t *testing.T) {
 	listenAddr := reserveListenAddr(t)
 	t.Setenv(teamsListenAddrEnv, listenAddr)
 	t.Setenv(teamsOpenIDMetadataURLEnv, mock.MetadataURL())
-	t.Setenv(teamsTokenURLEnv, mock.TokenURL())
+	t.Setenv(teamsOAuthTokenURLEnvName(), mock.TokenURL())
 
 	runtime, hostPeer, cleanup := newRuntimePeerPair(t)
 	defer cleanup()
 
 	now := time.Date(2026, 4, 15, 18, 0, 0, 0, time.UTC)
-	managed := testTeamsManagedInstance(now, "brg-1", map[string]any{
+	managed := testTeamsManagedInstance(t, now, "brg-1", map[string]any{
 		"service_url": mock.ServiceURL(),
 		"webhook": map[string]any{
 			"listen_addr": listenAddr,
@@ -397,29 +450,36 @@ func TestResolveInstanceConfigAndDetermineInitialState(t *testing.T) {
 		t.Fatal("cfg.batcher = nil, want non-nil")
 	}
 
-	status, degradation, err := runtime.determineInitialState(context.Background(), resolvedInstanceConfig{
-		instanceID:        "bad-config",
-		configError:       errors.New("bad config"),
-		serviceURL:        mock.ServiceURL(),
-		openIDMetadataURL: mock.MetadataURL(),
-		tokenURL:          mock.TokenURL(),
-	})
+	status, degradation, err := runtime.determineInitialState(
+		context.Background(),
+		resolvedInstanceConfig{
+			instanceID:        "bad-config",
+			configError:       errors.New("bad config"),
+			serviceURL:        mock.ServiceURL(),
+			openIDMetadataURL: mock.MetadataURL(),
+			tokenURL:          mock.TokenURL(),
+		},
+	)
 	if err == nil {
 		t.Fatal("determineInitialState(configError) error = nil, want non-nil")
 	}
 	if got, want := status, bridgepkg.BridgeStatusDegraded; got != want {
 		t.Fatalf("status = %q, want %q", got, want)
 	}
-	if degradation == nil || degradation.Reason != bridgepkg.BridgeDegradationReasonTenantConfigInvalid {
+	if degradation == nil ||
+		degradation.Reason != bridgepkg.BridgeDegradationReasonTenantConfigInvalid {
 		t.Fatalf("degradation = %#v, want tenant config invalid", degradation)
 	}
 
-	status, degradation, err = runtime.determineInitialState(context.Background(), resolvedInstanceConfig{
-		instanceID:        "missing-auth",
-		serviceURL:        mock.ServiceURL(),
-		openIDMetadataURL: mock.MetadataURL(),
-		tokenURL:          mock.TokenURL(),
-	})
+	status, degradation, err = runtime.determineInitialState(
+		context.Background(),
+		resolvedInstanceConfig{
+			instanceID:        "missing-auth",
+			serviceURL:        mock.ServiceURL(),
+			openIDMetadataURL: mock.MetadataURL(),
+			tokenURL:          mock.TokenURL(),
+		},
+	)
 	if err == nil {
 		t.Fatal("determineInitialState(missing auth) error = nil, want non-nil")
 	}
@@ -433,14 +493,17 @@ func TestResolveInstanceConfigAndDetermineInitialState(t *testing.T) {
 	runtime.apiFactory = func(resolvedInstanceConfig) teamsAPI {
 		return &fakeTeamsAPI{validateErr: &bridgesdk.AuthError{Err: errors.New("bad token")}}
 	}
-	status, degradation, err = runtime.determineInitialState(context.Background(), resolvedInstanceConfig{
-		instanceID:        "bad-auth",
-		serviceURL:        mock.ServiceURL(),
-		openIDMetadataURL: mock.MetadataURL(),
-		tokenURL:          mock.TokenURL(),
-		appID:             "app-id",
-		appPassword:       "app-password",
-	})
+	status, degradation, err = runtime.determineInitialState(
+		context.Background(),
+		resolvedInstanceConfig{
+			instanceID:        "bad-auth",
+			serviceURL:        mock.ServiceURL(),
+			openIDMetadataURL: mock.MetadataURL(),
+			tokenURL:          mock.TokenURL(),
+			appID:             "app-id",
+			appPassword:       "app-password",
+		},
+	)
 	if err == nil {
 		t.Fatal("determineInitialState(auth error) error = nil, want non-nil")
 	}
@@ -454,14 +517,17 @@ func TestResolveInstanceConfigAndDetermineInitialState(t *testing.T) {
 	runtime.apiFactory = func(resolvedInstanceConfig) teamsAPI {
 		return &fakeTeamsAPI{}
 	}
-	status, degradation, err = runtime.determineInitialState(context.Background(), resolvedInstanceConfig{
-		instanceID:        "ready",
-		serviceURL:        mock.ServiceURL(),
-		openIDMetadataURL: mock.MetadataURL(),
-		tokenURL:          mock.TokenURL(),
-		appID:             "app-id",
-		appPassword:       "app-password",
-	})
+	status, degradation, err = runtime.determineInitialState(
+		context.Background(),
+		resolvedInstanceConfig{
+			instanceID:        "ready",
+			serviceURL:        mock.ServiceURL(),
+			openIDMetadataURL: mock.MetadataURL(),
+			tokenURL:          mock.TokenURL(),
+			appID:             "app-id",
+			appPassword:       "app-password",
+		},
+	)
 	if err != nil {
 		t.Fatalf("determineInitialState(ready) error = %v", err)
 	}
@@ -479,19 +545,46 @@ func TestRuntimeInitializeStartsServerAndWritesMarkers(t *testing.T) {
 	mock := newTeamsProviderServer(t, teamsProviderServerConfig{})
 	t.Setenv(teamsListenAddrEnv, listenAddr)
 	t.Setenv(teamsOpenIDMetadataURLEnv, mock.MetadataURL())
-	t.Setenv(teamsTokenURLEnv, mock.TokenURL())
+	t.Setenv(teamsOAuthTokenURLEnvName(), mock.TokenURL())
 
 	runtime, hostPeer, cleanup := newRuntimePeerPair(t)
 	defer cleanup()
 
 	now := time.Date(2026, 4, 15, 18, 20, 0, 0, time.UTC)
 	managed := []subprocess.InitializeBridgeManagedInstance{
-		testTeamsManagedInstance(now, "brg-1", map[string]any{"service_url": mock.ServiceURL(), "auth": map[string]any{"openid_metadata_url": mock.MetadataURL(), "token_url": mock.TokenURL()}}),
-		testTeamsManagedInstance(now, "brg-2", map[string]any{"service_url": mock.ServiceURL(), "auth": map[string]any{"openid_metadata_url": mock.MetadataURL(), "token_url": mock.TokenURL()}}),
+		testTeamsManagedInstance(
+			t,
+			now,
+			"brg-1",
+			map[string]any{
+				"service_url": mock.ServiceURL(),
+				"auth": map[string]any{
+					"openid_metadata_url": mock.MetadataURL(),
+					"token_url":           mock.TokenURL(),
+				},
+			},
+		),
+		testTeamsManagedInstance(
+			t,
+			now,
+			"brg-2",
+			map[string]any{
+				"service_url": mock.ServiceURL(),
+				"auth": map[string]any{
+					"openid_metadata_url": mock.MetadataURL(),
+					"token_url":           mock.TokenURL(),
+				},
+			},
+		),
 	}
 	mustHandleLifecycle(t, hostPeer, managed...)
 
-	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed...), nil); err != nil {
+	if err := hostPeer.Call(
+		context.Background(),
+		"initialize",
+		testInitializeRequest(now, managed...),
+		nil,
+	); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
 	}
 
@@ -503,7 +596,11 @@ func TestRuntimeInitializeStartsServerAndWritesMarkers(t *testing.T) {
 	if got, want := len(ownership.Fetched), 2; got != want {
 		t.Fatalf("len(ownership.Fetched) = %d, want %d", got, want)
 	}
-	states := waitForJSONLinesFile[stateMarker](t, env.statePath, func(items []stateMarker) bool { return len(items) >= 2 })
+	states := waitForJSONLinesFile[stateMarker](
+		t,
+		env.statePath,
+		func(items []stateMarker) bool { return len(items) >= 2 },
+	)
 	if got, want := states[0].Status.Normalize(), bridgepkg.BridgeStatusReady; got != want {
 		t.Fatalf("states[0].Status = %q, want %q", got, want)
 	}
@@ -520,13 +617,13 @@ func TestWebhookAuthorizationRejectsInvalidTokenAndIngestsActivities(t *testing.
 	mock := newTeamsProviderServer(t, teamsProviderServerConfig{})
 	t.Setenv(teamsListenAddrEnv, listenAddr)
 	t.Setenv(teamsOpenIDMetadataURLEnv, mock.MetadataURL())
-	t.Setenv(teamsTokenURLEnv, mock.TokenURL())
+	t.Setenv(teamsOAuthTokenURLEnvName(), mock.TokenURL())
 
 	runtime, hostPeer, cleanup := newRuntimePeerPair(t)
 	defer cleanup()
 
 	now := time.Date(2026, 4, 15, 18, 25, 0, 0, time.UTC)
-	managed := testTeamsManagedInstance(now, "brg-1", map[string]any{
+	managed := testTeamsManagedInstance(t, now, "brg-1", map[string]any{
 		"service_url": mock.ServiceURL(),
 		"auth": map[string]any{
 			"openid_metadata_url": mock.MetadataURL(),
@@ -537,27 +634,32 @@ func TestWebhookAuthorizationRejectsInvalidTokenAndIngestsActivities(t *testing.
 
 	var ingested []bridgepkg.InboundMessageEnvelope
 	var mu sync.Mutex
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesMessagesIngest), func(_ context.Context, params json.RawMessage) (any, error) {
-		var envelope bridgepkg.InboundMessageEnvelope
-		if err := json.Unmarshal(params, &envelope); err != nil {
-			return nil, err
-		}
-		mu.Lock()
-		ingested = append(ingested, envelope)
-		mu.Unlock()
-		return extensioncontract.BridgesMessagesIngestResult{
-			SessionID:    "sess-1",
-			RouteCreated: true,
-			RoutingKey: bridgepkg.RoutingKey{
-				Scope:            envelope.Scope,
-				WorkspaceID:      envelope.WorkspaceID,
-				BridgeInstanceID: envelope.BridgeInstanceID,
-				PeerID:           envelope.PeerID,
-				GroupID:          envelope.GroupID,
-				ThreadID:         envelope.ThreadID,
-			},
-		}, nil
-	})
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesMessagesIngest),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var envelope bridgepkg.InboundMessageEnvelope
+			if err := json.Unmarshal(params, &envelope); err != nil {
+				return nil, err
+			}
+			mu.Lock()
+			ingested = append(ingested, envelope)
+			mu.Unlock()
+			return extensioncontract.BridgesMessagesIngestResult{
+				SessionID:    "sess-1",
+				RouteCreated: true,
+				RoutingKey: bridgepkg.RoutingKey{
+					Scope:            envelope.Scope,
+					WorkspaceID:      envelope.WorkspaceID,
+					BridgeInstanceID: envelope.BridgeInstanceID,
+					PeerID:           envelope.PeerID,
+					GroupID:          envelope.GroupID,
+					ThreadID:         envelope.ThreadID,
+				},
+			}, nil
+		},
+	)
 
 	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed), nil); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
@@ -573,9 +675,14 @@ func TestWebhookAuthorizationRejectsInvalidTokenAndIngestsActivities(t *testing.
 	runtime.mu.RUnlock()
 	webhookURL := "http://" + serverAddr + "/teams/brg-1"
 
-	invalidReq, err := http.NewRequest(http.MethodPost, webhookURL, strings.NewReader(teamsMessageWebhook(mock.ServiceURL(), "Need a summary")))
+	invalidReq, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		webhookURL,
+		strings.NewReader(teamsMessageWebhook(mock.ServiceURL(), "Need a summary")),
+	)
 	if err != nil {
-		t.Fatalf("http.NewRequest(invalid) error = %v", err)
+		t.Fatalf("http.NewRequestWithContext(invalid) error = %v", err)
 	}
 	invalidReq.Header.Set("Content-Type", "application/json")
 	invalidReq.Header.Set("Authorization", "Bearer bad-token")
@@ -588,13 +695,23 @@ func TestWebhookAuthorizationRejectsInvalidTokenAndIngestsActivities(t *testing.
 		t.Fatalf("invalid webhook status = %d, want %d", got, want)
 	}
 
-	postTeamsWebhook(t, mock, webhookURL, "app-id", teamsMessageWebhook(mock.ServiceURL(), "Need a summary"))
+	postTeamsWebhook(
+		t,
+		mock,
+		webhookURL,
+		"app-id",
+		teamsMessageWebhook(mock.ServiceURL(), "Need a summary"),
+	)
 	postTeamsWebhook(t, mock, webhookURL, "app-id", teamsInvokeWebhook(mock.ServiceURL()))
 	postTeamsWebhook(t, mock, webhookURL, "app-id", teamsReactionWebhook(mock.ServiceURL()))
 
-	ingests := waitForJSONLinesFile[ingestMarker](t, env.ingestPath, func(items []ingestMarker) bool {
-		return len(items) >= 4
-	})
+	ingests := waitForJSONLinesFile[ingestMarker](
+		t,
+		env.ingestPath,
+		func(items []ingestMarker) bool {
+			return len(items) >= 4
+		},
+	)
 	if got, want := ingests[0].Envelope.EventFamily, bridgepkg.InboundEventFamilyMessage; got != want {
 		t.Fatalf("ingests[0].Envelope.EventFamily = %q, want %q", got, want)
 	}
@@ -602,7 +719,9 @@ func TestWebhookAuthorizationRejectsInvalidTokenAndIngestsActivities(t *testing.
 	for _, item := range ingests {
 		families[item.Envelope.EventFamily]++
 	}
-	if families[bridgepkg.InboundEventFamilyMessage] == 0 || families[bridgepkg.InboundEventFamilyAction] == 0 || families[bridgepkg.InboundEventFamilyReaction] == 0 {
+	if families[bridgepkg.InboundEventFamilyMessage] == 0 ||
+		families[bridgepkg.InboundEventFamilyAction] == 0 ||
+		families[bridgepkg.InboundEventFamilyReaction] == 0 {
 		t.Fatalf("families = %#v, want message/action/reaction coverage", families)
 	}
 	mu.Lock()
@@ -618,13 +737,13 @@ func TestRuntimeDeliveriesCallTeamsAPI(t *testing.T) {
 	mock := newTeamsProviderServer(t, teamsProviderServerConfig{})
 	t.Setenv(teamsListenAddrEnv, listenAddr)
 	t.Setenv(teamsOpenIDMetadataURLEnv, mock.MetadataURL())
-	t.Setenv(teamsTokenURLEnv, mock.TokenURL())
+	t.Setenv(teamsOAuthTokenURLEnvName(), mock.TokenURL())
 
 	_, hostPeer, cleanup := newRuntimePeerPair(t)
 	defer cleanup()
 
 	now := time.Date(2026, 4, 15, 18, 30, 0, 0, time.UTC)
-	managed := testTeamsManagedInstance(now, "brg-1", map[string]any{
+	managed := testTeamsManagedInstance(t, now, "brg-1", map[string]any{
 		"service_url": mock.ServiceURL(),
 		"auth": map[string]any{
 			"openid_metadata_url": mock.MetadataURL(),
@@ -677,7 +796,11 @@ func TestRuntimeDeliveriesCallTeamsAPI(t *testing.T) {
 		t.Fatalf("hostPeer.Call(final delivery) error = %v", err)
 	}
 
-	records := waitForJSONLinesFile[deliveryMarker](t, env.deliveryPath, func(items []deliveryMarker) bool { return len(items) >= 2 })
+	records := waitForJSONLinesFile[deliveryMarker](
+		t,
+		env.deliveryPath,
+		func(items []deliveryMarker) bool { return len(items) >= 2 },
+	)
 	if records[0].Ack == nil || records[1].Ack == nil {
 		t.Fatalf("delivery markers = %#v, want recorded acks", records)
 	}
@@ -762,7 +885,10 @@ func TestProviderHelperStateAndShutdown(t *testing.T) {
 		t.Fatal("userContext(missing) = true, want false")
 	}
 
-	degradation := &bridgepkg.BridgeDegradation{Reason: bridgepkg.BridgeDegradationReasonAuthFailed, Message: "bad auth"}
+	degradation := &bridgepkg.BridgeDegradation{
+		Reason:  bridgepkg.BridgeDegradationReasonAuthFailed,
+		Message: "bad auth",
+	}
 	cloned := cloneDegradation(degradation)
 	if cloned == nil || cloned == degradation || cloned.Message != degradation.Message {
 		t.Fatalf("cloneDegradation() = %#v, want independent clone of %#v", cloned, degradation)
@@ -779,14 +905,16 @@ func TestProviderHelperStateAndShutdown(t *testing.T) {
 	}
 
 	done := make(chan struct{})
-	runtime.wg.Add(1)
-	go func() {
-		defer runtime.wg.Done()
+	runtime.wg.Go(func() {
 		<-runtime.stopCh
 		close(done)
-	}()
+	})
 
-	if err := runtime.handleShutdown(context.Background(), nil, subprocess.ShutdownRequest{DeadlineMS: 250}); err != nil {
+	if err := runtime.handleShutdown(
+		context.Background(),
+		nil,
+		subprocess.ShutdownRequest{DeadlineMS: 250},
+	); err != nil {
 		t.Fatalf("handleShutdown() error = %v", err)
 	}
 	select {
@@ -860,13 +988,13 @@ func TestDispatchInboundBatchAndEnvelopeCoverage(t *testing.T) {
 	mock := newTeamsProviderServer(t, teamsProviderServerConfig{})
 	t.Setenv(teamsListenAddrEnv, listenAddr)
 	t.Setenv(teamsOpenIDMetadataURLEnv, mock.MetadataURL())
-	t.Setenv(teamsTokenURLEnv, mock.TokenURL())
+	t.Setenv(teamsOAuthTokenURLEnvName(), mock.TokenURL())
 
 	runtime, hostPeer, cleanup := newRuntimePeerPair(t)
 	defer cleanup()
 
 	now := time.Date(2026, 4, 15, 19, 20, 0, 0, time.UTC)
-	managed := testTeamsManagedInstance(now, "brg-1", map[string]any{
+	managed := testTeamsManagedInstance(t, now, "brg-1", map[string]any{
 		"service_url": mock.ServiceURL(),
 		"auth": map[string]any{
 			"openid_metadata_url": mock.MetadataURL(),
@@ -877,26 +1005,31 @@ func TestDispatchInboundBatchAndEnvelopeCoverage(t *testing.T) {
 
 	var ingested []bridgepkg.InboundMessageEnvelope
 	var mu sync.Mutex
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesMessagesIngest), func(_ context.Context, params json.RawMessage) (any, error) {
-		var envelope bridgepkg.InboundMessageEnvelope
-		if err := json.Unmarshal(params, &envelope); err != nil {
-			return nil, err
-		}
-		mu.Lock()
-		ingested = append(ingested, envelope)
-		mu.Unlock()
-		return extensioncontract.BridgesMessagesIngestResult{
-			SessionID:    "sess-1",
-			RouteCreated: true,
-			RoutingKey: bridgepkg.RoutingKey{
-				Scope:            envelope.Scope,
-				WorkspaceID:      envelope.WorkspaceID,
-				BridgeInstanceID: envelope.BridgeInstanceID,
-				GroupID:          envelope.GroupID,
-				ThreadID:         envelope.ThreadID,
-			},
-		}, nil
-	})
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesMessagesIngest),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var envelope bridgepkg.InboundMessageEnvelope
+			if err := json.Unmarshal(params, &envelope); err != nil {
+				return nil, err
+			}
+			mu.Lock()
+			ingested = append(ingested, envelope)
+			mu.Unlock()
+			return extensioncontract.BridgesMessagesIngestResult{
+				SessionID:    "sess-1",
+				RouteCreated: true,
+				RoutingKey: bridgepkg.RoutingKey{
+					Scope:            envelope.Scope,
+					WorkspaceID:      envelope.WorkspaceID,
+					BridgeInstanceID: envelope.BridgeInstanceID,
+					GroupID:          envelope.GroupID,
+					ThreadID:         envelope.ThreadID,
+				},
+			}, nil
+		},
+	)
 
 	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed), nil); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
@@ -907,17 +1040,26 @@ func TestDispatchInboundBatchAndEnvelopeCoverage(t *testing.T) {
 	})
 
 	envelope := bridgepkg.InboundMessageEnvelope{
-		BridgeInstanceID:  "brg-1",
-		Scope:             bridgepkg.ScopeWorkspace,
-		WorkspaceID:       "ws-teams",
-		GroupID:           "19:channel@thread.tacv2",
-		ThreadID:          encodeTeamsThreadID(teamsThreadRef{ConversationID: "19:channel@thread.tacv2;messageid=activity-1", ServiceURL: mock.ServiceURL()}),
+		BridgeInstanceID: "brg-1",
+		Scope:            bridgepkg.ScopeWorkspace,
+		WorkspaceID:      "ws-teams",
+		GroupID:          "19:channel@thread.tacv2",
+		ThreadID: encodeTeamsThreadID(
+			teamsThreadRef{
+				ConversationID: "19:channel@thread.tacv2;messageid=activity-1",
+				ServiceURL:     mock.ServiceURL(),
+			},
+		),
 		PlatformMessageID: "activity-1",
 		ReceivedAt:        now,
-		Sender:            bridgepkg.MessageSender{ID: "29:user-1", Username: "alice", DisplayName: "Alice"},
-		Content:           bridgepkg.MessageContent{Text: "first"},
-		EventFamily:       bridgepkg.InboundEventFamilyMessage,
-		IdempotencyKey:    "idem-1",
+		Sender: bridgepkg.MessageSender{
+			ID:          "29:user-1",
+			Username:    "alice",
+			DisplayName: "Alice",
+		},
+		Content:        bridgepkg.MessageContent{Text: "first"},
+		EventFamily:    bridgepkg.InboundEventFamilyMessage,
+		IdempotencyKey: "idem-1",
 	}
 
 	if err := runtime.dispatchInboundBatch(context.Background(), "brg-1", bridgesdk.InboundBatch{}); err != nil {
@@ -927,11 +1069,11 @@ func TestDispatchInboundBatchAndEnvelopeCoverage(t *testing.T) {
 		Items: []bridgepkg.InboundMessageEnvelope{
 			envelope,
 			func() bridgepkg.InboundMessageEnvelope {
-				copy := envelope
-				copy.PlatformMessageID = "activity-2"
-				copy.Content.Text = "second"
-				copy.IdempotencyKey = "idem-2"
-				return copy
+				clone := envelope
+				clone.PlatformMessageID = "activity-2"
+				clone.Content.Text = "second"
+				clone.IdempotencyKey = "idem-2"
+				return clone
 			}(),
 		},
 	}); err != nil {
@@ -957,7 +1099,12 @@ func TestDispatchInboundBatchAndEnvelopeCoverage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newTeamsProvider(uninitialized) error = %v", err)
 	}
-	if err := uninitialized.dispatchInboundEnvelope(context.Background(), "brg-1", envelope); err == nil || !strings.Contains(err.Error(), "not initialized") {
+	if err := uninitialized.dispatchInboundEnvelope(
+		context.Background(),
+		"brg-1",
+		envelope,
+	); err == nil ||
+		!strings.Contains(err.Error(), "not initialized") {
 		t.Fatalf("dispatchInboundEnvelope(uninitialized) error = %v, want not initialized", err)
 	}
 }
@@ -968,13 +1115,13 @@ func TestBotClientCoverageAndWebhookGuards(t *testing.T) {
 	mock := newTeamsProviderServer(t, teamsProviderServerConfig{})
 	t.Setenv(teamsListenAddrEnv, listenAddr)
 	t.Setenv(teamsOpenIDMetadataURLEnv, mock.MetadataURL())
-	t.Setenv(teamsTokenURLEnv, mock.TokenURL())
+	t.Setenv(teamsOAuthTokenURLEnvName(), mock.TokenURL())
 
 	runtime, hostPeer, cleanup := newRuntimePeerPair(t)
 	defer cleanup()
 
 	now := time.Date(2026, 4, 15, 19, 30, 0, 0, time.UTC)
-	managed := testTeamsManagedInstance(now, "brg-1", map[string]any{
+	managed := testTeamsManagedInstance(t, now, "brg-1", map[string]any{
 		"service_url": mock.ServiceURL(),
 		"auth": map[string]any{
 			"openid_metadata_url": mock.MetadataURL(),
@@ -992,9 +1139,14 @@ func TestBotClientCoverageAndWebhookGuards(t *testing.T) {
 	})
 
 	webhookURL := fmt.Sprintf("http://%s/teams/%s", listenAddr, managed.Instance.ID)
-	req, err := http.NewRequest(http.MethodGet, webhookURL, nil)
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		webhookURL,
+		http.NoBody,
+	)
 	if err != nil {
-		t.Fatalf("http.NewRequest(GET) error = %v", err)
+		t.Fatalf("http.NewRequestWithContext(GET) error = %v", err)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -1006,9 +1158,14 @@ func TestBotClientCoverageAndWebhookGuards(t *testing.T) {
 		t.Fatalf("GET webhook status = %d, want %d", got, want)
 	}
 
-	req, err = http.NewRequest(http.MethodPost, "http://"+listenAddr+"/unknown", strings.NewReader(`{}`))
+	req, err = http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"http://"+listenAddr+"/unknown",
+		strings.NewReader(`{}`),
+	)
 	if err != nil {
-		t.Fatalf("http.NewRequest(unknown) error = %v", err)
+		t.Fatalf("http.NewRequestWithContext(unknown) error = %v", err)
 	}
 	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
@@ -1028,19 +1185,28 @@ func TestBotClientCoverageAndWebhookGuards(t *testing.T) {
 		openIDMetadataURL: mock.MetadataURL(),
 	}
 	client := &teamsBotClient{cfg: cfg, httpClient: http.DefaultClient}
-	created, err := client.CreateConversation(context.Background(), mock.ServiceURL(), teamsCreateConversationRequest{
-		Bot:      teamsChannelAccount{ID: "28:bot"},
-		IsGroup:  false,
-		Members:  []teamsChannelAccount{{ID: "29:user-1"}},
-		TenantID: "11111111-2222-3333-4444-555555555555",
-	})
+	created, err := client.CreateConversation(
+		context.Background(),
+		mock.ServiceURL(),
+		teamsCreateConversationRequest{
+			Bot:      teamsChannelAccount{ID: "28:bot"},
+			IsGroup:  false,
+			Members:  []teamsChannelAccount{{ID: "29:user-1"}},
+			TenantID: "11111111-2222-3333-4444-555555555555",
+		},
+	)
 	if err != nil {
 		t.Fatalf("CreateConversation() error = %v", err)
 	}
 	if got, want := created.ID, "a:created-conversation"; got != want {
 		t.Fatalf("CreateConversation().ID = %q, want %q", got, want)
 	}
-	if err := client.DeleteActivity(context.Background(), mock.ServiceURL(), "conversation-1", "activity-1"); err != nil {
+	if err := client.DeleteActivity(
+		context.Background(),
+		mock.ServiceURL(),
+		"conversation-1",
+		"activity-1",
+	); err != nil {
 		t.Fatalf("DeleteActivity() error = %v", err)
 	}
 
@@ -1069,13 +1235,13 @@ func TestHandleBridgesDeliverCoverageAndRunCommand(t *testing.T) {
 	mock := newTeamsProviderServer(t, teamsProviderServerConfig{})
 	t.Setenv(teamsListenAddrEnv, listenAddr)
 	t.Setenv(teamsOpenIDMetadataURLEnv, mock.MetadataURL())
-	t.Setenv(teamsTokenURLEnv, mock.TokenURL())
+	t.Setenv(teamsOAuthTokenURLEnvName(), mock.TokenURL())
 
 	runtime, hostPeer, cleanup := newRuntimePeerPair(t)
 	defer cleanup()
 
 	now := time.Date(2026, 4, 15, 19, 40, 0, 0, time.UTC)
-	managed := testTeamsManagedInstance(now, "brg-1", map[string]any{
+	managed := testTeamsManagedInstance(t, now, "brg-1", map[string]any{
 		"service_url": mock.ServiceURL(),
 		"auth": map[string]any{
 			"openid_metadata_url": mock.MetadataURL(),
@@ -1140,10 +1306,19 @@ func TestHandleBridgesDeliverCoverageAndRunCommand(t *testing.T) {
 	badReq.Event.BridgeInstanceID = "missing"
 	_, err = runtime.handleBridgesDeliver(context.Background(), session, badReq)
 	if err == nil || !strings.Contains(err.Error(), "missing") {
-		t.Fatalf("handleBridgesDeliver(missing instance) error = %v, want missing instance error", err)
+		t.Fatalf(
+			"handleBridgesDeliver(missing instance) error = %v, want missing instance error",
+			err,
+		)
 	}
 
-	if err := run([]string{"unknown"}, strings.NewReader(""), io.Discard, io.Discard); err == nil || !strings.Contains(err.Error(), "unsupported command") {
+	if err := run(
+		[]string{"unknown"},
+		strings.NewReader(""),
+		io.Discard,
+		io.Discard,
+	); err == nil ||
+		!strings.Contains(err.Error(), "unsupported command") {
 		t.Fatalf("run(unknown) error = %v, want unsupported command", err)
 	}
 }
@@ -1155,31 +1330,46 @@ func TestTeamsOpenIDAndAuthHelperCoverage(t *testing.T) {
 		t.Fatal("fetchTeamsOpenIDMetadata(empty) error = nil, want non-nil")
 	}
 
-	metadataServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/metadata":
-			_ = json.NewEncoder(w).Encode(map[string]any{"issuer": "https://api.botframework.com"})
-		case "/jwks":
-			_ = json.NewEncoder(w).Encode(map[string]any{"keys": []any{}})
-		default:
-			w.WriteHeader(http.StatusNotFound)
-			_ = json.NewEncoder(w).Encode(map[string]any{"error": "missing"})
-		}
-	}))
+	metadataServer := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/metadata":
+				_ = json.NewEncoder(w).
+					Encode(map[string]any{"issuer": "https://api.botframework.com"})
+			case "/jwks":
+				_ = json.NewEncoder(w).Encode(map[string]any{"keys": []any{}})
+			default:
+				w.WriteHeader(http.StatusNotFound)
+				_ = json.NewEncoder(w).Encode(map[string]any{"error": "missing"})
+			}
+		}),
+	)
 	defer metadataServer.Close()
 
-	if _, err := fetchTeamsOpenIDMetadata(context.Background(), metadataServer.URL+"/metadata"); err == nil || !strings.Contains(err.Error(), "jwks_uri") {
+	if _, err := fetchTeamsOpenIDMetadata(
+		context.Background(),
+		metadataServer.URL+"/metadata",
+	); err == nil ||
+		!strings.Contains(err.Error(), "jwks_uri") {
 		t.Fatalf("fetchTeamsOpenIDMetadata(missing jwks_uri) error = %v, want jwks_uri error", err)
 	}
-	if _, err := fetchTeamsJWKS(context.Background(), metadataServer.URL+"/jwks"); err == nil || !strings.Contains(err.Error(), "omitted signing keys") {
+	if _, err := fetchTeamsJWKS(
+		context.Background(),
+		metadataServer.URL+"/jwks",
+	); err == nil ||
+		!strings.Contains(err.Error(), "omitted signing keys") {
 		t.Fatalf("fetchTeamsJWKS(empty keys) error = %v, want empty key error", err)
 	}
 
 	keys := teamsJWKS{Keys: []teamsJWK{{Kid: "known"}}}
-	if _, err := keys.keyByID("missing"); err == nil || !strings.Contains(err.Error(), "not found") {
+	if _, err := keys.keyByID("missing"); err == nil ||
+		!strings.Contains(err.Error(), "not found") {
 		t.Fatalf("keyByID(missing) error = %v, want not found", err)
 	}
-	if err := (teamsJWK{Endorsements: []string{"other"}}).validateEndorsement("msteams"); err == nil || !strings.Contains(err.Error(), "not endorsed") {
+	if err := (teamsJWK{Endorsements: []string{"other"}}).validateEndorsement(
+		"msteams",
+	); err == nil ||
+		!strings.Contains(err.Error(), "not endorsed") {
 		t.Fatalf("validateEndorsement() error = %v, want endorsement error", err)
 	}
 	if _, err := (teamsJWK{
@@ -1196,21 +1386,52 @@ func TestTeamsOpenIDAndAuthHelperCoverage(t *testing.T) {
 		serviceURL:        mock.ServiceURL(),
 		openIDMetadataURL: mock.MetadataURL(),
 	}
-	req, err := http.NewRequest(http.MethodPost, "http://teams.test/webhook", strings.NewReader(teamsMessageWebhook(mock.ServiceURL(), "Need a summary")))
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"http://teams.test/webhook",
+		strings.NewReader(teamsMessageWebhook(mock.ServiceURL(), "Need a summary")),
+	)
 	if err != nil {
-		t.Fatalf("http.NewRequest() error = %v", err)
+		t.Fatalf("http.NewRequestWithContext() error = %v", err)
 	}
-	if err := verifyTeamsAuthorization(context.Background(), req, []byte(teamsMessageWebhook(mock.ServiceURL(), "Need a summary")), cfg); err == nil || !strings.Contains(err.Error(), "bearer authorization") {
-		t.Fatalf("verifyTeamsAuthorization(missing auth) error = %v, want bearer authorization error", err)
+	if err := verifyTeamsAuthorization(
+		context.Background(),
+		req,
+		[]byte(teamsMessageWebhook(mock.ServiceURL(), "Need a summary")),
+		cfg,
+	); err == nil ||
+		!strings.Contains(err.Error(), "bearer authorization") {
+		t.Fatalf(
+			"verifyTeamsAuthorization(missing auth) error = %v, want bearer authorization error",
+			err,
+		)
 	}
 
-	req, err = http.NewRequest(http.MethodPost, "http://teams.test/webhook", strings.NewReader(teamsMessageWebhook(mock.ServiceURL(), "Need a summary")))
+	req, err = http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"http://teams.test/webhook",
+		strings.NewReader(teamsMessageWebhook(mock.ServiceURL(), "Need a summary")),
+	)
 	if err != nil {
-		t.Fatalf("http.NewRequest(mismatch) error = %v", err)
+		t.Fatalf("http.NewRequestWithContext(mismatch) error = %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+mock.SignedToken(t, "app-id", "https://elsewhere.test"))
-	if err := verifyTeamsAuthorization(context.Background(), req, []byte(teamsMessageWebhook(mock.ServiceURL(), "Need a summary")), cfg); err == nil || !strings.Contains(err.Error(), "did not match") {
-		t.Fatalf("verifyTeamsAuthorization(service url mismatch) error = %v, want mismatch error", err)
+	req.Header.Set(
+		"Authorization",
+		"Bearer "+mock.SignedToken(t, "app-id", "https://elsewhere.test"),
+	)
+	if err := verifyTeamsAuthorization(
+		context.Background(),
+		req,
+		[]byte(teamsMessageWebhook(mock.ServiceURL(), "Need a summary")),
+		cfg,
+	); err == nil ||
+		!strings.Contains(err.Error(), "did not match") {
+		t.Fatalf(
+			"verifyTeamsAuthorization(service url mismatch) error = %v, want mismatch error",
+			err,
+		)
 	}
 }
 
@@ -1221,20 +1442,25 @@ func TestReconcileInstanceConfigCoverage(t *testing.T) {
 	defer cleanup()
 
 	now := time.Date(2026, 4, 15, 19, 50, 0, 0, time.UTC)
-	managed := testTeamsManagedInstance(now, "brg-1", map[string]any{
+	managed := testTeamsManagedInstance(t, now, "brg-1", map[string]any{
 		"service_url": teamsDefaultServiceURL,
 		"webhook": map[string]any{
 			"path": "shared",
 		},
 	})
-	managed2 := testTeamsManagedInstance(now, "brg-2", map[string]any{
+	managed2 := testTeamsManagedInstance(t, now, "brg-2", map[string]any{
 		"service_url": teamsDefaultServiceURL,
 		"webhook": map[string]any{
 			"path": "shared",
 		},
 	})
 	mustHandleLifecycle(t, hostPeer, managed, managed2)
-	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed, managed2), nil); err != nil {
+	if err := hostPeer.Call(
+		context.Background(),
+		"initialize",
+		testInitializeRequest(now, managed, managed2),
+		nil,
+	); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
 	}
 	session := runtime.currentSession()
@@ -1242,26 +1468,36 @@ func TestReconcileInstanceConfigCoverage(t *testing.T) {
 		t.Fatal("runtime.currentSession() = nil, want session")
 	}
 
-	configs, err := runtime.reconcileInstanceConfigs(context.Background(), session, []subprocess.InitializeBridgeManagedInstance{managed, managed2})
-	if err != nil {
-		t.Fatalf("reconcileInstanceConfigs() error = %v", err)
-	}
+	configs := runtime.reconcileInstanceConfigs(
+		context.Background(),
+		session,
+		[]subprocess.InitializeBridgeManagedInstance{managed, managed2},
+	)
 	if got, want := len(configs), 2; got != want {
 		t.Fatalf("len(configs) = %d, want %d", got, want)
 	}
-	if configs[0].configError == nil || !strings.Contains(configs[0].configError.Error(), "listen address") {
+	if configs[0].configError == nil ||
+		!strings.Contains(configs[0].configError.Error(), "listen address") {
 		t.Fatalf("configs[0].configError = %v, want listen address error", configs[0].configError)
 	}
-	if configs[1].configError == nil || !strings.Contains(configs[1].configError.Error(), "shared") {
-		t.Fatalf("configs[1].configError = %v, want shared path or listen error", configs[1].configError)
+	if configs[1].configError == nil ||
+		!strings.Contains(configs[1].configError.Error(), "shared") {
+		t.Fatalf(
+			"configs[1].configError = %v, want shared path or listen error",
+			configs[1].configError,
+		)
 	}
 
 	badJSON := managed
 	badJSON.Instance.ID = "bad-json"
 	badJSON.Instance.ProviderConfig = json.RawMessage("{")
 	resolved := runtime.resolveInstanceConfig(session, badJSON)
-	if resolved.configError == nil || !strings.Contains(resolved.configError.Error(), "decode provider_config") {
-		t.Fatalf("resolveInstanceConfig(bad json) error = %v, want decode provider_config error", resolved.configError)
+	if resolved.configError == nil ||
+		!strings.Contains(resolved.configError.Error(), "decode provider_config") {
+		t.Fatalf(
+			"resolveInstanceConfig(bad json) error = %v, want decode provider_config error",
+			resolved.configError,
+		)
 	}
 }
 
@@ -1303,7 +1539,8 @@ func TestMarkerHelperCoverage(t *testing.T) {
 
 	var stderr bytes.Buffer
 	reportSideEffectError(&stderr, "write marker", errors.New("boom"))
-	if got := stderr.String(); !strings.Contains(got, "write marker") || !strings.Contains(got, "boom") {
+	if got := stderr.String(); !strings.Contains(got, "write marker") ||
+		!strings.Contains(got, "boom") {
 		t.Fatalf("reportSideEffectError() wrote %q, want action and error text", got)
 	}
 	reportSideEffectError(&stderr, "noop", nil)
@@ -1359,7 +1596,9 @@ func TestHandleWebhookRequestCoverage(t *testing.T) {
 
 	recorder = httptest.NewRecorder()
 	err = runtime.handleWebhookRequest(recorder, cfg, bridgesdk.WebhookRequest{
-		Body: []byte(`{"type":"conversationUpdate","from":{"id":"29:user-1"},"serviceUrl":"https://service.test","conversation":{"tenantId":"tenant-1"}}`),
+		Body: []byte(
+			`{"type":"conversationUpdate","from":{"id":"29:user-1"},"serviceUrl":"https://service.test","conversation":{"tenantId":"tenant-1"}}`,
+		),
 	})
 	if err != nil {
 		t.Fatalf("handleWebhookRequest(ignored activity) error = %v", err)
@@ -1382,13 +1621,23 @@ func TestRemoteMessageReferenceHelpers(t *testing.T) {
 		t.Fatalf("decodeRemoteMessageID(valid) error = %v", err)
 	}
 	if decoded.ServiceURL != "https://service.test" {
-		t.Fatalf("decodeRemoteMessageID().ServiceURL = %q, want %q", decoded.ServiceURL, "https://service.test")
+		t.Fatalf(
+			"decodeRemoteMessageID().ServiceURL = %q, want %q",
+			decoded.ServiceURL,
+			"https://service.test",
+		)
 	}
-	if _, err := decodeRemoteMessageID(base64.RawURLEncoding.EncodeToString([]byte(`{"conversation_id":"","service_url":"https://service.test","activity_id":"activity-1"}`))); err == nil {
+	if _, err := decodeRemoteMessageID(
+		base64.RawURLEncoding.EncodeToString(
+			[]byte(`{"conversation_id":"","service_url":"https://service.test","activity_id":"activity-1"}`),
+		),
+	); err == nil {
 		t.Fatal("decodeRemoteMessageID(incomplete) error = nil, want non-nil")
 	}
 
-	if got, want := referenceRemoteMessageID(&bridgepkg.DeliveryMessageReference{RemoteMessageID: " remote-id "}), "remote-id"; got != want {
+	if got, want := referenceRemoteMessageID(
+		&bridgepkg.DeliveryMessageReference{RemoteMessageID: " remote-id "},
+	), "remote-id"; got != want {
 		t.Fatalf("referenceRemoteMessageID() = %q, want %q", got, want)
 	}
 	if referenceRemoteMessageID(nil) != "" {
@@ -1431,12 +1680,22 @@ func (f *fakeTeamsAPI) ValidateAuth(context.Context) error {
 	return f.validateErr
 }
 
-func (f *fakeTeamsAPI) CreateConversation(_ context.Context, _ string, req teamsCreateConversationRequest) (*teamsConversationResourceResponse, error) {
+func (f *fakeTeamsAPI) CreateConversation(
+	_ context.Context,
+	_ string,
+	req teamsCreateConversationRequest,
+) (*teamsConversationResourceResponse, error) {
 	f.createCalls = append(f.createCalls, req)
 	return &teamsConversationResourceResponse{ID: f.createConversationID}, nil
 }
 
-func (f *fakeTeamsAPI) SendActivity(_ context.Context, serviceURL string, conversationID string, replyToID string, activity teamsOutboundActivity) (*teamsResourceResponse, error) {
+func (f *fakeTeamsAPI) SendActivity(
+	_ context.Context,
+	serviceURL string,
+	conversationID string,
+	replyToID string,
+	activity teamsOutboundActivity,
+) (*teamsResourceResponse, error) {
 	f.sendCalls = append(f.sendCalls, teamsSendCall{
 		ServiceURL:     serviceURL,
 		ConversationID: conversationID,
@@ -1448,7 +1707,13 @@ func (f *fakeTeamsAPI) SendActivity(_ context.Context, serviceURL string, conver
 	return &teamsResourceResponse{ID: id}, nil
 }
 
-func (f *fakeTeamsAPI) UpdateActivity(_ context.Context, serviceURL string, conversationID string, activityID string, activity teamsOutboundActivity) error {
+func (f *fakeTeamsAPI) UpdateActivity(
+	_ context.Context,
+	serviceURL string,
+	conversationID string,
+	activityID string,
+	activity teamsOutboundActivity,
+) error {
 	f.updateCalls = append(f.updateCalls, teamsUpdateCall{
 		ServiceURL:     serviceURL,
 		ConversationID: conversationID,
@@ -1458,7 +1723,12 @@ func (f *fakeTeamsAPI) UpdateActivity(_ context.Context, serviceURL string, conv
 	return nil
 }
 
-func (f *fakeTeamsAPI) DeleteActivity(_ context.Context, serviceURL string, conversationID string, activityID string) error {
+func (f *fakeTeamsAPI) DeleteActivity(
+	_ context.Context,
+	serviceURL string,
+	conversationID string,
+	activityID string,
+) error {
 	f.deleteCalls = append(f.deleteCalls, teamsDeleteCall{
 		ServiceURL:     serviceURL,
 		ConversationID: conversationID,
@@ -1612,12 +1882,23 @@ func bigEndianExponent(e int) []byte {
 	return buf
 }
 
-func postTeamsWebhook(t *testing.T, server *teamsProviderServer, webhookURL string, appID string, payload string) {
+func postTeamsWebhook(
+	t *testing.T,
+	server *teamsProviderServer,
+	webhookURL string,
+	appID string,
+	payload string,
+) {
 	t.Helper()
 
-	req, err := http.NewRequest(http.MethodPost, webhookURL, strings.NewReader(payload))
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		webhookURL,
+		strings.NewReader(payload),
+	)
 	if err != nil {
-		t.Fatalf("http.NewRequest() error = %v", err)
+		t.Fatalf("http.NewRequestWithContext() error = %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+server.SignedToken(t, appID, server.ServiceURL()))
@@ -1634,7 +1915,8 @@ func postTeamsWebhook(t *testing.T, server *teamsProviderServer, webhookURL stri
 		if resp.StatusCode == http.StatusOK {
 			return
 		}
-		if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusServiceUnavailable {
+		if resp.StatusCode == http.StatusNotFound ||
+			resp.StatusCode == http.StatusServiceUnavailable {
 			time.Sleep(20 * time.Millisecond)
 			continue
 		}
@@ -1644,15 +1926,25 @@ func postTeamsWebhook(t *testing.T, server *teamsProviderServer, webhookURL stri
 }
 
 func teamsMessageWebhook(serviceURL string, text string) string {
-	return fmt.Sprintf(`{"type":"message","id":"activity-1","channelId":"msteams","serviceUrl":%q,"timestamp":"2026-04-15T18:25:00Z","text":%q,"from":{"id":"29:user-1","name":"Alice Example"},"recipient":{"id":"28:bot","name":"Bridge Bot"},"conversation":{"id":"19:channel@thread.tacv2;messageid=activity-1","conversationType":"channel","tenantId":"11111111-2222-3333-4444-555555555555"}}`, serviceURL, text)
+	return fmt.Sprintf(
+		`{"type":"message","id":"activity-1","channelId":"msteams","serviceUrl":%q,"timestamp":"2026-04-15T18:25:00Z","text":%q,"from":{"id":"29:user-1","name":"Alice Example"},"recipient":{"id":"28:bot","name":"Bridge Bot"},"conversation":{"id":"19:channel@thread.tacv2;messageid=activity-1","conversationType":"channel","tenantId":"11111111-2222-3333-4444-555555555555"}}`,
+		serviceURL,
+		text,
+	)
 }
 
 func teamsInvokeWebhook(serviceURL string) string {
-	return fmt.Sprintf(`{"type":"invoke","id":"activity-2","channelId":"msteams","serviceUrl":%q,"timestamp":"2026-04-15T18:25:01Z","from":{"id":"29:user-1","name":"Alice Example"},"recipient":{"id":"28:bot","name":"Bridge Bot"},"conversation":{"id":"a:direct-conversation","tenantId":"11111111-2222-3333-4444-555555555555"},"value":{"action":{"data":{"actionId":"approve","value":"yes"}}}}`, serviceURL)
+	return fmt.Sprintf(
+		`{"type":"invoke","id":"activity-2","channelId":"msteams","serviceUrl":%q,"timestamp":"2026-04-15T18:25:01Z","from":{"id":"29:user-1","name":"Alice Example"},"recipient":{"id":"28:bot","name":"Bridge Bot"},"conversation":{"id":"a:direct-conversation","tenantId":"11111111-2222-3333-4444-555555555555"},"value":{"action":{"data":{"actionId":"approve","value":"yes"}}}}`,
+		serviceURL,
+	)
 }
 
 func teamsReactionWebhook(serviceURL string) string {
-	return fmt.Sprintf(`{"type":"messageReaction","id":"activity-3","channelId":"msteams","serviceUrl":%q,"timestamp":"2026-04-15T18:25:02Z","from":{"id":"29:user-1","name":"Alice Example"},"conversation":{"id":"19:channel@thread.tacv2;messageid=activity-1","conversationType":"channel","tenantId":"11111111-2222-3333-4444-555555555555"},"reactionsAdded":[{"type":"like"}],"reactionsRemoved":[{"type":"sad"}]}`, serviceURL)
+	return fmt.Sprintf(
+		`{"type":"messageReaction","id":"activity-3","channelId":"msteams","serviceUrl":%q,"timestamp":"2026-04-15T18:25:02Z","from":{"id":"29:user-1","name":"Alice Example"},"conversation":{"id":"19:channel@thread.tacv2;messageid=activity-1","conversationType":"channel","tenantId":"11111111-2222-3333-4444-555555555555"},"reactionsAdded":[{"type":"like"}],"reactionsRemoved":[{"type":"sad"}]}`,
+		serviceURL,
+	)
 }
 
 func newRuntimePeerPair(t *testing.T) (*teamsProvider, *bridgesdk.Peer, func()) {
@@ -1679,13 +1971,16 @@ func newRuntimePeerPair(t *testing.T) (*teamsProvider, *bridgesdk.Peer, func()) 
 			server := runtime.server
 			runtime.mu.RUnlock()
 			if server != nil {
-				shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
+				shutdownCtx, shutdownCancel := context.WithTimeout(
+					context.Background(),
+					2*time.Second,
+				)
 				_ = server.Shutdown(shutdownCtx)
 				shutdownCancel()
 			}
 			_ = hostConn.Close()
 			_ = runtimeConn.Close()
-			for i := 0; i < 2; i++ {
+			for range 2 {
 				err := <-errCh
 				if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, net.ErrClosed) {
 					continue
@@ -1708,58 +2003,89 @@ func mustHandle(t *testing.T, peer *bridgesdk.Peer, method string, handler bridg
 	}
 }
 
-func mustHandleLifecycle(t *testing.T, peer *bridgesdk.Peer, managed ...subprocess.InitializeBridgeManagedInstance) {
+func mustHandleLifecycle(
+	t *testing.T,
+	peer *bridgesdk.Peer,
+	managed ...subprocess.InitializeBridgeManagedInstance,
+) {
 	t.Helper()
 
-	mustHandle(t, peer, string(extensionprotocol.HostAPIMethodBridgesInstancesList), func(context.Context, json.RawMessage) (any, error) {
-		instances := make([]bridgepkg.BridgeInstance, 0, len(managed))
-		for _, item := range managed {
-			instances = append(instances, item.Instance)
-		}
-		return instances, nil
-	})
-	mustHandle(t, peer, string(extensionprotocol.HostAPIMethodBridgesInstancesGet), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgeInstanceTargetParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		for _, item := range managed {
-			if item.Instance.ID == payload.BridgeInstanceID {
-				return item.Instance, nil
+	mustHandle(
+		t,
+		peer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesList),
+		func(context.Context, json.RawMessage) (any, error) {
+			instances := make([]bridgepkg.BridgeInstance, 0, len(managed))
+			for _, item := range managed {
+				instances = append(instances, item.Instance)
 			}
-		}
-		return nil, errors.New("unexpected instance")
-	})
-	mustHandle(t, peer, string(extensionprotocol.HostAPIMethodBridgesInstancesReportState), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgesInstancesReportStateParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		for _, item := range managed {
-			if item.Instance.ID == payload.BridgeInstanceID {
-				instance := item.Instance
-				instance.Status = payload.Status
-				instance.Degradation = payload.Degradation
-				return instance, nil
+			return instances, nil
+		},
+	)
+	mustHandle(
+		t,
+		peer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesGet),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgeInstanceTargetParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
 			}
-		}
-		return nil, errors.New("unexpected state instance")
-	})
+			for _, item := range managed {
+				if item.Instance.ID == payload.BridgeInstanceID {
+					return item.Instance, nil
+				}
+			}
+			return nil, errors.New("unexpected instance")
+		},
+	)
+	mustHandle(
+		t,
+		peer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesReportState),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgesInstancesReportStateParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
+			for _, item := range managed {
+				if item.Instance.ID == payload.BridgeInstanceID {
+					instance := item.Instance
+					instance.Status = payload.Status
+					instance.Degradation = payload.Degradation
+					return instance, nil
+				}
+			}
+			return nil, errors.New("unexpected state instance")
+		},
+	)
 }
 
-func testTeamsManagedInstance(now time.Time, instanceID string, providerConfig map[string]any) subprocess.InitializeBridgeManagedInstance {
-	encodedProviderConfig, _ := json.Marshal(providerConfig)
+func testTeamsManagedInstance(
+	t *testing.T,
+	now time.Time,
+	instanceID string,
+	providerConfig map[string]any,
+) subprocess.InitializeBridgeManagedInstance {
+	encodedProviderConfig, err := json.Marshal(providerConfig)
+	if err != nil {
+		t.Fatalf("json.Marshal(providerConfig) error = %v", err)
+	}
 	return subprocess.InitializeBridgeManagedInstance{
 		Instance: bridgepkg.BridgeInstance{
-			ID:             instanceID,
-			Scope:          bridgepkg.ScopeWorkspace,
-			WorkspaceID:    "ws-teams",
-			Platform:       "teams",
-			ExtensionName:  "teams",
-			DisplayName:    "Teams",
-			Enabled:        true,
-			Status:         bridgepkg.BridgeStatusReady,
-			RoutingPolicy:  bridgepkg.RoutingPolicy{IncludePeer: true, IncludeGroup: true, IncludeThread: true},
+			ID:            instanceID,
+			Scope:         bridgepkg.ScopeWorkspace,
+			WorkspaceID:   "ws-teams",
+			Platform:      "teams",
+			ExtensionName: "teams",
+			DisplayName:   "Teams",
+			Enabled:       true,
+			Status:        bridgepkg.BridgeStatusReady,
+			RoutingPolicy: bridgepkg.RoutingPolicy{
+				IncludePeer:   true,
+				IncludeGroup:  true,
+				IncludeThread: true,
+			},
 			ProviderConfig: encodedProviderConfig,
 			CreatedAt:      now,
 			UpdatedAt:      now,
@@ -1767,12 +2093,19 @@ func testTeamsManagedInstance(now time.Time, instanceID string, providerConfig m
 		BoundSecrets: []subprocess.InitializeBridgeBoundSecret{
 			{BindingName: "app_id", Kind: "token", Value: "app-id"},
 			{BindingName: "app_password", Kind: "token", Value: "app-password"},
-			{BindingName: "app_tenant_id", Kind: "token", Value: "11111111-2222-3333-4444-555555555555"},
+			{
+				BindingName: "app_tenant_id",
+				Kind:        "token",
+				Value:       "11111111-2222-3333-4444-555555555555",
+			},
 		},
 	}
 }
 
-func testInitializeRequest(now time.Time, managed ...subprocess.InitializeBridgeManagedInstance) subprocess.InitializeRequest {
+func testInitializeRequest(
+	_ time.Time,
+	managed ...subprocess.InitializeBridgeManagedInstance,
+) subprocess.InitializeRequest {
 	return subprocess.InitializeRequest{
 		ProtocolVersion:          "1",
 		SupportedProtocolVersion: []string{"1"},
@@ -1838,9 +2171,10 @@ func setProviderTestEnv(t *testing.T) markerEnv {
 func reserveListenAddr(t *testing.T) string {
 	t.Helper()
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	var listenConfig net.ListenConfig
+	ln, err := listenConfig.Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("net.Listen() error = %v", err)
+		t.Fatalf("ListenConfig.Listen() error = %v", err)
 	}
 	addr := ln.Addr().String()
 	if err := ln.Close(); err != nil {

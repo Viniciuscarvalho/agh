@@ -33,7 +33,7 @@ func newHooksListCommand(deps commandDeps) *cobra.Command {
 		Use:   "list",
 		Short: "List resolved hooks in pipeline order",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -62,7 +62,7 @@ func newHooksInfoCommand(deps commandDeps) *cobra.Command {
 		Short: "Show detailed information for one or more hooks by name",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -98,7 +98,7 @@ func newHooksEventsCommand(deps commandDeps) *cobra.Command {
 		Use:   "events",
 		Short: "List supported hook events",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -126,7 +126,7 @@ func newHooksRunsCommand(deps commandDeps) *cobra.Command {
 		Use:   "runs",
 		Short: "Show persisted hook execution history",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -234,7 +234,22 @@ func hookInfoBundle(hooks []HookCatalogRecord) outputBundle {
 			}
 
 			blocks := []string{
-				renderToonArray("hooks", []string{"name", "order", "event", "source", "skill_source", "mode", "required", "priority", "timeout_ms", "executor_kind"}, rows),
+				renderToonArray(
+					"hooks",
+					[]string{
+						"name",
+						"order",
+						"event",
+						"source",
+						"skill_source",
+						"mode",
+						"required",
+						"priority",
+						"timeout_ms",
+						"executor_kind",
+					},
+					rows,
+				),
 			}
 			for _, item := range hooks {
 				blocks = append(blocks, renderHumanBlocks(

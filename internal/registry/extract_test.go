@@ -43,13 +43,24 @@ func TestExtractArchive_ValidArchiveProducesDirectoryStructure(t *testing.T) {
 			path    string
 			content string
 		}{
-			{name: "ShouldReadExpectedSkillDocument", path: filepath.Join(root, "review", "SKILL.md"), content: "name: review\n"},
-			{name: "ShouldReadExpectedGuide", path: filepath.Join(root, "review", "docs", "guide.md"), content: "guide"},
-			{name: "ShouldReadExpectedScript", path: filepath.Join(root, "review", "scripts", "run.sh"), content: "echo ok\n"},
+			{
+				name:    "ShouldReadExpectedSkillDocument",
+				path:    filepath.Join(root, "review", "SKILL.md"),
+				content: "name: review\n",
+			},
+			{
+				name:    "ShouldReadExpectedGuide",
+				path:    filepath.Join(root, "review", "docs", "guide.md"),
+				content: "guide",
+			},
+			{
+				name:    "ShouldReadExpectedScript",
+				path:    filepath.Join(root, "review", "scripts", "run.sh"),
+				content: "echo ok\n",
+			},
 		}
 
 		for _, check := range checks {
-			check := check
 			t.Run(check.name, func(t *testing.T) {
 				data, err := os.ReadFile(check.path)
 				if err != nil {

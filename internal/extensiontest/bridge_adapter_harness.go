@@ -19,6 +19,7 @@ import (
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	extensionpkg "github.com/pedronauck/agh/internal/extension"
 	extensioncontract "github.com/pedronauck/agh/internal/extension/contract"
+	extensionprotocol "github.com/pedronauck/agh/internal/extension/protocol"
 	observepkg "github.com/pedronauck/agh/internal/observe"
 	"github.com/pedronauck/agh/internal/session"
 	skillspkg "github.com/pedronauck/agh/internal/skills"
@@ -114,14 +115,14 @@ type DeliveryRecord struct {
 type StateRecord struct {
 	BridgeInstanceID string                   `json:"bridge_instance_id,omitempty"`
 	Status           bridgepkg.BridgeStatus   `json:"status"`
-	Instance         bridgepkg.BridgeInstance `json:"instance,omitempty"`
+	Instance         bridgepkg.BridgeInstance `json:"instance"`
 	Error            string                   `json:"error,omitempty"`
 }
 
 // IngestRecord captures one fake inbound update mapped into a normalized ingest.
 type IngestRecord struct {
 	Envelope bridgepkg.InboundMessageEnvelope              `json:"envelope"`
-	Result   extensioncontract.BridgesMessagesIngestResult `json:"result,omitempty"`
+	Result   extensioncontract.BridgesMessagesIngestResult `json:"result"`
 	Error    string                                        `json:"error,omitempty"`
 }
 
@@ -180,180 +181,293 @@ func (e *ConformanceError) Error() string {
 // ValidateConformance checks the adapter evidence against the reusable bridge
 // adapter contract enforced by the harness.
 func ValidateConformance(report ConformanceReport, expect ConformanceExpectation) error {
-	issues := make([]ConformanceIssue, 0)
 	expectedByID := make(map[string]ManagedInstanceExpectation, len(expect.ManagedInstances))
 	for _, managed := range expect.ManagedInstances {
 		expectedByID[strings.TrimSpace(managed.InstanceID)] = managed
 	}
 
-	if report.Handshake == nil {
-		issues = append(issues, ConformanceIssue{
+	issues := make([]ConformanceIssue, 0)
+	issues = append(issues, validateHandshakeConformance(report.Handshake, expect, expectedByID)...)
+	issues = append(issues, validateOwnershipConformance(report.Ownership, expect, expectedByID)...)
+	issues = append(issues, validateStateConformance(report.States, expect, expectedByID)...)
+	issues = append(issues, validateDeliveryConformance(report.Deliveries, expect, expectedByID)...)
+	issues = append(issues, validateIngestConformance(report.Ingests, expectedByID)...)
+	if len(issues) > 0 {
+		return &ConformanceError{Issues: issues}
+	}
+	return nil
+}
+
+func validateHandshakeConformance(
+	handshake *HandshakeRecord,
+	expect ConformanceExpectation,
+	expectedByID map[string]ManagedInstanceExpectation,
+) []ConformanceIssue {
+	if handshake == nil {
+		return []ConformanceIssue{{
 			Code:    "missing_handshake",
 			Message: "adapter did not write an initialize marker",
-		})
-	} else {
-		request := report.Handshake.Request
-		if !slices.Contains(request.Methods.ExtensionServices, "bridges/deliver") {
-			issues = append(issues, ConformanceIssue{
-				Code:    "missing_delivery_negotiation",
-				Message: "initialize did not negotiate bridges/deliver",
-			})
-		}
-		if request.Runtime.Bridge == nil {
-			issues = append(issues, ConformanceIssue{
-				Code:    "missing_bridge_runtime",
-				Message: "initialize runtime.bridge was nil",
-			})
-		} else {
-			runtime := request.Runtime.Bridge
-			if got, want := strings.TrimSpace(runtime.RuntimeVersion), subprocess.InitializeBridgeRuntimeVersion1; got != want {
-				issues = append(issues, ConformanceIssue{
-					Code:    "wrong_runtime_version",
-					Message: fmt.Sprintf("initialize runtime bridge version = %q, want %q", got, want),
-				})
-			}
-			if expect.Provider != "" && strings.TrimSpace(runtime.Provider) != strings.TrimSpace(expect.Provider) {
-				issues = append(issues, ConformanceIssue{
-					Code:    "wrong_provider",
-					Message: fmt.Sprintf("initialize runtime bridge provider = %q, want %q", runtime.Provider, expect.Provider),
-				})
-			}
-			if expect.Platform != "" && strings.TrimSpace(runtime.Platform) != strings.TrimSpace(expect.Platform) {
-				issues = append(issues, ConformanceIssue{
-					Code:    "wrong_platform",
-					Message: fmt.Sprintf("initialize runtime bridge platform = %q, want %q", runtime.Platform, expect.Platform),
-				})
-			}
-			for _, managedExpect := range expect.ManagedInstances {
-				managed, managedOK := runtime.ManagedInstance(managedExpect.InstanceID)
-				if !managedOK {
-					issues = append(issues, ConformanceIssue{
-						Code: "missing_managed_instance",
-						Message: fmt.Sprintf(
-							"initialize runtime bridge did not include managed instance %q",
-							managedExpect.InstanceID,
-						),
-					})
-					continue
-				}
-				if managedExpect.ExtensionName != "" && strings.TrimSpace(managed.Instance.ExtensionName) != strings.TrimSpace(managedExpect.ExtensionName) {
-					issues = append(issues, ConformanceIssue{
-						Code: "wrong_extension",
-						Message: fmt.Sprintf(
-							"initialize runtime bridge instance %q extension = %q, want %q",
-							managedExpect.InstanceID,
-							managed.Instance.ExtensionName,
-							managedExpect.ExtensionName,
-						),
-					})
-				}
-
-				bound := make(map[string]struct{}, len(managed.BoundSecrets))
-				for _, secret := range managed.BoundSecrets {
-					bound[strings.TrimSpace(secret.BindingName)] = struct{}{}
-				}
-				for _, bindingName := range managedExpect.BoundSecretNames {
-					if _, ok := bound[strings.TrimSpace(bindingName)]; !ok {
-						issues = append(issues, ConformanceIssue{
-							Code: "missing_bound_secret",
-							Message: fmt.Sprintf(
-								"initialize runtime did not include bound secret %q for managed instance %q",
-								bindingName,
-								managedExpect.InstanceID,
-							),
-						})
-					}
-				}
-			}
-
-			for _, managed := range runtime.ManagedInstances {
-				if len(expectedByID) == 0 {
-					break
-				}
-				if _, ok := expectedByID[strings.TrimSpace(managed.Instance.ID)]; !ok {
-					issues = append(issues, ConformanceIssue{
-						Code:    "unexpected_managed_instance",
-						Message: fmt.Sprintf("initialize runtime included unexpected managed instance %q", managed.Instance.ID),
-					})
-				}
-			}
-		}
-
-		for _, method := range request.Capabilities.GrantedActions {
-			text := strings.ToLower(strings.TrimSpace(string(method)))
-			if strings.Contains(text, "vault/") || strings.Contains(text, "secret/") {
-				issues = append(issues, ConformanceIssue{
-					Code:    "leaked_secret_surface",
-					Message: fmt.Sprintf("initialize granted unexpected secret surface %q", method),
-				})
-			}
-		}
+		}}
 	}
 
-	if expect.RequireOwnedInstanceList || expect.RequireOwnedInstanceFetch {
-		if report.Ownership == nil {
+	issues := make([]ConformanceIssue, 0)
+	request := handshake.Request
+	if !slices.Contains(request.Methods.ExtensionServices, "bridges/deliver") {
+		issues = append(issues, ConformanceIssue{
+			Code:    "missing_delivery_negotiation",
+			Message: "initialize did not negotiate bridges/deliver",
+		})
+	}
+	if request.Runtime.Bridge == nil {
+		return append(issues, ConformanceIssue{
+			Code:    "missing_bridge_runtime",
+			Message: "initialize runtime.bridge was nil",
+		})
+	}
+
+	runtime := request.Runtime.Bridge
+	issues = append(issues, validateHandshakeRuntime(runtime, expect, expectedByID)...)
+	issues = append(issues, validateGrantedActions(request.Capabilities.GrantedActions)...)
+	return issues
+}
+
+func validateHandshakeRuntime(
+	runtime *subprocess.InitializeBridgeRuntime,
+	expect ConformanceExpectation,
+	expectedByID map[string]ManagedInstanceExpectation,
+) []ConformanceIssue {
+	issues := make([]ConformanceIssue, 0)
+	if got, want := strings.TrimSpace(runtime.RuntimeVersion), subprocess.InitializeBridgeRuntimeVersion1; got != want {
+		issues = append(issues, ConformanceIssue{
+			Code:    "wrong_runtime_version",
+			Message: fmt.Sprintf("initialize runtime bridge version = %q, want %q", got, want),
+		})
+	}
+	if expect.Provider != "" && strings.TrimSpace(runtime.Provider) != strings.TrimSpace(expect.Provider) {
+		issues = append(issues, ConformanceIssue{
+			Code: "wrong_provider",
+			Message: fmt.Sprintf(
+				"initialize runtime bridge provider = %q, want %q",
+				runtime.Provider,
+				expect.Provider,
+			),
+		})
+	}
+	if expect.Platform != "" && strings.TrimSpace(runtime.Platform) != strings.TrimSpace(expect.Platform) {
+		issues = append(issues, ConformanceIssue{
+			Code: "wrong_platform",
+			Message: fmt.Sprintf(
+				"initialize runtime bridge platform = %q, want %q",
+				runtime.Platform,
+				expect.Platform,
+			),
+		})
+	}
+	issues = append(issues, validateExpectedManagedInstances(runtime, expect.ManagedInstances)...)
+	issues = append(issues, validateUnexpectedManagedInstances(runtime, expectedByID)...)
+	return issues
+}
+
+func validateExpectedManagedInstances(
+	runtime *subprocess.InitializeBridgeRuntime,
+	expected []ManagedInstanceExpectation,
+) []ConformanceIssue {
+	issues := make([]ConformanceIssue, 0)
+	for _, managedExpect := range expected {
+		managed, ok := runtime.ManagedInstance(managedExpect.InstanceID)
+		if !ok {
 			issues = append(issues, ConformanceIssue{
+				Code: "missing_managed_instance",
+				Message: fmt.Sprintf(
+					"initialize runtime bridge did not include managed instance %q",
+					managedExpect.InstanceID,
+				),
+			})
+			continue
+		}
+		if managedExpect.ExtensionName != "" &&
+			strings.TrimSpace(managed.Instance.ExtensionName) != strings.TrimSpace(managedExpect.ExtensionName) {
+			issues = append(issues, ConformanceIssue{
+				Code: "wrong_extension",
+				Message: fmt.Sprintf(
+					"initialize runtime bridge instance %q extension = %q, want %q",
+					managedExpect.InstanceID,
+					managed.Instance.ExtensionName,
+					managedExpect.ExtensionName,
+				),
+			})
+		}
+		issues = append(issues, validateManagedBoundSecrets(managed, managedExpect)...)
+	}
+	return issues
+}
+
+func validateManagedBoundSecrets(
+	managed *subprocess.InitializeBridgeManagedInstance,
+	expect ManagedInstanceExpectation,
+) []ConformanceIssue {
+	issues := make([]ConformanceIssue, 0)
+	if managed == nil {
+		return append(issues, ConformanceIssue{
+			Code:    "missing_managed_instance",
+			Message: fmt.Sprintf("initialize runtime omitted managed instance %q", expect.InstanceID),
+		})
+	}
+	bound := make(map[string]struct{}, len(managed.BoundSecrets))
+	for _, secret := range managed.BoundSecrets {
+		bound[strings.TrimSpace(secret.BindingName)] = struct{}{}
+	}
+	for _, bindingName := range expect.BoundSecretNames {
+		if _, ok := bound[strings.TrimSpace(bindingName)]; !ok {
+			issues = append(issues, ConformanceIssue{
+				Code: "missing_bound_secret",
+				Message: fmt.Sprintf(
+					"initialize runtime did not include bound secret %q for managed instance %q",
+					bindingName,
+					expect.InstanceID,
+				),
+			})
+		}
+	}
+	return issues
+}
+
+func validateUnexpectedManagedInstances(
+	runtime *subprocess.InitializeBridgeRuntime,
+	expectedByID map[string]ManagedInstanceExpectation,
+) []ConformanceIssue {
+	if len(expectedByID) == 0 {
+		return nil
+	}
+	issues := make([]ConformanceIssue, 0)
+	for _, managed := range runtime.ManagedInstances {
+		if _, ok := expectedByID[strings.TrimSpace(managed.Instance.ID)]; ok {
+			continue
+		}
+		issues = append(issues, ConformanceIssue{
+			Code: "unexpected_managed_instance",
+			Message: fmt.Sprintf(
+				"initialize runtime included unexpected managed instance %q",
+				managed.Instance.ID,
+			),
+		})
+	}
+	return issues
+}
+
+func validateGrantedActions(actions []extensionprotocol.HostAPIMethod) []ConformanceIssue {
+	issues := make([]ConformanceIssue, 0)
+	for _, method := range actions {
+		text := strings.ToLower(strings.TrimSpace(string(method)))
+		if strings.Contains(text, "vault/") || strings.Contains(text, "secret/") {
+			issues = append(issues, ConformanceIssue{
+				Code:    "leaked_secret_surface",
+				Message: fmt.Sprintf("initialize granted unexpected secret surface %q", method),
+			})
+		}
+	}
+	return issues
+}
+
+func validateOwnershipConformance(
+	ownership *OwnershipRecord,
+	expect ConformanceExpectation,
+	expectedByID map[string]ManagedInstanceExpectation,
+) []ConformanceIssue {
+	issues := make([]ConformanceIssue, 0)
+	if expect.RequireOwnedInstanceList || expect.RequireOwnedInstanceFetch {
+		if ownership == nil {
+			return []ConformanceIssue{{
 				Code:    "missing_ownership_marker",
 				Message: "adapter did not write provider ownership markers",
-			})
-		} else if strings.TrimSpace(report.Ownership.Error) != "" {
+			}}
+		}
+		if strings.TrimSpace(ownership.Error) != "" {
 			issues = append(issues, ConformanceIssue{
 				Code:    "owned_instance_lookup_error",
-				Message: report.Ownership.Error,
+				Message: ownership.Error,
 			})
 		}
 	}
-	if expect.RequireOwnedInstanceList && report.Ownership != nil {
-		if len(report.Ownership.Listed) == 0 {
-			issues = append(issues, ConformanceIssue{
-				Code:    "missing_owned_instance_list",
-				Message: "adapter did not list its owned bridge instances",
-			})
-		}
-		listed := make(map[string]struct{}, len(report.Ownership.Listed))
-		for _, instance := range report.Ownership.Listed {
-			instanceID := strings.TrimSpace(instance.ID)
-			listed[instanceID] = struct{}{}
-			if len(expectedByID) > 0 {
-				if _, ok := expectedByID[instanceID]; !ok {
-					issues = append(issues, ConformanceIssue{
-						Code:    "unexpected_owned_instance",
-						Message: fmt.Sprintf("ownership list included unexpected instance %q", instanceID),
-					})
-				}
-			}
-		}
-		for instanceID := range expectedByID {
-			if _, ok := listed[instanceID]; !ok {
-				issues = append(issues, ConformanceIssue{
-					Code:    "missing_owned_instance",
-					Message: fmt.Sprintf("ownership list omitted expected instance %q", instanceID),
-				})
-			}
-		}
+	if expect.RequireOwnedInstanceList && ownership != nil {
+		issues = append(issues, validateOwnedInstanceList(ownership.Listed, expectedByID)...)
 	}
-	if expect.RequireOwnedInstanceFetch && report.Ownership != nil {
-		if len(report.Ownership.Fetched) == 0 {
-			issues = append(issues, ConformanceIssue{
-				Code:    "missing_owned_instance_fetch",
-				Message: "adapter did not fetch owned bridge instances explicitly",
-			})
-		}
-		fetched := make(map[string]struct{}, len(report.Ownership.Fetched))
-		for _, instance := range report.Ownership.Fetched {
-			fetched[strings.TrimSpace(instance.ID)] = struct{}{}
-		}
-		for instanceID := range expectedByID {
-			if _, ok := fetched[instanceID]; !ok {
-				issues = append(issues, ConformanceIssue{
-					Code:    "missing_owned_instance_fetch",
-					Message: fmt.Sprintf("adapter did not fetch owned instance %q explicitly", instanceID),
-				})
-			}
-		}
+	if expect.RequireOwnedInstanceFetch && ownership != nil {
+		issues = append(issues, validateOwnedInstanceFetch(ownership.Fetched, expectedByID)...)
+	}
+	return issues
+}
+
+func validateOwnedInstanceList(
+	listedInstances []bridgepkg.BridgeInstance,
+	expectedByID map[string]ManagedInstanceExpectation,
+) []ConformanceIssue {
+	issues := make([]ConformanceIssue, 0)
+	if len(listedInstances) == 0 {
+		issues = append(issues, ConformanceIssue{
+			Code:    "missing_owned_instance_list",
+			Message: "adapter did not list its owned bridge instances",
+		})
 	}
 
-	if expect.RequireStateReport && len(report.States) == 0 {
+	listed := make(map[string]struct{}, len(listedInstances))
+	for _, instance := range listedInstances {
+		instanceID := strings.TrimSpace(instance.ID)
+		listed[instanceID] = struct{}{}
+		if len(expectedByID) > 0 {
+			if _, ok := expectedByID[instanceID]; !ok {
+				issues = append(issues, ConformanceIssue{
+					Code:    "unexpected_owned_instance",
+					Message: fmt.Sprintf("ownership list included unexpected instance %q", instanceID),
+				})
+			}
+		}
+	}
+	for instanceID := range expectedByID {
+		if _, ok := listed[instanceID]; !ok {
+			issues = append(issues, ConformanceIssue{
+				Code:    "missing_owned_instance",
+				Message: fmt.Sprintf("ownership list omitted expected instance %q", instanceID),
+			})
+		}
+	}
+	return issues
+}
+
+func validateOwnedInstanceFetch(
+	fetchedInstances []bridgepkg.BridgeInstance,
+	expectedByID map[string]ManagedInstanceExpectation,
+) []ConformanceIssue {
+	issues := make([]ConformanceIssue, 0)
+	if len(fetchedInstances) == 0 {
+		issues = append(issues, ConformanceIssue{
+			Code:    "missing_owned_instance_fetch",
+			Message: "adapter did not fetch owned bridge instances explicitly",
+		})
+	}
+
+	fetched := make(map[string]struct{}, len(fetchedInstances))
+	for _, instance := range fetchedInstances {
+		fetched[strings.TrimSpace(instance.ID)] = struct{}{}
+	}
+	for instanceID := range expectedByID {
+		if _, ok := fetched[instanceID]; !ok {
+			issues = append(issues, ConformanceIssue{
+				Code:    "missing_owned_instance_fetch",
+				Message: fmt.Sprintf("adapter did not fetch owned instance %q explicitly", instanceID),
+			})
+		}
+	}
+	return issues
+}
+
+func validateStateConformance(
+	states []StateRecord,
+	expect ConformanceExpectation,
+	expectedByID map[string]ManagedInstanceExpectation,
+) []ConformanceIssue {
+	issues := make([]ConformanceIssue, 0)
+	if expect.RequireStateReport && len(states) == 0 {
 		issues = append(issues, ConformanceIssue{
 			Code:    "missing_state_report",
 			Message: "adapter did not report bridge state",
@@ -361,7 +475,7 @@ func ValidateConformance(report ConformanceReport, expect ConformanceExpectation
 	}
 
 	lastStateByID := make(map[string]StateRecord)
-	for _, record := range report.States {
+	for _, record := range states {
 		instanceID := strings.TrimSpace(record.BridgeInstanceID)
 		if instanceID == "" {
 			instanceID = strings.TrimSpace(record.Instance.ID)
@@ -384,6 +498,7 @@ func ValidateConformance(report ConformanceReport, expect ConformanceExpectation
 		record.BridgeInstanceID = instanceID
 		lastStateByID[instanceID] = record
 	}
+
 	for _, managedExpect := range expect.ManagedInstances {
 		if !expect.RequireStateReport && managedExpect.ExpectedFinalStatus == "" {
 			continue
@@ -396,7 +511,8 @@ func ValidateConformance(report ConformanceReport, expect ConformanceExpectation
 			})
 			continue
 		}
-		if managedExpect.ExpectedFinalStatus != "" && last.Status.Normalize() != managedExpect.ExpectedFinalStatus.Normalize() {
+		if managedExpect.ExpectedFinalStatus != "" &&
+			last.Status.Normalize() != managedExpect.ExpectedFinalStatus.Normalize() {
 			issues = append(issues, ConformanceIssue{
 				Code: "wrong_final_status",
 				Message: fmt.Sprintf(
@@ -408,8 +524,16 @@ func ValidateConformance(report ConformanceReport, expect ConformanceExpectation
 			})
 		}
 	}
+	return issues
+}
 
-	if expect.RequireDelivery && len(report.Deliveries) == 0 {
+func validateDeliveryConformance(
+	deliveries []DeliveryRecord,
+	expect ConformanceExpectation,
+	expectedByID map[string]ManagedInstanceExpectation,
+) []ConformanceIssue {
+	issues := make([]ConformanceIssue, 0)
+	if expect.RequireDelivery && len(deliveries) == 0 {
 		issues = append(issues, ConformanceIssue{
 			Code:    "missing_delivery",
 			Message: "adapter did not receive any delivery requests",
@@ -419,73 +543,130 @@ func ValidateConformance(report ConformanceReport, expect ConformanceExpectation
 	lastSeq := make(map[string]int64)
 	pendingAckResume := make(map[string]bool)
 	sawResume := false
-	for _, record := range report.Deliveries {
-		event := record.Request.Event
-		deliveryID := strings.TrimSpace(event.DeliveryID)
-		instanceID := strings.TrimSpace(event.BridgeInstanceID)
-		eventType := normalizeEventType(event.EventType)
-		if len(expectedByID) > 0 {
-			if _, ok := expectedByID[instanceID]; !ok {
-				issues = append(issues, ConformanceIssue{
-					Code:    "unexpected_delivery_instance",
-					Message: fmt.Sprintf("delivery %q targeted unexpected instance %q", deliveryID, instanceID),
-				})
-			}
-		}
-		if targetID := strings.TrimSpace(event.DeliveryTarget.BridgeInstanceID); targetID != "" && targetID != instanceID {
-			issues = append(issues, ConformanceIssue{
-				Code:    "mismatched_delivery_target",
-				Message: fmt.Sprintf("delivery %q event instance %q did not match target instance %q", deliveryID, instanceID, targetID),
-			})
-		}
-		if eventType == bridgepkg.DeliveryEventTypeResume {
-			sawResume = true
-			if record.Request.Snapshot == nil {
-				issues = append(issues, ConformanceIssue{
-					Code:    "missing_resume_snapshot",
-					Message: fmt.Sprintf("resume delivery %q omitted its snapshot", deliveryID),
-				})
-			}
-			delete(pendingAckResume, deliveryID)
-		}
+	for _, record := range deliveries {
+		deliveryIssues, resumed := validateDeliveryRecord(record, expectedByID, lastSeq, pendingAckResume)
+		issues = append(issues, deliveryIssues...)
+		sawResume = sawResume || resumed
+	}
 
-		if eventType != bridgepkg.DeliveryEventTypeResume {
-			if previous, ok := lastSeq[deliveryID]; ok && event.Seq <= previous {
-				issues = append(issues, ConformanceIssue{
-					Code:    "out_of_order_delivery",
-					Message: fmt.Sprintf("delivery %q sequence %d arrived after %d", deliveryID, event.Seq, previous),
-				})
-			}
-			lastSeq[deliveryID] = event.Seq
-		}
+	for deliveryID := range pendingAckResume {
+		issues = append(issues, ConformanceIssue{
+			Code:    "missing_ack",
+			Message: fmt.Sprintf("delivery %q did not return an ack or later resume", deliveryID),
+		})
+	}
+	if expect.RequireResume && !sawResume {
+		issues = append(issues, ConformanceIssue{
+			Code:    "missing_resume",
+			Message: "adapter did not observe a resume delivery after restart",
+		})
+	}
+	return issues
+}
 
-		if record.Ack == nil {
-			pendingAckResume[deliveryID] = true
-			continue
-		}
-		if err := record.Ack.ValidateFor(event); err != nil {
-			issues = append(issues, ConformanceIssue{
-				Code:    "invalid_ack",
-				Message: err.Error(),
-			})
-		}
-		delete(pendingAckResume, deliveryID)
+func validateDeliveryRecord(
+	record DeliveryRecord,
+	expectedByID map[string]ManagedInstanceExpectation,
+	lastSeq map[string]int64,
+	pendingAckResume map[string]bool,
+) ([]ConformanceIssue, bool) {
+	issues := make([]ConformanceIssue, 0)
+	event := record.Request.Event
+	deliveryID := strings.TrimSpace(event.DeliveryID)
+	instanceID := strings.TrimSpace(event.BridgeInstanceID)
+	eventType := normalizeEventType(event.EventType)
+	sawResume := false
 
-		if event.Seq > 0 && strings.TrimSpace(record.Ack.RemoteMessageID) == "" {
+	if len(expectedByID) > 0 {
+		if _, ok := expectedByID[instanceID]; !ok {
 			issues = append(issues, ConformanceIssue{
-				Code:    "missing_remote_message_id",
-				Message: fmt.Sprintf("delivery %q sequence %d did not return remote_message_id", deliveryID, event.Seq),
-			})
-		}
-		if event.Seq > 1 && eventType != bridgepkg.DeliveryEventTypeResume && strings.TrimSpace(record.Ack.ReplaceRemoteMessageID) == "" {
-			issues = append(issues, ConformanceIssue{
-				Code:    "missing_replace_remote_message_id",
-				Message: fmt.Sprintf("delivery %q sequence %d did not return replace_remote_message_id", deliveryID, event.Seq),
+				Code:    "unexpected_delivery_instance",
+				Message: fmt.Sprintf("delivery %q targeted unexpected instance %q", deliveryID, instanceID),
 			})
 		}
 	}
+	if targetID := strings.TrimSpace(event.DeliveryTarget.BridgeInstanceID); targetID != "" && targetID != instanceID {
+		issues = append(issues, ConformanceIssue{
+			Code: "mismatched_delivery_target",
+			Message: fmt.Sprintf(
+				"delivery %q event instance %q did not match target instance %q",
+				deliveryID,
+				instanceID,
+				targetID,
+			),
+		})
+	}
+	if eventType == bridgepkg.DeliveryEventTypeResume {
+		sawResume = true
+		if record.Request.Snapshot == nil {
+			issues = append(issues, ConformanceIssue{
+				Code:    "missing_resume_snapshot",
+				Message: fmt.Sprintf("resume delivery %q omitted its snapshot", deliveryID),
+			})
+		}
+		delete(pendingAckResume, deliveryID)
+	}
+	if eventType != bridgepkg.DeliveryEventTypeResume {
+		if previous, ok := lastSeq[deliveryID]; ok && event.Seq <= previous {
+			issues = append(issues, ConformanceIssue{
+				Code:    "out_of_order_delivery",
+				Message: fmt.Sprintf("delivery %q sequence %d arrived after %d", deliveryID, event.Seq, previous),
+			})
+		}
+		lastSeq[deliveryID] = event.Seq
+	}
 
-	for _, record := range report.Ingests {
+	ackIssues := validateDeliveryAck(record, deliveryID, eventType, pendingAckResume)
+	issues = append(issues, ackIssues...)
+	return issues, sawResume
+}
+
+func validateDeliveryAck(
+	record DeliveryRecord,
+	deliveryID string,
+	eventType string,
+	pendingAckResume map[string]bool,
+) []ConformanceIssue {
+	event := record.Request.Event
+	if record.Ack == nil {
+		pendingAckResume[deliveryID] = true
+		return nil
+	}
+
+	issues := make([]ConformanceIssue, 0)
+	if err := record.Ack.ValidateFor(event); err != nil {
+		issues = append(issues, ConformanceIssue{
+			Code:    "invalid_ack",
+			Message: err.Error(),
+		})
+	}
+	delete(pendingAckResume, deliveryID)
+	if event.Seq > 0 && strings.TrimSpace(record.Ack.RemoteMessageID) == "" {
+		issues = append(issues, ConformanceIssue{
+			Code:    "missing_remote_message_id",
+			Message: fmt.Sprintf("delivery %q sequence %d did not return remote_message_id", deliveryID, event.Seq),
+		})
+	}
+	if event.Seq > 1 && eventType != bridgepkg.DeliveryEventTypeResume &&
+		strings.TrimSpace(record.Ack.ReplaceRemoteMessageID) == "" {
+		issues = append(issues, ConformanceIssue{
+			Code: "missing_replace_remote_message_id",
+			Message: fmt.Sprintf(
+				"delivery %q sequence %d did not return replace_remote_message_id",
+				deliveryID,
+				event.Seq,
+			),
+		})
+	}
+	return issues
+}
+
+func validateIngestConformance(
+	ingests []IngestRecord,
+	expectedByID map[string]ManagedInstanceExpectation,
+) []ConformanceIssue {
+	issues := make([]ConformanceIssue, 0)
+	for _, record := range ingests {
 		instanceID := strings.TrimSpace(record.Envelope.BridgeInstanceID)
 		if instanceID == "" {
 			issues = append(issues, ConformanceIssue{
@@ -503,24 +684,7 @@ func ValidateConformance(report ConformanceReport, expect ConformanceExpectation
 			}
 		}
 	}
-
-	for deliveryID := range pendingAckResume {
-		issues = append(issues, ConformanceIssue{
-			Code:    "missing_ack",
-			Message: fmt.Sprintf("delivery %q did not return an ack or later resume", deliveryID),
-		})
-	}
-	if expect.RequireResume && !sawResume {
-		issues = append(issues, ConformanceIssue{
-			Code:    "missing_resume",
-			Message: "adapter did not observe a resume delivery after restart",
-		})
-	}
-
-	if len(issues) > 0 {
-		return &ConformanceError{Issues: issues}
-	}
-	return nil
+	return issues
 }
 
 // ScriptedPromptEvent is one deterministic agent event emitted by the harness
@@ -583,7 +747,11 @@ func (d *ScriptedPromptDriver) Start(_ context.Context, opts acp.StartOpts) (*se
 }
 
 // Prompt implements session.AgentDriver.
-func (d *ScriptedPromptDriver) Prompt(ctx context.Context, _ *session.AgentProcess, req acp.PromptRequest) (<-chan acp.AgentEvent, error) {
+func (d *ScriptedPromptDriver) Prompt(
+	ctx context.Context,
+	_ *session.AgentProcess,
+	req acp.PromptRequest,
+) (<-chan acp.AgentEvent, error) {
 	d.mu.Lock()
 	d.prompts = append(d.prompts, req)
 	script := append([]ScriptedPromptEvent(nil), d.script...)
@@ -694,10 +862,73 @@ func NewHarness(t testing.TB, cfg HarnessConfig) *Harness {
 		t.Fatal("extensiontest: HarnessConfig.ExtensionDir is required")
 	}
 
-	now := cfg.StartTime.UTC()
+	now := resolveHarnessStartTime(cfg.StartTime)
+	homePaths := newHarnessHomePaths(t)
+	markers := NewMarkerPaths(filepath.Join(t.TempDir(), "markers"))
+	configureHarnessMarkers(t, markers, cfg)
+	workspace := defaultResolvedWorkspace(filepath.Join(t.TempDir(), "workspace"), now)
+	workspaces := &staticWorkspaceResolver{resolved: workspace}
+
+	globalDB := openHarnessGlobalDB(t, homePaths, &workspace)
+	manifest, extensionRegistry, extensionName := installHarnessExtension(t, globalDB, cfg)
+
+	bridgeRegistry := bridgepkg.NewRegistry(globalDB, bridgepkg.WithNow(func() time.Time { return now }))
+	instances, managedRuntime := createHarnessManagedInstances(
+		t,
+		bridgeRegistry,
+		&workspace,
+		extensionName,
+		cfg,
+	)
+	handler, manager, broker, observer, sessions := buildHarnessRuntime(
+		t,
+		cfg,
+		homePaths,
+		globalDB,
+		workspaces,
+		bridgeRegistry,
+		extensionRegistry,
+		manifest,
+		extensionName,
+		instances,
+		managedRuntime,
+		now,
+		markers,
+	)
+
+	harness := &Harness{
+		HomePaths: homePaths,
+		Markers:   markers,
+		Observer:  observer,
+		Bridges:   bridgeRegistry,
+		Broker:    broker,
+		Handler:   handler,
+		Manager:   manager,
+		Sessions:  sessions,
+		Instances: append([]bridgepkg.BridgeInstance(nil), instances...),
+	}
+
+	t.Cleanup(func() {
+		harness.stopSessions(t)
+		harness.Broker.Close()
+		if err := harness.Manager.Stop(aghtestutil.Context(t)); err != nil {
+			t.Fatalf("manager.Stop() error = %v", err)
+		}
+	})
+
+	return harness
+}
+
+func resolveHarnessStartTime(startTime time.Time) time.Time {
+	now := startTime.UTC()
 	if now.IsZero() {
 		now = time.Date(2026, 4, 11, 4, 0, 0, 0, time.UTC)
 	}
+	return now
+}
+
+func newHarnessHomePaths(t testing.TB) aghconfig.HomePaths {
+	t.Helper()
 
 	homePaths, err := aghconfig.ResolveHomePathsFrom(filepath.Join(t.TempDir(), "home"))
 	if err != nil {
@@ -706,8 +937,12 @@ func NewHarness(t testing.TB, cfg HarnessConfig) *Harness {
 	if err := aghconfig.EnsureHomeLayout(homePaths); err != nil {
 		t.Fatalf("EnsureHomeLayout() error = %v", err)
 	}
+	return homePaths
+}
 
-	markers := NewMarkerPaths(filepath.Join(t.TempDir(), "markers"))
+func configureHarnessMarkers(t testing.TB, markers MarkerPaths, cfg HarnessConfig) {
+	t.Helper()
+
 	for key, value := range markers.Env() {
 		if key == EnvCrashOncePath {
 			continue
@@ -720,10 +955,16 @@ func NewHarness(t testing.TB, cfg HarnessConfig) *Harness {
 	for key, value := range cfg.ExtraEnv {
 		t.Setenv(key, value)
 	}
+}
 
-	workspace := defaultResolvedWorkspace(filepath.Join(t.TempDir(), "workspace"), now)
-	workspaces := staticWorkspaceResolver{resolved: workspace}
+func openHarnessGlobalDB(
+	t testing.TB,
+	homePaths aghconfig.HomePaths,
+	workspace *workspacepkg.ResolvedWorkspace,
+) *globaldb.GlobalDB {
+	t.Helper()
 
+	resolvedWorkspace := mustHarnessWorkspace(t, workspace)
 	globalDB, err := globaldb.OpenGlobalDB(aghtestutil.Context(t), homePaths.DatabaseFile)
 	if err != nil {
 		t.Fatalf("globaldb.OpenGlobalDB() error = %v", err)
@@ -733,9 +974,30 @@ func NewHarness(t testing.TB, cfg HarnessConfig) *Harness {
 			t.Fatalf("globaldb.Close() error = %v", err)
 		}
 	})
-	if err := globalDB.InsertWorkspace(aghtestutil.Context(t), workspace.Workspace); err != nil {
+	if err := globalDB.InsertWorkspace(aghtestutil.Context(t), resolvedWorkspace.Workspace); err != nil {
 		t.Fatalf("globalDB.InsertWorkspace() error = %v", err)
 	}
+	return globalDB
+}
+
+func mustHarnessWorkspace(
+	t testing.TB,
+	workspace *workspacepkg.ResolvedWorkspace,
+) *workspacepkg.ResolvedWorkspace {
+	t.Helper()
+
+	if workspace == nil {
+		t.Fatal("workspace = nil")
+	}
+	return workspace
+}
+
+func installHarnessExtension(
+	t testing.TB,
+	globalDB *globaldb.GlobalDB,
+	cfg HarnessConfig,
+) (*extensionpkg.Manifest, *extensionpkg.Registry, string) {
+	t.Helper()
 
 	manifest, err := extensionpkg.LoadManifest(cfg.ExtensionDir)
 	if err != nil {
@@ -754,8 +1016,18 @@ func NewHarness(t testing.TB, cfg HarnessConfig) *Harness {
 	if extensionName == "" {
 		extensionName = manifest.Name
 	}
+	return manifest, extensionRegistry, extensionName
+}
 
-	bridgeRegistry := bridgepkg.NewRegistry(globalDB, bridgepkg.WithNow(func() time.Time { return now }))
+func createHarnessManagedInstances(
+	t testing.TB,
+	bridgeRegistry *bridgepkg.Service,
+	workspace *workspacepkg.ResolvedWorkspace,
+	extensionName string,
+	cfg HarnessConfig,
+) ([]bridgepkg.BridgeInstance, []subprocess.InitializeBridgeManagedInstance) {
+	t.Helper()
+
 	managedConfigs := cfg.ManagedInstances
 	if len(managedConfigs) == 0 {
 		routingPolicy := cfg.RoutingPolicy
@@ -773,29 +1045,9 @@ func NewHarness(t testing.TB, cfg HarnessConfig) *Harness {
 	instances := make([]bridgepkg.BridgeInstance, 0, len(managedConfigs))
 	managedRuntime := make([]subprocess.InitializeBridgeManagedInstance, 0, len(managedConfigs))
 	for _, managedCfg := range managedConfigs {
-		var providerConfig json.RawMessage
-		if managedCfg.ProviderConfig != nil {
-			encodedProviderConfig, err := json.Marshal(managedCfg.ProviderConfig)
-			if err != nil {
-				t.Fatalf("json.Marshal(provider_config for %q) error = %v", managedCfg.ID, err)
-			}
-			providerConfig = encodedProviderConfig
-		}
-		createReq := bridgepkg.CreateInstanceRequest{
-			ID:             firstNonEmpty(managedCfg.ID, fmt.Sprintf("brg-%d", len(instances)+1)),
-			Scope:          bridgepkg.ScopeWorkspace,
-			WorkspaceID:    workspace.ID,
-			Platform:       firstNonEmpty(cfg.Platform, "telegram"),
-			ExtensionName:  extensionName,
-			DisplayName:    firstNonEmpty(managedCfg.DisplayName, cfg.DisplayName, "Telegram Reference"),
-			Enabled:        true,
-			Status:         bridgepkg.BridgeStatusStarting,
-			DMPolicy:       managedCfg.DMPolicy,
-			RoutingPolicy:  managedCfg.RoutingPolicy,
-			ProviderConfig: providerConfig,
-		}
-		if createReq.RoutingPolicy == (bridgepkg.RoutingPolicy{}) {
-			createReq.RoutingPolicy = bridgepkg.RoutingPolicy{IncludePeer: true}
+		createReq, err := harnessCreateInstanceRequest(cfg, workspace, extensionName, len(instances)+1, managedCfg)
+		if err != nil {
+			t.Fatalf("harnessCreateInstanceRequest(%q) error = %v", managedCfg.ID, err)
 		}
 		instance, err := bridgeRegistry.CreateInstance(aghtestutil.Context(t), createReq)
 		if err != nil {
@@ -807,24 +1059,76 @@ func NewHarness(t testing.TB, cfg HarnessConfig) *Harness {
 			BoundSecrets: cloneBoundSecrets(managedCfg.BoundSecrets),
 		})
 	}
+	return instances, managedRuntime
+}
+
+func harnessCreateInstanceRequest(
+	cfg HarnessConfig,
+	workspace *workspacepkg.ResolvedWorkspace,
+	extensionName string,
+	seq int,
+	managedCfg ManagedInstanceConfig,
+) (bridgepkg.CreateInstanceRequest, error) {
+	if workspace == nil {
+		return bridgepkg.CreateInstanceRequest{}, errors.New("workspace is required")
+	}
+	var providerConfig json.RawMessage
+	if managedCfg.ProviderConfig != nil {
+		encodedProviderConfig, err := json.Marshal(managedCfg.ProviderConfig)
+		if err != nil {
+			return bridgepkg.CreateInstanceRequest{}, fmt.Errorf(
+				"json.Marshal(provider_config for %q): %w",
+				managedCfg.ID,
+				err,
+			)
+		}
+		providerConfig = encodedProviderConfig
+	}
+
+	createReq := bridgepkg.CreateInstanceRequest{
+		ID:             firstNonEmpty(managedCfg.ID, fmt.Sprintf("brg-%d", seq)),
+		Scope:          bridgepkg.ScopeWorkspace,
+		WorkspaceID:    workspace.ID,
+		Platform:       firstNonEmpty(cfg.Platform, "telegram"),
+		ExtensionName:  extensionName,
+		DisplayName:    firstNonEmpty(managedCfg.DisplayName, cfg.DisplayName, "Telegram Reference"),
+		Enabled:        true,
+		Status:         bridgepkg.BridgeStatusStarting,
+		DMPolicy:       managedCfg.DMPolicy,
+		RoutingPolicy:  managedCfg.RoutingPolicy,
+		ProviderConfig: providerConfig,
+	}
+	if createReq.RoutingPolicy == (bridgepkg.RoutingPolicy{}) {
+		createReq.RoutingPolicy = bridgepkg.RoutingPolicy{IncludePeer: true}
+	}
+	return createReq, nil
+}
+
+func buildHarnessRuntime(
+	t testing.TB,
+	cfg HarnessConfig,
+	homePaths aghconfig.HomePaths,
+	globalDB *globaldb.GlobalDB,
+	workspaces workspacepkg.RuntimeResolver,
+	bridgeRegistry *bridgepkg.Service,
+	extensionRegistry *extensionpkg.Registry,
+	manifest *extensionpkg.Manifest,
+	extensionName string,
+	instances []bridgepkg.BridgeInstance,
+	managedRuntime []subprocess.InitializeBridgeManagedInstance,
+	now time.Time,
+	markers MarkerPaths,
+) (*extensionpkg.HostAPIHandler, *extensionpkg.Manager, *bridgepkg.Broker, *observepkg.Observer, *session.Manager) {
+	t.Helper()
 
 	checker := &extensionpkg.CapabilityChecker{}
 	checker.Register(extensionName, extensionpkg.SourceUser, manifest)
 
 	var hostHandler *extensionpkg.HostAPIHandler
 	telemetrySink := &deferredBridgeTelemetrySink{}
-	hostForwarder := func(method string) subprocess.HandlerFunc {
-		return func(ctx context.Context, params json.RawMessage) (any, error) {
-			if hostHandler == nil {
-				return nil, errors.New("extensiontest: host api handler is not initialized")
-			}
-			result, err := hostHandler.HandleMethod(method)(ctx, params)
-			if method == "bridges/instances/report_state" {
-				recordHostStateTransition(t, markers.State, params, result, err)
-			}
-			return result, err
-		}
-	}
+	hostForwarder := newHarnessHostForwarder(t, markers, func() *extensionpkg.HostAPIHandler {
+		return hostHandler
+	})
 
 	manager := extensionpkg.NewManager(
 		extensionRegistry,
@@ -843,49 +1147,21 @@ func NewHarness(t testing.TB, cfg HarnessConfig) *Harness {
 		extensionpkg.WithHostMethodHandler("bridges/instances/list", hostForwarder("bridges/instances/list")),
 		extensionpkg.WithHostMethodHandler("bridges/messages/ingest", hostForwarder("bridges/messages/ingest")),
 		extensionpkg.WithHostMethodHandler("bridges/instances/get", hostForwarder("bridges/instances/get")),
-		extensionpkg.WithHostMethodHandler("bridges/instances/report_state", hostForwarder("bridges/instances/report_state")),
+		extensionpkg.WithHostMethodHandler(
+			"bridges/instances/report_state",
+			hostForwarder("bridges/instances/report_state"),
+		),
 		extensionpkg.WithHealthCheckTimeout(20*time.Millisecond),
 		extensionpkg.WithSubprocessSignalGrace(15*time.Millisecond),
 	)
 
 	broker := bridgepkg.NewBroker(manager, cfg.BrokerOptions...)
-	observer, err := observepkg.New(
-		aghtestutil.Context(t),
-		observepkg.WithRegistry(globalDB),
-		observepkg.WithHomePaths(homePaths),
-		observepkg.WithWorkspaceResolver(workspaces),
-		observepkg.WithBridgeSource(harnessBridgeSource{service: bridgeRegistry, broker: broker}),
-		observepkg.WithNow(func() time.Time { return now }),
-		observepkg.WithStartTime(now),
-	)
-	if err != nil {
-		t.Fatalf("observe.New() error = %v", err)
-	}
+	observer := newHarnessObserver(t, globalDB, homePaths, workspaces, bridgeRegistry, broker, now)
 	telemetrySink.observer = observer
 
-	driver := cfg.Driver
-	if driver == nil {
-		driver = NewScriptedPromptDriver(now, []ScriptedPromptEvent{
-			{Type: acp.EventTypeAgentMessage, Text: "hello"},
-			{Type: acp.EventTypeDone},
-		})
-	}
+	driver := harnessDriver(cfg, now)
 	notifier := extensionpkg.NewBridgeDeliveryNotifier(broker, observer)
-	sessions, err := session.NewManager(
-		session.WithHomePaths(homePaths),
-		session.WithDriver(driver),
-		session.WithNotifier(notifier),
-		session.WithWorkspaceResolver(workspaces),
-		session.WithStore(func(ctx context.Context, sessionID string, path string) (session.EventRecorder, error) {
-			return sessiondb.OpenSessionDB(ctx, sessionID, path)
-		}),
-		session.WithNow(func() time.Time { return now }),
-		session.WithSessionIDGenerator(sequentialIDGenerator("sess")),
-		session.WithTurnIDGenerator(sequentialIDGenerator("turn")),
-	)
-	if err != nil {
-		t.Fatalf("session.NewManager() error = %v", err)
-	}
+	sessions := newHarnessSessions(t, homePaths, driver, notifier, workspaces, now)
 
 	hostHandler = extensionpkg.NewHostAPIHandler(
 		sessions,
@@ -905,28 +1181,93 @@ func NewHarness(t testing.TB, cfg HarnessConfig) *Harness {
 	if err := manager.Start(aghtestutil.Context(t)); err != nil {
 		t.Fatalf("manager.Start() error = %v", err)
 	}
+	return hostHandler, manager, broker, observer, sessions
+}
 
-	harness := &Harness{
-		HomePaths: homePaths,
-		Markers:   markers,
-		Observer:  observer,
-		Bridges:   bridgeRegistry,
-		Broker:    broker,
-		Handler:   hostHandler,
-		Manager:   manager,
-		Sessions:  sessions,
-		Instances: append([]bridgepkg.BridgeInstance(nil), instances...),
-	}
+func newHarnessHostForwarder(
+	t testing.TB,
+	markers MarkerPaths,
+	handler func() *extensionpkg.HostAPIHandler,
+) func(string) subprocess.HandlerFunc {
+	t.Helper()
 
-	t.Cleanup(func() {
-		harness.stopSessions(t)
-		harness.Broker.Close()
-		if err := harness.Manager.Stop(aghtestutil.Context(t)); err != nil {
-			t.Fatalf("manager.Stop() error = %v", err)
+	return func(method string) subprocess.HandlerFunc {
+		return func(ctx context.Context, params json.RawMessage) (any, error) {
+			hostHandler := handler()
+			if hostHandler == nil {
+				return nil, errors.New("extensiontest: host api handler is not initialized")
+			}
+			result, err := hostHandler.HandleMethod(method)(ctx, params)
+			if method == "bridges/instances/report_state" {
+				recordHostStateTransition(t, markers.State, params, result, err)
+			}
+			return result, err
 		}
-	})
+	}
+}
 
-	return harness
+func newHarnessObserver(
+	t testing.TB,
+	globalDB *globaldb.GlobalDB,
+	homePaths aghconfig.HomePaths,
+	workspaces workspacepkg.RuntimeResolver,
+	bridgeRegistry *bridgepkg.Service,
+	broker *bridgepkg.Broker,
+	now time.Time,
+) *observepkg.Observer {
+	t.Helper()
+
+	observer, err := observepkg.New(
+		aghtestutil.Context(t),
+		observepkg.WithRegistry(globalDB),
+		observepkg.WithHomePaths(homePaths),
+		observepkg.WithWorkspaceResolver(workspaces),
+		observepkg.WithBridgeSource(harnessBridgeSource{service: bridgeRegistry, broker: broker}),
+		observepkg.WithNow(func() time.Time { return now }),
+		observepkg.WithStartTime(now),
+	)
+	if err != nil {
+		t.Fatalf("observe.New() error = %v", err)
+	}
+	return observer
+}
+
+func harnessDriver(cfg HarnessConfig, now time.Time) session.AgentDriver {
+	if cfg.Driver != nil {
+		return cfg.Driver
+	}
+	return NewScriptedPromptDriver(now, []ScriptedPromptEvent{
+		{Type: acp.EventTypeAgentMessage, Text: "hello"},
+		{Type: acp.EventTypeDone},
+	})
+}
+
+func newHarnessSessions(
+	t testing.TB,
+	homePaths aghconfig.HomePaths,
+	driver session.AgentDriver,
+	notifier session.Notifier,
+	workspaces workspacepkg.RuntimeResolver,
+	now time.Time,
+) *session.Manager {
+	t.Helper()
+
+	sessions, err := session.NewManager(
+		session.WithHomePaths(homePaths),
+		session.WithDriver(driver),
+		session.WithNotifier(notifier),
+		session.WithWorkspaceResolver(workspaces),
+		session.WithStore(func(ctx context.Context, sessionID string, path string) (session.EventRecorder, error) {
+			return sessiondb.OpenSessionDB(ctx, sessionID, path)
+		}),
+		session.WithNow(func() time.Time { return now }),
+		session.WithSessionIDGenerator(sequentialIDGenerator("sess")),
+		session.WithTurnIDGenerator(sequentialIDGenerator("turn")),
+	)
+	if err != nil {
+		t.Fatalf("session.NewManager() error = %v", err)
+	}
+	return sessions
 }
 
 // AppendInboundUpdate appends one fake platform update line for the adapter to ingest.
@@ -966,7 +1307,11 @@ func (h *Harness) WaitForStates(t testing.TB, timeout time.Duration, predicate f
 }
 
 // WaitForDeliveries waits until the delivery marker file satisfies the predicate.
-func (h *Harness) WaitForDeliveries(t testing.TB, timeout time.Duration, predicate func([]DeliveryRecord) bool) []DeliveryRecord {
+func (h *Harness) WaitForDeliveries(
+	t testing.TB,
+	timeout time.Duration,
+	predicate func([]DeliveryRecord) bool,
+) []DeliveryRecord {
 	t.Helper()
 	var records []DeliveryRecord
 	waitForCondition(t, timeout, "adapter delivery markers", func() bool {
@@ -981,7 +1326,11 @@ func (h *Harness) WaitForDeliveries(t testing.TB, timeout time.Duration, predica
 }
 
 // WaitForIngests waits until the ingest marker file satisfies the predicate.
-func (h *Harness) WaitForIngests(t testing.TB, timeout time.Duration, predicate func([]IngestRecord) bool) []IngestRecord {
+func (h *Harness) WaitForIngests(
+	t testing.TB,
+	timeout time.Duration,
+	predicate func([]IngestRecord) bool,
+) []IngestRecord {
 	t.Helper()
 	var records []IngestRecord
 	waitForCondition(t, timeout, "adapter ingest markers", func() bool {
@@ -1066,7 +1415,11 @@ func (s *deferredBridgeTelemetrySink) RecordBridgeAuthFailure(bridgeInstanceID s
 	s.observer.RecordBridgeAuthFailure(bridgeInstanceID)
 }
 
-func (s *deferredBridgeTelemetrySink) RecordBridgeRuntimeIssue(bridgeInstanceID string, status bridgepkg.BridgeStatus, message string) {
+func (s *deferredBridgeTelemetrySink) RecordBridgeRuntimeIssue(
+	bridgeInstanceID string,
+	status bridgepkg.BridgeStatus,
+	message string,
+) {
 	if s == nil || s.observer == nil {
 		return
 	}
@@ -1105,7 +1458,10 @@ type staticWorkspaceResolver struct {
 	resolved workspacepkg.ResolvedWorkspace
 }
 
-func (r staticWorkspaceResolver) Resolve(_ context.Context, idOrPath string) (workspacepkg.ResolvedWorkspace, error) {
+func (r *staticWorkspaceResolver) Resolve(_ context.Context, idOrPath string) (workspacepkg.ResolvedWorkspace, error) {
+	if r == nil {
+		return workspacepkg.ResolvedWorkspace{}, workspacepkg.ErrWorkspaceNotFound
+	}
 	trimmed := strings.TrimSpace(idOrPath)
 	if trimmed == "" {
 		return workspacepkg.ResolvedWorkspace{}, workspacepkg.ErrWorkspaceNotFound
@@ -1116,7 +1472,13 @@ func (r staticWorkspaceResolver) Resolve(_ context.Context, idOrPath string) (wo
 	return workspacepkg.ResolvedWorkspace{}, workspacepkg.ErrWorkspaceNotFound
 }
 
-func (r staticWorkspaceResolver) ResolveOrRegister(_ context.Context, path string) (workspacepkg.ResolvedWorkspace, error) {
+func (r *staticWorkspaceResolver) ResolveOrRegister(
+	_ context.Context,
+	path string,
+) (workspacepkg.ResolvedWorkspace, error) {
+	if r == nil {
+		return workspacepkg.ResolvedWorkspace{}, workspacepkg.ErrWorkspaceNotFound
+	}
 	trimmed := strings.TrimSpace(path)
 	if trimmed == "" || trimmed == r.resolved.RootDir {
 		return r.resolved, nil
@@ -1128,7 +1490,10 @@ type stubBridgeRuntimeResolver struct {
 	runtimes map[string]*subprocess.InitializeBridgeRuntime
 }
 
-func (r *stubBridgeRuntimeResolver) ResolveBridgeRuntime(_ context.Context, extensionName string) (*subprocess.InitializeBridgeRuntime, error) {
+func (r *stubBridgeRuntimeResolver) ResolveBridgeRuntime(
+	_ context.Context,
+	extensionName string,
+) (*subprocess.InitializeBridgeRuntime, error) {
 	if r == nil || r.runtimes == nil {
 		return nil, nil
 	}
@@ -1169,7 +1534,9 @@ func cloneBoundSecrets(src []subprocess.InitializeBridgeBoundSecret) []subproces
 	return append([]subprocess.InitializeBridgeBoundSecret(nil), src...)
 }
 
-func cloneManagedRuntime(src []subprocess.InitializeBridgeManagedInstance) []subprocess.InitializeBridgeManagedInstance {
+func cloneManagedRuntime(
+	src []subprocess.InitializeBridgeManagedInstance,
+) []subprocess.InitializeBridgeManagedInstance {
 	if len(src) == 0 {
 		return nil
 	}

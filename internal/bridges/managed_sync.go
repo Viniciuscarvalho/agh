@@ -21,7 +21,11 @@ type ManagedSyncStore interface {
 // ManagedSyncer reconciles the desired set of bridge instances for one managed
 // source such as extension bundles.
 type ManagedSyncer interface {
-	SyncManagedInstances(ctx context.Context, source BridgeInstanceSource, desired []BridgeInstance) (ManagedSyncStats, error)
+	SyncManagedInstances(
+		ctx context.Context,
+		source BridgeInstanceSource,
+		desired []BridgeInstance,
+	) (ManagedSyncStats, error)
 }
 
 // ManagedSyncStats summarizes one managed bridge reconcile pass.
@@ -75,72 +79,29 @@ func (s *ManagedSyncService) SyncManagedInstances(
 	source BridgeInstanceSource,
 	desired []BridgeInstance,
 ) (ManagedSyncStats, error) {
-	if s == nil {
-		return ManagedSyncStats{}, errors.New("bridges: managed sync service is required")
-	}
-	if ctx == nil {
-		return ManagedSyncStats{}, errors.New("bridges: managed sync context is required")
-	}
-	normalizedSource := source.Normalize()
-	if err := normalizedSource.Validate(); err != nil {
+	normalizedSource, err := s.validateSyncInputs(ctx, source)
+	if err != nil {
 		return ManagedSyncStats{}, err
 	}
-	if s.store == nil {
-		return ManagedSyncStats{}, errors.New("bridges: managed sync store is required")
-	}
 
-	existing, err := s.store.ListBridgeInstances(ctx)
+	existingByID, err := s.listManagedInstancesByID(ctx, normalizedSource)
 	if err != nil {
-		return ManagedSyncStats{}, fmt.Errorf("bridges: reconcile list %q instances: %w", normalizedSource, err)
+		return ManagedSyncStats{}, err
 	}
 
-	existingByID := make(map[string]BridgeInstance)
-	for _, instance := range existing {
-		if instance.Source.Normalize() == normalizedSource {
-			existingByID[instance.ID] = instance
-		}
+	desiredByID, synced, err := s.syncDesiredManagedInstances(
+		ctx,
+		normalizedSource,
+		existingByID,
+		desired,
+	)
+	if err != nil {
+		return ManagedSyncStats{}, err
 	}
 
-	desiredByID := make(map[string]BridgeInstance, len(desired))
-	synced := 0
-	for _, instance := range desired {
-		next := instance
-		next.Source = normalizedSource
-		if err := next.Validate(); err != nil {
-			return ManagedSyncStats{}, fmt.Errorf("bridges: sync managed instance %q: %w", strings.TrimSpace(next.ID), err)
-		}
-		if _, exists := desiredByID[next.ID]; exists {
-			return ManagedSyncStats{}, fmt.Errorf("bridges: duplicate desired managed instance %q", strings.TrimSpace(next.ID))
-		}
-		desiredByID[next.ID] = next
-
-		current, exists := existingByID[next.ID]
-		switch {
-		case !exists:
-			if err := s.store.InsertBridgeInstance(ctx, next); err != nil {
-				return ManagedSyncStats{}, fmt.Errorf("bridges: reconcile insert %q instance %q: %w", normalizedSource, strings.TrimSpace(next.ID), err)
-			}
-		case !sameManagedInstance(current, next):
-			next.CreatedAt = current.CreatedAt
-			if next.CreatedAt.IsZero() {
-				next.CreatedAt = s.now().UTC()
-			}
-			if err := s.store.UpdateBridgeInstance(ctx, next); err != nil {
-				return ManagedSyncStats{}, fmt.Errorf("bridges: reconcile update %q instance %q: %w", normalizedSource, strings.TrimSpace(next.ID), err)
-			}
-		}
-		synced++
-	}
-
-	removed := 0
-	for id := range existingByID {
-		if _, ok := desiredByID[id]; ok {
-			continue
-		}
-		if err := s.store.DeleteBridgeInstance(ctx, id); err != nil {
-			return ManagedSyncStats{}, fmt.Errorf("bridges: reconcile delete %q instance %q: %w", normalizedSource, strings.TrimSpace(id), err)
-		}
-		removed++
+	removed, err := s.deleteStaleManagedInstances(ctx, normalizedSource, existingByID, desiredByID)
+	if err != nil {
+		return ManagedSyncStats{}, err
 	}
 
 	return ManagedSyncStats{
@@ -148,6 +109,149 @@ func (s *ManagedSyncService) SyncManagedInstances(
 		InstancesRemoved: removed,
 		SyncedAt:         s.now().UTC(),
 	}, nil
+}
+
+func (s *ManagedSyncService) validateSyncInputs(
+	ctx context.Context,
+	source BridgeInstanceSource,
+) (BridgeInstanceSource, error) {
+	if s == nil {
+		return "", errors.New("bridges: managed sync service is required")
+	}
+	if ctx == nil {
+		return "", errors.New("bridges: managed sync context is required")
+	}
+	normalizedSource := source.Normalize()
+	if err := normalizedSource.Validate(); err != nil {
+		return "", err
+	}
+	if s.store == nil {
+		return "", errors.New("bridges: managed sync store is required")
+	}
+	return normalizedSource, nil
+}
+
+func (s *ManagedSyncService) listManagedInstancesByID(
+	ctx context.Context,
+	source BridgeInstanceSource,
+) (map[string]BridgeInstance, error) {
+	existing, err := s.store.ListBridgeInstances(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("bridges: reconcile list %q instances: %w", source, err)
+	}
+
+	existingByID := make(map[string]BridgeInstance)
+	for _, instance := range existing {
+		if instance.Source.Normalize() == source {
+			existingByID[instance.ID] = instance
+		}
+	}
+
+	return existingByID, nil
+}
+
+func (s *ManagedSyncService) syncDesiredManagedInstances(
+	ctx context.Context,
+	source BridgeInstanceSource,
+	existingByID map[string]BridgeInstance,
+	desired []BridgeInstance,
+) (map[string]BridgeInstance, int, error) {
+	desiredByID := make(map[string]BridgeInstance, len(desired))
+	synced := 0
+	for _, instance := range desired {
+		next, err := s.prepareDesiredManagedInstance(source, desiredByID, instance)
+		if err != nil {
+			return nil, 0, err
+		}
+		current, exists := existingByID[next.ID]
+		if err := s.upsertManagedInstance(ctx, source, current, exists, next); err != nil {
+			return nil, 0, err
+		}
+		desiredByID[next.ID] = next
+		synced++
+	}
+	return desiredByID, synced, nil
+}
+
+func (s *ManagedSyncService) prepareDesiredManagedInstance(
+	source BridgeInstanceSource,
+	desiredByID map[string]BridgeInstance,
+	instance BridgeInstance,
+) (BridgeInstance, error) {
+	next := instance
+	next.Source = source
+	if err := next.Validate(); err != nil {
+		return BridgeInstance{}, fmt.Errorf(
+			"bridges: sync managed instance %q: %w",
+			strings.TrimSpace(next.ID),
+			err,
+		)
+	}
+	if _, exists := desiredByID[next.ID]; exists {
+		return BridgeInstance{}, fmt.Errorf(
+			"bridges: duplicate desired managed instance %q",
+			strings.TrimSpace(next.ID),
+		)
+	}
+	return next, nil
+}
+
+func (s *ManagedSyncService) upsertManagedInstance(
+	ctx context.Context,
+	source BridgeInstanceSource,
+	current BridgeInstance,
+	exists bool,
+	next BridgeInstance,
+) error {
+	switch {
+	case !exists:
+		if err := s.store.InsertBridgeInstance(ctx, next); err != nil {
+			return fmt.Errorf(
+				"bridges: reconcile insert %q instance %q: %w",
+				source,
+				strings.TrimSpace(next.ID),
+				err,
+			)
+		}
+	case !sameManagedInstance(current, next):
+		next.CreatedAt = current.CreatedAt
+		if next.CreatedAt.IsZero() {
+			next.CreatedAt = s.now().UTC()
+		}
+		if err := s.store.UpdateBridgeInstance(ctx, next); err != nil {
+			return fmt.Errorf(
+				"bridges: reconcile update %q instance %q: %w",
+				source,
+				strings.TrimSpace(next.ID),
+				err,
+			)
+		}
+	}
+	return nil
+}
+
+func (s *ManagedSyncService) deleteStaleManagedInstances(
+	ctx context.Context,
+	source BridgeInstanceSource,
+	existingByID map[string]BridgeInstance,
+	desiredByID map[string]BridgeInstance,
+) (int, error) {
+	removed := 0
+	for id := range existingByID {
+		if _, ok := desiredByID[id]; ok {
+			continue
+		}
+		if err := s.store.DeleteBridgeInstance(ctx, id); err != nil {
+			return 0, fmt.Errorf(
+				"bridges: reconcile delete %q instance %q: %w",
+				source,
+				strings.TrimSpace(id),
+				err,
+			)
+		}
+		removed++
+	}
+	return removed, nil
 }
 
 func sameManagedInstance(left BridgeInstance, right BridgeInstance) bool {

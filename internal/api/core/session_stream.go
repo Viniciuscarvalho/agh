@@ -26,7 +26,11 @@ func parseLastEventID(lastEventID string, transportName string) (int64, error) {
 	return after, nil
 }
 
-func (h *BaseHandlers) writeSessionEventBatch(writer FlushWriter, events []store.SessionEvent, info *session.SessionInfo) (int64, error) {
+func (h *BaseHandlers) writeSessionEventBatch(
+	writer FlushWriter,
+	events []store.SessionEvent,
+	info *session.Info,
+) (int64, error) {
 	var afterSequence int64
 	for _, event := range events {
 		afterSequence = event.Sequence
@@ -41,7 +45,7 @@ func (h *BaseHandlers) writeSessionEventBatch(writer FlushWriter, events []store
 	return afterSequence, nil
 }
 
-func (h *BaseHandlers) writeSessionStoppedEvent(writer FlushWriter, latest *session.SessionInfo) error {
+func (h *BaseHandlers) writeSessionStoppedEvent(writer FlushWriter, latest *session.Info) error {
 	if latest == nil || latest.State != session.StateStopped {
 		return nil
 	}
@@ -63,7 +67,7 @@ func (h *BaseHandlers) pollAndStreamSessionEvents(
 	c *gin.Context,
 	writer FlushWriter,
 	sessionID string,
-	info *session.SessionInfo,
+	info *session.Info,
 	pollQuery store.EventQuery,
 	afterSequence int64,
 ) {
@@ -79,7 +83,14 @@ func (h *BaseHandlers) pollAndStreamSessionEvents(
 			return
 		case <-ticker.C:
 			var done bool
-			afterSequence, currentInfo, done = h.pollSessionStreamTick(c, writer, sessionID, currentInfo, pollQuery, afterSequence)
+			afterSequence, currentInfo, done = h.pollSessionStreamTick(
+				c,
+				writer,
+				sessionID,
+				currentInfo,
+				pollQuery,
+				afterSequence,
+			)
 			if done {
 				return
 			}
@@ -91,16 +102,16 @@ func (h *BaseHandlers) pollSessionStreamTick(
 	c *gin.Context,
 	writer FlushWriter,
 	sessionID string,
-	info *session.SessionInfo,
+	info *session.Info,
 	pollQuery store.EventQuery,
 	afterSequence int64,
-) (int64, *session.SessionInfo, bool) {
+) (int64, *session.Info, bool) {
 	pollQuery.AfterSequence = afterSequence
 
 	events, pollErr := h.Sessions.Events(c.Request.Context(), sessionID, pollQuery)
 	if pollErr != nil {
 		// Best-effort notification; the SSE client may already be disconnected.
-		_ = WriteSSE(writer, SSEMessage{
+		h.writeSSEBestEffort(writer, SSEMessage{
 			Name: "error",
 			Data: contract.ErrorPayload{Error: pollErr.Error()},
 		})
@@ -118,7 +129,7 @@ func (h *BaseHandlers) pollSessionStreamTick(
 	latest, statusErr := h.Sessions.Status(c.Request.Context(), sessionID)
 	if statusErr != nil {
 		// Best-effort notification; the SSE client may already be disconnected.
-		_ = WriteSSE(writer, SSEMessage{
+		h.writeSSEBestEffort(writer, SSEMessage{
 			Name: "error",
 			Data: contract.ErrorPayload{Error: statusErr.Error()},
 		})
@@ -126,7 +137,7 @@ func (h *BaseHandlers) pollSessionStreamTick(
 	}
 	if latest != nil && latest.State == session.StateStopped {
 		// Best-effort terminal event; there is nothing else to do if the stream is closed.
-		_ = h.writeSessionStoppedEvent(writer, latest)
+		h.logSSEWriteFailure("session_stopped", h.writeSessionStoppedEvent(writer, latest))
 		return afterSequence, latest, true
 	}
 	if h.IncludeSessionWorkspaceInSSE {

@@ -5,6 +5,7 @@ import { Combobox as ComboboxPrimitive } from "@base-ui/react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useComboboxAnchor } from "@/components/ui/hooks/use-combobox-anchor";
 import {
   InputGroup,
   InputGroupAddon,
@@ -247,10 +248,6 @@ function ComboboxChipsInput({ className, ...props }: ComboboxPrimitive.Input.Pro
       {...props}
     />
   );
-}
-
-function useComboboxAnchor() {
-  return React.useRef<HTMLDivElement | null>(null);
 }
 
 export {

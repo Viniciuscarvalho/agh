@@ -90,7 +90,11 @@ type BaseHandlers struct {
 }
 
 // NewBaseHandlers builds a shared handler set with transport-specific defaults applied.
-func NewBaseHandlers(cfg BaseHandlerConfig) *BaseHandlers {
+func NewBaseHandlers(cfg *BaseHandlerConfig) *BaseHandlers {
+	if cfg == nil {
+		cfg = &BaseHandlerConfig{}
+	}
+
 	logger := cfg.Logger
 	if logger == nil {
 		logger = slog.Default()
@@ -113,13 +117,14 @@ func NewBaseHandlers(cfg BaseHandlerConfig) *BaseHandlers {
 	}
 	pid := cfg.PID
 	if pid == nil {
-		pid = func() int {
-			return os.Getpid()
-		}
+		pid = os.Getpid
 	}
 
 	if cfg.StreamDone == nil {
-		logger.Warn("api: stream shutdown bridge not provided; streaming handlers will rely on caller context until a transport installs one")
+		logger.Warn(
+			"api: stream shutdown bridge not provided; streaming handlers will rely on caller context " +
+				"until a transport installs one",
+		)
 		cfg.StreamDone = make(chan struct{})
 	}
 
@@ -161,7 +166,10 @@ func (h *BaseHandlers) SetStreamDone(done <-chan struct{}) {
 	}
 	if done == nil {
 		if h.Logger != nil {
-			h.Logger.Warn("api: stream shutdown bridge cleared; streaming handlers will rely on caller context until a transport installs one")
+			h.Logger.Warn(
+				"api: stream shutdown bridge cleared; streaming handlers will rely on caller context " +
+					"until a transport installs one",
+			)
 		}
 		done = make(chan struct{})
 	}
@@ -203,7 +211,11 @@ func (h *BaseHandlers) ListSessions(c *gin.Context) {
 func (h *BaseHandlers) CreateSession(c *gin.Context) {
 	var req contract.CreateSessionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.respondError(c, http.StatusBadRequest, fmt.Errorf("%s: decode create session request: %w", h.transportName(), err))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			fmt.Errorf("%s: decode create session request: %w", h.transportName(), err),
+		)
 		return
 	}
 	if err := h.validateCreateSessionRequest(req); err != nil {
@@ -388,7 +400,11 @@ func (h *BaseHandlers) ListAgents(c *gin.Context) {
 		c.JSON(http.StatusOK, contract.AgentsResponse{Agents: []contract.AgentPayload{}})
 		return
 	default:
-		h.respondError(c, http.StatusInternalServerError, fmt.Errorf("%s: read agents directory %q: %w", h.transportName(), h.HomePaths.AgentsDir, err))
+		h.respondError(
+			c,
+			http.StatusInternalServerError,
+			fmt.Errorf("%s: read agents directory %q: %w", h.transportName(), h.HomePaths.AgentsDir, err),
+		)
 		return
 	}
 
@@ -577,7 +593,7 @@ func (h *BaseHandlers) StreamObserveEvents(c *gin.Context) {
 			}
 			events, pollErr := h.Observer.QueryEvents(c.Request.Context(), pollQuery)
 			if pollErr != nil {
-				_ = WriteSSE(writer, SSEMessage{
+				h.writeSSEBestEffort(writer, SSEMessage{
 					Name: "error",
 					Data: contract.ErrorPayload{Error: pollErr.Error()},
 				})
@@ -787,14 +803,14 @@ func (h *BaseHandlers) transportName() string {
 	return h.TransportName
 }
 
-func (h *BaseHandlers) sessionEventInfo(ctx context.Context, id string) (*session.SessionInfo, error) {
+func (h *BaseHandlers) sessionEventInfo(ctx context.Context, id string) (*session.Info, error) {
 	if !h.IncludeSessionWorkspaceInSSE {
 		return nil, nil
 	}
 	return h.Sessions.Status(ctx, id)
 }
 
-func (h *BaseHandlers) streamSessionInfo(ctx context.Context, id string) (*session.SessionInfo, error) {
+func (h *BaseHandlers) streamSessionInfo(ctx context.Context, id string) (*session.Info, error) {
 	if h.IncludeSessionWorkspaceInSSE {
 		return h.Sessions.Status(ctx, id)
 	}

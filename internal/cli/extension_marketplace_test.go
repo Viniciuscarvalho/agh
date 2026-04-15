@@ -41,7 +41,11 @@ func (s *extensionRegistrySourceStub) Capabilities() registrypkg.SourceCaps {
 	return s.caps
 }
 
-func (s *extensionRegistrySourceStub) Search(ctx context.Context, query string, opts registrypkg.SearchOpts) ([]registrypkg.Listing, error) {
+func (s *extensionRegistrySourceStub) Search(
+	ctx context.Context,
+	query string,
+	opts registrypkg.SearchOpts,
+) ([]registrypkg.Listing, error) {
 	if s.searchFunc == nil {
 		return nil, nil
 	}
@@ -55,7 +59,11 @@ func (s *extensionRegistrySourceStub) Info(ctx context.Context, slug string) (*r
 	return s.infoFunc(ctx, slug)
 }
 
-func (s *extensionRegistrySourceStub) Download(ctx context.Context, slug string, opts registrypkg.DownloadOpts) (*registrypkg.DownloadResult, error) {
+func (s *extensionRegistrySourceStub) Download(
+	ctx context.Context,
+	slug string,
+	opts registrypkg.DownloadOpts,
+) (*registrypkg.DownloadResult, error) {
 	if s.downloadFunc == nil {
 		return nil, fmt.Errorf("missing download for %q", slug)
 	}
@@ -75,7 +83,12 @@ type localExtensionRegistryStub struct {
 	getFunc     func(string) (*extensionpkg.ExtensionInfo, error)
 }
 
-func (s localExtensionRegistryStub) Install(manifest *extensionpkg.Manifest, path string, checksum string, opts ...extensionpkg.InstallOption) error {
+func (s localExtensionRegistryStub) Install(
+	manifest *extensionpkg.Manifest,
+	path string,
+	checksum string,
+	opts ...extensionpkg.InstallOption,
+) error {
 	if s.installFunc == nil {
 		return nil
 	}
@@ -121,7 +134,7 @@ func TestConfiguredExtensionRegistrySourcesClosesDroppedSources(t *testing.T) {
 	t.Parallel()
 
 	closed := make(map[string]int)
-	sources := []registrypkg.RegistrySource{
+	sources := []registrypkg.Source{
 		&extensionRegistrySourceStub{
 			name: "github",
 			closeFunc: func() error {
@@ -138,8 +151,9 @@ func TestConfiguredExtensionRegistrySourcesClosesDroppedSources(t *testing.T) {
 		},
 	}
 
-	filtered, err := configuredExtensionRegistrySources(runtimeContext{}, commandDeps{
-		loadExtensionRegistrySources: func(runtimeContext) ([]registrypkg.RegistrySource, error) {
+	runtime := &runtimeContext{}
+	filtered, err := configuredExtensionRegistrySources(runtime, commandDeps{
+		loadExtensionRegistrySources: func(*runtimeContext) ([]registrypkg.Source, error) {
 			return sources, nil
 		},
 	}, "github")
@@ -167,7 +181,7 @@ func TestConfiguredExtensionRegistrySourcesClosesAllSourcesOnError(t *testing.T)
 	t.Parallel()
 
 	closed := make(map[string]int)
-	sources := []registrypkg.RegistrySource{
+	sources := []registrypkg.Source{
 		&extensionRegistrySourceStub{
 			name: "github",
 			closeFunc: func() error {
@@ -184,8 +198,9 @@ func TestConfiguredExtensionRegistrySourcesClosesAllSourcesOnError(t *testing.T)
 		},
 	}
 
-	_, err := configuredExtensionRegistrySources(runtimeContext{}, commandDeps{
-		loadExtensionRegistrySources: func(runtimeContext) ([]registrypkg.RegistrySource, error) {
+	runtime := &runtimeContext{}
+	_, err := configuredExtensionRegistrySources(runtime, commandDeps{
+		loadExtensionRegistrySources: func(*runtimeContext) ([]registrypkg.Source, error) {
 			return sources, nil
 		},
 	}, "missing")
@@ -304,7 +319,17 @@ func TestExtensionSearchCommandAppliesSourceFilter(t *testing.T) {
 		},
 	)
 
-	stdout, _, err := executeRootCommand(t, env.deps, "extension", "search", "bridge", "--from", "registry", "-o", "json")
+	stdout, _, err := executeRootCommand(
+		t,
+		env.deps,
+		"extension",
+		"search",
+		"bridge",
+		"--from",
+		"registry",
+		"-o",
+		"json",
+	)
 	if err != nil {
 		t.Fatalf("extension search --from error = %v", err)
 	}
@@ -433,7 +458,17 @@ func TestExtensionInstallCommandPassesAssetToRegistryDownload(t *testing.T) {
 		},
 	})
 
-	if _, _, err := executeRootCommand(t, env.deps, "extension", "install", "acme/asset-ext", "--asset", "asset-ext-darwin-amd64.tar.gz", "-o", "json"); err != nil {
+	if _, _, err := executeRootCommand(
+		t,
+		env.deps,
+		"extension",
+		"install",
+		"acme/asset-ext",
+		"--asset",
+		"asset-ext-darwin-amd64.tar.gz",
+		"-o",
+		"json",
+	); err != nil {
 		t.Fatalf("extension install with asset error = %v", err)
 	}
 	if downloadOpts.Asset != "asset-ext-darwin-amd64.tar.gz" {
@@ -459,7 +494,15 @@ func TestExtensionRemoveCommandDeletesDirectoryAndRegistryRecord(t *testing.T) {
 		},
 	})
 
-	if _, _, err := executeRootCommand(t, env.deps, "extension", "install", "acme/remove-ext", "-o", "json"); err != nil {
+	if _, _, err := executeRootCommand(
+		t,
+		env.deps,
+		"extension",
+		"install",
+		"acme/remove-ext",
+		"-o",
+		"json",
+	); err != nil {
 		t.Fatalf("extension install before remove error = %v", err)
 	}
 
@@ -506,7 +549,7 @@ func TestExtensionRemoveCommandReturnsClearErrorForMissingExtension(t *testing.T
 func TestRemoveInstalledExtensionRollsBackRegistryOnCommitFailure(t *testing.T) {
 	t.Parallel()
 
-	deps, homePaths := newExtensionLocalDeps(t, stubClient{})
+	deps, homePaths := newExtensionLocalDeps(t, &stubClient{})
 	sourceDir := writeExtensionFixture(t, "rollback-ext", extensionFixtureOptions{})
 
 	if _, _, err := executeRootCommand(t, deps, "extension", "install", sourceDir, "-o", "json"); err != nil {
@@ -540,7 +583,9 @@ func TestRemoveInstalledExtensionRollsBackRegistryOnCommitFailure(t *testing.T) 
 	if info.Enabled {
 		t.Fatalf("rollback-ext enabled = true, want disabled state restored")
 	}
-	if _, statErr := os.Stat(filepath.Join(extensionpkg.ManagedInstallPath(homePaths, "rollback-ext"), "extension.toml")); statErr != nil {
+	if _, statErr := os.Stat(
+		filepath.Join(extensionpkg.ManagedInstallPath(homePaths, "rollback-ext"), "extension.toml"),
+	); statErr != nil {
 		t.Fatalf("managed manifest stat after failed remove error = %v", statErr)
 	}
 }
@@ -563,7 +608,10 @@ func TestRemoveInstalledExtensionRejectsInvalidManifestPath(t *testing.T) {
 		t.Fatal("removeInstalledExtensionWithRegistry(invalid manifest path) error = nil, want failure")
 	}
 	if !strings.Contains(err.Error(), "invalid manifest path") {
-		t.Fatalf("removeInstalledExtensionWithRegistry(invalid manifest path) error = %v, want manifest-path validation", err)
+		t.Fatalf(
+			"removeInstalledExtensionWithRegistry(invalid manifest path) error = %v, want manifest-path validation",
+			err,
+		)
 	}
 }
 
@@ -589,7 +637,15 @@ func TestExtensionUpdateCommandCheckOnlyShowsAvailableUpdatesWithoutDownloading(
 		},
 	})
 
-	if _, _, err := executeRootCommand(t, env.deps, "extension", "install", "acme/update-ext", "-o", "json"); err != nil {
+	if _, _, err := executeRootCommand(
+		t,
+		env.deps,
+		"extension",
+		"install",
+		"acme/update-ext",
+		"-o",
+		"json",
+	); err != nil {
 		t.Fatalf("extension install before update check error = %v", err)
 	}
 	latestVersion = "1.2.0"
@@ -630,7 +686,15 @@ func TestExtensionUpdateCommandReportsAlreadyUpToDate(t *testing.T) {
 		},
 	})
 
-	if _, _, err := executeRootCommand(t, env.deps, "extension", "install", "acme/steady-ext", "-o", "json"); err != nil {
+	if _, _, err := executeRootCommand(
+		t,
+		env.deps,
+		"extension",
+		"install",
+		"acme/steady-ext",
+		"-o",
+		"json",
+	); err != nil {
 		t.Fatalf("extension install before up-to-date check error = %v", err)
 	}
 
@@ -671,7 +735,15 @@ func TestExtensionUpdateCommandReinstallsNewerVersion(t *testing.T) {
 		},
 	})
 
-	if _, _, err := executeRootCommand(t, env.deps, "extension", "install", "acme/update-ext", "-o", "json"); err != nil {
+	if _, _, err := executeRootCommand(
+		t,
+		env.deps,
+		"extension",
+		"install",
+		"acme/update-ext",
+		"-o",
+		"json",
+	); err != nil {
 		t.Fatalf("extension install before update error = %v", err)
 	}
 	latestVersion = "1.2.0"
@@ -793,10 +865,10 @@ func TestExtensionUpdateCommandAllUpdatesMarketplaceExtensions(t *testing.T) {
 func TestUpdateMarketplaceExtensionRejectsInvalidManifestPath(t *testing.T) {
 	t.Parallel()
 
-	runtime := runtimeContext{}
+	runtime := &runtimeContext{}
 	deps := commandDeps{
-		loadExtensionRegistrySources: func(runtimeContext) ([]registrypkg.RegistrySource, error) {
-			return []registrypkg.RegistrySource{&extensionRegistrySourceStub{
+		loadExtensionRegistrySources: func(*runtimeContext) ([]registrypkg.Source, error) {
+			return []registrypkg.Source{&extensionRegistrySourceStub{
 				name: "github",
 				infoFunc: func(_ context.Context, slug string) (*registrypkg.Detail, error) {
 					return &registrypkg.Detail{
@@ -830,15 +902,15 @@ func TestUpdateMarketplaceExtensionRejectsInvalidManifestPath(t *testing.T) {
 	}
 }
 
-func newExtensionRegistryTestEnv(t *testing.T, sources ...registrypkg.RegistrySource) extensionRegistryTestEnv {
+func newExtensionRegistryTestEnv(t *testing.T, sources ...registrypkg.Source) extensionRegistryTestEnv {
 	t.Helper()
 
-	deps, homePaths := newExtensionLocalDeps(t, stubClient{})
+	deps, homePaths := newExtensionLocalDeps(t, &stubClient{})
 	cfg := aghconfig.DefaultWithHome(homePaths)
 	deps.loadConfig = func() (aghconfig.Config, error) {
 		return cfg, nil
 	}
-	deps.loadExtensionRegistrySources = func(runtimeContext) ([]registrypkg.RegistrySource, error) {
+	deps.loadExtensionRegistrySources = func(*runtimeContext) ([]registrypkg.Source, error) {
 		return sources, nil
 	}
 
@@ -848,7 +920,12 @@ func newExtensionRegistryTestEnv(t *testing.T, sources ...registrypkg.RegistrySo
 	}
 }
 
-func newExtensionDownloadResult(t *testing.T, slug string, version string, files map[string]string) *registrypkg.DownloadResult {
+func newExtensionDownloadResult(
+	t *testing.T,
+	slug string,
+	version string,
+	files map[string]string,
+) *registrypkg.DownloadResult {
 	t.Helper()
 
 	return &registrypkg.DownloadResult{
@@ -862,7 +939,12 @@ func newExtensionDownloadResult(t *testing.T, slug string, version string, files
 
 func remoteExtensionArchiveFiles(name string, version string) map[string]string {
 	return map[string]string{
-		filepath.Join(name, "extension.toml"): strings.Replace(extensionFixtureManifest(name, extensionFixtureOptions{}), `version = "0.1.0"`, fmt.Sprintf(`version = %q`, version), 1),
-		filepath.Join(name, "README.md"):      "remote fixture\n",
+		filepath.Join(name, "extension.toml"): strings.Replace(
+			extensionFixtureManifest(name, extensionFixtureOptions{}),
+			`version = "0.1.0"`,
+			fmt.Sprintf(`version = %q`, version),
+			1,
+		),
+		filepath.Join(name, "README.md"): "remote fixture\n",
 	}
 }

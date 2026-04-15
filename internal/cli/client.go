@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -47,7 +49,11 @@ type DaemonClient interface {
 	DisableBridge(ctx context.Context, id string) (BridgeRecord, error)
 	RestartBridge(ctx context.Context, id string) (BridgeRecord, error)
 	BridgeRoutes(ctx context.Context, id string) ([]BridgeRouteRecord, error)
-	TestBridgeDelivery(ctx context.Context, id string, request BridgeTestDeliveryRequest) (BridgeTestDeliveryRecord, error)
+	TestBridgeDelivery(
+		ctx context.Context,
+		id string,
+		request BridgeTestDeliveryRequest,
+	) (BridgeTestDeliveryRecord, error)
 	ListSessions(ctx context.Context, query SessionListQuery) ([]SessionRecord, error)
 	CreateSession(ctx context.Context, request CreateSessionRequest) (SessionRecord, error)
 	GetSession(ctx context.Context, id string) (SessionRecord, error)
@@ -55,7 +61,13 @@ type DaemonClient interface {
 	ResumeSession(ctx context.Context, id string) (SessionRecord, error)
 	PromptSession(ctx context.Context, id string, message string) ([]AgentEventRecord, error)
 	SessionEvents(ctx context.Context, id string, query SessionEventQuery) ([]SessionEventRecord, error)
-	StreamSessionEvents(ctx context.Context, id string, query SessionEventQuery, lastEventID string, handler SSEHandler) error
+	StreamSessionEvents(
+		ctx context.Context,
+		id string,
+		query SessionEventQuery,
+		lastEventID string,
+		handler SSEHandler,
+	) error
 	SessionHistory(ctx context.Context, id string, query SessionEventQuery) ([]TurnHistoryRecord, error)
 	CreateWorkspace(ctx context.Context, request WorkspaceCreateRequest) (WorkspaceRecord, error)
 	ListWorkspaces(ctx context.Context) ([]WorkspaceRecord, error)
@@ -73,7 +85,12 @@ type DaemonClient interface {
 	ListMemory(ctx context.Context, scope memory.Scope, workspace string) ([]MemoryHeaderRecord, error)
 	ReadMemory(ctx context.Context, filename string, scope memory.Scope, workspace string) (MemoryReadRecord, error)
 	WriteMemory(ctx context.Context, filename string, request MemoryWriteRequest) (MemoryMutationRecord, error)
-	DeleteMemory(ctx context.Context, filename string, scope memory.Scope, workspace string) (MemoryMutationRecord, error)
+	DeleteMemory(
+		ctx context.Context,
+		filename string,
+		scope memory.Scope,
+		workspace string,
+	) (MemoryMutationRecord, error)
 	ConsolidateMemory(ctx context.Context, workspace string) (MemoryConsolidateRecord, error)
 	ListAutomationJobs(ctx context.Context, query AutomationJobQuery) ([]JobRecord, error)
 	CreateAutomationJob(ctx context.Context, request AutomationJobCreateRequest) (JobRecord, error)
@@ -85,7 +102,11 @@ type DaemonClient interface {
 	ListAutomationTriggers(ctx context.Context, query AutomationTriggerQuery) ([]TriggerRecord, error)
 	CreateAutomationTrigger(ctx context.Context, request AutomationTriggerCreateRequest) (TriggerRecord, error)
 	GetAutomationTrigger(ctx context.Context, id string) (TriggerRecord, error)
-	UpdateAutomationTrigger(ctx context.Context, id string, request AutomationTriggerUpdateRequest) (TriggerRecord, error)
+	UpdateAutomationTrigger(
+		ctx context.Context,
+		id string,
+		request AutomationTriggerUpdateRequest,
+	) (TriggerRecord, error)
 	DeleteAutomationTrigger(ctx context.Context, id string) error
 	AutomationTriggerRuns(ctx context.Context, id string, query AutomationRunQuery) ([]RunRecord, error)
 	ListAutomationRuns(ctx context.Context, query AutomationRunQuery) ([]RunRecord, error)
@@ -196,7 +217,7 @@ type ObserveEventQuery struct {
 }
 
 // MemoryHeaderRecord is one memory header returned by the daemon API.
-type MemoryHeaderRecord = memory.MemoryHeader
+type MemoryHeaderRecord = memory.Header
 
 // MemoryReadRecord is the shared daemon memory document payload.
 type MemoryReadRecord = contract.MemoryReadResponse
@@ -427,7 +448,14 @@ func (c *unixSocketClient) NetworkPeers(ctx context.Context, query NetworkPeersQ
 	var response struct {
 		Peers []NetworkPeerRecord `json:"peers"`
 	}
-	if err := c.doJSON(ctx, http.MethodGet, "/api/network/peers", networkPeersValues(query), nil, &response); err != nil {
+	if err := c.doJSON(
+		ctx,
+		http.MethodGet,
+		"/api/network/peers",
+		networkPeersValues(query),
+		nil,
+		&response,
+	); err != nil {
 		return nil, err
 	}
 	return response.Peers, nil
@@ -457,7 +485,14 @@ func (c *unixSocketClient) NetworkInbox(ctx context.Context, sessionID string) (
 	var response struct {
 		Messages []NetworkEnvelopeRecord `json:"messages"`
 	}
-	if err := c.doJSON(ctx, http.MethodGet, "/api/network/inbox", networkInboxValues(sessionID), nil, &response); err != nil {
+	if err := c.doJSON(
+		ctx,
+		http.MethodGet,
+		"/api/network/inbox",
+		networkInboxValues(sessionID),
+		nil,
+		&response,
+	); err != nil {
 		return nil, err
 	}
 	return response.Messages, nil
@@ -473,7 +508,10 @@ func (c *unixSocketClient) ListExtensions(ctx context.Context) ([]ExtensionRecor
 	return response.Extensions, nil
 }
 
-func (c *unixSocketClient) InstallExtension(ctx context.Context, request InstallExtensionRequest) (ExtensionRecord, error) {
+func (c *unixSocketClient) InstallExtension(
+	ctx context.Context,
+	request InstallExtensionRequest,
+) (ExtensionRecord, error) {
 	var response struct {
 		Extension ExtensionRecord `json:"extension"`
 	}
@@ -495,7 +533,14 @@ func (c *unixSocketClient) ExtensionStatus(ctx context.Context, name string) (Ex
 	var response struct {
 		Extension ExtensionRecord `json:"extension"`
 	}
-	if err := c.doJSON(ctx, http.MethodGet, "/api/extensions/"+url.PathEscape(strings.TrimSpace(name)), nil, nil, &response); err != nil {
+	if err := c.doJSON(
+		ctx,
+		http.MethodGet,
+		"/api/extensions/"+url.PathEscape(strings.TrimSpace(name)),
+		nil,
+		nil,
+		&response,
+	); err != nil {
 		return ExtensionRecord{}, err
 	}
 	return response.Extension, nil
@@ -532,7 +577,11 @@ func (c *unixSocketClient) GetBridge(ctx context.Context, id string) (BridgeReco
 	return response.Bridge, nil
 }
 
-func (c *unixSocketClient) UpdateBridge(ctx context.Context, id string, request UpdateBridgeRequest) (BridgeRecord, error) {
+func (c *unixSocketClient) UpdateBridge(
+	ctx context.Context,
+	id string,
+	request UpdateBridgeRequest,
+) (BridgeRecord, error) {
 	var response struct {
 		Bridge BridgeRecord `json:"bridge"`
 	}
@@ -566,7 +615,11 @@ func (c *unixSocketClient) BridgeRoutes(ctx context.Context, id string) ([]Bridg
 	return response.Routes, nil
 }
 
-func (c *unixSocketClient) TestBridgeDelivery(ctx context.Context, id string, request BridgeTestDeliveryRequest) (BridgeTestDeliveryRecord, error) {
+func (c *unixSocketClient) TestBridgeDelivery(
+	ctx context.Context,
+	id string,
+	request BridgeTestDeliveryRequest,
+) (BridgeTestDeliveryRecord, error) {
 	var response BridgeTestDeliveryRecord
 	path := "/api/bridges/" + url.PathEscape(strings.TrimSpace(id)) + "/test-delivery"
 	if err := c.doJSON(ctx, http.MethodPost, path, nil, request, &response); err != nil {
@@ -599,7 +652,14 @@ func (c *unixSocketClient) GetSession(ctx context.Context, id string) (SessionRe
 	var response struct {
 		Session SessionRecord `json:"session"`
 	}
-	if err := c.doJSON(ctx, http.MethodGet, "/api/sessions/"+url.PathEscape(strings.TrimSpace(id)), nil, nil, &response); err != nil {
+	if err := c.doJSON(
+		ctx,
+		http.MethodGet,
+		"/api/sessions/"+url.PathEscape(strings.TrimSpace(id)),
+		nil,
+		nil,
+		&response,
+	); err != nil {
 		return SessionRecord{}, err
 	}
 	return response.Session, nil
@@ -613,7 +673,14 @@ func (c *unixSocketClient) ResumeSession(ctx context.Context, id string) (Sessio
 	var response struct {
 		Session SessionRecord `json:"session"`
 	}
-	if err := c.doJSON(ctx, http.MethodPost, "/api/sessions/"+url.PathEscape(strings.TrimSpace(id))+"/resume", nil, nil, &response); err != nil {
+	if err := c.doJSON(
+		ctx,
+		http.MethodPost,
+		"/api/sessions/"+url.PathEscape(strings.TrimSpace(id))+"/resume",
+		nil,
+		nil,
+		&response,
+	); err != nil {
 		return SessionRecord{}, err
 	}
 	return response.Session, nil
@@ -622,50 +689,97 @@ func (c *unixSocketClient) ResumeSession(ctx context.Context, id string) (Sessio
 func (c *unixSocketClient) PromptSession(ctx context.Context, id string, message string) ([]AgentEventRecord, error) {
 	path := "/api/sessions/" + url.PathEscape(strings.TrimSpace(id)) + "/prompt"
 	var events []AgentEventRecord
-	err := c.doSSE(ctx, http.MethodPost, path, nil, map[string]string{"message": message}, "", func(event SSEEvent) error {
-		var payload AgentEventRecord
-		if len(event.Data) > 0 {
-			if err := json.Unmarshal(event.Data, &payload); err != nil {
-				return fmt.Errorf("cli: decode prompt event: %w", err)
+	err := c.doSSE(
+		ctx,
+		http.MethodPost,
+		path,
+		nil,
+		map[string]string{"message": message},
+		"",
+		func(event SSEEvent) error {
+			var payload AgentEventRecord
+			if len(event.Data) > 0 {
+				if err := json.Unmarshal(event.Data, &payload); err != nil {
+					return fmt.Errorf("cli: decode prompt event: %w", err)
+				}
 			}
-		}
-		if payload.Type == "" {
-			payload.Type = event.Event
-		}
-		events = append(events, payload)
-		return nil
-	})
+			if payload.Type == "" {
+				payload.Type = event.Event
+			}
+			events = append(events, payload)
+			return nil
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
 	return events, nil
 }
 
-func (c *unixSocketClient) SessionEvents(ctx context.Context, id string, query SessionEventQuery) ([]SessionEventRecord, error) {
+func (c *unixSocketClient) SessionEvents(
+	ctx context.Context,
+	id string,
+	query SessionEventQuery,
+) ([]SessionEventRecord, error) {
 	var response struct {
 		Events []SessionEventRecord `json:"events"`
 	}
-	if err := c.doJSON(ctx, http.MethodGet, "/api/sessions/"+url.PathEscape(strings.TrimSpace(id))+"/events", sessionEventValues(query), nil, &response); err != nil {
+	if err := c.doJSON(
+		ctx,
+		http.MethodGet,
+		"/api/sessions/"+url.PathEscape(strings.TrimSpace(id))+"/events",
+		sessionEventValues(query),
+		nil,
+		&response,
+	); err != nil {
 		return nil, err
 	}
 	return response.Events, nil
 }
 
-func (c *unixSocketClient) StreamSessionEvents(ctx context.Context, id string, query SessionEventQuery, lastEventID string, handler SSEHandler) error {
-	return c.doSSE(ctx, http.MethodGet, "/api/sessions/"+url.PathEscape(strings.TrimSpace(id))+"/stream", sessionEventValues(query), nil, lastEventID, handler)
+func (c *unixSocketClient) StreamSessionEvents(
+	ctx context.Context,
+	id string,
+	query SessionEventQuery,
+	lastEventID string,
+	handler SSEHandler,
+) error {
+	return c.doSSE(
+		ctx,
+		http.MethodGet,
+		"/api/sessions/"+url.PathEscape(strings.TrimSpace(id))+"/stream",
+		sessionEventValues(query),
+		nil,
+		lastEventID,
+		handler,
+	)
 }
 
-func (c *unixSocketClient) SessionHistory(ctx context.Context, id string, query SessionEventQuery) ([]TurnHistoryRecord, error) {
+func (c *unixSocketClient) SessionHistory(
+	ctx context.Context,
+	id string,
+	query SessionEventQuery,
+) ([]TurnHistoryRecord, error) {
 	var response struct {
 		History []TurnHistoryRecord `json:"history"`
 	}
-	if err := c.doJSON(ctx, http.MethodGet, "/api/sessions/"+url.PathEscape(strings.TrimSpace(id))+"/history", sessionEventValues(query), nil, &response); err != nil {
+	if err := c.doJSON(
+		ctx,
+		http.MethodGet,
+		"/api/sessions/"+url.PathEscape(strings.TrimSpace(id))+"/history",
+		sessionEventValues(query),
+		nil,
+		&response,
+	); err != nil {
 		return nil, err
 	}
 	return response.History, nil
 }
 
-func (c *unixSocketClient) CreateWorkspace(ctx context.Context, request WorkspaceCreateRequest) (WorkspaceRecord, error) {
+func (c *unixSocketClient) CreateWorkspace(
+	ctx context.Context,
+	request WorkspaceCreateRequest,
+) (WorkspaceRecord, error) {
 	var response struct {
 		Workspace WorkspaceRecord `json:"workspace"`
 	}
@@ -694,7 +808,11 @@ func (c *unixSocketClient) GetWorkspace(ctx context.Context, ref string) (Worksp
 	return response, nil
 }
 
-func (c *unixSocketClient) UpdateWorkspace(ctx context.Context, ref string, request WorkspaceUpdateRequest) (WorkspaceRecord, error) {
+func (c *unixSocketClient) UpdateWorkspace(
+	ctx context.Context,
+	ref string,
+	request WorkspaceUpdateRequest,
+) (WorkspaceRecord, error) {
 	var response struct {
 		Workspace WorkspaceRecord `json:"workspace"`
 	}
@@ -724,7 +842,14 @@ func (c *unixSocketClient) GetAgent(ctx context.Context, name string) (AgentReco
 	var response struct {
 		Agent AgentRecord `json:"agent"`
 	}
-	if err := c.doJSON(ctx, http.MethodGet, "/api/agents/"+url.PathEscape(strings.TrimSpace(name)), nil, nil, &response); err != nil {
+	if err := c.doJSON(
+		ctx,
+		http.MethodGet,
+		"/api/agents/"+url.PathEscape(strings.TrimSpace(name)),
+		nil,
+		nil,
+		&response,
+	); err != nil {
 		return AgentRecord{}, err
 	}
 	return response.Agent, nil
@@ -734,7 +859,14 @@ func (c *unixSocketClient) HookCatalog(ctx context.Context, query HookCatalogQue
 	var response struct {
 		Hooks []HookCatalogRecord `json:"hooks"`
 	}
-	if err := c.doJSON(ctx, http.MethodGet, "/api/hooks/catalog", hookCatalogValues(query), nil, &response); err != nil {
+	if err := c.doJSON(
+		ctx,
+		http.MethodGet,
+		"/api/hooks/catalog",
+		hookCatalogValues(query),
+		nil,
+		&response,
+	); err != nil {
 		return nil, err
 	}
 	return response.Hooks, nil
@@ -764,14 +896,34 @@ func (c *unixSocketClient) ObserveEvents(ctx context.Context, query ObserveEvent
 	var response struct {
 		Events []ObserveEventRecord `json:"events"`
 	}
-	if err := c.doJSON(ctx, http.MethodGet, "/api/observe/events", observeEventValues(query), nil, &response); err != nil {
+	if err := c.doJSON(
+		ctx,
+		http.MethodGet,
+		"/api/observe/events",
+		observeEventValues(query),
+		nil,
+		&response,
+	); err != nil {
 		return nil, err
 	}
 	return response.Events, nil
 }
 
-func (c *unixSocketClient) StreamObserveEvents(ctx context.Context, query ObserveEventQuery, lastEventID string, handler SSEHandler) error {
-	return c.doSSE(ctx, http.MethodGet, "/api/observe/events/stream", observeEventValues(query), nil, lastEventID, handler)
+func (c *unixSocketClient) StreamObserveEvents(
+	ctx context.Context,
+	query ObserveEventQuery,
+	lastEventID string,
+	handler SSEHandler,
+) error {
+	return c.doSSE(
+		ctx,
+		http.MethodGet,
+		"/api/observe/events/stream",
+		observeEventValues(query),
+		nil,
+		lastEventID,
+		handler,
+	)
 }
 
 func (c *unixSocketClient) ObserveHealth(ctx context.Context) (HealthStatus, error) {
@@ -784,7 +936,11 @@ func (c *unixSocketClient) ObserveHealth(ctx context.Context) (HealthStatus, err
 	return response.Health, nil
 }
 
-func (c *unixSocketClient) ListMemory(ctx context.Context, scope memory.Scope, workspace string) ([]MemoryHeaderRecord, error) {
+func (c *unixSocketClient) ListMemory(
+	ctx context.Context,
+	scope memory.Scope,
+	workspace string,
+) ([]MemoryHeaderRecord, error) {
 	var response []MemoryHeaderRecord
 	if err := c.doJSON(ctx, http.MethodGet, "/api/memory", memoryValues(scope, workspace), nil, &response); err != nil {
 		return nil, err
@@ -792,25 +948,60 @@ func (c *unixSocketClient) ListMemory(ctx context.Context, scope memory.Scope, w
 	return response, nil
 }
 
-func (c *unixSocketClient) ReadMemory(ctx context.Context, filename string, scope memory.Scope, workspace string) (MemoryReadRecord, error) {
+func (c *unixSocketClient) ReadMemory(
+	ctx context.Context,
+	filename string,
+	scope memory.Scope,
+	workspace string,
+) (MemoryReadRecord, error) {
 	var response MemoryReadRecord
-	if err := c.doJSON(ctx, http.MethodGet, "/api/memory/"+url.PathEscape(strings.TrimSpace(filename)), memoryValues(scope, workspace), nil, &response); err != nil {
+	if err := c.doJSON(
+		ctx,
+		http.MethodGet,
+		"/api/memory/"+url.PathEscape(strings.TrimSpace(filename)),
+		memoryValues(scope, workspace),
+		nil,
+		&response,
+	); err != nil {
 		return MemoryReadRecord{}, err
 	}
 	return response, nil
 }
 
-func (c *unixSocketClient) WriteMemory(ctx context.Context, filename string, request MemoryWriteRequest) (MemoryMutationRecord, error) {
+func (c *unixSocketClient) WriteMemory(
+	ctx context.Context,
+	filename string,
+	request MemoryWriteRequest,
+) (MemoryMutationRecord, error) {
 	var response MemoryMutationRecord
-	if err := c.doJSON(ctx, http.MethodPut, "/api/memory/"+url.PathEscape(strings.TrimSpace(filename)), nil, request, &response); err != nil {
+	if err := c.doJSON(
+		ctx,
+		http.MethodPut,
+		"/api/memory/"+url.PathEscape(strings.TrimSpace(filename)),
+		nil,
+		request,
+		&response,
+	); err != nil {
 		return MemoryMutationRecord{}, err
 	}
 	return response, nil
 }
 
-func (c *unixSocketClient) DeleteMemory(ctx context.Context, filename string, scope memory.Scope, workspace string) (MemoryMutationRecord, error) {
+func (c *unixSocketClient) DeleteMemory(
+	ctx context.Context,
+	filename string,
+	scope memory.Scope,
+	workspace string,
+) (MemoryMutationRecord, error) {
 	var response MemoryMutationRecord
-	if err := c.doJSON(ctx, http.MethodDelete, "/api/memory/"+url.PathEscape(strings.TrimSpace(filename)), memoryValues(scope, workspace), nil, &response); err != nil {
+	if err := c.doJSON(
+		ctx,
+		http.MethodDelete,
+		"/api/memory/"+url.PathEscape(strings.TrimSpace(filename)),
+		memoryValues(scope, workspace),
+		nil,
+		&response,
+	); err != nil {
 		return MemoryMutationRecord{}, err
 	}
 	return response, nil
@@ -818,7 +1009,14 @@ func (c *unixSocketClient) DeleteMemory(ctx context.Context, filename string, sc
 
 func (c *unixSocketClient) ConsolidateMemory(ctx context.Context, workspace string) (MemoryConsolidateRecord, error) {
 	var response MemoryConsolidateRecord
-	if err := c.doJSON(ctx, http.MethodPost, "/api/memory/consolidate", nil, map[string]string{"workspace": strings.TrimSpace(workspace)}, &response); err != nil {
+	if err := c.doJSON(
+		ctx,
+		http.MethodPost,
+		"/api/memory/consolidate",
+		nil,
+		map[string]string{"workspace": strings.TrimSpace(workspace)},
+		&response,
+	); err != nil {
 		return MemoryConsolidateRecord{}, err
 	}
 	return response, nil
@@ -826,13 +1024,23 @@ func (c *unixSocketClient) ConsolidateMemory(ctx context.Context, workspace stri
 
 func (c *unixSocketClient) ListAutomationJobs(ctx context.Context, query AutomationJobQuery) ([]JobRecord, error) {
 	var response contract.JobsResponse
-	if err := c.doJSON(ctx, http.MethodGet, "/api/automation/jobs", automationJobValues(query), nil, &response); err != nil {
+	if err := c.doJSON(
+		ctx,
+		http.MethodGet,
+		"/api/automation/jobs",
+		automationJobValues(query),
+		nil,
+		&response,
+	); err != nil {
 		return nil, err
 	}
 	return response.Jobs, nil
 }
 
-func (c *unixSocketClient) CreateAutomationJob(ctx context.Context, request AutomationJobCreateRequest) (JobRecord, error) {
+func (c *unixSocketClient) CreateAutomationJob(
+	ctx context.Context,
+	request AutomationJobCreateRequest,
+) (JobRecord, error) {
 	var response contract.JobResponse
 	if err := c.doJSON(ctx, http.MethodPost, "/api/automation/jobs", nil, request, &response); err != nil {
 		return JobRecord{}, err
@@ -849,7 +1057,11 @@ func (c *unixSocketClient) GetAutomationJob(ctx context.Context, id string) (Job
 	return response.Job, nil
 }
 
-func (c *unixSocketClient) UpdateAutomationJob(ctx context.Context, id string, request AutomationJobUpdateRequest) (JobRecord, error) {
+func (c *unixSocketClient) UpdateAutomationJob(
+	ctx context.Context,
+	id string,
+	request AutomationJobUpdateRequest,
+) (JobRecord, error) {
 	var response contract.JobResponse
 	path := "/api/automation/jobs/" + url.PathEscape(strings.TrimSpace(id))
 	if err := c.doJSON(ctx, http.MethodPatch, path, nil, request, &response); err != nil {
@@ -872,7 +1084,11 @@ func (c *unixSocketClient) TriggerAutomationJob(ctx context.Context, id string) 
 	return response.Run, nil
 }
 
-func (c *unixSocketClient) AutomationJobRuns(ctx context.Context, id string, query AutomationRunQuery) ([]RunRecord, error) {
+func (c *unixSocketClient) AutomationJobRuns(
+	ctx context.Context,
+	id string,
+	query AutomationRunQuery,
+) ([]RunRecord, error) {
 	var response contract.RunsResponse
 	path := "/api/automation/jobs/" + url.PathEscape(strings.TrimSpace(id)) + "/runs"
 	if err := c.doJSON(ctx, http.MethodGet, path, automationRunValues(query), nil, &response); err != nil {
@@ -881,15 +1097,28 @@ func (c *unixSocketClient) AutomationJobRuns(ctx context.Context, id string, que
 	return response.Runs, nil
 }
 
-func (c *unixSocketClient) ListAutomationTriggers(ctx context.Context, query AutomationTriggerQuery) ([]TriggerRecord, error) {
+func (c *unixSocketClient) ListAutomationTriggers(
+	ctx context.Context,
+	query AutomationTriggerQuery,
+) ([]TriggerRecord, error) {
 	var response contract.TriggersResponse
-	if err := c.doJSON(ctx, http.MethodGet, "/api/automation/triggers", automationTriggerValues(query), nil, &response); err != nil {
+	if err := c.doJSON(
+		ctx,
+		http.MethodGet,
+		"/api/automation/triggers",
+		automationTriggerValues(query),
+		nil,
+		&response,
+	); err != nil {
 		return nil, err
 	}
 	return response.Triggers, nil
 }
 
-func (c *unixSocketClient) CreateAutomationTrigger(ctx context.Context, request AutomationTriggerCreateRequest) (TriggerRecord, error) {
+func (c *unixSocketClient) CreateAutomationTrigger(
+	ctx context.Context,
+	request AutomationTriggerCreateRequest,
+) (TriggerRecord, error) {
 	var response contract.TriggerResponse
 	if err := c.doJSON(ctx, http.MethodPost, "/api/automation/triggers", nil, request, &response); err != nil {
 		return TriggerRecord{}, err
@@ -906,7 +1135,11 @@ func (c *unixSocketClient) GetAutomationTrigger(ctx context.Context, id string) 
 	return response.Trigger, nil
 }
 
-func (c *unixSocketClient) UpdateAutomationTrigger(ctx context.Context, id string, request AutomationTriggerUpdateRequest) (TriggerRecord, error) {
+func (c *unixSocketClient) UpdateAutomationTrigger(
+	ctx context.Context,
+	id string,
+	request AutomationTriggerUpdateRequest,
+) (TriggerRecord, error) {
 	var response contract.TriggerResponse
 	path := "/api/automation/triggers/" + url.PathEscape(strings.TrimSpace(id))
 	if err := c.doJSON(ctx, http.MethodPatch, path, nil, request, &response); err != nil {
@@ -920,7 +1153,11 @@ func (c *unixSocketClient) DeleteAutomationTrigger(ctx context.Context, id strin
 	return c.doJSON(ctx, http.MethodDelete, path, nil, nil, nil)
 }
 
-func (c *unixSocketClient) AutomationTriggerRuns(ctx context.Context, id string, query AutomationRunQuery) ([]RunRecord, error) {
+func (c *unixSocketClient) AutomationTriggerRuns(
+	ctx context.Context,
+	id string,
+	query AutomationRunQuery,
+) ([]RunRecord, error) {
 	var response contract.RunsResponse
 	path := "/api/automation/triggers/" + url.PathEscape(strings.TrimSpace(id)) + "/runs"
 	if err := c.doJSON(ctx, http.MethodGet, path, automationRunValues(query), nil, &response); err != nil {
@@ -931,7 +1168,14 @@ func (c *unixSocketClient) AutomationTriggerRuns(ctx context.Context, id string,
 
 func (c *unixSocketClient) ListAutomationRuns(ctx context.Context, query AutomationRunQuery) ([]RunRecord, error) {
 	var response contract.RunsResponse
-	if err := c.doJSON(ctx, http.MethodGet, "/api/automation/runs", automationRunValues(query), nil, &response); err != nil {
+	if err := c.doJSON(
+		ctx,
+		http.MethodGet,
+		"/api/automation/runs",
+		automationRunValues(query),
+		nil,
+		&response,
+	); err != nil {
 		return nil, err
 	}
 	return response.Runs, nil
@@ -989,7 +1233,11 @@ func (c *unixSocketClient) CancelTask(ctx context.Context, id string, request Ca
 	return response.Task, nil
 }
 
-func (c *unixSocketClient) CreateChildTask(ctx context.Context, id string, request CreateTaskChildRequest) (TaskRecord, error) {
+func (c *unixSocketClient) CreateChildTask(
+	ctx context.Context,
+	id string,
+	request CreateTaskChildRequest,
+) (TaskRecord, error) {
 	var response contract.TaskResponse
 	path := "/api/tasks/" + url.PathEscape(strings.TrimSpace(id)) + "/children"
 	if err := c.doJSON(ctx, http.MethodPost, path, nil, request, &response); err != nil {
@@ -998,7 +1246,11 @@ func (c *unixSocketClient) CreateChildTask(ctx context.Context, id string, reque
 	return response.Task, nil
 }
 
-func (c *unixSocketClient) AddTaskDependency(ctx context.Context, id string, request AddTaskDependencyRequest) (TaskDetailRecord, error) {
+func (c *unixSocketClient) AddTaskDependency(
+	ctx context.Context,
+	id string,
+	request AddTaskDependencyRequest,
+) (TaskDetailRecord, error) {
 	var response contract.TaskDetailResponse
 	path := "/api/tasks/" + url.PathEscape(strings.TrimSpace(id)) + "/dependencies"
 	if err := c.doJSON(ctx, http.MethodPost, path, nil, request, &response); err != nil {
@@ -1007,16 +1259,28 @@ func (c *unixSocketClient) AddTaskDependency(ctx context.Context, id string, req
 	return response.Task, nil
 }
 
-func (c *unixSocketClient) RemoveTaskDependency(ctx context.Context, id string, dependsOnID string) (TaskDetailRecord, error) {
+func (c *unixSocketClient) RemoveTaskDependency(
+	ctx context.Context,
+	id string,
+	dependsOnID string,
+) (TaskDetailRecord, error) {
 	var response contract.TaskDetailResponse
-	path := "/api/tasks/" + url.PathEscape(strings.TrimSpace(id)) + "/dependencies/" + url.PathEscape(strings.TrimSpace(dependsOnID))
+	path := "/api/tasks/" + url.PathEscape(
+		strings.TrimSpace(id),
+	) + "/dependencies/" + url.PathEscape(
+		strings.TrimSpace(dependsOnID),
+	)
 	if err := c.doJSON(ctx, http.MethodDelete, path, nil, nil, &response); err != nil {
 		return TaskDetailRecord{}, err
 	}
 	return response.Task, nil
 }
 
-func (c *unixSocketClient) EnqueueTaskRun(ctx context.Context, id string, request EnqueueTaskRunRequest) (TaskRunRecord, error) {
+func (c *unixSocketClient) EnqueueTaskRun(
+	ctx context.Context,
+	id string,
+	request EnqueueTaskRunRequest,
+) (TaskRunRecord, error) {
 	var response contract.TaskRunResponse
 	path := "/api/tasks/" + url.PathEscape(strings.TrimSpace(id)) + "/runs"
 	if err := c.doJSON(ctx, http.MethodPost, path, nil, request, &response); err != nil {
@@ -1025,7 +1289,11 @@ func (c *unixSocketClient) EnqueueTaskRun(ctx context.Context, id string, reques
 	return response.Run, nil
 }
 
-func (c *unixSocketClient) ListTaskRuns(ctx context.Context, id string, query TaskRunListQuery) ([]TaskRunRecord, error) {
+func (c *unixSocketClient) ListTaskRuns(
+	ctx context.Context,
+	id string,
+	query TaskRunListQuery,
+) ([]TaskRunRecord, error) {
 	var response contract.TaskRunsResponse
 	path := "/api/tasks/" + url.PathEscape(strings.TrimSpace(id)) + "/runs"
 	if err := c.doJSON(ctx, http.MethodGet, path, taskRunValues(query), nil, &response); err != nil {
@@ -1034,27 +1302,51 @@ func (c *unixSocketClient) ListTaskRuns(ctx context.Context, id string, query Ta
 	return response.Runs, nil
 }
 
-func (c *unixSocketClient) ClaimTaskRun(ctx context.Context, id string, request ClaimTaskRunRequest) (TaskRunRecord, error) {
+func (c *unixSocketClient) ClaimTaskRun(
+	ctx context.Context,
+	id string,
+	request ClaimTaskRunRequest,
+) (TaskRunRecord, error) {
 	return c.taskRunAction(ctx, strings.TrimSpace(id), "claim", request)
 }
 
-func (c *unixSocketClient) StartTaskRun(ctx context.Context, id string, request StartTaskRunRequest) (TaskRunRecord, error) {
+func (c *unixSocketClient) StartTaskRun(
+	ctx context.Context,
+	id string,
+	request StartTaskRunRequest,
+) (TaskRunRecord, error) {
 	return c.taskRunAction(ctx, strings.TrimSpace(id), "start", request)
 }
 
-func (c *unixSocketClient) AttachTaskRunSession(ctx context.Context, id string, request AttachTaskRunSessionRequest) (TaskRunRecord, error) {
+func (c *unixSocketClient) AttachTaskRunSession(
+	ctx context.Context,
+	id string,
+	request AttachTaskRunSessionRequest,
+) (TaskRunRecord, error) {
 	return c.taskRunAction(ctx, strings.TrimSpace(id), "attach-session", request)
 }
 
-func (c *unixSocketClient) CompleteTaskRun(ctx context.Context, id string, request CompleteTaskRunRequest) (TaskRunRecord, error) {
+func (c *unixSocketClient) CompleteTaskRun(
+	ctx context.Context,
+	id string,
+	request CompleteTaskRunRequest,
+) (TaskRunRecord, error) {
 	return c.taskRunAction(ctx, strings.TrimSpace(id), "complete", request)
 }
 
-func (c *unixSocketClient) FailTaskRun(ctx context.Context, id string, request FailTaskRunRequest) (TaskRunRecord, error) {
+func (c *unixSocketClient) FailTaskRun(
+	ctx context.Context,
+	id string,
+	request FailTaskRunRequest,
+) (TaskRunRecord, error) {
 	return c.taskRunAction(ctx, strings.TrimSpace(id), "fail", request)
 }
 
-func (c *unixSocketClient) CancelTaskRun(ctx context.Context, id string, request CancelTaskRunRequest) (TaskRunRecord, error) {
+func (c *unixSocketClient) CancelTaskRun(
+	ctx context.Context,
+	id string,
+	request CancelTaskRunRequest,
+) (TaskRunRecord, error) {
 	return c.taskRunAction(ctx, strings.TrimSpace(id), "cancel", request)
 }
 
@@ -1080,7 +1372,12 @@ func (c *unixSocketClient) bridgeAction(ctx context.Context, id string, action s
 	return response.Bridge, nil
 }
 
-func (c *unixSocketClient) taskRunAction(ctx context.Context, id string, action string, requestBody any) (TaskRunRecord, error) {
+func (c *unixSocketClient) taskRunAction(
+	ctx context.Context,
+	id string,
+	action string,
+	requestBody any,
+) (TaskRunRecord, error) {
 	var response contract.TaskRunResponse
 	path := "/api/task-runs/" + url.PathEscape(id) + "/" + action
 	if err := c.doJSON(ctx, http.MethodPost, path, nil, requestBody, &response); err != nil {
@@ -1089,21 +1386,27 @@ func (c *unixSocketClient) taskRunAction(ctx context.Context, id string, action 
 	return response.Run, nil
 }
 
-func (c *unixSocketClient) doJSON(ctx context.Context, method string, path string, query url.Values, requestBody any, responseBody any) error {
+func (c *unixSocketClient) doJSON(
+	ctx context.Context,
+	method string,
+	path string,
+	query url.Values,
+	requestBody any,
+	responseBody any,
+) error {
 	response, err := c.doRequest(ctx, method, path, query, requestBody, "")
 	if err != nil {
 		return err
 	}
-	defer func() {
-		_ = response.Body.Close()
-	}()
 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return readAPIError(response)
 	}
+	defer func() {
+		_ = response.Body.Close()
+	}()
 	if responseBody == nil {
-		_, _ = io.Copy(io.Discard, response.Body)
-		return nil
+		return drainResponseBody(method, path, response.Body)
 	}
 	if err := json.NewDecoder(response.Body).Decode(responseBody); err != nil {
 		return fmt.Errorf("cli: decode %s %s response: %w", method, path, err)
@@ -1111,27 +1414,41 @@ func (c *unixSocketClient) doJSON(ctx context.Context, method string, path strin
 	return nil
 }
 
-func (c *unixSocketClient) doSSE(ctx context.Context, method string, path string, query url.Values, requestBody any, lastEventID string, handler SSEHandler) error {
+func (c *unixSocketClient) doSSE(
+	ctx context.Context,
+	method string,
+	path string,
+	query url.Values,
+	requestBody any,
+	lastEventID string,
+	handler SSEHandler,
+) error {
 	response, err := c.doRequest(ctx, method, path, query, requestBody, lastEventID)
 	if err != nil {
 		return err
+	}
+
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return readAPIError(response)
 	}
 	defer func() {
 		_ = response.Body.Close()
 	}()
 
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return readAPIError(response)
-	}
-
 	if handler == nil {
-		_, _ = io.Copy(io.Discard, response.Body)
-		return nil
+		return drainResponseBody(method, path, response.Body)
 	}
 	return decodeSSE(ctx, response.Body, handler)
 }
 
-func (c *unixSocketClient) doRequest(ctx context.Context, method string, path string, query url.Values, requestBody any, lastEventID string) (*http.Response, error) {
+func (c *unixSocketClient) doRequest(
+	ctx context.Context,
+	method string,
+	path string,
+	query url.Values,
+	requestBody any,
+	lastEventID string,
+) (*http.Response, error) {
 	if ctx == nil {
 		return nil, errors.New("cli: context is required")
 	}
@@ -1170,7 +1487,98 @@ func (c *unixSocketClient) doRequest(ctx context.Context, method string, path st
 }
 
 func decodeSSE(ctx context.Context, body io.Reader, handler SSEHandler) error {
-	return sse.Decode(ctx, body, handler)
+	if ctx == nil {
+		return fmt.Errorf("sse: context is required")
+	}
+	if cliReaderIsNil(body) {
+		return fmt.Errorf("sse: body is required")
+	}
+	if handler == nil {
+		return fmt.Errorf("sse: handler is required")
+	}
+
+	scanner := bufio.NewScanner(body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	event := SSEEvent{}
+	dataLines := make([]string, 0, 4)
+	emit := func() error {
+		if event.ID == "" && event.Event == "" && len(dataLines) == 0 {
+			return nil
+		}
+		if len(dataLines) > 0 {
+			event.Data = json.RawMessage(strings.Join(dataLines, "\n"))
+		}
+		err := handler(event)
+		event = SSEEvent{}
+		dataLines = dataLines[:0]
+		return err
+	}
+
+	for scanner.Scan() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		if decodeSSELine(scanner.Text(), &event, &dataLines) {
+			err := emit()
+			if errors.Is(err, errStopSSE) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("sse: read stream: %w", err)
+	}
+
+	err := emit()
+	if errors.Is(err, errStopSSE) {
+		return nil
+	}
+	return err
+}
+
+func decodeSSELine(line string, event *SSEEvent, dataLines *[]string) bool {
+	if line == "" {
+		return true
+	}
+	if strings.HasPrefix(line, ":") {
+		return false
+	}
+
+	field, value, found := strings.Cut(line, ":")
+	if !found {
+		return false
+	}
+
+	switch field {
+	case "id":
+		event.ID = strings.TrimPrefix(value, " ")
+	case "event":
+		event.Event = strings.TrimPrefix(value, " ")
+	case "data":
+		*dataLines = append(*dataLines, strings.TrimPrefix(value, " "))
+	}
+
+	return false
+}
+
+func cliReaderIsNil(reader io.Reader) bool {
+	if reader == nil {
+		return true
+	}
+
+	value := reflect.ValueOf(reader)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }
 
 func sessionListValues(query SessionListQuery) url.Values {
@@ -1406,6 +1814,10 @@ func taskRunValues(query TaskRunListQuery) url.Values {
 }
 
 func readAPIError(response *http.Response) error {
+	defer func() {
+		_ = response.Body.Close()
+	}()
+
 	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 	if err != nil {
 		return fmt.Errorf("cli: read api error response: %w", err)
@@ -1423,4 +1835,11 @@ func readAPIError(response *http.Response) error {
 		message = response.Status
 	}
 	return fmt.Errorf("daemon api %s: %s", response.Status, message)
+}
+
+func drainResponseBody(method string, path string, body io.Reader) error {
+	if _, err := io.Copy(io.Discard, body); err != nil {
+		return fmt.Errorf("cli: drain %s %s response: %w", method, path, err)
+	}
+	return nil
 }

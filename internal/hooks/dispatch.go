@@ -16,10 +16,13 @@ type dispatchConfig[P any, R any] struct {
 }
 
 // DispatchSessionPreCreate runs the session.pre_create hook pipeline.
-func (h *Hooks) DispatchSessionPreCreate(ctx context.Context, payload SessionPreCreatePayload) (SessionPreCreatePayload, error) {
+func (h *Hooks) DispatchSessionPreCreate(
+	ctx context.Context,
+	payload SessionPreCreatePayload,
+) (SessionPreCreatePayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookSessionPreCreate,
 		payload,
 		dispatchConfig[SessionPreCreatePayload, SessionCreatePatch]{
@@ -34,10 +37,13 @@ func (h *Hooks) DispatchSessionPreCreate(ctx context.Context, payload SessionPre
 }
 
 // DispatchSessionPostCreate runs the session.post_create hook pipeline.
-func (h *Hooks) DispatchSessionPostCreate(ctx context.Context, payload SessionPostCreatePayload) (SessionPostCreatePayload, error) {
+func (h *Hooks) DispatchSessionPostCreate(
+	ctx context.Context,
+	payload SessionPostCreatePayload,
+) (SessionPostCreatePayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookSessionPostCreate,
 		payload,
 		dispatchConfig[SessionPostCreatePayload, SessionPostCreatePatch]{
@@ -49,10 +55,13 @@ func (h *Hooks) DispatchSessionPostCreate(ctx context.Context, payload SessionPo
 }
 
 // DispatchSessionPreResume runs the session.pre_resume hook pipeline.
-func (h *Hooks) DispatchSessionPreResume(ctx context.Context, payload SessionPreResumePayload) (SessionPreResumePayload, error) {
+func (h *Hooks) DispatchSessionPreResume(
+	ctx context.Context,
+	payload SessionPreResumePayload,
+) (SessionPreResumePayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookSessionPreResume,
 		payload,
 		dispatchConfig[SessionPreResumePayload, SessionPreResumePatch]{
@@ -67,10 +76,13 @@ func (h *Hooks) DispatchSessionPreResume(ctx context.Context, payload SessionPre
 }
 
 // DispatchSessionPostResume runs the session.post_resume hook pipeline.
-func (h *Hooks) DispatchSessionPostResume(ctx context.Context, payload SessionPostResumePayload) (SessionPostResumePayload, error) {
+func (h *Hooks) DispatchSessionPostResume(
+	ctx context.Context,
+	payload SessionPostResumePayload,
+) (SessionPostResumePayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookSessionPostResume,
 		payload,
 		dispatchConfig[SessionPostResumePayload, SessionPostResumePatch]{
@@ -82,10 +94,13 @@ func (h *Hooks) DispatchSessionPostResume(ctx context.Context, payload SessionPo
 }
 
 // DispatchSessionPreStop runs the session.pre_stop hook pipeline.
-func (h *Hooks) DispatchSessionPreStop(ctx context.Context, payload SessionPreStopPayload) (SessionPreStopPayload, error) {
+func (h *Hooks) DispatchSessionPreStop(
+	ctx context.Context,
+	payload SessionPreStopPayload,
+) (SessionPreStopPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookSessionPreStop,
 		payload,
 		dispatchConfig[SessionPreStopPayload, SessionPreStopPatch]{
@@ -100,10 +115,13 @@ func (h *Hooks) DispatchSessionPreStop(ctx context.Context, payload SessionPreSt
 }
 
 // DispatchSessionPostStop runs the session.post_stop hook pipeline.
-func (h *Hooks) DispatchSessionPostStop(ctx context.Context, payload SessionPostStopPayload) (SessionPostStopPayload, error) {
+func (h *Hooks) DispatchSessionPostStop(
+	ctx context.Context,
+	payload SessionPostStopPayload,
+) (SessionPostStopPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookSessionPostStop,
 		payload,
 		dispatchConfig[SessionPostStopPayload, SessionPostStopPatch]{
@@ -115,10 +133,13 @@ func (h *Hooks) DispatchSessionPostStop(ctx context.Context, payload SessionPost
 }
 
 // DispatchInputPreSubmit runs the input.pre_submit hook pipeline.
-func (h *Hooks) DispatchInputPreSubmit(ctx context.Context, payload InputPreSubmitPayload) (InputPreSubmitPayload, error) {
+func (h *Hooks) DispatchInputPreSubmit(
+	ctx context.Context,
+	payload InputPreSubmitPayload,
+) (InputPreSubmitPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookInputPreSubmit,
 		payload,
 		dispatchConfig[InputPreSubmitPayload, InputPreSubmitPatch]{
@@ -135,8 +156,8 @@ func (h *Hooks) DispatchInputPreSubmit(ctx context.Context, payload InputPreSubm
 // DispatchPromptPostAssemble runs the prompt.post_assemble hook pipeline.
 func (h *Hooks) DispatchPromptPostAssemble(ctx context.Context, payload PromptPayload) (PromptPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookPromptPostAssemble,
 		payload,
 		dispatchConfig[PromptPayload, PromptPatch]{
@@ -151,10 +172,13 @@ func (h *Hooks) DispatchPromptPostAssemble(ctx context.Context, payload PromptPa
 }
 
 // DispatchEventPreRecord runs the event.pre_record hook dispatch.
-func (h *Hooks) DispatchEventPreRecord(ctx context.Context, payload EventPreRecordPayload) (EventPreRecordPayload, error) {
+func (h *Hooks) DispatchEventPreRecord(
+	ctx context.Context,
+	payload EventPreRecordPayload,
+) (EventPreRecordPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookEventPreRecord,
 		payload,
 		dispatchConfig[EventPreRecordPayload, EventPreRecordPatch]{
@@ -165,10 +189,13 @@ func (h *Hooks) DispatchEventPreRecord(ctx context.Context, payload EventPreReco
 }
 
 // DispatchEventPostRecord runs the event.post_record hook dispatch.
-func (h *Hooks) DispatchEventPostRecord(ctx context.Context, payload EventPostRecordPayload) (EventPostRecordPayload, error) {
+func (h *Hooks) DispatchEventPostRecord(
+	ctx context.Context,
+	payload EventPostRecordPayload,
+) (EventPostRecordPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookEventPostRecord,
 		payload,
 		dispatchConfig[EventPostRecordPayload, EventPostRecordPatch]{
@@ -179,10 +206,13 @@ func (h *Hooks) DispatchEventPostRecord(ctx context.Context, payload EventPostRe
 }
 
 // DispatchAutomationJobPreFire runs the automation.job.pre_fire hook pipeline.
-func (h *Hooks) DispatchAutomationJobPreFire(ctx context.Context, payload AutomationJobPreFirePayload) (AutomationJobPreFirePayload, error) {
+func (h *Hooks) DispatchAutomationJobPreFire(
+	ctx context.Context,
+	payload AutomationJobPreFirePayload,
+) (AutomationJobPreFirePayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookAutomationJobPreFire,
 		payload,
 		dispatchConfig[AutomationJobPreFirePayload, AutomationFirePatch]{
@@ -197,10 +227,13 @@ func (h *Hooks) DispatchAutomationJobPreFire(ctx context.Context, payload Automa
 }
 
 // DispatchAutomationJobPostFire runs the automation.job.post_fire hook dispatch.
-func (h *Hooks) DispatchAutomationJobPostFire(ctx context.Context, payload AutomationJobPostFirePayload) (AutomationJobPostFirePayload, error) {
+func (h *Hooks) DispatchAutomationJobPostFire(
+	ctx context.Context,
+	payload AutomationJobPostFirePayload,
+) (AutomationJobPostFirePayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookAutomationJobPostFire,
 		payload,
 		dispatchConfig[AutomationJobPostFirePayload, AutomationObservationPatch]{
@@ -211,10 +244,13 @@ func (h *Hooks) DispatchAutomationJobPostFire(ctx context.Context, payload Autom
 }
 
 // DispatchAutomationTriggerPreFire runs the automation.trigger.pre_fire hook pipeline.
-func (h *Hooks) DispatchAutomationTriggerPreFire(ctx context.Context, payload AutomationTriggerPreFirePayload) (AutomationTriggerPreFirePayload, error) {
+func (h *Hooks) DispatchAutomationTriggerPreFire(
+	ctx context.Context,
+	payload AutomationTriggerPreFirePayload,
+) (AutomationTriggerPreFirePayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookAutomationTriggerPreFire,
 		payload,
 		dispatchConfig[AutomationTriggerPreFirePayload, AutomationFirePatch]{
@@ -229,10 +265,13 @@ func (h *Hooks) DispatchAutomationTriggerPreFire(ctx context.Context, payload Au
 }
 
 // DispatchAutomationTriggerPostFire runs the automation.trigger.post_fire hook dispatch.
-func (h *Hooks) DispatchAutomationTriggerPostFire(ctx context.Context, payload AutomationTriggerPostFirePayload) (AutomationTriggerPostFirePayload, error) {
+func (h *Hooks) DispatchAutomationTriggerPostFire(
+	ctx context.Context,
+	payload AutomationTriggerPostFirePayload,
+) (AutomationTriggerPostFirePayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookAutomationTriggerPostFire,
 		payload,
 		dispatchConfig[AutomationTriggerPostFirePayload, AutomationObservationPatch]{
@@ -243,10 +282,13 @@ func (h *Hooks) DispatchAutomationTriggerPostFire(ctx context.Context, payload A
 }
 
 // DispatchAutomationRunCompleted runs the automation.run.completed hook dispatch.
-func (h *Hooks) DispatchAutomationRunCompleted(ctx context.Context, payload AutomationRunCompletedPayload) (AutomationRunCompletedPayload, error) {
+func (h *Hooks) DispatchAutomationRunCompleted(
+	ctx context.Context,
+	payload AutomationRunCompletedPayload,
+) (AutomationRunCompletedPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookAutomationRunCompleted,
 		payload,
 		dispatchConfig[AutomationRunCompletedPayload, AutomationObservationPatch]{
@@ -257,10 +299,13 @@ func (h *Hooks) DispatchAutomationRunCompleted(ctx context.Context, payload Auto
 }
 
 // DispatchAutomationRunFailed runs the automation.run.failed hook dispatch.
-func (h *Hooks) DispatchAutomationRunFailed(ctx context.Context, payload AutomationRunFailedPayload) (AutomationRunFailedPayload, error) {
+func (h *Hooks) DispatchAutomationRunFailed(
+	ctx context.Context,
+	payload AutomationRunFailedPayload,
+) (AutomationRunFailedPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookAutomationRunFailed,
 		payload,
 		dispatchConfig[AutomationRunFailedPayload, AutomationObservationPatch]{
@@ -273,8 +318,8 @@ func (h *Hooks) DispatchAutomationRunFailed(ctx context.Context, payload Automat
 // DispatchAgentPreStart runs the agent.pre_start hook pipeline.
 func (h *Hooks) DispatchAgentPreStart(ctx context.Context, payload AgentPreStartPayload) (AgentPreStartPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookAgentPreStart,
 		payload,
 		dispatchConfig[AgentPreStartPayload, AgentStartPatch]{
@@ -291,8 +336,8 @@ func (h *Hooks) DispatchAgentPreStart(ctx context.Context, payload AgentPreStart
 // DispatchAgentSpawned runs the agent.spawned hook pipeline.
 func (h *Hooks) DispatchAgentSpawned(ctx context.Context, payload AgentSpawnedPayload) (AgentSpawnedPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookAgentSpawned,
 		payload,
 		dispatchConfig[AgentSpawnedPayload, AgentSpawnedPatch]{
@@ -305,8 +350,8 @@ func (h *Hooks) DispatchAgentSpawned(ctx context.Context, payload AgentSpawnedPa
 // DispatchAgentCrashed runs the agent.crashed hook pipeline.
 func (h *Hooks) DispatchAgentCrashed(ctx context.Context, payload AgentCrashedPayload) (AgentCrashedPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookAgentCrashed,
 		payload,
 		dispatchConfig[AgentCrashedPayload, AgentCrashedPatch]{
@@ -319,8 +364,8 @@ func (h *Hooks) DispatchAgentCrashed(ctx context.Context, payload AgentCrashedPa
 // DispatchAgentStopped runs the agent.stopped hook pipeline.
 func (h *Hooks) DispatchAgentStopped(ctx context.Context, payload AgentStoppedPayload) (AgentStoppedPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookAgentStopped,
 		payload,
 		dispatchConfig[AgentStoppedPayload, AgentStoppedPatch]{
@@ -333,8 +378,8 @@ func (h *Hooks) DispatchAgentStopped(ctx context.Context, payload AgentStoppedPa
 // DispatchTurnStart runs the turn.start hook pipeline.
 func (h *Hooks) DispatchTurnStart(ctx context.Context, payload TurnStartPayload) (TurnStartPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookTurnStart,
 		payload,
 		dispatchConfig[TurnStartPayload, TurnStartPatch]{
@@ -348,8 +393,8 @@ func (h *Hooks) DispatchTurnStart(ctx context.Context, payload TurnStartPayload)
 // DispatchTurnEnd runs the turn.end hook pipeline.
 func (h *Hooks) DispatchTurnEnd(ctx context.Context, payload TurnEndPayload) (TurnEndPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookTurnEnd,
 		payload,
 		dispatchConfig[TurnEndPayload, TurnEndPatch]{
@@ -363,8 +408,8 @@ func (h *Hooks) DispatchTurnEnd(ctx context.Context, payload TurnEndPayload) (Tu
 // DispatchMessageStart runs the message.start hook pipeline.
 func (h *Hooks) DispatchMessageStart(ctx context.Context, payload MessageStartPayload) (MessageStartPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookMessageStart,
 		payload,
 		dispatchConfig[MessageStartPayload, MessageStartPatch]{
@@ -378,8 +423,8 @@ func (h *Hooks) DispatchMessageStart(ctx context.Context, payload MessageStartPa
 // DispatchMessageDelta runs the message.delta hook dispatch.
 func (h *Hooks) DispatchMessageDelta(ctx context.Context, payload MessageDeltaPayload) (MessageDeltaPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookMessageDelta,
 		payload,
 		dispatchConfig[MessageDeltaPayload, MessageDeltaPatch]{
@@ -393,8 +438,8 @@ func (h *Hooks) DispatchMessageDelta(ctx context.Context, payload MessageDeltaPa
 // DispatchMessageEnd runs the message.end hook pipeline.
 func (h *Hooks) DispatchMessageEnd(ctx context.Context, payload MessageEndPayload) (MessageEndPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookMessageEnd,
 		payload,
 		dispatchConfig[MessageEndPayload, MessageEndPatch]{
@@ -408,8 +453,8 @@ func (h *Hooks) DispatchMessageEnd(ctx context.Context, payload MessageEndPayloa
 // DispatchToolPreCall runs the tool.pre_call hook pipeline.
 func (h *Hooks) DispatchToolPreCall(ctx context.Context, payload ToolPreCallPayload) (ToolPreCallPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookToolPreCall,
 		payload,
 		dispatchConfig[ToolPreCallPayload, ToolCallPatch]{
@@ -423,8 +468,8 @@ func (h *Hooks) DispatchToolPreCall(ctx context.Context, payload ToolPreCallPayl
 // DispatchToolPostCall runs the tool.post_call hook pipeline.
 func (h *Hooks) DispatchToolPostCall(ctx context.Context, payload ToolPostCallPayload) (ToolPostCallPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookToolPostCall,
 		payload,
 		dispatchConfig[ToolPostCallPayload, ToolResultPatch]{
@@ -438,8 +483,8 @@ func (h *Hooks) DispatchToolPostCall(ctx context.Context, payload ToolPostCallPa
 // DispatchToolPostError runs the tool.post_error hook pipeline.
 func (h *Hooks) DispatchToolPostError(ctx context.Context, payload ToolPostErrorPayload) (ToolPostErrorPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookToolPostError,
 		payload,
 		dispatchConfig[ToolPostErrorPayload, ToolPostErrorPatch]{
@@ -451,10 +496,13 @@ func (h *Hooks) DispatchToolPostError(ctx context.Context, payload ToolPostError
 }
 
 // DispatchPermissionRequest runs the permission.request hook pipeline.
-func (h *Hooks) DispatchPermissionRequest(ctx context.Context, payload PermissionRequestPayload) (PermissionRequestPayload, error) {
+func (h *Hooks) DispatchPermissionRequest(
+	ctx context.Context,
+	payload PermissionRequestPayload,
+) (PermissionRequestPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookPermissionRequest,
 		payload,
 		dispatchConfig[PermissionRequestPayload, PermissionRequestPatch]{
@@ -467,10 +515,13 @@ func (h *Hooks) DispatchPermissionRequest(ctx context.Context, payload Permissio
 }
 
 // DispatchPermissionResolved runs the permission.resolved hook dispatch.
-func (h *Hooks) DispatchPermissionResolved(ctx context.Context, payload PermissionResolvedPayload) (PermissionResolvedPayload, error) {
+func (h *Hooks) DispatchPermissionResolved(
+	ctx context.Context,
+	payload PermissionResolvedPayload,
+) (PermissionResolvedPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookPermissionResolved,
 		payload,
 		dispatchConfig[PermissionResolvedPayload, PermissionResolvedPatch]{
@@ -481,10 +532,13 @@ func (h *Hooks) DispatchPermissionResolved(ctx context.Context, payload Permissi
 }
 
 // DispatchPermissionDenied runs the permission.denied hook dispatch.
-func (h *Hooks) DispatchPermissionDenied(ctx context.Context, payload PermissionDeniedPayload) (PermissionDeniedPayload, error) {
+func (h *Hooks) DispatchPermissionDenied(
+	ctx context.Context,
+	payload PermissionDeniedPayload,
+) (PermissionDeniedPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookPermissionDenied,
 		payload,
 		dispatchConfig[PermissionDeniedPayload, PermissionDeniedPatch]{
@@ -495,10 +549,13 @@ func (h *Hooks) DispatchPermissionDenied(ctx context.Context, payload Permission
 }
 
 // DispatchContextPreCompact runs the context.pre_compact hook pipeline.
-func (h *Hooks) DispatchContextPreCompact(ctx context.Context, payload ContextPreCompactPayload) (ContextPreCompactPayload, error) {
+func (h *Hooks) DispatchContextPreCompact(
+	ctx context.Context,
+	payload ContextPreCompactPayload,
+) (ContextPreCompactPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookContextPreCompact,
 		payload,
 		dispatchConfig[ContextPreCompactPayload, ContextPreCompactPatch]{
@@ -510,10 +567,13 @@ func (h *Hooks) DispatchContextPreCompact(ctx context.Context, payload ContextPr
 }
 
 // DispatchContextPostCompact runs the context.post_compact hook pipeline.
-func (h *Hooks) DispatchContextPostCompact(ctx context.Context, payload ContextPostCompactPayload) (ContextPostCompactPayload, error) {
+func (h *Hooks) DispatchContextPostCompact(
+	ctx context.Context,
+	payload ContextPostCompactPayload,
+) (ContextPostCompactPayload, error) {
 	return executeDispatch(
-		h,
 		ctx,
+		h,
 		HookContextPostCompact,
 		payload,
 		dispatchConfig[ContextPostCompactPayload, ContextPostCompactPatch]{
@@ -525,8 +585,8 @@ func (h *Hooks) DispatchContextPostCompact(ctx context.Context, payload ContextP
 }
 
 func executeDispatch[P any, R any](
-	h *Hooks,
 	ctx context.Context,
+	h *Hooks,
 	event HookEvent,
 	payload P,
 	cfg dispatchConfig[P, R],
@@ -538,12 +598,10 @@ func executeDispatch[P any, R any](
 		return payload, errors.New("hooks: dispatch context is nil")
 	}
 
-	snapshot, err := h.hookSnapshot(event)
+	syncHooks, asyncHooks, err := matchingDispatchHooks(h, event, payload, cfg.match)
 	if err != nil {
 		return payload, err
 	}
-
-	syncHooks, asyncHooks := selectMatchingHooks(snapshot, payload, cfg.match)
 	if len(syncHooks) == 0 && len(asyncHooks) == 0 {
 		return payload, nil
 	}
@@ -580,11 +638,41 @@ func executeDispatch[P any, R any](
 	}
 
 	if dispatchErr == nil && !report.Denied && len(asyncHooks) > 0 {
-		submitAsyncHooks(h, ctx, result, asyncHooks, pipe)
+		submitAsyncHooks(ctx, h, result, asyncHooks, pipe)
 	}
 
+	reportDispatchResult(h, event, dispatchDepth, dispatchStarted, report, dispatchErr, len(syncHooks), len(asyncHooks))
+
+	return result, dispatchErr
+}
+
+func matchingDispatchHooks[P any](
+	h *Hooks,
+	event HookEvent,
+	payload P,
+	match matcherFunc[P],
+) ([]*ResolvedHook, []*ResolvedHook, error) {
+	snapshot, err := h.hookSnapshot(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	syncHooks, asyncHooks := selectMatchingHooks(snapshot, payload, match)
+	return syncHooks, asyncHooks, nil
+}
+
+func reportDispatchResult(
+	h *Hooks,
+	event HookEvent,
+	dispatchDepth int,
+	dispatchStarted time.Time,
+	report dispatchReport,
+	dispatchErr error,
+	syncHookCount int,
+	asyncHookCount int,
+) {
 	pipelineDuration := time.Since(dispatchStarted)
 	h.metrics.observePipeline(event, pipelineDuration)
+
 	switch {
 	case report.Denied:
 		h.logger.Warn(
@@ -611,12 +699,10 @@ func executeDispatch[P any, R any](
 			"dispatch_depth", dispatchDepth,
 			"duration_ms", pipelineDuration.Milliseconds(),
 			"pipeline_trace", traceStrings(report.Trace),
-			"sync_hooks", len(syncHooks),
-			"async_hooks", len(asyncHooks),
+			"sync_hooks", syncHookCount,
+			"async_hooks", asyncHookCount,
 		)
 	}
-
-	return result, dispatchErr
 }
 
 func applyNoop[P any, R any](payload P, _ R) P {
@@ -627,14 +713,20 @@ func automationFirePatchDenied(patch AutomationFirePatch) bool {
 	return patch.Cancel
 }
 
-func applyAutomationJobPreFirePatch(payload AutomationJobPreFirePayload, patch AutomationFirePatch) AutomationJobPreFirePayload {
+func applyAutomationJobPreFirePatch(
+	payload AutomationJobPreFirePayload,
+	patch AutomationFirePatch,
+) AutomationJobPreFirePayload {
 	if patch.Prompt != nil {
 		payload.Prompt = *patch.Prompt
 	}
 	return payload
 }
 
-func applyAutomationTriggerPreFirePatch(payload AutomationTriggerPreFirePayload, patch AutomationFirePatch) AutomationTriggerPreFirePayload {
+func applyAutomationTriggerPreFirePatch(
+	payload AutomationTriggerPreFirePayload,
+	patch AutomationFirePatch,
+) AutomationTriggerPreFirePayload {
 	if patch.Prompt != nil {
 		payload.Prompt = *patch.Prompt
 	}
@@ -752,12 +844,15 @@ func applyToolPostErrorPatch(payload ToolPostErrorPayload, patch ToolPostErrorPa
 	return payload
 }
 
-func mergePermissionRequestPatch(payload PermissionRequestPayload, patch PermissionRequestPatch) PermissionRequestPayload {
+func mergePermissionRequestPatch(
+	payload PermissionRequestPayload,
+	patch PermissionRequestPatch,
+) PermissionRequestPayload {
 	if patch.Decision != nil {
 		payload.Decision = *patch.Decision
 	}
 	if patch.Deny {
-		payload.Decision = "deny"
+		payload.Decision = permissionDecisionDeny
 	}
 	if patch.DecisionClass != nil {
 		payload.DecisionClass = *patch.DecisionClass

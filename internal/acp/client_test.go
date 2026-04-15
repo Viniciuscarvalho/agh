@@ -31,7 +31,7 @@ const (
 	testWrapperEnvKey     = "AGH_TEST_ACP_WRAPPER"
 )
 
-func TestACPHelperProcess(t *testing.T) {
+func TestACPHelperProcess(_ *testing.T) {
 	if os.Getenv(testHelperEnvKey) != "1" {
 		return
 	}
@@ -48,10 +48,16 @@ func TestACPHelperProcess(t *testing.T) {
 			_, _ = fmt.Fprintf(os.Stderr, "create capture file: %v\n", err)
 			os.Exit(1)
 		}
-		defer func() {
-			_ = captureFile.Close()
-		}()
 		input = io.TeeReader(os.Stdin, captureFile)
+
+		conn := acpsdk.NewAgentSideConnection(agent, os.Stdout, input)
+		agent.conn = conn
+		<-conn.Done()
+		if err := captureFile.Close(); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "close capture file: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
 	}
 
 	conn := acpsdk.NewAgentSideConnection(agent, os.Stdout, input)
@@ -60,7 +66,7 @@ func TestACPHelperProcess(t *testing.T) {
 	os.Exit(0)
 }
 
-func TestACPWrapperProcess(t *testing.T) {
+func TestACPWrapperProcess(_ *testing.T) {
 	if os.Getenv(testWrapperEnvKey) != "1" {
 		return
 	}
@@ -71,7 +77,7 @@ func TestACPWrapperProcess(t *testing.T) {
 		os.Exit(1)
 	}
 
-	cmd := exec.Command(bin, "-test.run=TestACPHelperProcess")
+	cmd := exec.CommandContext(context.Background(), bin, "-test.run=TestACPHelperProcess")
 	cmd.Env = append([]string(nil), os.Environ()...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -145,7 +151,6 @@ func TestPermissionPolicyModes(t *testing.T) {
 	}
 
 	for name, tc := range policies {
-		tc := tc
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
@@ -176,7 +181,12 @@ func TestPermissionPolicyResolvePathSandbox(t *testing.T) {
 		t.Fatalf("resolvePath(%q) error = %v", insideFile, err)
 	}
 	if !strings.HasSuffix(resolvedInside, filepath.Join("nested", "file.txt")) {
-		t.Fatalf("resolvePath(%q) = %q, want suffix %q", insideFile, resolvedInside, filepath.Join("nested", "file.txt"))
+		t.Fatalf(
+			"resolvePath(%q) = %q, want suffix %q",
+			insideFile,
+			resolvedInside,
+			filepath.Join("nested", "file.txt"),
+		)
 	}
 
 	if _, err := policy.resolvePath(filepath.Join(root, "..", "escape.txt")); !errors.Is(err, ErrPathOutsideWorkspace) {
@@ -210,7 +220,11 @@ func TestTokenUsageParsing(t *testing.T) {
 		t.Fatalf("tokenUsageFromPromptResponse() input_tokens = %#v, want %d", promptUsage.InputTokens, inputTokens)
 	}
 	if promptUsage.CacheWriteTokens == nil || *promptUsage.CacheWriteTokens != cacheWriteTokens {
-		t.Fatalf("tokenUsageFromPromptResponse() cache_write_tokens = %#v, want %d", promptUsage.CacheWriteTokens, cacheWriteTokens)
+		t.Fatalf(
+			"tokenUsageFromPromptResponse() cache_write_tokens = %#v, want %d",
+			promptUsage.CacheWriteTokens,
+			cacheWriteTokens,
+		)
 	}
 
 	merged := promptUsage.Merge(tokenUsageFromUsageUpdate("turn-1", wireUsageUpdate{
@@ -287,7 +301,10 @@ func TestDaemonMatchedEnvPinsCurrentBinary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("os.Executable() error = %v", err)
 	}
-	if resolved, resolveErr := filepath.EvalSymlinks(executable); resolveErr == nil && strings.TrimSpace(resolved) != "" {
+	if resolved, resolveErr := filepath.EvalSymlinks(
+		executable,
+	); resolveErr == nil &&
+		strings.TrimSpace(resolved) != "" {
 		executable = resolved
 	}
 	binDir := filepath.Dir(executable)
@@ -460,7 +477,6 @@ func TestStartWithEmptyAdditionalDirsKeepsBaselinePayload(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -501,7 +517,13 @@ func TestStartIncludesAdditionalDirsInNewSessionPayload(t *testing.T) {
 	if got, want := request.Cwd, mustCanonicalDir(t, root); got != want {
 		t.Fatalf("session/new cwd = %q, want %q", got, want)
 	}
-	if got, want := request.AdditionalDirs, []string{mustCanonicalDir(t, additionalOne), mustCanonicalDir(t, additionalTwo)}; !slices.Equal(got, want) {
+	if got, want := request.AdditionalDirs, []string{
+		mustCanonicalDir(t, additionalOne),
+		mustCanonicalDir(t, additionalTwo),
+	}; !slices.Equal(
+		got,
+		want,
+	) {
 		t.Fatalf("session/new additional_dirs = %#v, want %#v", got, want)
 	}
 }
@@ -531,7 +553,13 @@ func TestStartIncludesAdditionalDirsInLoadSessionPayload(t *testing.T) {
 	if request.SessionID != "sess-existing" {
 		t.Fatalf("session/load sessionId = %q, want %q", request.SessionID, "sess-existing")
 	}
-	if got, want := request.AdditionalDirs, []string{mustCanonicalDir(t, additionalOne), mustCanonicalDir(t, additionalTwo)}; !slices.Equal(got, want) {
+	if got, want := request.AdditionalDirs, []string{
+		mustCanonicalDir(t, additionalOne),
+		mustCanonicalDir(t, additionalTwo),
+	}; !slices.Equal(
+		got,
+		want,
+	) {
 		t.Fatalf("session/load additional_dirs = %#v, want %#v", got, want)
 	}
 }
@@ -554,7 +582,6 @@ func TestStartResumeReturnsSentinelErrors(t *testing.T) {
 	}
 
 	for name, tc := range tests {
-		tc := tc
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
@@ -590,7 +617,10 @@ func TestIsLoadSessionResourceMissing(t *testing.T) {
 				ErrLoadSessionFailed,
 				"sess-existing",
 				"helper",
-				&acpsdk.RequestError{Code: requestErrorResourceNotFoundCode, Message: "Resource not found: sess-existing"},
+				&acpsdk.RequestError{
+					Code:    requestErrorResourceNotFoundCode,
+					Message: "Resource not found: sess-existing",
+				},
 			),
 			want: true,
 		},
@@ -611,7 +641,6 @@ func TestIsLoadSessionResourceMissing(t *testing.T) {
 	}
 
 	for name, tc := range tests {
-		tc := tc
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
@@ -634,7 +663,13 @@ func TestCleanupFailedStartReturnsJoinedErrorWhenStopFails(t *testing.T) {
 	proc.setWaitError(stopErr)
 	close(proc.done)
 
-	startErr := fmt.Errorf("%w: load session %q for %q: %w", ErrLoadSessionFailed, "sess-existing", "helper", errors.New("load failed"))
+	startErr := fmt.Errorf(
+		"%w: load session %q for %q: %w",
+		ErrLoadSessionFailed,
+		"sess-existing",
+		"helper",
+		errors.New("load failed"),
+	)
 	err := driver.cleanupFailedStart(proc, startErr)
 	if err == nil {
 		t.Fatal("cleanupFailedStart() error = nil, want non-nil")
@@ -720,7 +755,13 @@ func TestDriverApprovePermissionValidationAndForwarding(t *testing.T) {
 	}
 }
 
-func startHelperProcess(t *testing.T, driver *Driver, scenario string, filePath string, overrides StartOpts) *AgentProcess {
+func startHelperProcess(
+	t *testing.T,
+	driver *Driver,
+	scenario string,
+	filePath string,
+	overrides StartOpts,
+) *AgentProcess {
 	t.Helper()
 
 	command := helperCommand(t)
@@ -911,8 +952,8 @@ func captureRequestParams(t *testing.T, path string, method string) map[string]j
 		t.Fatalf("os.ReadFile(%q) error = %v", path, err)
 	}
 
-	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(strings.TrimSpace(string(data)), "\n")
+	for line := range lines {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -964,7 +1005,10 @@ func decodeCapturedLoadSessionRequest(t *testing.T, params map[string]json.RawMe
 	return request
 }
 
-func decodeCapturedSetSessionModeRequest(t *testing.T, params map[string]json.RawMessage) capturedSetSessionModeRequest {
+func decodeCapturedSetSessionModeRequest(
+	t *testing.T,
+	params map[string]json.RawMessage,
+) capturedSetSessionModeRequest {
 	t.Helper()
 
 	raw, err := json.Marshal(params)
@@ -1008,7 +1052,10 @@ type helperACPAgent struct {
 	filePath string
 }
 
-func (a *helperACPAgent) Authenticate(context.Context, acpsdk.AuthenticateRequest) (acpsdk.AuthenticateResponse, error) {
+func (a *helperACPAgent) Authenticate(
+	context.Context,
+	acpsdk.AuthenticateRequest,
+) (acpsdk.AuthenticateResponse, error) {
 	return acpsdk.AuthenticateResponse{}, nil
 }
 
@@ -1016,7 +1063,8 @@ func (a *helperACPAgent) Initialize(context.Context, acpsdk.InitializeRequest) (
 	return acpsdk.InitializeResponse{
 		ProtocolVersion: acpsdk.ProtocolVersionNumber,
 		AgentCapabilities: acpsdk.AgentCapabilities{
-			LoadSession: a.scenario == "load_session" || a.scenario == "load_session_error" || a.scenario == "load_mode_mapping",
+			LoadSession: a.scenario == "load_session" || a.scenario == "load_session_error" ||
+				a.scenario == "load_mode_mapping",
 		},
 		AuthMethods: []acpsdk.AuthMethod{},
 	}, nil
@@ -1090,7 +1138,7 @@ func (a *helperACPAgent) Prompt(ctx context.Context, params acpsdk.PromptRequest
 		title := "permission request"
 		locationPath := a.filePath
 		if locationPath == "" {
-			locationPath = filepath.Join("/", "workspace", "demo.txt")
+			locationPath = filepath.Join(string(filepath.Separator), "workspace", "demo.txt")
 		}
 		outcome, err := a.conn.RequestPermission(ctx, acpsdk.RequestPermissionRequest{
 			SessionId: params.SessionId,
@@ -1111,7 +1159,7 @@ func (a *helperACPAgent) Prompt(ctx context.Context, params acpsdk.PromptRequest
 		if err != nil {
 			return acpsdk.PromptResponse{}, err
 		}
-		selected := "cancelled"
+		selected := "canceled"
 		if outcome.Outcome.Selected != nil {
 			selected = string(outcome.Outcome.Selected.OptionId)
 		}
@@ -1197,8 +1245,17 @@ func (a *helperACPAgent) Prompt(ctx context.Context, params acpsdk.PromptRequest
 		updates := []acpsdk.SessionUpdate{
 			acpsdk.UpdateAgentMessageText("hello"),
 			acpsdk.UpdateAgentThoughtText("thinking"),
-			acpsdk.StartToolCall("tool-1", "Read file", acpsdk.WithStartKind(acpsdk.ToolKindRead), acpsdk.WithStartStatus(acpsdk.ToolCallStatusInProgress)),
-			acpsdk.UpdateToolCall("tool-1", acpsdk.WithUpdateStatus(acpsdk.ToolCallStatusCompleted), acpsdk.WithUpdateTitle("Read file")),
+			acpsdk.StartToolCall(
+				"tool-1",
+				"Read file",
+				acpsdk.WithStartKind(acpsdk.ToolKindRead),
+				acpsdk.WithStartStatus(acpsdk.ToolCallStatusInProgress),
+			),
+			acpsdk.UpdateToolCall(
+				"tool-1",
+				acpsdk.WithUpdateStatus(acpsdk.ToolCallStatusCompleted),
+				acpsdk.WithUpdateTitle("Read file"),
+			),
 		}
 		for _, update := range updates {
 			if err := a.conn.SessionUpdate(ctx, acpsdk.SessionNotification{
@@ -1213,7 +1270,10 @@ func (a *helperACPAgent) Prompt(ctx context.Context, params acpsdk.PromptRequest
 	return acpsdk.PromptResponse{StopReason: acpsdk.StopReasonEndTurn}, nil
 }
 
-func (a *helperACPAgent) SetSessionMode(context.Context, acpsdk.SetSessionModeRequest) (acpsdk.SetSessionModeResponse, error) {
+func (a *helperACPAgent) SetSessionMode(
+	context.Context,
+	acpsdk.SetSessionModeRequest,
+) (acpsdk.SetSessionModeResponse, error) {
 	return acpsdk.SetSessionModeResponse{}, nil
 }
 

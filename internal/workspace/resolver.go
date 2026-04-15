@@ -31,7 +31,7 @@ type UpdateOptions struct {
 
 // Resolver resolves persisted workspaces into runtime workspace snapshots.
 type Resolver struct {
-	store       WorkspaceStore
+	store       Store
 	homePaths   aghconfig.HomePaths
 	loadConfig  ConfigLoader
 	logger      *slog.Logger
@@ -43,7 +43,7 @@ type Resolver struct {
 	cache map[string]*cachedEntry
 }
 
-var _ WorkspaceResolver = (*Resolver)(nil)
+var _ RuntimeResolver = (*Resolver)(nil)
 
 type cachedEntry struct {
 	workspace  Workspace
@@ -53,7 +53,7 @@ type cachedEntry struct {
 }
 
 // NewResolver constructs a workspace resolver backed by the supplied store.
-func NewResolver(store WorkspaceStore, opts ...Option) (*Resolver, error) {
+func NewResolver(store Store, opts ...Option) (*Resolver, error) {
 	if store == nil {
 		return nil, errors.New("workspace: store is required")
 	}
@@ -129,7 +129,7 @@ func (r *Resolver) Resolve(ctx context.Context, idOrNameOrPath string) (resolved
 	if cached := r.cache[ws.ID]; cached != nil && cached.canReuse(ws, scan.snapshots) {
 		cached.lastAccess = now
 		cacheHit = true
-		resolved = cloneResolvedWorkspace(cached.resolved)
+		resolved = cloneResolvedWorkspace(&cached.resolved)
 		resolved.Workspace = cloneWorkspace(ws)
 		r.mu.Unlock()
 		return resolved, nil
@@ -145,7 +145,7 @@ func (r *Resolver) Resolve(ctx context.Context, idOrNameOrPath string) (resolved
 	r.evictExpiredLocked(now)
 	r.cache[ws.ID] = &cachedEntry{
 		workspace:  cloneWorkspace(ws),
-		resolved:   cloneResolvedWorkspace(resolved),
+		resolved:   cloneResolvedWorkspace(&resolved),
 		snapshots:  cloneSnapshots(scan.snapshots),
 		lastAccess: now,
 	}
@@ -178,7 +178,11 @@ func (r *Resolver) ResolveOrRegister(ctx context.Context, path string) (Resolved
 		if errors.Is(err, ErrWorkspacePathTaken) {
 			existing, lookupErr := r.store.GetWorkspaceByPath(ctx, canonicalRoot)
 			if lookupErr != nil {
-				return ResolvedWorkspace{}, fmt.Errorf("workspace: reload concurrent workspace registration for %q: %w", canonicalRoot, lookupErr)
+				return ResolvedWorkspace{}, fmt.Errorf(
+					"workspace: reload concurrent workspace registration for %q: %w",
+					canonicalRoot,
+					lookupErr,
+				)
 			}
 			return r.Resolve(ctx, existing.ID)
 		}
@@ -189,7 +193,10 @@ func (r *Resolver) ResolveOrRegister(ctx context.Context, path string) (Resolved
 	if err != nil {
 		deleteErr := r.store.DeleteWorkspace(ctx, ws.ID)
 		if deleteErr != nil && !errors.Is(deleteErr, ErrWorkspaceNotFound) {
-			return ResolvedWorkspace{}, errors.Join(err, fmt.Errorf("workspace: rollback auto-registered workspace %q: %w", ws.ID, deleteErr))
+			return ResolvedWorkspace{}, errors.Join(
+				err,
+				fmt.Errorf("workspace: rollback auto-registered workspace %q: %w", ws.ID, deleteErr),
+			)
 		}
 		return ResolvedWorkspace{}, err
 	}
@@ -215,7 +222,11 @@ func (r *Resolver) Invalidate(workspaceID string) {
 	r.mu.Unlock()
 }
 
-func (r *Resolver) buildResolvedWorkspace(ctx context.Context, ws Workspace, scan workspaceScan) (ResolvedWorkspace, error) {
+func (r *Resolver) buildResolvedWorkspace(
+	ctx context.Context,
+	ws Workspace,
+	scan workspaceScan,
+) (ResolvedWorkspace, error) {
 	if err := checkContext(ctx); err != nil {
 		return ResolvedWorkspace{}, err
 	}
@@ -235,7 +246,7 @@ func (r *Resolver) buildResolvedWorkspace(ctx context.Context, ws Workspace, sca
 
 	return ResolvedWorkspace{
 		Workspace:  cloneWorkspace(ws),
-		Config:     cloneConfig(cfg),
+		Config:     cloneConfig(&cfg),
 		Agents:     cloneAgentDefs(agents),
 		Skills:     cloneSkillPaths(skills),
 		ResolvedAt: r.now(),

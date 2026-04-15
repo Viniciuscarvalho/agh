@@ -1,10 +1,11 @@
-package extension
+package extensionpkg
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -49,6 +50,7 @@ const (
 	defaultHostAPIBridgeCleanupInterval = time.Hour
 	maxMemoryDescriptionLength          = 160
 	tagCommentPrefix                    = "<!-- agh-tags:"
+	hostAPIUnknownExtensionName         = "unknown"
 )
 
 type hostAPIContextKey string
@@ -67,7 +69,7 @@ type HostAPIHandler struct {
 	memory           *memory.Store
 	observer         hostAPIObserver
 	skills           hostAPISkillsRegistry
-	workspaces       workspacepkg.WorkspaceResolver
+	workspaces       workspacepkg.RuntimeResolver
 	bridges          hostAPIBridgeRegistry
 	dedupStore       hostAPIBridgeDedupStore
 	deliveryBroker   hostAPIDeliveryBroker
@@ -91,8 +93,8 @@ type hostAPIMethodFunc func(context.Context, json.RawMessage) (any, error)
 
 type hostAPISessionManager interface {
 	Create(ctx context.Context, opts session.CreateOpts) (*session.Session, error)
-	ListAll(ctx context.Context) ([]*session.SessionInfo, error)
-	Status(ctx context.Context, id string) (*session.SessionInfo, error)
+	ListAll(ctx context.Context) ([]*session.Info, error)
+	Status(ctx context.Context, id string) (*session.Info, error)
 	Events(ctx context.Context, id string, query store.EventQuery) ([]store.SessionEvent, error)
 	Stop(ctx context.Context, id string) error
 	Prompt(ctx context.Context, id string, msg string) (<-chan acp.AgentEvent, error)
@@ -113,39 +115,98 @@ type HostAPIAutomationManager interface {
 	TriggerJob(ctx context.Context, id string) (automationpkg.Run, error)
 	ListTriggers(ctx context.Context, query automationpkg.TriggerListQuery) ([]automationpkg.Trigger, error)
 	GetTrigger(ctx context.Context, id string) (automationpkg.Trigger, error)
-	CreateTrigger(ctx context.Context, trigger automationpkg.Trigger, webhookSecret string) (automationpkg.Trigger, error)
-	UpdateTrigger(ctx context.Context, trigger automationpkg.Trigger, webhookSecret *string) (automationpkg.Trigger, error)
+	CreateTrigger(
+		ctx context.Context,
+		trigger automationpkg.Trigger,
+		webhookSecret string,
+	) (automationpkg.Trigger, error)
+	UpdateTrigger(
+		ctx context.Context,
+		trigger automationpkg.Trigger,
+		webhookSecret *string,
+	) (automationpkg.Trigger, error)
 	DeleteTrigger(ctx context.Context, id string) error
 	ListRuns(ctx context.Context, query automationpkg.RunQuery) ([]automationpkg.Run, error)
 	SetJobEnabled(ctx context.Context, id string, enabled bool) (automationpkg.Job, error)
 	SetTriggerEnabled(ctx context.Context, id string, enabled bool) (automationpkg.Trigger, error)
-	FireExtensionTrigger(ctx context.Context, request automationpkg.ExtensionTriggerRequest) (automationpkg.TriggerResult, error)
+	FireExtensionTrigger(
+		ctx context.Context,
+		request automationpkg.ExtensionTriggerRequest,
+	) (automationpkg.TriggerResult, error)
 }
 
 type hostAPITaskManager interface {
-	ListTasks(ctx context.Context, query taskpkg.TaskQuery, actor taskpkg.ActorContext) ([]taskpkg.TaskSummary, error)
-	GetTask(ctx context.Context, id string, actor taskpkg.ActorContext) (*taskpkg.TaskView, error)
-	ListTaskRuns(ctx context.Context, taskID string, query taskpkg.TaskRunQuery, actor taskpkg.ActorContext) ([]taskpkg.TaskRun, error)
+	ListTasks(ctx context.Context, query taskpkg.Query, actor taskpkg.ActorContext) ([]taskpkg.Summary, error)
+	GetTask(ctx context.Context, id string, actor taskpkg.ActorContext) (*taskpkg.View, error)
+	ListTaskRuns(
+		ctx context.Context,
+		taskID string,
+		query taskpkg.RunQuery,
+		actor taskpkg.ActorContext,
+	) ([]taskpkg.Run, error)
 	CreateTask(ctx context.Context, spec taskpkg.CreateTask, actor taskpkg.ActorContext) (*taskpkg.Task, error)
-	UpdateTask(ctx context.Context, id string, patch taskpkg.TaskPatch, actor taskpkg.ActorContext) (*taskpkg.Task, error)
-	CancelTask(ctx context.Context, id string, req taskpkg.CancelTask, actor taskpkg.ActorContext) (*taskpkg.Task, error)
-	EnqueueRun(ctx context.Context, spec taskpkg.EnqueueRun, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error)
-	ClaimRun(ctx context.Context, runID string, claim taskpkg.ClaimRun, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error)
-	StartRun(ctx context.Context, runID string, req taskpkg.StartRun, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error)
-	AttachRunSession(ctx context.Context, runID string, sessionID string, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error)
-	CompleteRun(ctx context.Context, runID string, result taskpkg.RunResult, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error)
-	FailRun(ctx context.Context, runID string, failure taskpkg.RunFailure, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error)
-	CancelRun(ctx context.Context, runID string, req taskpkg.CancelRun, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error)
+	UpdateTask(
+		ctx context.Context,
+		id string,
+		patch taskpkg.Patch,
+		actor taskpkg.ActorContext,
+	) (*taskpkg.Task, error)
+	CancelTask(
+		ctx context.Context,
+		id string,
+		req taskpkg.CancelTask,
+		actor taskpkg.ActorContext,
+	) (*taskpkg.Task, error)
+	EnqueueRun(ctx context.Context, spec taskpkg.EnqueueRun, actor taskpkg.ActorContext) (*taskpkg.Run, error)
+	ClaimRun(
+		ctx context.Context,
+		runID string,
+		claim taskpkg.ClaimRun,
+		actor taskpkg.ActorContext,
+	) (*taskpkg.Run, error)
+	StartRun(
+		ctx context.Context,
+		runID string,
+		req taskpkg.StartRun,
+		actor taskpkg.ActorContext,
+	) (*taskpkg.Run, error)
+	AttachRunSession(
+		ctx context.Context,
+		runID string,
+		sessionID string,
+		actor taskpkg.ActorContext,
+	) (*taskpkg.Run, error)
+	CompleteRun(
+		ctx context.Context,
+		runID string,
+		result taskpkg.RunResult,
+		actor taskpkg.ActorContext,
+	) (*taskpkg.Run, error)
+	FailRun(
+		ctx context.Context,
+		runID string,
+		failure taskpkg.RunFailure,
+		actor taskpkg.ActorContext,
+	) (*taskpkg.Run, error)
+	CancelRun(
+		ctx context.Context,
+		runID string,
+		req taskpkg.CancelRun,
+		actor taskpkg.ActorContext,
+	) (*taskpkg.Run, error)
 }
 
 type hostAPIDeliveryBroker interface {
-	RegisterPromptDelivery(ctx context.Context, reg bridgepkg.PromptDeliveryRegistration) (*bridgepkg.DeliverySnapshot, error)
+	RegisterPromptDelivery(
+		ctx context.Context,
+		reg bridgepkg.PromptDeliveryRegistration,
+	) (*bridgepkg.DeliverySnapshot, error)
 	ProjectEvent(ctx context.Context, sessionID string, event bridgepkg.DeliveryProjectionEvent) error
 }
 
 type hostAPISkillsRegistry interface {
 	List() []*skillspkg.Skill
-	ForWorkspace(ctx context.Context, resolved workspacepkg.ResolvedWorkspace) ([]*skillspkg.Skill, error)
+	ForWorkspace(ctx context.Context, resolved *workspacepkg.ResolvedWorkspace) ([]*skillspkg.Skill, error)
 }
 
 // WithHostAPICapabilityChecker injects the capability checker used for Host API authorization.
@@ -177,7 +238,7 @@ func WithHostAPIAutomationGetter(getter func() HostAPIAutomationManager) HostAPI
 }
 
 // WithHostAPIWorkspaceResolver injects workspace resolution for workspace-scoped Host API methods.
-func WithHostAPIWorkspaceResolver(resolver workspacepkg.WorkspaceResolver) HostAPIOption {
+func WithHostAPIWorkspaceResolver(resolver workspacepkg.RuntimeResolver) HostAPIOption {
 	return func(handler *HostAPIHandler) {
 		handler.workspaces = resolver
 	}
@@ -235,7 +296,28 @@ func NewHostAPIHandler(
 	skillsRegistry hostAPISkillsRegistry,
 	opts ...HostAPIOption,
 ) *HostAPIHandler {
-	handler := &HostAPIHandler{
+	handler := newHostAPIHandlerDefaults(sessions, memoryStore, observer, skillsRegistry)
+
+	for _, opt := range opts {
+		if opt != nil {
+			opt(handler)
+		}
+	}
+
+	normalizeHostAPIHandlerDefaults(handler)
+	handler.limiter = newHostAPIRateLimiter(handler.rateLimit, handler.rateBurst, handler.now)
+	handler.methods = hostAPIMethodHandlers(handler)
+
+	return handler
+}
+
+func newHostAPIHandlerDefaults(
+	sessions hostAPISessionManager,
+	memoryStore *memory.Store,
+	observer hostAPIObserver,
+	skillsRegistry hostAPISkillsRegistry,
+) *HostAPIHandler {
+	return &HostAPIHandler{
 		sessions:              sessions,
 		memory:                memoryStore,
 		observer:              observer,
@@ -250,13 +332,12 @@ func NewHostAPIHandler(
 			return time.Now().UTC()
 		},
 	}
+}
 
-	for _, opt := range opts {
-		if opt != nil {
-			opt(handler)
-		}
+func normalizeHostAPIHandlerDefaults(handler *HostAPIHandler) {
+	if handler == nil {
+		return
 	}
-
 	if handler.now == nil {
 		handler.now = func() time.Time {
 			return time.Now().UTC()
@@ -274,9 +355,10 @@ func NewHostAPIHandler(
 	if handler.bridgeLocks == nil {
 		handler.bridgeLocks = newHostAPIKeyLocker()
 	}
-	handler.limiter = newHostAPIRateLimiter(handler.rateLimit, handler.rateBurst, handler.now)
+}
 
-	handler.methods = map[string]hostAPIMethodFunc{
+func hostAPIMethodHandlers(handler *HostAPIHandler) map[string]hostAPIMethodFunc {
+	return map[string]hostAPIMethodFunc{
 		"automation/jobs":                handler.handleAutomationJobs,
 		"automation/jobs/get":            handler.handleAutomationJobsGet,
 		"automation/jobs/create":         handler.handleAutomationJobsCreate,
@@ -322,12 +404,15 @@ func NewHostAPIHandler(
 		"sessions/stop":                  handler.handleSessionsStop,
 		"skills/list":                    handler.handleSkillsList,
 	}
-
-	return handler
 }
 
 // Handle dispatches one Host API request for the named extension.
-func (h *HostAPIHandler) Handle(ctx context.Context, extName string, method string, params json.RawMessage) (any, error) {
+func (h *HostAPIHandler) Handle(
+	ctx context.Context,
+	extName string,
+	method string,
+	params json.RawMessage,
+) (any, error) {
 	if h == nil {
 		return nil, errors.New("extension: host api handler is required")
 	}
@@ -372,7 +457,11 @@ func withHostAPIBridgeRuntime(ctx context.Context, bridgeRuntime *subprocess.Ini
 	if ctx == nil || bridgeRuntime == nil {
 		return ctx
 	}
-	return context.WithValue(ctx, hostAPIBridgeRuntimeContextKey, subprocess.CloneInitializeBridgeRuntime(bridgeRuntime))
+	return context.WithValue(
+		ctx,
+		hostAPIBridgeRuntimeContextKey,
+		subprocess.CloneInitializeBridgeRuntime(bridgeRuntime),
+	)
 }
 
 type hostAPISessionsListParams = extensioncontract.SessionsListParams
@@ -821,7 +910,7 @@ func (h *HostAPIHandler) handleSkillsList(ctx context.Context, raw json.RawMessa
 		if resolveErr != nil {
 			return nil, resolveErr
 		}
-		skills, err = h.skills.ForWorkspace(ctx, resolved)
+		skills, err = h.skills.ForWorkspace(ctx, &resolved)
 	} else {
 		skills = h.skills.List()
 	}
@@ -1250,7 +1339,11 @@ type hostAPIPromptSubmission struct {
 	SeedEvents []bridgepkg.DeliveryProjectionEvent
 }
 
-func (h *HostAPIHandler) submitPrompt(ctx context.Context, sessionID string, message string) (hostAPIPromptSubmission, error) {
+func (h *HostAPIHandler) submitPrompt(
+	ctx context.Context,
+	sessionID string,
+	message string,
+) (hostAPIPromptSubmission, error) {
 	if h.sessions == nil {
 		return hostAPIPromptSubmission{}, errors.New("extension: session manager is not configured")
 	}
@@ -1402,7 +1495,11 @@ func (h *HostAPIHandler) memorySourcesForRecall(
 	}
 }
 
-func (h *HostAPIHandler) memoryStoreFor(ctx context.Context, rawScope string, rawWorkspace string) (*memory.Store, memory.Scope, error) {
+func (h *HostAPIHandler) memoryStoreFor(
+	ctx context.Context,
+	rawScope string,
+	rawWorkspace string,
+) (*memory.Store, memory.Scope, error) {
 	if h.memory == nil {
 		return nil, "", errors.New("extension: memory store is not configured")
 	}
@@ -1477,7 +1574,10 @@ func (h *HostAPIHandler) resolveAutomationWorkspaceID(ctx context.Context, rawWo
 	return strings.TrimSpace(resolved.ID), nil
 }
 
-func (h *HostAPIHandler) jobFromCreateParams(ctx context.Context, req hostAPIAutomationJobCreateParams) (automationpkg.Job, error) {
+func (h *HostAPIHandler) jobFromCreateParams(
+	ctx context.Context,
+	req hostAPIAutomationJobCreateParams,
+) (automationpkg.Job, error) {
 	workspaceID, err := h.resolveAutomationWorkspaceID(ctx, req.WorkspaceID)
 	if err != nil {
 		return automationpkg.Job{}, err
@@ -1513,7 +1613,11 @@ func (h *HostAPIHandler) jobFromCreateParams(ctx context.Context, req hostAPIAut
 	}, nil
 }
 
-func (h *HostAPIHandler) applyJobUpdateParams(ctx context.Context, current automationpkg.Job, req apicontract.UpdateJobRequest) (automationpkg.Job, error) {
+func (h *HostAPIHandler) applyJobUpdateParams(
+	ctx context.Context,
+	current automationpkg.Job,
+	req apicontract.UpdateJobRequest,
+) (automationpkg.Job, error) {
 	next := current
 	if req.Name != nil {
 		next.Name = strings.TrimSpace(*req.Name)
@@ -1551,14 +1655,17 @@ func validateHostAPIConfigJobUpdate(req apicontract.UpdateJobRequest) error {
 	switch {
 	case req.Enabled == nil:
 		return errors.New("config-backed automation jobs only accept enabled updates")
-	case req.Name != nil || req.AgentName != nil || req.WorkspaceID != nil || req.Prompt != nil || req.Schedule != nil || req.Retry != nil || req.FireLimit != nil:
+	case hostAPIJobUpdateTouchesImmutableConfigFields(req):
 		return errors.New("config-backed automation jobs only accept enabled updates")
 	default:
 		return nil
 	}
 }
 
-func (h *HostAPIHandler) triggerFromCreateParams(ctx context.Context, req hostAPIAutomationTriggerCreateParams) (automationpkg.Trigger, string, error) {
+func (h *HostAPIHandler) triggerFromCreateParams(
+	ctx context.Context,
+	req hostAPIAutomationTriggerCreateParams,
+) (automationpkg.Trigger, string, error) {
 	workspaceID, err := h.resolveAutomationWorkspaceID(ctx, req.WorkspaceID)
 	if err != nil {
 		return automationpkg.Trigger{}, "", err
@@ -1597,7 +1704,11 @@ func (h *HostAPIHandler) triggerFromCreateParams(ctx context.Context, req hostAP
 	return trigger, strings.TrimSpace(req.WebhookSecret), nil
 }
 
-func (h *HostAPIHandler) applyTriggerUpdateParams(ctx context.Context, current automationpkg.Trigger, req apicontract.UpdateTriggerRequest) (automationpkg.Trigger, *string, error) {
+func (h *HostAPIHandler) applyTriggerUpdateParams(
+	ctx context.Context,
+	current automationpkg.Trigger,
+	req apicontract.UpdateTriggerRequest,
+) (automationpkg.Trigger, *string, error) {
 	next := current
 	if req.Name != nil {
 		next.Name = strings.TrimSpace(*req.Name)
@@ -1655,7 +1766,7 @@ func validateHostAPIConfigTriggerUpdate(req apicontract.UpdateTriggerRequest) er
 	switch {
 	case req.Enabled == nil:
 		return errors.New("config-backed automation triggers only accept enabled updates")
-	case req.Name != nil || req.AgentName != nil || req.WorkspaceID != nil || req.Prompt != nil || req.Event != nil || req.Filter != nil || req.Retry != nil || req.FireLimit != nil || req.WebhookID != nil || req.EndpointSlug != nil || req.WebhookSecret != nil:
+	case hostAPITriggerUpdateTouchesImmutableConfigFields(req):
 		return errors.New("config-backed automation triggers only accept enabled updates")
 	default:
 		return nil
@@ -1671,7 +1782,7 @@ type hostAPIMemoryDocument struct {
 }
 
 func renderMemoryDocument(doc hostAPIMemoryDocument) (string, error) {
-	header := memory.MemoryHeader{
+	header := memory.Header{
 		Name:        memoryNameFromFilename(doc.Key),
 		Description: memoryDescriptionFromContent(doc.Content),
 		Type:        memoryTypeForScope(doc.Scope, doc.Tags),
@@ -1702,11 +1813,11 @@ func renderMemoryDocument(doc hostAPIMemoryDocument) (string, error) {
 	return builder.String(), nil
 }
 
-func memoryTypeForScope(scope memory.Scope, tags []string) memory.MemoryType {
+func memoryTypeForScope(scope memory.Scope, tags []string) memory.Type {
 	for _, tag := range normalizeUniqueStrings(tags) {
-		switch memory.MemoryType(tag).Normalize() {
+		switch memory.Type(tag).Normalize() {
 		case memory.MemoryTypeUser, memory.MemoryTypeFeedback, memory.MemoryTypeProject, memory.MemoryTypeReference:
-			return memory.MemoryType(tag).Normalize()
+			return memory.Type(tag).Normalize()
 		}
 	}
 	if scope == memory.ScopeWorkspace {
@@ -1782,7 +1893,7 @@ func extractMemoryBodyAndTags(content []byte) (string, []string) {
 	return body, normalizeUniqueStrings(strings.Split(comment, ","))
 }
 
-func scoreMemoryRecall(query string, header memory.MemoryHeader, body string, tags []string) float64 {
+func scoreMemoryRecall(query string, header memory.Header, body string, tags []string) float64 {
 	normalizedQuery := strings.ToLower(strings.TrimSpace(query))
 	if normalizedQuery == "" {
 		return 0
@@ -1802,7 +1913,7 @@ func scoreMemoryRecall(query string, header memory.MemoryHeader, body string, ta
 		score += 4
 	}
 
-	for _, token := range strings.Fields(normalizedQuery) {
+	for token := range strings.FieldsSeq(normalizedQuery) {
 		if strings.Contains(haystack, token) {
 			score++
 		}
@@ -1811,7 +1922,7 @@ func scoreMemoryRecall(query string, header memory.MemoryHeader, body string, ta
 	return score
 }
 
-func hostAPISessionStatusFromInfo(info *session.SessionInfo) hostAPISessionStatus {
+func hostAPISessionStatusFromInfo(info *session.Info) hostAPISessionStatus {
 	if info == nil {
 		return hostAPISessionStatus{}
 	}
@@ -1883,7 +1994,11 @@ func notFoundRPCError(resource string, id string, err error) error {
 }
 
 func methodNotFoundRPCError(method string) error {
-	return subprocess.NewRPCError(HostAPIMethodNotFoundCode, "Method not found", map[string]string{"method": strings.TrimSpace(method)})
+	return subprocess.NewRPCError(
+		HostAPIMethodNotFoundCode,
+		"Method not found",
+		map[string]string{"method": strings.TrimSpace(method)},
+	)
 }
 
 func rpcCapabilityDenied(err error) error {
@@ -1905,12 +2020,16 @@ func hostAPIExtensionNameFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
 	}
-	value, _ := ctx.Value(hostAPIExtensionNameContextKey).(string)
+	value, ok := ctx.Value(hostAPIExtensionNameContextKey).(string)
+	if !ok {
+		return ""
+	}
 	return strings.TrimSpace(value)
 }
 
 func drainAgentEvents(events <-chan acp.AgentEvent) {
-	for range events {
+	for event := range events {
+		_ = event
 	}
 }
 
@@ -1946,7 +2065,7 @@ func (l *hostAPIRateLimiter) Allow(extName string, method string) error {
 
 	key := strings.TrimSpace(extName)
 	if key == "" {
-		key = "unknown"
+		key = hostAPIUnknownExtensionName
 	}
 	now := l.now()
 
@@ -1972,10 +2091,7 @@ func (l *hostAPIRateLimiter) Allow(extName string, method string) error {
 	}
 
 	needed := 1 - state.tokens
-	retryAfter := time.Duration((needed / float64(l.limit)) * float64(time.Second))
-	if retryAfter < time.Millisecond {
-		retryAfter = time.Millisecond
-	}
+	retryAfter := max(time.Duration((needed/float64(l.limit))*float64(time.Second)), time.Millisecond)
 	l.entries[key] = state
 
 	return subprocess.NewRPCError(HostAPIRateLimitedCode, "Rate limited", map[string]any{
@@ -1984,6 +2100,30 @@ func (l *hostAPIRateLimiter) Allow(extName string, method string) error {
 		"limit":          l.limit,
 		"burst":          l.burst,
 	})
+}
+
+func hostAPIJobUpdateTouchesImmutableConfigFields(req apicontract.UpdateJobRequest) bool {
+	return req.Name != nil ||
+		req.AgentName != nil ||
+		req.WorkspaceID != nil ||
+		req.Prompt != nil ||
+		req.Schedule != nil ||
+		req.Retry != nil ||
+		req.FireLimit != nil
+}
+
+func hostAPITriggerUpdateTouchesImmutableConfigFields(req apicontract.UpdateTriggerRequest) bool {
+	return req.Name != nil ||
+		req.AgentName != nil ||
+		req.WorkspaceID != nil ||
+		req.Prompt != nil ||
+		req.Event != nil ||
+		req.Filter != nil ||
+		req.Retry != nil ||
+		req.FireLimit != nil ||
+		req.WebhookID != nil ||
+		req.EndpointSlug != nil ||
+		req.WebhookSecret != nil
 }
 
 func minFloat(left, right float64) float64 {
@@ -1998,9 +2138,7 @@ func cloneJSONMap(source map[string]any) map[string]any {
 		return nil
 	}
 	cloned := make(map[string]any, len(source))
-	for key, value := range source {
-		cloned[key] = value
-	}
+	maps.Copy(cloned, source)
 	return cloned
 }
 
@@ -2009,8 +2147,6 @@ func cloneHostAPIStringMap(source map[string]string) map[string]string {
 		return nil
 	}
 	cloned := make(map[string]string, len(source))
-	for key, value := range source {
-		cloned[key] = value
-	}
+	maps.Copy(cloned, source)
 	return cloned
 }

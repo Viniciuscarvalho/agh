@@ -327,7 +327,13 @@ func TestManagerOpenQueryRecorderValidationAndCleanup(t *testing.T) {
 
 	t.Run("missing session metadata", func(t *testing.T) {
 		h := newHarness(t)
-		if _, _, err := h.manager.openQueryRecorder(testutil.Context(t), "missing"); !errors.Is(err, ErrSessionNotFound) {
+		if _, _, err := h.manager.openQueryRecorder(
+			testutil.Context(t),
+			"missing",
+		); !errors.Is(
+			err,
+			ErrSessionNotFound,
+		) {
 			t.Fatalf("openQueryRecorder(missing) error = %v, want ErrSessionNotFound", err)
 		}
 	})
@@ -336,7 +342,13 @@ func TestManagerOpenQueryRecorderValidationAndCleanup(t *testing.T) {
 		h := newHarness(t)
 		writeStoppedSessionArtifacts(t, h, "stored-no-db", false)
 
-		if _, _, err := h.manager.openQueryRecorder(testutil.Context(t), "stored-no-db"); !errors.Is(err, ErrSessionNotFound) {
+		if _, _, err := h.manager.openQueryRecorder(
+			testutil.Context(t),
+			"stored-no-db",
+		); !errors.Is(
+			err,
+			ErrSessionNotFound,
+		) {
 			t.Fatalf("openQueryRecorder(no db) error = %v, want ErrSessionNotFound", err)
 		}
 	})
@@ -348,7 +360,13 @@ func TestManagerOpenQueryRecorderValidationAndCleanup(t *testing.T) {
 		}))
 		writeStoppedSessionArtifacts(t, h, "stored-open-failure", true)
 
-		if _, _, err := h.manager.openQueryRecorder(testutil.Context(t), "stored-open-failure"); !errors.Is(err, openErr) {
+		if _, _, err := h.manager.openQueryRecorder(
+			testutil.Context(t),
+			"stored-open-failure",
+		); !errors.Is(
+			err,
+			openErr,
+		) {
 			t.Fatalf("openQueryRecorder(open failure) error = %v, want wrapped %v", err, openErr)
 		}
 	})
@@ -451,7 +469,7 @@ func TestReadMetaAndQueryHelpers(t *testing.T) {
 	})
 
 	sameTime := time.Date(2026, 4, 3, 13, 0, 0, 0, time.UTC)
-	sorted := sortSessionInfos([]*SessionInfo{
+	sorted := sortSessionInfos([]*Info{
 		{ID: "b", CreatedAt: sameTime},
 		nil,
 		{ID: "a", CreatedAt: sameTime},

@@ -77,7 +77,7 @@ func newDaemonStartCommand(deps commandDeps) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&foreground, "foreground", false, "Run the daemon in the foreground")
 	cmd.Flags().BoolVar(&internalChild, internalChildFlagName, false, "Internal detached child mode")
-	_ = cmd.Flags().MarkHidden(internalChildFlagName)
+	mustMarkFlagHidden(cmd, internalChildFlagName)
 	return cmd
 }
 
@@ -168,7 +168,7 @@ func runDaemonDetached(ctx context.Context, deps commandDeps) (DaemonStatus, err
 		return DaemonStatus{}, fmt.Errorf("cli: daemon already running (pid=%d)", info.PID)
 	}
 
-	child, err := deps.spawnDetached(runtime.HomePaths)
+	child, err := deps.spawnDetached(ctx, runtime.HomePaths)
 	if err != nil {
 		return DaemonStatus{}, err
 	}
@@ -194,7 +194,7 @@ func waitForDaemonStart(ctx context.Context, deps commandDeps, child daemonProce
 		defer cancel()
 	}
 
-	client, _, err := clientFromDeps(deps)
+	client, err := clientFromDeps(deps)
 	if err != nil {
 		return DaemonStatus{}, err
 	}
@@ -225,7 +225,12 @@ func waitForDaemonStart(ctx context.Context, deps commandDeps, child daemonProce
 	}
 }
 
-func waitForDaemonStop(ctx context.Context, deps commandDeps, runtime runtimeContext, info aghdaemon.Info) (DaemonStatus, error) {
+func waitForDaemonStop(
+	ctx context.Context,
+	deps commandDeps,
+	runtime *runtimeContext,
+	info aghdaemon.Info,
+) (DaemonStatus, error) {
 	waitCtx := ctx
 	if waitCtx == nil {
 		waitCtx = context.Background()
@@ -236,7 +241,7 @@ func waitForDaemonStop(ctx context.Context, deps commandDeps, runtime runtimeCon
 		defer cancel()
 	}
 
-	client, _, clientErr := clientFromDeps(deps)
+	client, clientErr := clientFromDeps(deps)
 	ticker := time.NewTicker(deps.pollInterval)
 	defer ticker.Stop()
 
@@ -259,8 +264,8 @@ func waitForDaemonStop(ctx context.Context, deps commandDeps, runtime runtimeCon
 	}
 }
 
-func daemonStatusFromDeps(ctx context.Context, deps commandDeps, runtime runtimeContext) (DaemonStatus, error) {
-	client, _, err := clientFromDeps(deps)
+func daemonStatusFromDeps(ctx context.Context, deps commandDeps, runtime *runtimeContext) (DaemonStatus, error) {
+	client, err := clientFromDeps(deps)
 	if err == nil {
 		status, statusErr := client.DaemonStatus(ctx)
 		if statusErr == nil {
@@ -294,8 +299,8 @@ func daemonInfo(homePaths aghconfig.HomePaths, deps commandDeps) (aghdaemon.Info
 	return info, true, nil
 }
 
-func daemonStatusWithState(runtime runtimeContext, info aghdaemon.Info, status string) DaemonStatus {
-	networkStatus := daemonNetworkStatusFromInfo(runtime.Config, info.Network)
+func daemonStatusWithState(runtime *runtimeContext, info aghdaemon.Info, status string) DaemonStatus {
+	networkStatus := daemonNetworkStatusFromInfo(&runtime.Config, info.Network)
 	if strings.EqualFold(strings.TrimSpace(status), "stopped") {
 		networkStatus = nil
 	}
@@ -327,7 +332,16 @@ func daemonStatusBundle(status DaemonStatus, now func() time.Time) outputBundle 
 		{Label: "Version", Value: stringOrDash(status.Version)},
 	}
 	labels := []string{
-		"status", "pid", "started_at", "uptime", "socket", "http_host", "http_port", "active_sessions", "total_sessions", "version",
+		"status",
+		"pid",
+		"started_at",
+		"uptime",
+		"socket",
+		"http_host",
+		"http_port",
+		"active_sessions",
+		"total_sessions",
+		"version",
 	}
 	values := []string{
 		status.Status,
@@ -342,44 +356,10 @@ func daemonStatusBundle(status DaemonStatus, now func() time.Time) outputBundle 
 		status.Version,
 	}
 	if status.Network != nil {
-		rows = append(rows,
-			keyValue{Label: "Network", Value: stringOrDash(status.Network.Status)},
-			keyValue{Label: "Network Listener", Value: stringOrDash(networkListener(status.Network))},
-			keyValue{Label: "Network Local Peers", Value: strconv.Itoa(status.Network.LocalPeers)},
-			keyValue{Label: "Network Remote Peers", Value: strconv.Itoa(status.Network.RemotePeers)},
-			keyValue{Label: "Network Channels", Value: strconv.Itoa(status.Network.Channels)},
-			keyValue{Label: "Network Queued Messages", Value: strconv.Itoa(status.Network.QueuedMessages)},
-			keyValue{Label: "Network Delivery Workers", Value: strconv.Itoa(status.Network.DeliveryWorkers)},
-			keyValue{Label: "Network Messages Sent", Value: strconv.FormatInt(status.Network.MessagesSent, 10)},
-			keyValue{Label: "Network Messages Received", Value: strconv.FormatInt(status.Network.MessagesReceived, 10)},
-			keyValue{Label: "Network Messages Rejected", Value: strconv.FormatInt(status.Network.MessagesRejected, 10)},
-			keyValue{Label: "Network Messages Delivered", Value: strconv.FormatInt(status.Network.MessagesDelivered, 10)},
-			keyValue{Label: "Network Workflow Tagged", Value: strconv.FormatInt(status.Network.WorkflowTaggedEvents, 10)},
-			keyValue{Label: "Network Handoff Tagged", Value: strconv.FormatInt(status.Network.HandoffTaggedEvents, 10)},
-			keyValue{Label: "Network Last Disconnect", Value: stringOrDash(status.Network.LastDisconnect)},
-		)
-		labels = append(labels,
-			"network_status", "network_listener", "network_local_peers", "network_remote_peers", "network_channels",
-			"network_queued_messages", "network_delivery_workers", "network_messages_sent", "network_messages_received",
-			"network_messages_rejected", "network_messages_delivered", "network_workflow_tagged_events",
-			"network_handoff_tagged_events", "network_last_disconnect",
-		)
-		values = append(values,
-			status.Network.Status,
-			networkListener(status.Network),
-			strconv.Itoa(status.Network.LocalPeers),
-			strconv.Itoa(status.Network.RemotePeers),
-			strconv.Itoa(status.Network.Channels),
-			strconv.Itoa(status.Network.QueuedMessages),
-			strconv.Itoa(status.Network.DeliveryWorkers),
-			strconv.FormatInt(status.Network.MessagesSent, 10),
-			strconv.FormatInt(status.Network.MessagesReceived, 10),
-			strconv.FormatInt(status.Network.MessagesRejected, 10),
-			strconv.FormatInt(status.Network.MessagesDelivered, 10),
-			strconv.FormatInt(status.Network.WorkflowTaggedEvents, 10),
-			strconv.FormatInt(status.Network.HandoffTaggedEvents, 10),
-			status.Network.LastDisconnect,
-		)
+		networkRows, networkLabels, networkValues := daemonNetworkStatusFields(status.Network)
+		rows = append(rows, networkRows...)
+		labels = append(labels, networkLabels...)
+		values = append(values, networkValues...)
 	}
 
 	return outputBundle{
@@ -393,7 +373,58 @@ func daemonStatusBundle(status DaemonStatus, now func() time.Time) outputBundle 
 	}
 }
 
-func daemonNetworkStatusFromInfo(cfg aghconfig.Config, info *aghdaemon.NetworkInfo) *contract.NetworkStatusPayload {
+func daemonNetworkStatusFields(info *contract.NetworkStatusPayload) ([]keyValue, []string, []string) {
+	listener := networkListener(info)
+
+	return []keyValue{
+			{Label: "Network", Value: stringOrDash(info.Status)},
+			{Label: "Network Listener", Value: stringOrDash(listener)},
+			{Label: "Network Local Peers", Value: strconv.Itoa(info.LocalPeers)},
+			{Label: "Network Remote Peers", Value: strconv.Itoa(info.RemotePeers)},
+			{Label: "Network Channels", Value: strconv.Itoa(info.Channels)},
+			{Label: "Network Queued Messages", Value: strconv.Itoa(info.QueuedMessages)},
+			{Label: "Network Delivery Workers", Value: strconv.Itoa(info.DeliveryWorkers)},
+			{Label: "Network Messages Sent", Value: strconv.FormatInt(info.MessagesSent, 10)},
+			{Label: "Network Messages Received", Value: strconv.FormatInt(info.MessagesReceived, 10)},
+			{Label: "Network Messages Rejected", Value: strconv.FormatInt(info.MessagesRejected, 10)},
+			{Label: "Network Messages Delivered", Value: strconv.FormatInt(info.MessagesDelivered, 10)},
+			{Label: "Network Workflow Tagged", Value: strconv.FormatInt(info.WorkflowTaggedEvents, 10)},
+			{Label: "Network Handoff Tagged", Value: strconv.FormatInt(info.HandoffTaggedEvents, 10)},
+			{Label: "Network Last Disconnect", Value: stringOrDash(info.LastDisconnect)},
+		}, []string{
+			"network_status",
+			"network_listener",
+			"network_local_peers",
+			"network_remote_peers",
+			"network_channels",
+			"network_queued_messages",
+			"network_delivery_workers",
+			"network_messages_sent",
+			"network_messages_received",
+			"network_messages_rejected",
+			"network_messages_delivered",
+			"network_workflow_tagged_events",
+			"network_handoff_tagged_events",
+			"network_last_disconnect",
+		}, []string{
+			info.Status,
+			listener,
+			strconv.Itoa(info.LocalPeers),
+			strconv.Itoa(info.RemotePeers),
+			strconv.Itoa(info.Channels),
+			strconv.Itoa(info.QueuedMessages),
+			strconv.Itoa(info.DeliveryWorkers),
+			strconv.FormatInt(info.MessagesSent, 10),
+			strconv.FormatInt(info.MessagesReceived, 10),
+			strconv.FormatInt(info.MessagesRejected, 10),
+			strconv.FormatInt(info.MessagesDelivered, 10),
+			strconv.FormatInt(info.WorkflowTaggedEvents, 10),
+			strconv.FormatInt(info.HandoffTaggedEvents, 10),
+			info.LastDisconnect,
+		}
+}
+
+func daemonNetworkStatusFromInfo(cfg *aghconfig.Config, info *aghdaemon.NetworkInfo) *contract.NetworkStatusPayload {
 	if info != nil {
 		return &contract.NetworkStatusPayload{
 			Enabled:      info.Enabled,
@@ -428,7 +459,14 @@ func networkListener(info *contract.NetworkStatusPayload) string {
 	}
 }
 
-func spawnDetachedDaemonProcess(homePaths aghconfig.HomePaths, executable func() (string, error)) (daemonProcess, error) {
+func spawnDetachedDaemonProcess(
+	ctx context.Context,
+	homePaths aghconfig.HomePaths,
+	executable func() (string, error),
+) (daemonProcess, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if err := aghconfig.EnsureHomeLayout(homePaths); err != nil {
 		return nil, err
 	}
@@ -449,7 +487,7 @@ func spawnDetachedDaemonProcess(homePaths aghconfig.HomePaths, executable func()
 		_ = logFile.Close()
 		return nil, fmt.Errorf("cli: stat daemon log %q: %w", homePaths.LogFile, err)
 	}
-	child := exec.Command(binary, "daemon", "start", "--foreground", "--"+internalChildFlagName)
+	child := exec.CommandContext(ctx, binary, "daemon", "start", "--foreground", "--"+internalChildFlagName)
 	child.Env = os.Environ()
 	child.Stdin = nil
 	child.Stdout = logFile
@@ -469,7 +507,7 @@ func spawnDetachedDaemonProcess(homePaths aghconfig.HomePaths, executable func()
 
 func attachCommandLog(err error, logPath string, logOffset int64) error {
 	if err == nil {
-		return err
+		return nil
 	}
 	text, readErr := readCommandLog(logPath, logOffset)
 	if readErr != nil {

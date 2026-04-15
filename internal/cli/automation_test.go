@@ -15,7 +15,7 @@ func TestAutomationJobsCreateParsesWorkspaceScopeAndRetry(t *testing.T) {
 	t.Parallel()
 
 	var request AutomationJobCreateRequest
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		getWorkspaceFn: func(_ context.Context, ref string) (WorkspaceDetailRecord, error) {
 			if ref != "alpha" {
 				t.Fatalf("GetWorkspace ref = %q, want %q", ref, "alpha")
@@ -51,7 +51,9 @@ func TestAutomationJobsCreateParsesWorkspaceScopeAndRetry(t *testing.T) {
 	if request.Schedule.Mode != automationpkg.ScheduleModeEvery || request.Schedule.Interval != "30m" {
 		t.Fatalf("request schedule = %#v, want every 30m", request.Schedule)
 	}
-	if request.Retry == nil || request.Retry.Strategy != automationpkg.RetryStrategyBackoff || request.Retry.MaxRetries != 3 || request.Retry.BaseDelay != "2s" {
+	if request.Retry == nil || request.Retry.Strategy != automationpkg.RetryStrategyBackoff ||
+		request.Retry.MaxRetries != 3 ||
+		request.Retry.BaseDelay != "2s" {
 		t.Fatalf("request retry = %#v, want backoff 3 2s", request.Retry)
 	}
 
@@ -69,7 +71,7 @@ func TestAutomationJobsCreateRejectsMissingWorkspaceForWorkspaceScope(t *testing
 
 	_, _, err := executeRootCommand(
 		t,
-		newTestDeps(t, stubClient{}),
+		newTestDeps(t, &stubClient{}),
 		"automation", "jobs", "create",
 		"--name", "nightly-review",
 		"--scope", "workspace",
@@ -85,7 +87,7 @@ func TestAutomationJobsCreateRejectsMissingWorkspaceForWorkspaceScope(t *testing
 func TestAutomationJobsCreateSupportsHumanAndJSONOutput(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		createAutomationJobFn: func(context.Context, AutomationJobCreateRequest) (JobRecord, error) {
 			return sampleAutomationJobRecord(), nil
 		},
@@ -137,7 +139,7 @@ func TestAutomationTriggersCreateParsesFilters(t *testing.T) {
 	t.Parallel()
 
 	var request AutomationTriggerCreateRequest
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		getWorkspaceFn: func(_ context.Context, ref string) (WorkspaceDetailRecord, error) {
 			if ref != "alpha" {
 				t.Fatalf("GetWorkspace ref = %q, want %q", ref, "alpha")
@@ -188,7 +190,7 @@ func TestAutomationTriggersCreateRejectsMalformedFilter(t *testing.T) {
 
 	_, _, err := executeRootCommand(
 		t,
-		newTestDeps(t, stubClient{}),
+		newTestDeps(t, &stubClient{}),
 		"automation", "triggers", "create",
 		"--name", "branch-review",
 		"--scope", "global",
@@ -206,7 +208,7 @@ func TestAutomationJobUpdateSurfacesConfigBackedMutationError(t *testing.T) {
 	t.Parallel()
 
 	expected := "automation validation error: config-backed automation jobs only accept enabled updates"
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		updateAutomationJobFn: func(context.Context, string, AutomationJobUpdateRequest) (JobRecord, error) {
 			return JobRecord{}, errors.New(expected)
 		},
@@ -231,7 +233,7 @@ func TestAutomationJobsListAndUpdateCommands(t *testing.T) {
 		updateRequest AutomationJobUpdateRequest
 	)
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		getWorkspaceFn: func(_ context.Context, ref string) (WorkspaceDetailRecord, error) {
 			if ref != "alpha" {
 				t.Fatalf("GetWorkspace ref = %q, want %q", ref, "alpha")
@@ -274,7 +276,10 @@ func TestAutomationJobsListAndUpdateCommands(t *testing.T) {
 	if err := json.Unmarshal([]byte(listJSON), &listed); err != nil {
 		t.Fatalf("json.Unmarshal(job list) error = %v", err)
 	}
-	if len(listed) != 1 || listQuery.Scope != automationpkg.AutomationScopeWorkspace || listQuery.WorkspaceID != "ws-alpha" || listQuery.Source != automationpkg.JobSourceDynamic || listQuery.Limit != 3 {
+	if len(listed) != 1 || listQuery.Scope != automationpkg.AutomationScopeWorkspace ||
+		listQuery.WorkspaceID != "ws-alpha" ||
+		listQuery.Source != automationpkg.JobSourceDynamic ||
+		listQuery.Limit != 3 {
 		t.Fatalf("listQuery = %#v, want resolved scope/workspace/source/limit", listQuery)
 	}
 
@@ -299,10 +304,13 @@ func TestAutomationJobsListAndUpdateCommands(t *testing.T) {
 	if err := json.Unmarshal([]byte(updatedJSON), &updated); err != nil {
 		t.Fatalf("json.Unmarshal(job update) error = %v", err)
 	}
-	if updated.Name != "nightly-digest" || updated.AgentName != "reviewer" || updated.WorkspaceID != "ws-alpha" || updated.Schedule == nil || updated.Schedule.Mode != automationpkg.ScheduleModeAt {
+	if updated.Name != "nightly-digest" || updated.AgentName != "reviewer" || updated.WorkspaceID != "ws-alpha" ||
+		updated.Schedule == nil ||
+		updated.Schedule.Mode != automationpkg.ScheduleModeAt {
 		t.Fatalf("updated job = %#v, want updated values", updated)
 	}
-	if updateRequest.Schedule == nil || updateRequest.Schedule.Mode != automationpkg.ScheduleModeAt || updateRequest.Schedule.Time != "2026-04-15T15:00:00Z" {
+	if updateRequest.Schedule == nil || updateRequest.Schedule.Mode != automationpkg.ScheduleModeAt ||
+		updateRequest.Schedule.Time != "2026-04-15T15:00:00Z" {
 		t.Fatalf("updateRequest.Schedule = %#v, want normalized at schedule", updateRequest.Schedule)
 	}
 	if updateRequest.Retry == nil || updateRequest.Retry.Strategy != automationpkg.RetryStrategyNone {
@@ -316,7 +324,7 @@ func TestAutomationJobsListAndUpdateCommands(t *testing.T) {
 func TestAutomationCommandsSupportToonOutput(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		listAutomationJobsFn: func(context.Context, AutomationJobQuery) ([]JobRecord, error) {
 			return []JobRecord{sampleAutomationJobRecord()}, nil
 		},
@@ -332,7 +340,10 @@ func TestAutomationCommandsSupportToonOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("automation jobs toon error = %v", err)
 	}
-	if !strings.Contains(jobsToon, "automation_jobs[1]{id,name,scope,workspace_id,schedule,agent_name,enabled,source,next_run}:") {
+	if !strings.Contains(
+		jobsToon,
+		"automation_jobs[1]{id,name,scope,workspace_id,schedule,agent_name,enabled,source,next_run}:",
+	) {
 		t.Fatalf("jobs toon output = %q, want automation_jobs TOON array", jobsToon)
 	}
 
@@ -340,7 +351,10 @@ func TestAutomationCommandsSupportToonOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("automation triggers get toon error = %v", err)
 	}
-	if !strings.Contains(triggerToon, "automation_trigger{id,name,scope,workspace_id,agent_name,event,enabled,source,retry,fire_limit,webhook_id,endpoint_slug,webhook_path,created_at,updated_at,prompt}:") {
+	if !strings.Contains(
+		triggerToon,
+		"automation_trigger{id,name,scope,workspace_id,agent_name,event,enabled,source,retry,fire_limit,webhook_id,endpoint_slug,webhook_path,created_at,updated_at,prompt}:",
+	) {
 		t.Fatalf("trigger toon output = %q, want automation_trigger TOON object", triggerToon)
 	}
 
@@ -348,7 +362,10 @@ func TestAutomationCommandsSupportToonOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("automation runs toon error = %v", err)
 	}
-	if !strings.Contains(runsToon, "automation_runs[1]{id,target,status,attempt,session_id,started_at,ended_at,error}:") {
+	if !strings.Contains(
+		runsToon,
+		"automation_runs[1]{id,target,status,attempt,session_id,started_at,ended_at,error}:",
+	) {
 		t.Fatalf("runs toon output = %q, want automation_runs TOON array", runsToon)
 	}
 }
@@ -363,7 +380,7 @@ func TestAutomationAdditionalCommandsAndQueries(t *testing.T) {
 		runsQuery            AutomationRunQuery
 	)
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		getWorkspaceFn: func(_ context.Context, ref string) (WorkspaceDetailRecord, error) {
 			if ref != "alpha" {
 				t.Fatalf("GetWorkspace ref = %q, want %q", ref, "alpha")
@@ -412,7 +429,24 @@ func TestAutomationAdditionalCommandsAndQueries(t *testing.T) {
 		},
 	})
 
-	stdout, _, err := executeRootCommand(t, deps, "automation", "triggers", "--scope", "workspace", "--workspace", "alpha", "--event", "webhook", "--source", "dynamic", "--last", "2", "-o", "json")
+	stdout, _, err := executeRootCommand(
+		t,
+		deps,
+		"automation",
+		"triggers",
+		"--scope",
+		"workspace",
+		"--workspace",
+		"alpha",
+		"--event",
+		"webhook",
+		"--source",
+		"dynamic",
+		"--last",
+		"2",
+		"-o",
+		"json",
+	)
 	if err != nil {
 		t.Fatalf("automation triggers list error = %v", err)
 	}
@@ -420,7 +454,11 @@ func TestAutomationAdditionalCommandsAndQueries(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &listed); err != nil {
 		t.Fatalf("json.Unmarshal(trigger list) error = %v", err)
 	}
-	if len(listed) != 1 || listTriggerQuery.WorkspaceID != "ws-alpha" || listTriggerQuery.Scope != automationpkg.AutomationScopeWorkspace || listTriggerQuery.Event != "webhook" || listTriggerQuery.Source != automationpkg.JobSourceDynamic || listTriggerQuery.Limit != 2 {
+	if len(listed) != 1 || listTriggerQuery.WorkspaceID != "ws-alpha" ||
+		listTriggerQuery.Scope != automationpkg.AutomationScopeWorkspace ||
+		listTriggerQuery.Event != "webhook" ||
+		listTriggerQuery.Source != automationpkg.JobSourceDynamic ||
+		listTriggerQuery.Limit != 2 {
 		t.Fatalf("listTriggerQuery = %#v, want resolved workspace/event/source/limit", listTriggerQuery)
 	}
 
@@ -456,11 +494,30 @@ func TestAutomationAdditionalCommandsAndQueries(t *testing.T) {
 		t.Fatalf("triggered run = %#v, want run-1", run)
 	}
 
-	_, _, err = executeRootCommand(t, deps, "automation", "jobs", "history", "job-1", "--status", "completed", "--since", "1h", "--until", "30m", "--last", "2", "-o", "json")
+	_, _, err = executeRootCommand(
+		t,
+		deps,
+		"automation",
+		"jobs",
+		"history",
+		"job-1",
+		"--status",
+		"completed",
+		"--since",
+		"1h",
+		"--until",
+		"30m",
+		"--last",
+		"2",
+		"-o",
+		"json",
+	)
 	if err != nil {
 		t.Fatalf("automation jobs history error = %v", err)
 	}
-	if jobHistoryQuery.Status != automationpkg.RunCompleted || jobHistoryQuery.Limit != 2 || jobHistoryQuery.Since.IsZero() || jobHistoryQuery.Until.IsZero() {
+	if jobHistoryQuery.Status != automationpkg.RunCompleted || jobHistoryQuery.Limit != 2 ||
+		jobHistoryQuery.Since.IsZero() ||
+		jobHistoryQuery.Until.IsZero() {
 		t.Fatalf("jobHistoryQuery = %#v, want parsed run filters", jobHistoryQuery)
 	}
 
@@ -512,7 +569,20 @@ func TestAutomationAdditionalCommandsAndQueries(t *testing.T) {
 		t.Fatalf("deleted trigger = %#v, want trg-1", deletedTrigger)
 	}
 
-	triggerHistoryHuman, _, err := executeRootCommand(t, deps, "automation", "triggers", "history", "trg-1", "--status", "completed", "--last", "1", "-o", "human")
+	triggerHistoryHuman, _, err := executeRootCommand(
+		t,
+		deps,
+		"automation",
+		"triggers",
+		"history",
+		"trg-1",
+		"--status",
+		"completed",
+		"--last",
+		"1",
+		"-o",
+		"human",
+	)
 	if err != nil {
 		t.Fatalf("automation triggers history human error = %v", err)
 	}
@@ -520,11 +590,31 @@ func TestAutomationAdditionalCommandsAndQueries(t *testing.T) {
 		t.Fatalf("trigger history human output = %q, want Automation Runs table", triggerHistoryHuman)
 	}
 
-	_, _, err = executeRootCommand(t, deps, "automation", "runs", "--job-id", "job-1", "--trigger-id", "trg-1", "--status", "completed", "--since", "1h", "--until", "30m", "--last", "4", "-o", "json")
+	_, _, err = executeRootCommand(
+		t,
+		deps,
+		"automation",
+		"runs",
+		"--job-id",
+		"job-1",
+		"--trigger-id",
+		"trg-1",
+		"--status",
+		"completed",
+		"--since",
+		"1h",
+		"--until",
+		"30m",
+		"--last",
+		"4",
+		"-o",
+		"json",
+	)
 	if err != nil {
 		t.Fatalf("automation runs list error = %v", err)
 	}
-	if runsQuery.JobID != "job-1" || runsQuery.TriggerID != "trg-1" || runsQuery.Status != automationpkg.RunCompleted || runsQuery.Limit != 4 {
+	if runsQuery.JobID != "job-1" || runsQuery.TriggerID != "trg-1" || runsQuery.Status != automationpkg.RunCompleted ||
+		runsQuery.Limit != 4 {
 		t.Fatalf("runsQuery = %#v, want parsed runs query", runsQuery)
 	}
 
@@ -567,7 +657,10 @@ func TestAutomationHelperFormattingAndParsing(t *testing.T) {
 	if source, err := parseOptionalAutomationSource("dynamic"); err != nil || source != automationpkg.JobSourceDynamic {
 		t.Fatalf("parseOptionalAutomationSource() = %q, %v", source, err)
 	}
-	if status, err := parseOptionalAutomationRunStatus("completed"); err != nil || status != automationpkg.RunCompleted {
+	if status, err := parseOptionalAutomationRunStatus(
+		"completed",
+	); err != nil ||
+		status != automationpkg.RunCompleted {
 		t.Fatalf("parseOptionalAutomationRunStatus() = %q, %v", status, err)
 	}
 
@@ -587,10 +680,17 @@ func TestAutomationHelperFormattingAndParsing(t *testing.T) {
 		t.Fatalf("run bundle human output = %q, want Automation Run details", runBundleHuman)
 	}
 
-	if got := formatAutomationSchedule(&automationpkg.ScheduleSpec{Mode: automationpkg.ScheduleModeCron, Expr: "0 9 * * *"}); got != "cron:0 9 * * *" {
+	if got := formatAutomationSchedule(
+		&automationpkg.ScheduleSpec{Mode: automationpkg.ScheduleModeCron, Expr: "0 9 * * *"},
+	); got != "cron:0 9 * * *" {
 		t.Fatalf("formatAutomationSchedule(cron) = %q, want cron prefix", got)
 	}
-	if got := displayTriggerEndpoint(sampleAutomationTriggerRecord()); !strings.Contains(got, "/api/webhooks/workspaces/ws-alpha/") {
+	if got := displayTriggerEndpoint(
+		sampleAutomationTriggerRecord(),
+	); !strings.Contains(
+		got,
+		"/api/webhooks/workspaces/ws-alpha/",
+	) {
 		t.Fatalf("displayTriggerEndpoint() = %q, want workspace webhook path", got)
 	}
 	if got := displayRunTarget(sampleAutomationRunRecord()); got != "job:job-1" {

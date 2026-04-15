@@ -46,7 +46,11 @@ func (h *BaseHandlers) CreateNetworkChannel(c *gin.Context) {
 
 	var req contract.CreateNetworkChannelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.respondError(c, http.StatusBadRequest, fmt.Errorf("%s: decode create network channel request: %w", h.transportName(), err))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			fmt.Errorf("%s: decode create network channel request: %w", h.transportName(), err),
+		)
 		return
 	}
 
@@ -75,7 +79,11 @@ func (h *BaseHandlers) CreateNetworkChannel(c *gin.Context) {
 			Type:      session.SessionTypeUser,
 		})
 		if createErr != nil {
-			if rollbackErr := rollbackCreatedNetworkSessions(c.Request.Context(), h.Sessions, createdIDs); rollbackErr != nil {
+			if rollbackErr := rollbackCreatedNetworkSessions(
+				c.Request.Context(),
+				h.Sessions,
+				createdIDs,
+			); rollbackErr != nil {
 				createErr = errors.Join(createErr, rollbackErr)
 			}
 			h.respondError(c, StatusForSessionError(createErr), createErr)
@@ -88,7 +96,11 @@ func (h *BaseHandlers) CreateNetworkChannel(c *gin.Context) {
 
 	detail, detailErr := h.networkChannelDetailPayload(c.Request.Context(), service, channel)
 	if detailErr != nil {
-		if rollbackErr := rollbackCreatedNetworkSessions(c.Request.Context(), h.Sessions, createdIDs); rollbackErr != nil {
+		if rollbackErr := rollbackCreatedNetworkSessions(
+			c.Request.Context(),
+			h.Sessions,
+			createdIDs,
+		); rollbackErr != nil {
 			detailErr = errors.Join(detailErr, rollbackErr)
 		}
 		h.respondError(c, http.StatusInternalServerError, detailErr)
@@ -245,7 +257,11 @@ func (h *BaseHandlers) NetworkPeer(c *gin.Context) {
 		return
 	}
 
-	payload := NetworkPeerDetailPayloadFromInfo(peer, sessionInfoMapByID(sessions), summarizePeerMetrics(peer, auditEntries))
+	payload := NetworkPeerDetailPayloadFromInfo(
+		peer,
+		sessionInfoMapByID(sessions),
+		summarizePeerMetrics(peer, auditEntries),
+	)
 	c.JSON(http.StatusOK, contract.NetworkPeerResponse{Peer: payload})
 }
 
@@ -260,7 +276,9 @@ func (h *BaseHandlers) resolveCreateNetworkChannelRequest(
 
 	workspaceID := strings.TrimSpace(req.WorkspaceID)
 	if workspaceID == "" {
-		return "", workspacepkg.ResolvedWorkspace{}, nil, NewNetworkValidationError(errors.New("workspace_id is required"))
+		return "", workspacepkg.ResolvedWorkspace{}, nil, NewNetworkValidationError(
+			errors.New("workspace_id is required"),
+		)
 	}
 
 	resolved, err := h.Workspaces.Resolve(ctx, workspaceID)
@@ -280,7 +298,11 @@ func (h *BaseHandlers) resolveCreateNetworkChannelRequest(
 		if _, ok := available[agentName]; ok {
 			continue
 		}
-		return "", workspacepkg.ResolvedWorkspace{}, nil, fmt.Errorf("%w: %s", workspacepkg.ErrAgentNotAvailable, agentName)
+		return "", workspacepkg.ResolvedWorkspace{}, nil, fmt.Errorf(
+			"%w: %s",
+			workspacepkg.ErrAgentNotAvailable,
+			agentName,
+		)
 	}
 
 	return channel, resolved, agentNames, nil
@@ -336,7 +358,10 @@ func rollbackCreatedNetworkSessions(ctx context.Context, sessions SessionManager
 	return rollbackErr
 }
 
-func (h *BaseHandlers) networkChannelPayloads(ctx context.Context, service NetworkService) ([]contract.NetworkChannelPayload, error) {
+func (h *BaseHandlers) networkChannelPayloads(
+	ctx context.Context,
+	service NetworkService,
+) ([]contract.NetworkChannelPayload, error) {
 	runtimePeers, err := service.ListPeers(ctx, "")
 	if err != nil {
 		return nil, err
@@ -452,7 +477,10 @@ func (h *BaseHandlers) networkChannelDetailPayload(
 	}, nil
 }
 
-func ensureNetworkChannelAggregate(aggregates map[string]*networkChannelAggregate, channel string) *networkChannelAggregate {
+func ensureNetworkChannelAggregate(
+	aggregates map[string]*networkChannelAggregate,
+	channel string,
+) *networkChannelAggregate {
 	trimmed := strings.TrimSpace(channel)
 	aggregate, ok := aggregates[trimmed]
 	if ok && aggregate != nil {
@@ -463,8 +491,8 @@ func ensureNetworkChannelAggregate(aggregates map[string]*networkChannelAggregat
 	return aggregate
 }
 
-func sessionsForChannel(sessions []*session.SessionInfo, channel string) []*session.SessionInfo {
-	filtered := make([]*session.SessionInfo, 0, len(sessions))
+func sessionsForChannel(sessions []*session.Info, channel string) []*session.Info {
+	filtered := make([]*session.Info, 0, len(sessions))
 	for _, info := range sessions {
 		if !networkChannelSessionVisible(info) || strings.TrimSpace(info.Channel) != channel {
 			continue
@@ -474,7 +502,7 @@ func sessionsForChannel(sessions []*session.SessionInfo, channel string) []*sess
 	return filtered
 }
 
-func networkChannelExists(sessions []*session.SessionInfo, peers []network.PeerInfo, channel string) bool {
+func networkChannelExists(sessions []*session.Info, peers []network.PeerInfo, channel string) bool {
 	for _, info := range sessions {
 		if networkChannelSessionVisible(info) && strings.TrimSpace(info.Channel) == channel {
 			return true
@@ -488,7 +516,7 @@ func networkChannelExists(sessions []*session.SessionInfo, peers []network.PeerI
 	return false
 }
 
-func networkChannelSessionVisible(info *session.SessionInfo) bool {
+func networkChannelSessionVisible(info *session.Info) bool {
 	if info == nil {
 		return false
 	}
@@ -502,8 +530,8 @@ func isNetworkChannelNotFound(err error) bool {
 	return errors.Is(err, errNetworkChannelNotFound)
 }
 
-func sessionInfoMapByID(sessions []*session.SessionInfo) map[string]*session.SessionInfo {
-	index := make(map[string]*session.SessionInfo, len(sessions))
+func sessionInfoMapByID(sessions []*session.Info) map[string]*session.Info {
+	index := make(map[string]*session.Info, len(sessions))
 	for _, info := range sessions {
 		if info == nil {
 			continue
@@ -581,14 +609,14 @@ func laterTimePtr(current *time.Time, candidate time.Time) *time.Time {
 
 func networkPeerPayloadFromInfoWithSessions(
 	peer network.PeerInfo,
-	sessionsByID map[string]*session.SessionInfo,
+	sessionsByID map[string]*session.Info,
 ) contract.NetworkPeerPayload {
 	payload := NetworkPeerPayloadFromInfo(peer)
 	payload.DisplayName = networkPeerDisplayName(peer, sessionsByID)
 	return payload
 }
 
-func networkPeerDisplayName(peer network.PeerInfo, sessionsByID map[string]*session.SessionInfo) string {
+func networkPeerDisplayName(peer network.PeerInfo, sessionsByID map[string]*session.Info) string {
 	if peer.PeerCard.DisplayName != nil {
 		if value := strings.TrimSpace(*peer.PeerCard.DisplayName); value != "" {
 			return value
@@ -611,7 +639,7 @@ func networkPeerDisplayName(peer network.PeerInfo, sessionsByID map[string]*sess
 func NetworkChannelMessagePayloadFromEntry(
 	entry store.NetworkMessageEntry,
 	auditDirection string,
-	sessionsByID map[string]*session.SessionInfo,
+	sessionsByID map[string]*session.Info,
 	peersByID map[string]network.PeerInfo,
 ) contract.NetworkChannelMessagePayload {
 	storedSessionID := strings.TrimSpace(entry.SessionID)
@@ -720,7 +748,7 @@ func summarizePeerMetrics(peer network.PeerInfo, entries []store.NetworkAuditEnt
 // NetworkPeerDetailPayloadFromInfo converts one peer info plus metrics into the shared detail payload.
 func NetworkPeerDetailPayloadFromInfo(
 	peer network.PeerInfo,
-	sessionsByID map[string]*session.SessionInfo,
+	sessionsByID map[string]*session.Info,
 	metrics contract.NetworkPeerMetricsPayload,
 ) contract.NetworkPeerDetailPayload {
 	payload := contract.NetworkPeerDetailPayload{

@@ -56,13 +56,13 @@ type deliveryMarker struct {
 type stateMarker struct {
 	BridgeInstanceID string                   `json:"bridge_instance_id,omitempty"`
 	Status           bridgepkg.BridgeStatus   `json:"status"`
-	Instance         bridgepkg.BridgeInstance `json:"instance,omitempty"`
+	Instance         bridgepkg.BridgeInstance `json:"instance"`
 	Error            string                   `json:"error,omitempty"`
 }
 
 type ingestMarker struct {
 	Envelope bridgepkg.InboundMessageEnvelope              `json:"envelope"`
-	Result   extensioncontract.BridgesMessagesIngestResult `json:"result,omitempty"`
+	Result   extensioncontract.BridgesMessagesIngestResult `json:"result"`
 	Error    string                                        `json:"error,omitempty"`
 }
 

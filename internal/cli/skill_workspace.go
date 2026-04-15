@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -17,6 +18,14 @@ import (
 	skillbundled "github.com/pedronauck/agh/internal/skills/bundled"
 	"github.com/pedronauck/agh/internal/store/globaldb"
 	workspacepkg "github.com/pedronauck/agh/internal/workspace"
+)
+
+const (
+	additionalSkillSource  = "additional"
+	bundledSkillSource     = "bundled"
+	marketplaceSkillSource = "marketplace"
+	userSkillSource        = "user"
+	workspaceSkillSource   = "workspace"
 )
 
 func loadSkillCommandContext(ctx context.Context, deps commandDeps) (skillCommandContext, error) {
@@ -50,7 +59,7 @@ func loadSkillCommandContext(ctx context.Context, deps commandDeps) (skillComman
 		return skillCommandContext{}, fmt.Errorf("cli: resolve skill workspace: %w", err)
 	}
 
-	skillList, err := registry.ForWorkspace(ctx, resolvedWorkspace)
+	skillList, err := registry.ForWorkspace(ctx, &resolvedWorkspace)
 	if err != nil {
 		return skillCommandContext{}, fmt.Errorf("cli: load workspace skills: %w", err)
 	}
@@ -63,7 +72,11 @@ func loadSkillCommandContext(ctx context.Context, deps commandDeps) (skillComman
 	}, nil
 }
 
-func resolveSkillWorkspace(ctx context.Context, runtime runtimeContext, workspaceRoot string) (workspacepkg.ResolvedWorkspace, error) {
+func resolveSkillWorkspace(
+	ctx context.Context,
+	runtime *runtimeContext,
+	workspaceRoot string,
+) (workspacepkg.ResolvedWorkspace, error) {
 	fallback, err := cliResolvedWorkspace(workspaceRoot)
 	if err != nil {
 		return workspacepkg.ResolvedWorkspace{}, err
@@ -77,7 +90,11 @@ func resolveSkillWorkspace(ctx context.Context, runtime runtimeContext, workspac
 		if errors.Is(err, os.ErrNotExist) {
 			return fallback, nil
 		}
-		return workspacepkg.ResolvedWorkspace{}, fmt.Errorf("cli: stat workspace database %q: %w", runtime.HomePaths.DatabaseFile, err)
+		return workspacepkg.ResolvedWorkspace{}, fmt.Errorf(
+			"cli: stat workspace database %q: %w",
+			runtime.HomePaths.DatabaseFile,
+			err,
+		)
 	}
 
 	resolved, err := resolveRegisteredSkillWorkspace(ctx, runtime, workspaceRoot)
@@ -91,10 +108,18 @@ func resolveSkillWorkspace(ctx context.Context, runtime runtimeContext, workspac
 	return resolved, nil
 }
 
-func resolveRegisteredSkillWorkspace(ctx context.Context, runtime runtimeContext, workspaceRoot string) (resolved workspacepkg.ResolvedWorkspace, err error) {
+func resolveRegisteredSkillWorkspace(
+	ctx context.Context,
+	runtime *runtimeContext,
+	workspaceRoot string,
+) (resolved workspacepkg.ResolvedWorkspace, err error) {
 	globalDB, err := globaldb.OpenGlobalDB(ctx, runtime.HomePaths.DatabaseFile)
 	if err != nil {
-		return workspacepkg.ResolvedWorkspace{}, fmt.Errorf("cli: open workspace database %q: %w", runtime.HomePaths.DatabaseFile, err)
+		return workspacepkg.ResolvedWorkspace{}, fmt.Errorf(
+			"cli: open workspace database %q: %w",
+			runtime.HomePaths.DatabaseFile,
+			err,
+		)
 	}
 	defer func() {
 		if closeErr := globalDB.Close(ctx); closeErr != nil {
@@ -215,10 +240,10 @@ func normalizeSkillSourceFilter(sourceFilter string) (string, error) {
 	switch filter {
 	case "":
 		return "", nil
-	case "bundled", "marketplace", "user", "additional", "workspace":
+	case bundledSkillSource, marketplaceSkillSource, userSkillSource, additionalSkillSource, workspaceSkillSource:
 		return filter, nil
 	case "agents", ".agents":
-		return "additional", nil
+		return additionalSkillSource, nil
 	default:
 		return "", fmt.Errorf("cli: invalid skill source %q", sourceFilter)
 	}
@@ -499,15 +524,15 @@ func titleizeSkillName(name string) string {
 func skillSourceLabel(source skills.SkillSource) string {
 	switch source {
 	case skills.SourceBundled:
-		return "bundled"
+		return bundledSkillSource
 	case skills.SourceMarketplace:
-		return "marketplace"
+		return marketplaceSkillSource
 	case skills.SourceUser:
-		return "user"
+		return userSkillSource
 	case skills.SourceAdditional:
-		return "additional"
+		return additionalSkillSource
 	case skills.SourceWorkspace:
-		return "workspace"
+		return workspaceSkillSource
 	default:
 		return "unknown"
 	}
@@ -555,8 +580,6 @@ func cloneMetadata(metadata map[string]any) map[string]any {
 	}
 
 	clone := make(map[string]any, len(metadata))
-	for key, value := range metadata {
-		clone[key] = value
-	}
+	maps.Copy(clone, metadata)
 	return clone
 }

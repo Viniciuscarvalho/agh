@@ -25,7 +25,7 @@ func (m *Manager) Create(ctx context.Context, opts CreateOpts) (_ *Session, err 
 		return nil, err
 	}
 
-	return m.startSession(ctx, spec)
+	return m.startSession(ctx, &spec)
 }
 
 // Stop stops an active session and persists the stopped state to disk.
@@ -66,7 +66,7 @@ func (m *Manager) Resume(ctx context.Context, id string) (_ *Session, err error)
 		return nil, err
 	}
 
-	session, err := m.startSession(ctx, spec)
+	session, err := m.startSession(ctx, &spec)
 	if err == nil {
 		return session, nil
 	}
@@ -91,7 +91,7 @@ func (m *Manager) Resume(ctx context.Context, id string) (_ *Session, err error)
 		return nil, errors.Join(err, fallbackSpecErr)
 	}
 
-	fallbackSession, fallbackErr := m.startSession(ctx, fallbackSpec)
+	fallbackSession, fallbackErr := m.startSession(ctx, &fallbackSpec)
 	if fallbackErr != nil {
 		return nil, errors.Join(err, fallbackErr)
 	}
@@ -146,64 +146,129 @@ func (m *Manager) finalizeStopped(ctx context.Context, session *Session, waitErr
 	if session == nil {
 		return nil
 	}
-	owned, done := m.claimFinalization(session)
-	if !owned {
-		if done == nil {
-			return nil
-		}
-		select {
-		case <-done:
-			return nil
-		case <-ctx.Done():
-			return ctx.Err()
-		}
+	owned, err := m.claimOrWaitFinalization(ctx, session)
+	if err != nil || !owned {
+		return err
 	}
 
-	if done == nil {
-		return nil
-	}
 	defer m.finishFinalization(session.ID)
 
 	var errs []error
-	state := session.Info().State
-	if state == StateActive {
-		if err := session.beginStopping(m.now()); err != nil {
-			errs = append(errs, err)
-		} else if err := m.writeMeta(session); err != nil {
-			errs = append(errs, err)
-		}
+	errs = appendLifecycleErr(errs, m.beginStoppingSession(session))
+	errs = appendLifecycleErr(errs, m.persistStopClassification(session, waitErr))
+	errs = appendLifecycleErr(errs, m.recordProcessExitEvent(ctx, session, waitErr))
+	errs = appendLifecycleErr(errs, m.recordSessionStoppedEvent(ctx, session, waitErr))
+
+	m.dispatchAgentStopped(ctx, session, session.processHandle(), waitErr)
+
+	errs = appendLifecycleErr(errs, m.closeSessionRecorder(session))
+	errs = appendLifecycleErr(errs, m.markSessionStopped(session))
+	errs = appendLifecycleErr(errs, m.leaveSessionNetwork(ctx, session))
+
+	m.removeActive(session.ID)
+	m.dispatchSessionPostStop(ctx, session)
+	if m.notifier != nil {
+		m.notifier.OnSessionStopped(ctx, session)
 	}
 
+	return errors.Join(errs...)
+}
+
+func (m *Manager) resolveStartMCPServers(
+	ctx context.Context,
+	resolvedWorkspace *workspacepkg.ResolvedWorkspace,
+	base []aghconfig.MCPServer,
+) ([]aghconfig.MCPServer, error) {
+	switch {
+	case m.skillRegistry == nil && m.mcpResolver == nil:
+		return append([]aghconfig.MCPServer(nil), base...), nil
+	case m.skillRegistry == nil || m.mcpResolver == nil:
+		return nil, errors.New("session: skill registry and MCP resolver must be configured together")
+	}
+
+	activeSkills, err := m.skillRegistry.ForWorkspace(ctx, resolvedWorkspace)
+	if err != nil {
+		workspaceID := ""
+		if resolvedWorkspace != nil {
+			workspaceID = resolvedWorkspace.ID
+		}
+		return nil, fmt.Errorf("session: resolve active skills for workspace %q: %w", workspaceID, err)
+	}
+
+	return aghconfig.MergeMCPServers(base, m.mcpResolver.Resolve(activeSkills)), nil
+}
+
+func (m *Manager) claimOrWaitFinalization(ctx context.Context, session *Session) (bool, error) {
+	owned, done := m.claimFinalization(session)
+	if owned || done == nil {
+		return owned, nil
+	}
+
+	select {
+	case <-done:
+		return false, nil
+	case <-ctx.Done():
+		return false, ctx.Err()
+	}
+}
+
+func appendLifecycleErr(errs []error, err error) []error {
+	if err == nil {
+		return errs
+	}
+	return append(errs, err)
+}
+
+func (m *Manager) beginStoppingSession(session *Session) error {
+	if session.Info().State != StateActive {
+		return nil
+	}
+	if err := session.beginStopping(m.now()); err != nil {
+		return err
+	}
+	return m.writeMeta(session)
+}
+
+func (m *Manager) persistStopClassification(session *Session, waitErr error) error {
 	stopCause, stopDetailHint := session.stopCauseDetail()
 	stopReason, stopDetail := classifyStopReason(stopCause, waitErr, stopDetailHint)
 	session.setStopClassification(stopReason, stopDetail)
-	if err := m.writeMeta(session); err != nil {
-		errs = append(errs, err)
+	return m.writeMeta(session)
+}
+
+func (m *Manager) recordProcessExitEvent(ctx context.Context, session *Session, waitErr error) error {
+	if waitErr == nil {
+		return nil
 	}
 
-	if waitErr != nil {
-		m.dispatchAgentCrashed(ctx, session, session.processHandle(), waitErr)
+	m.dispatchAgentCrashed(ctx, session, session.processHandle(), waitErr)
 
-		stderr := ""
-		if proc := session.processHandle(); proc != nil {
-			stderr = proc.Stderr()
-		}
-		event := acp.AgentEvent{
-			Type:      acp.EventTypeError,
-			TurnID:    newID("turn"),
-			Timestamp: m.now(),
-			Error:     waitErr.Error(),
-			Text:      stderr,
-		}
-		normalized := m.normalizeEvent(session, event.TurnID, event)
-		if err := m.recordEvent(ctx, session, normalized); err != nil {
-			errs = append(errs, err)
-		}
-		if m.notifier != nil {
-			m.notifier.OnAgentEvent(ctx, session.ID, normalized)
-		}
+	stderr := ""
+	if proc := session.processHandle(); proc != nil {
+		stderr = proc.Stderr()
 	}
+	event := acp.AgentEvent{
+		Type:      acp.EventTypeError,
+		TurnID:    newID("turn"),
+		Timestamp: m.now(),
+		Error:     waitErr.Error(),
+		Text:      stderr,
+	}
+	normalized := m.normalizeEvent(session, event.TurnID, event)
+	if err := m.recordEvent(ctx, session, normalized); err != nil {
+		return err
+	}
+	if m.notifier != nil {
+		m.notifier.OnAgentEvent(ctx, session.ID, normalized)
+	}
+	return nil
+}
 
+func (m *Manager) recordSessionStoppedEvent(ctx context.Context, session *Session, waitErr error) error {
+	stopReason := store.StopReason("")
+	if info := session.Info(); info != nil {
+		stopReason = info.StopReason
+	}
 	stopEvent := acp.AgentEvent{
 		Type:       EventTypeSessionStopped,
 		TurnID:     newID("turn"),
@@ -216,64 +281,48 @@ func (m *Manager) finalizeStopped(ctx context.Context, session *Session, waitErr
 			stopEvent.Text = proc.Stderr()
 		}
 	}
+
 	normalizedStop := m.normalizeEvent(session, stopEvent.TurnID, stopEvent)
 	if err := m.recordEvent(ctx, session, normalizedStop); err != nil {
-		errs = append(errs, err)
+		return err
 	}
 	if m.notifier != nil {
 		m.notifier.OnAgentEvent(ctx, session.ID, normalizedStop)
 	}
+	return nil
+}
 
-	m.dispatchAgentStopped(ctx, session, session.processHandle(), waitErr)
-
-	if recorder := session.recorderHandle(); recorder != nil {
-		func() {
-			closeCtx, cancel := context.WithTimeout(context.Background(), defaultLifecycleTimeout)
-			defer cancel()
-			if err := recorder.Close(closeCtx); err != nil {
-				errs = append(errs, err)
-			}
-		}()
-		session.setRecorder(nil)
+func (m *Manager) closeSessionRecorder(session *Session) error {
+	recorder := session.recorderHandle()
+	if recorder == nil {
+		return nil
 	}
 
-	session.clearProcess(m.now())
-	if err := session.markStopped(m.now()); err != nil {
-		errs = append(errs, err)
-	} else if err := m.writeMeta(session); err != nil {
-		errs = append(errs, err)
+	closeCtx, cancel := context.WithTimeout(context.Background(), defaultLifecycleTimeout)
+	defer cancel()
+	err := recorder.Close(closeCtx)
+	session.setRecorder(nil)
+	return err
+}
+
+func (m *Manager) markSessionStopped(session *Session) error {
+	now := m.now()
+	session.clearProcess(now)
+	if err := session.markStopped(now); err != nil {
+		return err
 	}
+	return m.writeMeta(session)
+}
+
+func (m *Manager) leaveSessionNetwork(ctx context.Context, session *Session) error {
 	if err := m.leaveNetworkPeer(ctx, session); err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			m.sessionLogger(session).Warn("session: leave network channel canceled", "error", err)
-		} else {
-			errs = append(errs, fmt.Errorf("session: leave network channel for %q: %w", session.ID, err))
+			return nil
 		}
+		return fmt.Errorf("session: leave network channel for %q: %w", session.ID, err)
 	}
-
-	m.removeActive(session.ID)
-	m.dispatchSessionPostStop(ctx, session)
-	if m.notifier != nil {
-		m.notifier.OnSessionStopped(ctx, session)
-	}
-
-	return errors.Join(errs...)
-}
-
-func (m *Manager) resolveStartMCPServers(ctx context.Context, resolvedWorkspace workspacepkg.ResolvedWorkspace, base []aghconfig.MCPServer) ([]aghconfig.MCPServer, error) {
-	switch {
-	case m.skillRegistry == nil && m.mcpResolver == nil:
-		return append([]aghconfig.MCPServer(nil), base...), nil
-	case m.skillRegistry == nil || m.mcpResolver == nil:
-		return nil, errors.New("session: skill registry and MCP resolver must be configured together")
-	}
-
-	activeSkills, err := m.skillRegistry.ForWorkspace(ctx, resolvedWorkspace)
-	if err != nil {
-		return nil, fmt.Errorf("session: resolve active skills for workspace %q: %w", resolvedWorkspace.ID, err)
-	}
-
-	return aghconfig.MergeMCPServers(base, m.mcpResolver.Resolve(activeSkills)), nil
+	return nil
 }
 
 func (m *Manager) cleanupFailedStart(sessionDir string, recorder EventRecorder, proc *AgentProcess) error {

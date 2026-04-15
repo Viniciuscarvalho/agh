@@ -296,7 +296,7 @@ func TestEnterDispatchDepthFourFails(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		var err error
 		ctx, _, err = enterDispatch(ctx, HookSessionPreCreate)
 		if err != nil {
@@ -548,7 +548,10 @@ func applyPipelineTestPatch(payload pipelineTestPayload, patch pipelineTestPatch
 	return payload
 }
 
-func applyPermissionRequestPatch(payload PermissionRequestPayload, patch PermissionRequestPatch) PermissionRequestPayload {
+func applyPermissionRequestPatch(
+	payload PermissionRequestPayload,
+	patch PermissionRequestPatch,
+) PermissionRequestPayload {
 	if patch.Decision != nil {
 		payload.Decision = *patch.Decision
 	}
@@ -576,7 +579,13 @@ func permissionPipeline(
 	}
 }
 
-func testPipelineHook(event HookEvent, name string, required bool, timeout time.Duration, executor Executor) *ResolvedHook {
+func testPipelineHook(
+	event HookEvent,
+	name string,
+	required bool,
+	timeout time.Duration,
+	executor Executor,
+) *ResolvedHook {
 	source := HookSourceConfig
 	command := "hook"
 	if executor.Kind() == HookExecutorNative {

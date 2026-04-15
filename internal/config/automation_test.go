@@ -120,7 +120,6 @@ prompt = "Summarize {{ .Kind }}"
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			workspaceRoot, homePaths := prepareAutomationConfigTestEnv(t)
 			writeFile(t, homePaths.ConfigFile, tc.contents)
@@ -213,7 +212,6 @@ webhook_secret_env = "AGH_AUTOMATION_WEBHOOK_SECRET_MISSING"
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			workspaceRoot, homePaths := prepareAutomationConfigTestEnv(t)
 			writeFile(t, homePaths.ConfigFile, tc.contents)
@@ -276,7 +274,6 @@ fire_limit = { max = 2, window = "later" }
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			workspaceRoot, homePaths := prepareAutomationConfigTestEnv(t)
 			writeFile(t, homePaths.ConfigFile, tc.contents)

@@ -48,7 +48,10 @@ func (g *GlobalDB) WriteNetworkAudit(ctx context.Context, entry store.NetworkAud
 }
 
 // ListNetworkAudit returns network audit rows filtered by the supplied options.
-func (g *GlobalDB) ListNetworkAudit(ctx context.Context, query store.NetworkAuditQuery) ([]store.NetworkAuditEntry, error) {
+func (g *GlobalDB) ListNetworkAudit(
+	ctx context.Context,
+	query store.NetworkAuditQuery,
+) ([]store.NetworkAuditEntry, error) {
 	if err := g.checkReady(ctx, "list network audit"); err != nil {
 		return nil, err
 	}

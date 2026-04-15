@@ -114,7 +114,12 @@ func DefaultPeerCard(peerID string) (PeerCard, error) {
 }
 
 // RegisterLocal upserts one local peer membership keyed by session ID.
-func (r *PeerRegistry) RegisterLocal(sessionID string, channel string, card PeerCard, joinedAt time.Time) (LocalPeer, error) {
+func (r *PeerRegistry) RegisterLocal(
+	sessionID string,
+	channel string,
+	card PeerCard,
+	joinedAt time.Time,
+) (LocalPeer, error) {
 	if r == nil {
 		return LocalPeer{}, fmt.Errorf("%w: peer registry is required", ErrInvalidField)
 	}
@@ -151,7 +156,11 @@ func (r *PeerRegistry) RegisterLocal(sessionID string, channel string, card Peer
 		r.localsByChannel[trimmedChannel] = make(map[string]string)
 	}
 	if owner, ok := r.localsByChannel[trimmedChannel][local.PeerID]; ok && owner != trimmedSessionID {
-		return LocalPeer{}, fmt.Errorf("%w: local peer_id already registered in channel: %s", ErrInvalidField, local.PeerID)
+		return LocalPeer{}, fmt.Errorf(
+			"%w: local peer_id already registered in channel: %s",
+			ErrInvalidField,
+			local.PeerID,
+		)
 	}
 	if current, ok := r.localsByID[trimmedSessionID]; ok {
 		r.removeLocalIndexesLocked(current)

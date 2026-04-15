@@ -18,7 +18,14 @@ func TestOpenGlobalDBCreatesBridgeTables(t *testing.T) {
 
 	globalDB := openTestGlobalDB(t)
 
-	assertTablesPresent(t, globalDB.db, "bridge_instances", "bridge_secret_bindings", "bridge_routes", "bridge_ingest_dedup")
+	assertTablesPresent(
+		t,
+		globalDB.db,
+		"bridge_instances",
+		"bridge_secret_bindings",
+		"bridge_routes",
+		"bridge_ingest_dedup",
+	)
 	assertTableColumns(t, globalDB.db, "bridge_instances", []string{
 		"id",
 		"scope",
@@ -149,7 +156,12 @@ func TestGlobalDBBridgePersistenceHelpers(t *testing.T) {
 		return base.Add(time.Duration(callCount) * time.Minute)
 	}
 
-	workspaceID := registerWorkspaceForGlobalTests(t, globalDB, "bridge-workspace", filepath.Join(t.TempDir(), "bridge-workspace"))
+	workspaceID := registerWorkspaceForGlobalTests(
+		t,
+		globalDB,
+		"bridge-workspace",
+		filepath.Join(t.TempDir(), "bridge-workspace"),
+	)
 	instance := bridges.BridgeInstance{
 		ID:             "brg-workspace",
 		Scope:          bridges.ScopeWorkspace,
@@ -214,7 +226,11 @@ func TestGlobalDBBridgePersistenceHelpers(t *testing.T) {
 		t.Fatalf("PutBridgeSecretBinding() error = %v", err)
 	}
 
-	gotBinding, err := globalDB.GetBridgeSecretBinding(testutil.Context(t), binding.BridgeInstanceID, binding.BindingName)
+	gotBinding, err := globalDB.GetBridgeSecretBinding(
+		testutil.Context(t),
+		binding.BridgeInstanceID,
+		binding.BindingName,
+	)
 	if err != nil {
 		t.Fatalf("GetBridgeSecretBinding() error = %v", err)
 	}
@@ -257,7 +273,14 @@ func TestGlobalDBBridgePersistenceHelpers(t *testing.T) {
 	if liveRecord.BridgeInstanceID != instance.ID {
 		t.Fatalf("GetBridgeIngestDedup(live) = %#v", liveRecord)
 	}
-	if _, err := globalDB.GetBridgeIngestDedup(testutil.Context(t), expired.IdempotencyKey, base.Add(time.Minute)); !errors.Is(err, bridges.ErrIngestDedupRecordNotFound) {
+	if _, err := globalDB.GetBridgeIngestDedup(
+		testutil.Context(t),
+		expired.IdempotencyKey,
+		base.Add(time.Minute),
+	); !errors.Is(
+		err,
+		bridges.ErrIngestDedupRecordNotFound,
+	) {
 		t.Fatalf("GetBridgeIngestDedup(expired) error = %v, want ErrIngestDedupRecordNotFound", err)
 	}
 
@@ -269,7 +292,11 @@ func TestGlobalDBBridgePersistenceHelpers(t *testing.T) {
 		t.Fatalf("DeleteExpiredBridgeIngestDedup() = %d, want %d", got, want)
 	}
 
-	if err := globalDB.DeleteBridgeSecretBinding(testutil.Context(t), binding.BridgeInstanceID, binding.BindingName); err != nil {
+	if err := globalDB.DeleteBridgeSecretBinding(
+		testutil.Context(t),
+		binding.BridgeInstanceID,
+		binding.BindingName,
+	); err != nil {
 		t.Fatalf("DeleteBridgeSecretBinding() error = %v", err)
 	}
 	if err := globalDB.DeleteBridgeInstance(testutil.Context(t), instance.ID); err != nil {
@@ -342,10 +369,22 @@ func TestGlobalDBBridgeRouteCRUD(t *testing.T) {
 	if err := globalDB.DeleteBridgeRoute(testutil.Context(t), canonical.RoutingKeyHash); err != nil {
 		t.Fatalf("DeleteBridgeRoute() error = %v", err)
 	}
-	if _, err := globalDB.GetBridgeRoute(testutil.Context(t), canonical.RoutingKeyHash); !errors.Is(err, bridges.ErrBridgeRouteNotFound) {
+	if _, err := globalDB.GetBridgeRoute(
+		testutil.Context(t),
+		canonical.RoutingKeyHash,
+	); !errors.Is(
+		err,
+		bridges.ErrBridgeRouteNotFound,
+	) {
 		t.Fatalf("GetBridgeRoute(after delete) error = %v, want ErrBridgeRouteNotFound", err)
 	}
-	if err := globalDB.DeleteBridgeRoute(testutil.Context(t), canonical.RoutingKeyHash); !errors.Is(err, bridges.ErrBridgeRouteNotFound) {
+	if err := globalDB.DeleteBridgeRoute(
+		testutil.Context(t),
+		canonical.RoutingKeyHash,
+	); !errors.Is(
+		err,
+		bridges.ErrBridgeRouteNotFound,
+	) {
 		t.Fatalf("DeleteBridgeRoute(after delete) error = %v, want ErrBridgeRouteNotFound", err)
 	}
 }
@@ -419,7 +458,9 @@ func TestNormalizeBridgeInstanceRecordEncodesProviderConfigAndDegradation(t *tes
 		},
 	}
 
-	normalized, routingPolicyJSON, providerConfig, deliveryDefaults, degradationReason, degradationMessage, err := normalizeBridgeInstanceRecord(instance)
+	normalized, routingPolicyJSON, providerConfig, deliveryDefaults, degradationReason, degradationMessage, err := normalizeBridgeInstanceRecord(
+		instance,
+	)
 	if err != nil {
 		t.Fatalf("normalizeBridgeInstanceRecord() error = %v", err)
 	}
@@ -448,10 +489,23 @@ func TestGlobalDBBridgeDeleteAndRouteLookupNotFound(t *testing.T) {
 
 	globalDB := openTestGlobalDB(t)
 
-	if err := globalDB.DeleteBridgeInstance(testutil.Context(t), "missing-bridge"); !errors.Is(err, bridges.ErrBridgeInstanceNotFound) {
+	if err := globalDB.DeleteBridgeInstance(
+		testutil.Context(t),
+		"missing-bridge",
+	); !errors.Is(
+		err,
+		bridges.ErrBridgeInstanceNotFound,
+	) {
 		t.Fatalf("DeleteBridgeInstance(missing) error = %v, want ErrBridgeInstanceNotFound", err)
 	}
-	if err := globalDB.DeleteBridgeSecretBinding(testutil.Context(t), "missing-bridge", "bot_token"); !errors.Is(err, bridges.ErrBridgeSecretBindingNotFound) {
+	if err := globalDB.DeleteBridgeSecretBinding(
+		testutil.Context(t),
+		"missing-bridge",
+		"bot_token",
+	); !errors.Is(
+		err,
+		bridges.ErrBridgeSecretBindingNotFound,
+	) {
 		t.Fatalf("DeleteBridgeSecretBinding(missing) error = %v, want ErrBridgeSecretBindingNotFound", err)
 	}
 	if _, err := globalDB.ResolveBridgeRoute(testutil.Context(t), bridges.RoutingKey{
@@ -461,7 +515,13 @@ func TestGlobalDBBridgeDeleteAndRouteLookupNotFound(t *testing.T) {
 	}); !errors.Is(err, bridges.ErrBridgeRouteNotFound) {
 		t.Fatalf("ResolveBridgeRoute(missing) error = %v, want ErrBridgeRouteNotFound", err)
 	}
-	if err := globalDB.DeleteBridgeRoute(testutil.Context(t), "missing-route"); !errors.Is(err, bridges.ErrBridgeRouteNotFound) {
+	if err := globalDB.DeleteBridgeRoute(
+		testutil.Context(t),
+		"missing-route",
+	); !errors.Is(
+		err,
+		bridges.ErrBridgeRouteNotFound,
+	) {
 		t.Fatalf("DeleteBridgeRoute(missing) error = %v, want ErrBridgeRouteNotFound", err)
 	}
 }
@@ -470,7 +530,13 @@ func TestGlobalDBBridgeMissingLookupsAndHelpers(t *testing.T) {
 	t.Parallel()
 
 	globalDB := openTestGlobalDB(t)
-	if _, err := globalDB.GetBridgeInstance(testutil.Context(t), "missing"); !errors.Is(err, bridges.ErrBridgeInstanceNotFound) {
+	if _, err := globalDB.GetBridgeInstance(
+		testutil.Context(t),
+		"missing",
+	); !errors.Is(
+		err,
+		bridges.ErrBridgeInstanceNotFound,
+	) {
 		t.Fatalf("GetBridgeInstance(missing) error = %v, want ErrBridgeInstanceNotFound", err)
 	}
 	if err := globalDB.UpdateBridgeInstance(testutil.Context(t), bridges.BridgeInstance{
@@ -485,19 +551,51 @@ func TestGlobalDBBridgeMissingLookupsAndHelpers(t *testing.T) {
 	}); !errors.Is(err, bridges.ErrBridgeInstanceNotFound) {
 		t.Fatalf("UpdateBridgeInstance(missing) error = %v, want ErrBridgeInstanceNotFound", err)
 	}
-	if err := globalDB.DeleteBridgeInstance(testutil.Context(t), "missing"); !errors.Is(err, bridges.ErrBridgeInstanceNotFound) {
+	if err := globalDB.DeleteBridgeInstance(
+		testutil.Context(t),
+		"missing",
+	); !errors.Is(
+		err,
+		bridges.ErrBridgeInstanceNotFound,
+	) {
 		t.Fatalf("DeleteBridgeInstance(missing) error = %v, want ErrBridgeInstanceNotFound", err)
 	}
-	if _, err := globalDB.GetBridgeSecretBinding(testutil.Context(t), "missing", "token"); !errors.Is(err, bridges.ErrBridgeSecretBindingNotFound) {
+	if _, err := globalDB.GetBridgeSecretBinding(
+		testutil.Context(t),
+		"missing",
+		"token",
+	); !errors.Is(
+		err,
+		bridges.ErrBridgeSecretBindingNotFound,
+	) {
 		t.Fatalf("GetBridgeSecretBinding(missing) error = %v, want ErrBridgeSecretBindingNotFound", err)
 	}
-	if err := globalDB.DeleteBridgeSecretBinding(testutil.Context(t), "missing", "token"); !errors.Is(err, bridges.ErrBridgeSecretBindingNotFound) {
+	if err := globalDB.DeleteBridgeSecretBinding(
+		testutil.Context(t),
+		"missing",
+		"token",
+	); !errors.Is(
+		err,
+		bridges.ErrBridgeSecretBindingNotFound,
+	) {
 		t.Fatalf("DeleteBridgeSecretBinding(missing) error = %v, want ErrBridgeSecretBindingNotFound", err)
 	}
-	if _, err := globalDB.GetBridgeRoute(testutil.Context(t), "missing"); !errors.Is(err, bridges.ErrBridgeRouteNotFound) {
+	if _, err := globalDB.GetBridgeRoute(
+		testutil.Context(t),
+		"missing",
+	); !errors.Is(
+		err,
+		bridges.ErrBridgeRouteNotFound,
+	) {
 		t.Fatalf("GetBridgeRoute(missing) error = %v, want ErrBridgeRouteNotFound", err)
 	}
-	if _, err := globalDB.ResolveBridgeRoute(testutil.Context(t), bridges.RoutingKey{Scope: bridges.ScopeGlobal, BridgeInstanceID: "missing"}); !errors.Is(err, bridges.ErrBridgeRouteNotFound) {
+	if _, err := globalDB.ResolveBridgeRoute(
+		testutil.Context(t),
+		bridges.RoutingKey{Scope: bridges.ScopeGlobal, BridgeInstanceID: "missing"},
+	); !errors.Is(
+		err,
+		bridges.ErrBridgeRouteNotFound,
+	) {
 		t.Fatalf("ResolveBridgeRoute(missing) error = %v, want ErrBridgeRouteNotFound", err)
 	}
 
@@ -596,7 +694,11 @@ func TestGlobalDBBridgeConstraintFailuresAndDefaultDedupLookupTime(t *testing.T)
 	if _, err := globalDB.GetBridgeIngestDedup(testutil.Context(t), "idem-default-lookup", time.Time{}); err != nil {
 		t.Fatalf("GetBridgeIngestDedup(default lookup time) error = %v", err)
 	}
-	if deleted, err := globalDB.DeleteExpiredBridgeIngestDedup(testutil.Context(t), time.Time{}); err != nil || deleted != 0 {
+	if deleted, err := globalDB.DeleteExpiredBridgeIngestDedup(
+		testutil.Context(t),
+		time.Time{},
+	); err != nil ||
+		deleted != 0 {
 		t.Fatalf("DeleteExpiredBridgeIngestDedup(default now) = (%d, %v), want (0, nil)", deleted, err)
 	}
 }
@@ -604,16 +706,32 @@ func TestGlobalDBBridgeConstraintFailuresAndDefaultDedupLookupTime(t *testing.T)
 func TestBridgeConstraintMappers(t *testing.T) {
 	t.Parallel()
 
-	if err := mapBridgeInstanceConstraintError(errors.New("FOREIGN KEY constraint failed")); !errors.Is(err, aghworkspace.ErrWorkspaceNotFound) {
+	if err := mapBridgeInstanceConstraintError(
+		errors.New("FOREIGN KEY constraint failed"),
+	); !errors.Is(
+		err,
+		aghworkspace.ErrWorkspaceNotFound,
+	) {
 		t.Fatalf("mapBridgeInstanceConstraintError(fk) = %v, want workspace.ErrWorkspaceNotFound", err)
 	}
-	if err := mapBridgeInstanceConstraintError(errors.New("UNIQUE constraint failed")); err == nil || err.Error() != "UNIQUE constraint failed" {
+	if err := mapBridgeInstanceConstraintError(
+		errors.New("UNIQUE constraint failed"),
+	); err == nil ||
+		err.Error() != "UNIQUE constraint failed" {
 		t.Fatalf("mapBridgeInstanceConstraintError(passthrough) = %v, want passthrough error", err)
 	}
-	if err := mapBridgeChildConstraintError(errors.New("FOREIGN KEY constraint failed")); !errors.Is(err, bridges.ErrBridgeInstanceNotFound) {
+	if err := mapBridgeChildConstraintError(
+		errors.New("FOREIGN KEY constraint failed"),
+	); !errors.Is(
+		err,
+		bridges.ErrBridgeInstanceNotFound,
+	) {
 		t.Fatalf("mapBridgeChildConstraintError(fk) = %v, want ErrBridgeInstanceNotFound", err)
 	}
-	if err := mapBridgeChildConstraintError(errors.New("UNIQUE constraint failed")); err == nil || err.Error() != "UNIQUE constraint failed" {
+	if err := mapBridgeChildConstraintError(
+		errors.New("UNIQUE constraint failed"),
+	); err == nil ||
+		err.Error() != "UNIQUE constraint failed" {
 		t.Fatalf("mapBridgeChildConstraintError(passthrough) = %v, want passthrough error", err)
 	}
 }

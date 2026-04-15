@@ -23,7 +23,7 @@ func nilTestContext() context.Context {
 	return ctx
 }
 
-func waitForCondition(t *testing.T, ctx context.Context, condition func() bool, description string) {
+func waitForCondition(ctx context.Context, t *testing.T, condition func() bool, description string) {
 	t.Helper()
 
 	ticker := time.NewTicker(10 * time.Millisecond)
@@ -79,7 +79,6 @@ func TestNewManagerRequiresEnabledConfigAndPrompter(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -103,7 +102,14 @@ func TestNewManagerReportsRollbackShutdownFailures(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		_, err := NewManager(ctx, testManagerConfig(), newFakeDeliveryPrompter(), "", nil, WithManagerLogger(discardManagerLogger()))
+		_, err := NewManager(
+			ctx,
+			testManagerConfig(),
+			newFakeDeliveryPrompter(),
+			"",
+			nil,
+			WithManagerLogger(discardManagerLogger()),
+		)
 		if err == nil {
 			t.Fatal("NewManager() error = nil, want rollback failure")
 		}
@@ -283,7 +289,7 @@ func TestManagerQueuesBusyDeliveriesTracksDisconnectsAndShutsDownIdempotently(t 
 
 		waitCtx, waitCancel := context.WithTimeout(ctx, 2*time.Second)
 		defer waitCancel()
-		waitForCondition(t, waitCtx, func() bool {
+		waitForCondition(waitCtx, t, func() bool {
 			return manager.deliveries.queueDepth("sess-busy") == 1
 		}, "queued busy delivery")
 
@@ -414,8 +420,7 @@ func TestReplayDeadlineClampsExplicitExpiryToReplayWindow(t *testing.T) {
 func TestManagerStatusTracksWorkflowMetricsAndStructuredLogs(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	fixedNow := time.Date(2026, 4, 11, 18, 0, 0, 0, time.UTC)
 	var logs bytes.Buffer
@@ -507,8 +512,7 @@ func TestManagerStatusTracksWorkflowMetricsAndStructuredLogs(t *testing.T) {
 func TestManagerShutdownTracksInterruptedInFlightMessages(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -572,8 +576,7 @@ func TestManagerShutdownTracksInterruptedInFlightMessages(t *testing.T) {
 func TestManagerListsPeersAndAuditsInboundRemoteDeliveries(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	fixedNow := time.Date(2026, 4, 11, 18, 0, 0, 0, time.UTC)
 	prompter := newFakeDeliveryPrompter()
@@ -680,8 +683,7 @@ func TestManagerListsPeersAndAuditsInboundRemoteDeliveries(t *testing.T) {
 func TestManagerAuditsGeneratedGreetsAndControlReceivers(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	fixedNow := time.Date(2026, 4, 11, 18, 30, 0, 0, time.UTC)
 	auditor := &recordingAuditWriter{}
@@ -712,7 +714,7 @@ func TestManagerAuditsGeneratedGreetsAndControlReceivers(t *testing.T) {
 
 	waitCtx, waitCancel := context.WithTimeout(ctx, 2*time.Second)
 	defer waitCancel()
-	waitForCondition(t, waitCtx, func() bool {
+	waitForCondition(waitCtx, t, func() bool {
 		return auditor.countSent(KindGreet) >= 3
 	}, "initial greet sent audits")
 
@@ -721,7 +723,7 @@ func TestManagerAuditsGeneratedGreetsAndControlReceivers(t *testing.T) {
 	if got, want := auditor.countSent(KindGreet), 3; got != want {
 		t.Fatalf("handleReconnect greet sent audit count = %d, want %d", got, want)
 	}
-	waitForCondition(t, waitCtx, func() bool {
+	waitForCondition(waitCtx, t, func() bool {
 		return auditor.countReceived(KindGreet) >= 3
 	}, "reconnect greet loopback audits")
 
@@ -743,7 +745,7 @@ func TestManagerAuditsGeneratedGreetsAndControlReceivers(t *testing.T) {
 		t.Fatalf("json.Marshal(greet envelope) error = %v", err)
 	}
 	manager.handleInboundMessage(greetPayload)
-	waitForCondition(t, waitCtx, func() bool {
+	waitForCondition(waitCtx, t, func() bool {
 		return auditor.countReceivedMessage("msg-greet-control-audit") >= 3
 	}, "remote greet received audits")
 	if got, want := auditor.countReceivedMessage("msg-greet-control-audit"), 3; got != want {
@@ -768,7 +770,7 @@ func TestManagerAuditsGeneratedGreetsAndControlReceivers(t *testing.T) {
 	}
 	manager.handleInboundMessage(whoisPayload)
 
-	waitForCondition(t, waitCtx, func() bool {
+	waitForCondition(waitCtx, t, func() bool {
 		return auditor.countReceivedMessage("msg-whois-control-audit") >= 3
 	}, "whois request received audits")
 	if got, want := auditor.countReceivedMessage("msg-whois-control-audit"), 3; got != want {
@@ -808,8 +810,7 @@ func TestManagerValidationAndNilGuards(t *testing.T) {
 		t.Fatal("nil manager Send() error = nil, want non-nil")
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	manager, err := NewManager(
 		ctx,
@@ -856,10 +857,10 @@ func TestManagerValidationAndNilGuards(t *testing.T) {
 		t.Fatal("LeaveChannel(missing session) error = nil, want non-nil")
 	}
 
-	cancelledCtx, cancelled := context.WithCancel(context.Background())
-	cancelled()
+	cancelledCtx, canceled := context.WithCancel(context.Background())
+	canceled()
 	if _, err := manager.Status(cancelledCtx); err == nil {
-		t.Fatal("Status(cancelled ctx) error = nil, want non-nil")
+		t.Fatal("Status(canceled ctx) error = nil, want non-nil")
 	}
 
 	if host, port := transportListener(nil); host != "" || port != 0 {
@@ -882,7 +883,12 @@ func TestManagerAuditHelpersDelegateToWriter(t *testing.T) {
 	manager.recordAuditRejected(context.Background(), "sess-a", envelope, "busy")
 
 	if len(auditor.sent) != 1 || len(auditor.received) != 1 || len(auditor.rejected) != 1 {
-		t.Fatalf("audit helper counts = sent:%d received:%d rejected:%d, want 1 each", len(auditor.sent), len(auditor.received), len(auditor.rejected))
+		t.Fatalf(
+			"audit helper counts = sent:%d received:%d rejected:%d, want 1 each",
+			len(auditor.sent),
+			len(auditor.received),
+			len(auditor.rejected),
+		)
 	}
 }
 
@@ -979,7 +985,12 @@ func (w *recordingAuditWriter) RecordReceived(_ context.Context, sessionID strin
 	return nil
 }
 
-func (w *recordingAuditWriter) RecordRejected(_ context.Context, sessionID string, envelope Envelope, reason string) error {
+func (w *recordingAuditWriter) RecordRejected(
+	_ context.Context,
+	sessionID string,
+	envelope Envelope,
+	reason string,
+) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.rejected = append(w.rejected, auditCall{sessionID: sessionID, envelope: envelope, reason: reason})

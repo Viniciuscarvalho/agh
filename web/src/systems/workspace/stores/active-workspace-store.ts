@@ -1,19 +1,22 @@
-import { create } from "zustand";
+import type { StateCreator } from "zustand";
 
-interface ActiveWorkspaceState {
+export interface ActiveWorkspaceState {
   selectedWorkspaceId: string | null;
 }
 
-interface ActiveWorkspaceActions {
+export interface ActiveWorkspaceActions {
   setSelectedWorkspaceId: (workspaceId: string | null) => void;
   clearSelectedWorkspaceId: () => void;
 }
 
-type ActiveWorkspaceStore = ActiveWorkspaceState & ActiveWorkspaceActions;
+export type ActiveWorkspaceStore = ActiveWorkspaceState & ActiveWorkspaceActions;
 
-export const useActiveWorkspaceStore = create<ActiveWorkspaceStore>(set => ({
+export const initialActiveWorkspaceState: ActiveWorkspaceState = {
   selectedWorkspaceId: null,
+};
 
+export const createActiveWorkspaceStore: StateCreator<ActiveWorkspaceStore> = set => ({
+  ...initialActiveWorkspaceState,
   setSelectedWorkspaceId: selectedWorkspaceId => set({ selectedWorkspaceId }),
-  clearSelectedWorkspaceId: () => set({ selectedWorkspaceId: null }),
-}));
+  clearSelectedWorkspaceId: () => set(initialActiveWorkspaceState),
+});

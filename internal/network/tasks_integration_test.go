@@ -152,7 +152,7 @@ func TestNetworkTaskIngressMismatchRecordsAuditWithoutMutation(t *testing.T) {
 		t.Fatalf("storedTask.UpdatedAt = %s, want unchanged %s", storedTask.UpdatedAt, originalUpdatedAt)
 	}
 
-	runs, err := db.ListTaskRuns(ctx, taskpkg.TaskRunQuery{TaskID: taskRecord.ID})
+	runs, err := db.ListTaskRuns(ctx, taskpkg.RunQuery{TaskID: taskRecord.ID})
 	if err != nil {
 		t.Fatalf("ListTaskRuns() error = %v", err)
 	}
@@ -223,7 +223,7 @@ func TestNetworkTaskIngressDuplicateEnqueueUsesCanonicalRun(t *testing.T) {
 		t.Fatalf("duplicate run id = %q, want %q", got, want)
 	}
 
-	runs, err := db.ListTaskRuns(ctx, taskpkg.TaskRunQuery{TaskID: taskRecord.ID})
+	runs, err := db.ListTaskRuns(ctx, taskpkg.RunQuery{TaskID: taskRecord.ID})
 	if err != nil {
 		t.Fatalf("ListTaskRuns() error = %v", err)
 	}
@@ -248,7 +248,7 @@ func openNetworkTaskIngressDB(t *testing.T) *globaldb.GlobalDB {
 	return db
 }
 
-func newNetworkTaskIntegrationManager(t *testing.T, store taskpkg.Store, extraOpts ...taskpkg.Option) *taskpkg.TaskManager {
+func newNetworkTaskIntegrationManager(t *testing.T, store taskpkg.Store, extraOpts ...taskpkg.Option) *taskpkg.Service {
 	t.Helper()
 
 	options := []taskpkg.Option{taskpkg.WithStore(store)}

@@ -19,17 +19,20 @@ import (
 )
 
 var (
-	rawMessageType = reflect.TypeOf(json.RawMessage{})
-	timeType       = reflect.TypeOf(time.Time{})
-	durationType   = reflect.TypeOf(time.Duration(0))
+	rawMessageType = reflect.TypeFor[json.RawMessage]()
+	timeType       = reflect.TypeFor[time.Time]()
+	durationType   = reflect.TypeFor[time.Duration]()
+)
+
+const (
+	jsonValueTypeName = "JSONValue"
+	numberTypeName    = "number"
 )
 
 // Generate renders the canonical SDK contracts TypeScript module.
 func Generate() (string, error) {
 	gen := newGenerator()
-	if err := gen.prepare(); err != nil {
-		return "", err
-	}
+	gen.prepare()
 	if err := gen.emitAllNamedTypes(); err != nil {
 		return "", err
 	}
@@ -85,7 +88,7 @@ func newGenerator() *generator {
 	}
 }
 
-func (g *generator) prepare() error {
+func (g *generator) prepare() {
 	for _, root := range g.rootTypes {
 		t := namedBaseType(root.Value)
 		if t == nil {
@@ -98,7 +101,6 @@ func (g *generator) prepare() error {
 		}
 		g.queued[root.Name] = t
 	}
-	return nil
 }
 
 func namedBaseType(value any) reflect.Type {
@@ -141,7 +143,10 @@ func (g *generator) ensureNamed(name string, t reflect.Type) error {
 
 	switch {
 	case isEnumType(t):
-		g.blocks = append(g.blocks, fmt.Sprintf("export type %s = %s;\n", name, strings.Join(enumValuesForType(t), " | ")))
+		g.blocks = append(
+			g.blocks,
+			fmt.Sprintf("export type %s = %s;\n", name, strings.Join(enumValuesForType(t), " | ")),
+		)
 	case isPrimitiveAliasType(t):
 		g.blocks = append(g.blocks, fmt.Sprintf("export type %s = %s;\n", name, g.primitiveAliasForType(t)))
 	case t.Kind() == reflect.Struct:
@@ -249,53 +254,68 @@ func jsonFieldName(field reflect.StructField) (string, bool) {
 }
 
 func (g *generator) tsType(t reflect.Type) (string, error) {
+	base := dereferenceType(t)
+
+	if primitive, ok := tsPrimitiveType(base); ok {
+		return primitive, nil
+	}
+	if name, ok, err := g.resolveNamedTSType(base); ok || err != nil {
+		return name, err
+	}
+	return g.tsTypeByKind(base)
+}
+
+func dereferenceType(t reflect.Type) reflect.Type {
 	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
+	return t
+}
 
+func tsPrimitiveType(t reflect.Type) (string, bool) {
 	switch {
 	case t == rawMessageType:
-		return "JSONValue", nil
+		return jsonValueTypeName, true
 	case t == timeType:
-		return "ISODateTime", nil
+		return "ISODateTime", true
 	case t == durationType:
-		return "number", nil
+		return numberTypeName, true
 	case t.Kind() == reflect.Interface:
-		return "JSONValue", nil
+		return jsonValueTypeName, true
+	default:
+		return "", false
 	}
+}
 
+func (g *generator) resolveNamedTSType(t reflect.Type) (string, bool, error) {
 	if name, ok := g.typeNames[t]; ok {
 		if err := g.ensureNamed(name, t); err != nil {
-			return "", err
+			return "", true, err
 		}
-		return name, nil
+		return name, true, nil
 	}
-	if shouldAutoEmitNamedType(t) {
+	if shouldAutoEmitNamedType(t) || isEnumType(t) {
 		name := t.Name()
 		g.typeNames[t] = name
-		g.queued[name] = t
-		if err := g.ensureNamed(name, t); err != nil {
-			return "", err
+		if shouldAutoEmitNamedType(t) {
+			g.queued[name] = t
 		}
-		return name, nil
-	}
-
-	if isEnumType(t) {
-		name := t.Name()
-		g.typeNames[t] = name
 		if err := g.ensureNamed(name, t); err != nil {
-			return "", err
+			return "", true, err
 		}
-		return name, nil
+		return name, true, nil
 	}
+	return "", false, nil
+}
 
+func (g *generator) tsTypeByKind(t reflect.Type) (string, error) {
 	switch t.Kind() {
 	case reflect.Bool:
 		return "boolean", nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
 		reflect.Float32, reflect.Float64:
-		return "number", nil
+		return numberTypeName, nil
 	case reflect.String:
 		return "string", nil
 	case reflect.Slice, reflect.Array:
@@ -334,7 +354,7 @@ func (g *generator) tsType(t reflect.Type) (string, error) {
 		out.WriteString(" }")
 		return out.String(), nil
 	default:
-		return "JSONValue", nil
+		return jsonValueTypeName, nil
 	}
 }
 
@@ -388,19 +408,19 @@ func isEnumType(t reflect.Type) bool {
 }
 
 var enumValuesRegistry = map[reflect.Type][]string{
-	reflect.TypeOf(extensionprotocol.HostAPIMethod("")): hostAPIMethodValues(),
-	reflect.TypeOf(hooks.HookEvent("")):                 hookEventValues(),
-	reflect.TypeOf(hooks.HookEventFamily("")):           hookEventFamilyValues(),
-	reflect.TypeOf(hooks.HookMode("")):                  hookModeValues(),
-	reflect.TypeOf(hooks.HookRunOutcome("")):            hookOutcomeValues(),
-	reflect.TypeOf(hooks.HookSkillSource("")):           hookSkillSourceValues(),
-	reflect.TypeOf(hooks.HookExecutorKind("")):          hookExecutorKindValues(),
-	reflect.TypeOf(hooks.HookSource(0)):                 hookSourceValues(),
-	reflect.TypeOf(memory.MemoryType("")):               memoryTypeValues(),
-	reflect.TypeOf(memory.Scope("")):                    memoryScopeValues(),
-	reflect.TypeOf(session.SessionState("")):            sessionStateValues(),
-	reflect.TypeOf(store.StopReason("")):                stopReasonValues(),
-	reflect.TypeOf(tools.ToolSource(0)):                 toolSourceValues(),
+	reflect.TypeFor[extensionprotocol.HostAPIMethod](): hostAPIMethodValues(),
+	reflect.TypeFor[hooks.HookEvent]():                 hookEventValues(),
+	reflect.TypeFor[hooks.HookEventFamily]():           hookEventFamilyValues(),
+	reflect.TypeFor[hooks.HookMode]():                  hookModeValues(),
+	reflect.TypeFor[hooks.HookRunOutcome]():            hookOutcomeValues(),
+	reflect.TypeFor[hooks.HookSkillSource]():           hookSkillSourceValues(),
+	reflect.TypeFor[hooks.HookExecutorKind]():          hookExecutorKindValues(),
+	reflect.TypeFor[hooks.HookSource]():                hookSourceValues(),
+	reflect.TypeFor[memory.Type]():                     memoryTypeValues(),
+	reflect.TypeFor[memory.Scope]():                    memoryScopeValues(),
+	reflect.TypeFor[session.State]():                   sessionStateValues(),
+	reflect.TypeFor[store.StopReason]():                stopReasonValues(),
+	reflect.TypeFor[tools.ToolSource]():                toolSourceValues(),
 }
 
 func enumValuesForType(t reflect.Type) []string {
@@ -439,7 +459,7 @@ func (g *generator) emitHostMethodMap() {
 			if spec.Params.Name == "EmptyResult" {
 				paramsType = "undefined"
 			} else {
-				paramsType = paramsType + " | undefined"
+				paramsType += " | undefined"
 			}
 		}
 		resultType := spec.Result.Name

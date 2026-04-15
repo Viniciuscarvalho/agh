@@ -261,7 +261,10 @@ func parsePermissionDecision(raw string) (permissionDecision, error) {
 	}
 }
 
-func selectPermissionOutcome(options []acpsdk.PermissionOption, decision permissionDecision) (acpsdk.RequestPermissionOutcome, permissionDecision) {
+func selectPermissionOutcome(
+	options []acpsdk.PermissionOption,
+	decision permissionDecision,
+) (acpsdk.RequestPermissionOutcome, permissionDecision) {
 	var preferred []acpsdk.PermissionOptionKind
 	switch decision {
 	case decisionAllowAlways:
@@ -314,7 +317,11 @@ func permissionDecisionFromKind(kind acpsdk.PermissionOptionKind) permissionDeci
 	}
 }
 
-func buildPermissionEventRaw(requestID string, decision permissionDecision, request acpsdk.RequestPermissionRequest) json.RawMessage {
+func buildPermissionEventRaw(
+	requestID string,
+	decision permissionDecision,
+	request acpsdk.RequestPermissionRequest,
+) json.RawMessage {
 	options := make([]permissionEventOption, 0, len(request.Options))
 	for _, option := range request.Options {
 		options = append(options, permissionEventOption{
@@ -366,7 +373,10 @@ func buildPermissionEventRaw(requestID string, decision permissionDecision, requ
 	return data
 }
 
-func (p *AgentProcess) registerPendingPermission(turnID string, request acpsdk.RequestPermissionRequest) (string, *pendingPermission) {
+func (p *AgentProcess) registerPendingPermission(
+	turnID string,
+	request acpsdk.RequestPermissionRequest,
+) (string, *pendingPermission) {
 	p.pendingPermissionMu.Lock()
 	defer p.pendingPermissionMu.Unlock()
 
@@ -393,7 +403,10 @@ func (p *AgentProcess) nextPermissionRequestID(turnID string, request acpsdk.Req
 	return p.allocatePermissionRequestIDLocked(turnID, request)
 }
 
-func (p *AgentProcess) allocatePermissionRequestIDLocked(turnID string, request acpsdk.RequestPermissionRequest) string {
+func (p *AgentProcess) allocatePermissionRequestIDLocked(
+	turnID string,
+	request acpsdk.RequestPermissionRequest,
+) string {
 	base := strings.TrimSpace(permissionRequestIDFromMeta(request.Meta))
 	if base == "" {
 		toolCallID := strings.TrimSpace(string(request.ToolCall.ToolCallId))
@@ -411,7 +424,7 @@ func (p *AgentProcess) allocatePermissionRequestIDLocked(turnID string, request 
 		}
 	}
 	if base == "" {
-		base = "permission"
+		base = EventTypePermission
 	}
 
 	requestID := base

@@ -303,7 +303,12 @@ func TestManagerStatusReportsCountsAndNextFire(t *testing.T) {
 		Triggers: []aghconfig.AutomationTrigger{
 			managerConfigTrigger(AutomationScopeWorkspace, "enabled-trigger", h.workspaceRoot, "session.stopped"),
 			func() aghconfig.AutomationTrigger {
-				trigger := managerConfigTrigger(AutomationScopeWorkspace, "disabled-trigger", h.workspaceRoot, "memory.consolidated")
+				trigger := managerConfigTrigger(
+					AutomationScopeWorkspace,
+					"disabled-trigger",
+					h.workspaceRoot,
+					"memory.consolidated",
+				)
 				trigger.Enabled = false
 				trigger.Filter = nil
 				return trigger
@@ -507,13 +512,23 @@ func TestManagerObserversAndRunsRouteTriggerEvents(t *testing.T) {
 		DefaultFireLimit:  DefaultFireLimitConfig(),
 		Triggers: []aghconfig.AutomationTrigger{
 			func() aghconfig.AutomationTrigger {
-				trigger := managerConfigTrigger(AutomationScopeWorkspace, "session-created", h.workspaceRoot, "session.created")
+				trigger := managerConfigTrigger(
+					AutomationScopeWorkspace,
+					"session-created",
+					h.workspaceRoot,
+					"session.created",
+				)
 				trigger.Filter = map[string]string{"data.agent_name": "reviewer"}
 				return trigger
 			}(),
 			managerConfigTrigger(AutomationScopeWorkspace, "session-stopped", h.workspaceRoot, "session.stopped"),
 			func() aghconfig.AutomationTrigger {
-				trigger := managerConfigTrigger(AutomationScopeWorkspace, "hook-completed", h.workspaceRoot, "hook.test-hook.completed")
+				trigger := managerConfigTrigger(
+					AutomationScopeWorkspace,
+					"hook-completed",
+					h.workspaceRoot,
+					"hook.test-hook.completed",
+				)
 				trigger.Filter = map[string]string{"data.hook_outcome": "applied"}
 				return trigger
 			}(),
@@ -531,7 +546,7 @@ func TestManagerObserversAndRunsRouteTriggerEvents(t *testing.T) {
 		}
 	})
 
-	h.sessions.setStatus(&session.SessionInfo{
+	h.sessions.setStatus(&session.Info{
 		ID:          "sess-hook",
 		Name:        "hook-session",
 		AgentName:   "reviewer",
@@ -708,7 +723,12 @@ func TestManagerHandleWebhookWithConfigSecretEnv(t *testing.T) {
 		DefaultFireLimit:  DefaultFireLimitConfig(),
 		Triggers: []aghconfig.AutomationTrigger{
 			func() aghconfig.AutomationTrigger {
-				trigger := managerConfigTrigger(AutomationScopeWorkspace, "config-webhook-trigger", h.workspaceRoot, "webhook")
+				trigger := managerConfigTrigger(
+					AutomationScopeWorkspace,
+					"config-webhook-trigger",
+					h.workspaceRoot,
+					"webhook",
+				)
 				trigger.EndpointSlug = "config-deploy-review"
 				trigger.WebhookSecretEnv = "AGH_TEST_CONFIG_WEBHOOK_SECRET"
 				trigger.Filter = map[string]string{"data.payload": "deploy"}
@@ -1083,7 +1103,13 @@ func TestManagerDynamicTriggerCRUDWebhookAndExtensionFire(t *testing.T) {
 	if err := manager.DeleteTrigger(h.ctx, updatedWebhook.ID); err != nil {
 		t.Fatalf("manager.DeleteTrigger(webhook) error = %v", err)
 	}
-	if _, err := h.db.GetTriggerWebhookSecret(h.ctx, updatedWebhook.ID); !errors.Is(err, ErrTriggerWebhookSecretNotFound) {
+	if _, err := h.db.GetTriggerWebhookSecret(
+		h.ctx,
+		updatedWebhook.ID,
+	); !errors.Is(
+		err,
+		ErrTriggerWebhookSecretNotFound,
+	) {
 		t.Fatalf("GetTriggerWebhookSecret(deleted) error = %v, want ErrTriggerWebhookSecretNotFound", err)
 	}
 
@@ -1309,7 +1335,12 @@ func TestManagerWebhookSecretHelpers(t *testing.T) {
 		t.Fatalf("desiredWebhookSecret(stored) = %q, want %q", got, want)
 	}
 
-	explicitSecret, err := manager.desiredWebhookSecret(h.ctx, webhookTrigger, webhookTrigger, stringPointer("explicit-secret"))
+	explicitSecret, err := manager.desiredWebhookSecret(
+		h.ctx,
+		webhookTrigger,
+		webhookTrigger,
+		stringPointer("explicit-secret"),
+	)
 	if err != nil {
 		t.Fatalf("desiredWebhookSecret(explicit) error = %v", err)
 	}
@@ -1331,7 +1362,13 @@ func TestManagerWebhookSecretHelpers(t *testing.T) {
 	if err := manager.restoreWebhookSecret(h.ctx, webhookTrigger, ""); err != nil {
 		t.Fatalf("restoreWebhookSecret(delete) error = %v", err)
 	}
-	if _, err := h.db.GetTriggerWebhookSecret(h.ctx, webhookTrigger.ID); !errors.Is(err, ErrTriggerWebhookSecretNotFound) {
+	if _, err := h.db.GetTriggerWebhookSecret(
+		h.ctx,
+		webhookTrigger.ID,
+	); !errors.Is(
+		err,
+		ErrTriggerWebhookSecretNotFound,
+	) {
 		t.Fatalf("GetTriggerWebhookSecret(deleted) error = %v, want ErrTriggerWebhookSecretNotFound", err)
 	}
 
@@ -1772,7 +1809,12 @@ func TestManagerHelperRollbackAndComparisonCoverage(t *testing.T) {
 		t.Fatal("stored dynamic job enabled = true, want false after rollback helper")
 	}
 
-	configTrigger := managerConfigTrigger(AutomationScopeWorkspace, "rollback-trigger", h.workspaceRoot, "session.stopped")
+	configTrigger := managerConfigTrigger(
+		AutomationScopeWorkspace,
+		"rollback-trigger",
+		h.workspaceRoot,
+		"session.stopped",
+	)
 	resolvedConfigTrigger, err := manager.resolveConfigTrigger(h.ctx, configTrigger)
 	if err != nil {
 		t.Fatalf("resolveConfigTrigger() error = %v", err)
@@ -1862,7 +1904,7 @@ type managerHarness struct {
 	ctx           context.Context
 	homePaths     aghconfig.HomePaths
 	db            *globaldb.GlobalDB
-	resolver      workspacepkg.WorkspaceResolver
+	resolver      workspacepkg.RuntimeResolver
 	workspaceRoot string
 	workspace     workspacepkg.ResolvedWorkspace
 	sessions      *managerSessionStub
@@ -1945,13 +1987,13 @@ func (h *managerHarness) newManager(t *testing.T, cfg aghconfig.AutomationConfig
 type managerSessionStub struct {
 	mu       sync.Mutex
 	creator  *recordingSessionCreator
-	statuses map[string]*session.SessionInfo
+	statuses map[string]*session.Info
 }
 
 func newManagerSessionStub(plans ...sessionAttemptPlan) *managerSessionStub {
 	return &managerSessionStub{
 		creator:  newRecordingSessionCreator(plans...),
-		statuses: make(map[string]*session.SessionInfo),
+		statuses: make(map[string]*session.Info),
 	}
 }
 
@@ -1972,7 +2014,12 @@ func (s *managerSessionStub) Prompt(ctx context.Context, id string, msg string) 
 	return s.creator.Prompt(ctx, id, msg)
 }
 
-func (s *managerSessionStub) StopWithCause(ctx context.Context, id string, cause session.StopCause, detail string) error {
+func (s *managerSessionStub) StopWithCause(
+	ctx context.Context,
+	id string,
+	cause session.StopCause,
+	detail string,
+) error {
 	if err := s.creator.StopWithCause(ctx, id, cause, detail); err != nil {
 		return err
 	}
@@ -2001,7 +2048,7 @@ func (s *managerSessionStub) StopWithCause(ctx context.Context, id string, cause
 	return nil
 }
 
-func (s *managerSessionStub) Status(_ context.Context, id string) (*session.SessionInfo, error) {
+func (s *managerSessionStub) Status(_ context.Context, id string) (*session.Info, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -2012,7 +2059,7 @@ func (s *managerSessionStub) Status(_ context.Context, id string) (*session.Sess
 	return info, nil
 }
 
-func (s *managerSessionStub) setStatus(info *session.SessionInfo) {
+func (s *managerSessionStub) setStatus(info *session.Info) {
 	if s == nil || info == nil {
 		return
 	}
@@ -2037,7 +2084,12 @@ func nilContextForTests() context.Context {
 	return ctx
 }
 
-func managerConfigJob(scope AutomationScope, name string, workspace string, schedule ScheduleSpec) aghconfig.AutomationJob {
+func managerConfigJob(
+	scope Scope,
+	name string,
+	workspace string,
+	schedule ScheduleSpec,
+) aghconfig.AutomationJob {
 	return aghconfig.AutomationJob{
 		Scope:     scope,
 		Name:      name,
@@ -2052,7 +2104,12 @@ func managerConfigJob(scope AutomationScope, name string, workspace string, sche
 	}
 }
 
-func managerConfigTrigger(scope AutomationScope, name string, workspace string, event string) aghconfig.AutomationTrigger {
+func managerConfigTrigger(
+	scope Scope,
+	name string,
+	workspace string,
+	event string,
+) aghconfig.AutomationTrigger {
 	trigger := aghconfig.AutomationTrigger{
 		Scope:     scope,
 		Name:      name,

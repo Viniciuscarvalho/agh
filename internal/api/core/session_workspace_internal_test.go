@@ -65,7 +65,7 @@ func TestSessionWorkspaceHelpers(t *testing.T) {
 	t.Run("filter and trim helpers", func(t *testing.T) {
 		t.Parallel()
 
-		filtered := filterSessionInfosByWorkspaceIDInternal([]*session.SessionInfo{
+		filtered := filterSessionInfosByWorkspaceIDInternal([]*session.Info{
 			{ID: "sess-1", WorkspaceID: "ws_alpha"},
 			nil,
 			{ID: "sess-2", WorkspaceID: "ws_beta"},

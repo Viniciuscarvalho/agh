@@ -45,7 +45,7 @@ func newSessionCreateCommand(deps commandDeps) *cobra.Command {
 		Use:   "new",
 		Short: "Create a new session",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -87,7 +87,7 @@ func newSessionListCommand(deps commandDeps) *cobra.Command {
 		Use:   "list",
 		Short: "List sessions",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -116,7 +116,7 @@ func newSessionStopCommand(deps commandDeps) *cobra.Command {
 		Short: "Stop a session",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -139,7 +139,7 @@ func newSessionStatusCommand(deps commandDeps) *cobra.Command {
 		Short: "Show session status",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -159,7 +159,7 @@ func newSessionResumeCommand(deps commandDeps) *cobra.Command {
 		Short: "Resume a stopped session",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -179,7 +179,7 @@ func newSessionWaitCommand(deps commandDeps) *cobra.Command {
 		Short: "Block until a session stops",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -189,12 +189,18 @@ func newSessionWaitCommand(deps commandDeps) *cobra.Command {
 				return err
 			}
 			if info.State != session.StateStopped {
-				err = client.StreamSessionEvents(cmd.Context(), args[0], SessionEventQuery{}, "", func(event SSEEvent) error {
-					if event.Event == session.EventTypeSessionStopped {
-						return errStopSSE
-					}
-					return nil
-				})
+				err = client.StreamSessionEvents(
+					cmd.Context(),
+					args[0],
+					SessionEventQuery{},
+					"",
+					func(event SSEEvent) error {
+						if event.Event == session.EventTypeSessionStopped {
+							return errStopSSE
+						}
+						return nil
+					},
+				)
 				if err != nil && !errors.Is(err, errStopSSE) {
 					return err
 				}
@@ -215,7 +221,7 @@ func newSessionPromptCommand(deps commandDeps) *cobra.Command {
 		Short: "Send a prompt to a session",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -242,7 +248,7 @@ func newSessionEventsCommand(deps commandDeps) *cobra.Command {
 		Short: "Read session events",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -281,7 +287,7 @@ func newSessionHistoryCommand(deps commandDeps) *cobra.Command {
 		Short: "Show session history grouped by turn",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -390,7 +396,15 @@ func sessionBundle(info SessionRecord, now func() time.Time) outputBundle {
 		},
 		toon: func() (string, error) {
 			return renderToonObject("session", []string{
-				"id", "name", "agent_name", "workspace", "channel", "state", "acp_session_id", "created_at", "updated_at",
+				"id",
+				"name",
+				"agent_name",
+				"workspace",
+				"channel",
+				"state",
+				"acp_session_id",
+				"created_at",
+				"updated_at",
 			}, []string{
 				info.ID,
 				info.Name,

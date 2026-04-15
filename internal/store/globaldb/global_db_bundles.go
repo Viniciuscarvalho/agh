@@ -28,7 +28,9 @@ func (g *GlobalDB) CreateBundleActivation(ctx context.Context, activation modelp
 	_, err := g.db.ExecContext(
 		ctx,
 		`INSERT INTO bundle_activations (
-			id, extension_name, bundle_name, profile_name, scope, workspace_id, spec_content_hash, bind_primary_channel_default, created_at, updated_at
+			id, extension_name, bundle_name, profile_name, scope, workspace_id,
+			spec_content_hash, bind_primary_channel_default, created_at,
+			updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		activation.ID,
 		activation.ExtensionName,
@@ -61,7 +63,9 @@ func (g *GlobalDB) UpdateBundleActivation(ctx context.Context, activation modelp
 	result, err := g.db.ExecContext(
 		ctx,
 		`UPDATE bundle_activations
-		 SET extension_name = ?, bundle_name = ?, profile_name = ?, scope = ?, workspace_id = ?, spec_content_hash = ?, bind_primary_channel_default = ?, updated_at = ?
+		 SET extension_name = ?, bundle_name = ?, profile_name = ?, scope = ?,
+		     workspace_id = ?, spec_content_hash = ?,
+		     bind_primary_channel_default = ?, updated_at = ?
 		 WHERE id = ?`,
 		activation.ExtensionName,
 		activation.BundleName,
@@ -121,7 +125,10 @@ func (g *GlobalDB) GetBundleActivation(ctx context.Context, id string) (modelpkg
 
 	row := g.db.QueryRowContext(
 		ctx,
-		`SELECT id, extension_name, bundle_name, profile_name, scope, workspace_id, spec_content_hash, bind_primary_channel_default, created_at, updated_at
+		`SELECT
+			id, extension_name, bundle_name, profile_name, scope, workspace_id,
+			spec_content_hash, bind_primary_channel_default, created_at,
+			updated_at
 		 FROM bundle_activations WHERE id = ?`,
 		trimmed,
 	)
@@ -142,7 +149,10 @@ func (g *GlobalDB) ListBundleActivations(ctx context.Context) ([]modelpkg.Activa
 
 	rows, err := g.db.QueryContext(
 		ctx,
-		`SELECT id, extension_name, bundle_name, profile_name, scope, workspace_id, spec_content_hash, bind_primary_channel_default, created_at, updated_at
+		`SELECT
+			id, extension_name, bundle_name, profile_name, scope, workspace_id,
+			spec_content_hash, bind_primary_channel_default, created_at,
+			updated_at
 		 FROM bundle_activations
 		 ORDER BY extension_name ASC, bundle_name ASC, profile_name ASC, created_at ASC, id ASC`,
 	)
@@ -167,7 +177,11 @@ func (g *GlobalDB) ListBundleActivations(ctx context.Context) ([]modelpkg.Activa
 	return activations, nil
 }
 
-func (g *GlobalDB) ReplaceBundleActivationInventory(ctx context.Context, activationID string, items []modelpkg.InventoryItem) error {
+func (g *GlobalDB) ReplaceBundleActivationInventory(
+	ctx context.Context,
+	activationID string,
+	items []modelpkg.InventoryItem,
+) (err error) {
 	if err := g.checkReady(ctx, "replace bundle activation inventory"); err != nil {
 		return err
 	}
@@ -182,10 +196,14 @@ func (g *GlobalDB) ReplaceBundleActivationInventory(ctx context.Context, activat
 		return fmt.Errorf("store: begin bundle activation inventory transaction: %w", err)
 	}
 	defer func() {
-		_ = tx.Rollback()
+		joinCleanupError(&err, rollbackTx(tx, "bundle activation inventory"))
 	}()
 
-	if _, err := tx.ExecContext(ctx, `DELETE FROM bundle_activation_inventory WHERE activation_id = ?`, trimmedID); err != nil {
+	if _, err := tx.ExecContext(
+		ctx,
+		`DELETE FROM bundle_activation_inventory WHERE activation_id = ?`,
+		trimmedID,
+	); err != nil {
 		return fmt.Errorf("store: clear bundle activation inventory %q: %w", trimmedID, err)
 	}
 
@@ -220,7 +238,10 @@ func (g *GlobalDB) ReplaceBundleActivationInventory(ctx context.Context, activat
 	return nil
 }
 
-func (g *GlobalDB) ListBundleActivationInventory(ctx context.Context, activationID string) ([]modelpkg.InventoryItem, error) {
+func (g *GlobalDB) ListBundleActivationInventory(
+	ctx context.Context,
+	activationID string,
+) ([]modelpkg.InventoryItem, error) {
 	if err := g.checkReady(ctx, "list bundle activation inventory"); err != nil {
 		return nil, err
 	}
@@ -322,12 +343,22 @@ func scanBundleInventoryItem(scanner interface{ Scan(...any) error }) (modelpkg.
 		item        modelpkg.InventoryItem
 		recordedRaw string
 	)
-	if err := scanner.Scan(&item.ActivationID, &item.ResourceKind, &item.ResourceID, &item.ResourceName, &recordedRaw); err != nil {
+	if err := scanner.Scan(
+		&item.ActivationID,
+		&item.ResourceKind,
+		&item.ResourceID,
+		&item.ResourceName,
+		&recordedRaw,
+	); err != nil {
 		return modelpkg.InventoryItem{}, fmt.Errorf("store: scan bundle activation inventory: %w", err)
 	}
 	recordedAt, err := store.ParseTimestamp(recordedRaw)
 	if err != nil {
-		return modelpkg.InventoryItem{}, fmt.Errorf("store: parse bundle activation inventory recorded_at %q: %w", recordedRaw, err)
+		return modelpkg.InventoryItem{}, fmt.Errorf(
+			"store: parse bundle activation inventory recorded_at %q: %w",
+			recordedRaw,
+			err,
+		)
 	}
 	item.RecordedAtUTC = recordedAt
 	return item, nil

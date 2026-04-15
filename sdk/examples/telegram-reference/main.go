@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -16,6 +17,7 @@ import (
 	bridgepkg "github.com/pedronauck/agh/internal/bridges"
 	"github.com/pedronauck/agh/internal/bridgesdk"
 	extensioncontract "github.com/pedronauck/agh/internal/extension/contract"
+	"github.com/pedronauck/agh/internal/fileutil"
 	"github.com/pedronauck/agh/internal/subprocess"
 )
 
@@ -48,7 +50,11 @@ func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) err
 }
 
 func runServe(stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
-	reportSideEffectError(stderr, "write start marker", appendMarkerLine(os.Getenv(adapterStartsEnv), fmt.Sprintf("pid=%d", os.Getpid())))
+	reportSideEffectError(
+		stderr,
+		"write start marker",
+		appendMarkerLine(os.Getenv(adapterStartsEnv), fmt.Sprintf("pid=%d", os.Getpid())),
+	)
 
 	runtime, err := newTelegramReferenceRuntime(stderr)
 	if err != nil {
@@ -67,6 +73,29 @@ type adapterEnv struct {
 	startsPath    string
 	shutdownPath  string
 	crashOncePath string
+}
+
+type sideEffectPath struct {
+	root string
+	name string
+}
+
+func (p sideEffectPath) isZero() bool {
+	return p.root == "" && p.name == ""
+}
+
+func (p sideEffectPath) fullPath() string {
+	if p.isZero() {
+		return ""
+	}
+	return filepath.Join(p.root, p.name)
+}
+
+var sideEffectSnapshots = struct {
+	mu      sync.Mutex
+	payload map[sideEffectPath][]byte
+}{
+	payload: make(map[sideEffectPath][]byte),
 }
 
 func adapterEnvFromProcess() adapterEnv {
@@ -124,13 +153,13 @@ type deliveryMarker struct {
 type stateMarker struct {
 	BridgeInstanceID string                   `json:"bridge_instance_id,omitempty"`
 	Status           bridgepkg.BridgeStatus   `json:"status"`
-	Instance         bridgepkg.BridgeInstance `json:"instance,omitempty"`
+	Instance         bridgepkg.BridgeInstance `json:"instance"`
 	Error            string                   `json:"error,omitempty"`
 }
 
 type ingestMarker struct {
 	Envelope bridgepkg.InboundMessageEnvelope              `json:"envelope"`
-	Result   extensioncontract.BridgesMessagesIngestResult `json:"result,omitempty"`
+	Result   extensioncontract.BridgesMessagesIngestResult `json:"result"`
 	Error    string                                        `json:"error,omitempty"`
 }
 
@@ -347,7 +376,10 @@ func (r *telegramReferenceRuntime) handleShutdown(
 	case <-time.After(time.Until(deadline)):
 	}
 
-	r.reportSideEffectError("write shutdown marker", appendMarkerLine(r.env.shutdownPath, fmt.Sprintf("pid=%d", os.Getpid())))
+	r.reportSideEffectError(
+		"write shutdown marker",
+		appendMarkerLine(r.env.shutdownPath, fmt.Sprintf("pid=%d", os.Getpid())),
+	)
 	return nil
 }
 
@@ -472,10 +504,11 @@ func (r *telegramReferenceRuntime) reportState(
 ) (*bridgepkg.BridgeInstance, error) {
 	var result *bridgepkg.BridgeInstance
 	err := r.retryHostCall(ctx, func(callCtx context.Context) error {
-		instance, callErr := session.HostAPI().ReportBridgeInstanceState(callCtx, extensioncontract.BridgesInstancesReportStateParams{
-			BridgeInstanceID: strings.TrimSpace(bridgeInstanceID),
-			Status:           status,
-		})
+		instance, callErr := session.HostAPI().
+			ReportBridgeInstanceState(callCtx, extensioncontract.BridgesInstancesReportStateParams{
+				BridgeInstanceID: strings.TrimSpace(bridgeInstanceID),
+				Status:           status,
+			})
 		if callErr == nil {
 			result = instance
 		}
@@ -521,7 +554,7 @@ func (r *telegramReferenceRuntime) retryHostCall(ctx context.Context, fn func(co
 
 	delay := 10 * time.Millisecond
 	var lastErr error
-	for attempt := 0; attempt < 6; attempt++ {
+	for range 6 {
 		err := fn(ctx)
 		if err == nil {
 			return nil
@@ -649,7 +682,10 @@ func resolveManagedInstance(
 	if trimmedID != "" {
 		managed, ok := session.Cache().Get(trimmedID)
 		if !ok || managed == nil {
-			return nil, fmt.Errorf("telegram-reference: managed bridge instance %q is not owned by this runtime", trimmedID)
+			return nil, fmt.Errorf(
+				"telegram-reference: managed bridge instance %q is not owned by this runtime",
+				trimmedID,
+			)
 		}
 		return managed, nil
 	}
@@ -662,7 +698,9 @@ func resolveManagedInstance(
 		only := managed[0]
 		return &only, nil
 	default:
-		return nil, errors.New("telegram-reference: bridge_instance_id is required when provider owns multiple bridge instances")
+		return nil, errors.New(
+			"telegram-reference: bridge_instance_id is required when provider owns multiple bridge instances",
+		)
 	}
 }
 
@@ -707,7 +745,7 @@ func mapTelegramUpdate(
 		text = strings.TrimSpace(message.Caption)
 	}
 
-	senderName := strings.TrimSpace(strings.Join([]string{message.From.FirstName, message.From.LastName}, " "))
+	senderName := strings.TrimSpace(message.From.FirstName + " " + message.From.LastName)
 	return bridgepkg.InboundMessageEnvelope{
 		BridgeInstanceID:  bridgeRuntime.Instance.ID,
 		Scope:             bridgeRuntime.Instance.Scope,
@@ -768,72 +806,125 @@ func isNotInitializedRPCError(err error) bool {
 	if !errors.As(err, &rpcErr) {
 		return false
 	}
-	return rpcErr.Code == rpcCodeNotInitialized || strings.EqualFold(strings.TrimSpace(rpcErr.Message), "Not initialized")
+	return rpcErr.Code == rpcCodeNotInitialized ||
+		strings.EqualFold(strings.TrimSpace(rpcErr.Message), "Not initialized")
 }
 
 func shouldCrashOnce(path string) bool {
-	target := strings.TrimSpace(path)
-	if target == "" {
+	target, err := safeSideEffectPath(path)
+	if err != nil || target.isZero() {
 		return false
 	}
-	_, err := os.Stat(target)
+	_, err = os.Stat(target.fullPath())
 	return errors.Is(err, os.ErrNotExist)
 }
 
 func appendMarkerLine(path string, line string) error {
-	target := strings.TrimSpace(path)
-	if target == "" {
-		return nil
-	}
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return err
-	}
-	file, err := os.OpenFile(target, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = file.Close()
-	}()
-	if _, err := fmt.Fprintln(file, strings.TrimSpace(line)); err != nil {
-		return err
-	}
-	return nil
+	return appendSideEffectPayload(path, []byte(strings.TrimSpace(line)+"\n"))
 }
 
 func appendJSONLine(path string, value any) error {
-	target := strings.TrimSpace(path)
-	if target == "" {
-		return nil
-	}
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+	var payload bytes.Buffer
+	encoder := json.NewEncoder(&payload)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(value); err != nil {
 		return err
 	}
-	file, err := os.OpenFile(target, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+
+	return appendSideEffectPayload(path, payload.Bytes())
+}
+
+func appendSideEffectPayload(path string, payload []byte) error {
+	target, err := safeSideEffectPath(path)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		_ = file.Close()
-	}()
-	encoder := json.NewEncoder(file)
-	encoder.SetEscapeHTML(false)
-	return encoder.Encode(value)
+	if target.isZero() {
+		return nil
+	}
+
+	return writeSideEffectSnapshot(target, func(current []byte) []byte {
+		return append(current, payload...)
+	})
 }
 
 func writeJSONFile(path string, value any) error {
-	target := strings.TrimSpace(path)
-	if target == "" {
-		return nil
-	}
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+	target, err := safeSideEffectPath(path)
+	if err != nil {
 		return err
+	}
+	if target.isZero() {
+		return nil
 	}
 	payload, err := json.Marshal(value)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(target, payload, 0o600)
+	return writeSideEffectSnapshot(target, func([]byte) []byte {
+		return append([]byte(nil), payload...)
+	})
+}
+
+func writeSideEffectFile(path sideEffectPath, payload []byte) error {
+	if err := ensureSideEffectDir(path); err != nil {
+		return err
+	}
+	return fileutil.AtomicWriteFile(path.fullPath(), payload, 0o600)
+}
+
+func writeSideEffectSnapshot(path sideEffectPath, update func([]byte) []byte) error {
+	sideEffectSnapshots.mu.Lock()
+	defer sideEffectSnapshots.mu.Unlock()
+
+	current := append([]byte(nil), sideEffectSnapshots.payload[path]...)
+	next := update(current)
+	if err := writeSideEffectFile(path, next); err != nil {
+		return err
+	}
+	sideEffectSnapshots.payload[path] = append([]byte(nil), next...)
+	return nil
+}
+
+func ensureSideEffectDir(path sideEffectPath) error {
+	dir := filepath.Dir(path.name)
+	if dir == "." {
+		return nil
+	}
+
+	root, err := os.OpenRoot(path.root)
+	if err != nil {
+		return fmt.Errorf("open side-effect root %q: %w", path.root, err)
+	}
+	defer func() { _ = root.Close() }()
+
+	if err := root.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create side-effect directory for %q: %w", path.fullPath(), err)
+	}
+	return nil
+}
+
+func safeSideEffectPath(path string) (sideEffectPath, error) {
+	target := strings.TrimSpace(path)
+	if target == "" {
+		return sideEffectPath{}, nil
+	}
+
+	cleaned := filepath.Clean(target)
+	if !filepath.IsAbs(cleaned) {
+		return sideEffectPath{}, fmt.Errorf("side-effect path %q must be absolute", target)
+	}
+	tempRoot := filepath.Clean(os.TempDir())
+	relativeToTemp, err := filepath.Rel(tempRoot, cleaned)
+	if err != nil {
+		return sideEffectPath{}, fmt.Errorf("resolve side-effect path %q: %w", target, err)
+	}
+	if relativeToTemp == "." ||
+		relativeToTemp == ".." ||
+		filepath.IsAbs(relativeToTemp) ||
+		strings.HasPrefix(relativeToTemp, ".."+string(os.PathSeparator)) {
+		return sideEffectPath{}, fmt.Errorf("side-effect path %q must stay under %q", target, tempRoot)
+	}
+	return sideEffectPath{root: tempRoot, name: relativeToTemp}, nil
 }
 
 func nonEmptyLines(input string) []string {

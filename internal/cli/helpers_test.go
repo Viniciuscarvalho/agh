@@ -97,548 +97,726 @@ type stubClient struct {
 	cancelTaskRunFn           func(context.Context, string, CancelTaskRunRequest) (TaskRunRecord, error)
 }
 
-var _ DaemonClient = stubClient{}
+var _ DaemonClient = (*stubClient)(nil)
 
-func (s stubClient) DaemonStatus(ctx context.Context) (DaemonStatus, error) {
+func (s *stubClient) DaemonStatus(ctx context.Context) (DaemonStatus, error) {
 	if s.daemonStatusFn != nil {
 		return s.daemonStatusFn(ctx)
 	}
 	return DaemonStatus{}, errors.New("unexpected DaemonStatus call")
 }
 
-func (s stubClient) NetworkStatus(ctx context.Context) (NetworkStatusRecord, error) {
+func (s *stubClient) NetworkStatus(ctx context.Context) (NetworkStatusRecord, error) {
 	if s.networkStatusFn != nil {
 		return s.networkStatusFn(ctx)
 	}
 	return NetworkStatusRecord{}, errors.New("unexpected NetworkStatus call")
 }
 
-func (s stubClient) NetworkPeers(ctx context.Context, query NetworkPeersQuery) ([]NetworkPeerRecord, error) {
+func (s *stubClient) NetworkPeers(
+	ctx context.Context,
+	query NetworkPeersQuery,
+) ([]NetworkPeerRecord, error) {
 	if s.networkPeersFn != nil {
 		return s.networkPeersFn(ctx, query)
 	}
 	return nil, errors.New("unexpected NetworkPeers call")
 }
 
-func (s stubClient) NetworkChannels(ctx context.Context) ([]NetworkChannelRecord, error) {
+func (s *stubClient) NetworkChannels(ctx context.Context) ([]NetworkChannelRecord, error) {
 	if s.networkChannelsFn != nil {
 		return s.networkChannelsFn(ctx)
 	}
 	return nil, errors.New("unexpected NetworkChannels call")
 }
 
-func (s stubClient) NetworkSend(ctx context.Context, request NetworkSendRequest) (NetworkSendRecord, error) {
+func (s *stubClient) NetworkSend(
+	ctx context.Context,
+	request NetworkSendRequest,
+) (NetworkSendRecord, error) {
 	if s.networkSendFn != nil {
 		return s.networkSendFn(ctx, request)
 	}
 	return NetworkSendRecord{}, errors.New("unexpected NetworkSend call")
 }
 
-func (s stubClient) NetworkInbox(ctx context.Context, sessionID string) ([]NetworkEnvelopeRecord, error) {
+func (s *stubClient) NetworkInbox(
+	ctx context.Context,
+	sessionID string,
+) ([]NetworkEnvelopeRecord, error) {
 	if s.networkInboxFn != nil {
 		return s.networkInboxFn(ctx, sessionID)
 	}
 	return nil, errors.New("unexpected NetworkInbox call")
 }
 
-func (s stubClient) ListExtensions(ctx context.Context) ([]ExtensionRecord, error) {
+func (s *stubClient) ListExtensions(ctx context.Context) ([]ExtensionRecord, error) {
 	if s.listExtensionsFn != nil {
 		return s.listExtensionsFn(ctx)
 	}
 	return nil, errors.New("unexpected ListExtensions call")
 }
 
-func (s stubClient) InstallExtension(ctx context.Context, request InstallExtensionRequest) (ExtensionRecord, error) {
+func (s *stubClient) InstallExtension(
+	ctx context.Context,
+	request InstallExtensionRequest,
+) (ExtensionRecord, error) {
 	if s.installExtensionFn != nil {
 		return s.installExtensionFn(ctx, request)
 	}
 	return ExtensionRecord{}, errors.New("unexpected InstallExtension call")
 }
 
-func (s stubClient) EnableExtension(ctx context.Context, name string) (ExtensionRecord, error) {
+func (s *stubClient) EnableExtension(ctx context.Context, name string) (ExtensionRecord, error) {
 	if s.enableExtensionFn != nil {
 		return s.enableExtensionFn(ctx, name)
 	}
 	return ExtensionRecord{}, errors.New("unexpected EnableExtension call")
 }
 
-func (s stubClient) DisableExtension(ctx context.Context, name string) (ExtensionRecord, error) {
+func (s *stubClient) DisableExtension(ctx context.Context, name string) (ExtensionRecord, error) {
 	if s.disableExtensionFn != nil {
 		return s.disableExtensionFn(ctx, name)
 	}
 	return ExtensionRecord{}, errors.New("unexpected DisableExtension call")
 }
 
-func (s stubClient) ExtensionStatus(ctx context.Context, name string) (ExtensionRecord, error) {
+func (s *stubClient) ExtensionStatus(ctx context.Context, name string) (ExtensionRecord, error) {
 	if s.extensionStatusFn != nil {
 		return s.extensionStatusFn(ctx, name)
 	}
 	return ExtensionRecord{}, errors.New("unexpected ExtensionStatus call")
 }
 
-func (s stubClient) ListBridges(ctx context.Context) ([]BridgeRecord, error) {
+func (s *stubClient) ListBridges(ctx context.Context) ([]BridgeRecord, error) {
 	if s.listBridgesFn != nil {
 		return s.listBridgesFn(ctx)
 	}
 	return nil, errors.New("unexpected ListBridges call")
 }
 
-func (s stubClient) CreateBridge(ctx context.Context, request CreateBridgeRequest) (BridgeRecord, error) {
+func (s *stubClient) CreateBridge(
+	ctx context.Context,
+	request CreateBridgeRequest,
+) (BridgeRecord, error) {
 	if s.createBridgeFn != nil {
 		return s.createBridgeFn(ctx, request)
 	}
 	return BridgeRecord{}, errors.New("unexpected CreateBridge call")
 }
 
-func (s stubClient) GetBridge(ctx context.Context, id string) (BridgeRecord, error) {
+func (s *stubClient) GetBridge(ctx context.Context, id string) (BridgeRecord, error) {
 	if s.getBridgeFn != nil {
 		return s.getBridgeFn(ctx, id)
 	}
 	return BridgeRecord{}, errors.New("unexpected GetBridge call")
 }
 
-func (s stubClient) UpdateBridge(ctx context.Context, id string, request UpdateBridgeRequest) (BridgeRecord, error) {
+func (s *stubClient) UpdateBridge(
+	ctx context.Context,
+	id string,
+	request UpdateBridgeRequest,
+) (BridgeRecord, error) {
 	if s.updateBridgeFn != nil {
 		return s.updateBridgeFn(ctx, id, request)
 	}
 	return BridgeRecord{}, errors.New("unexpected UpdateBridge call")
 }
 
-func (s stubClient) EnableBridge(ctx context.Context, id string) (BridgeRecord, error) {
+func (s *stubClient) EnableBridge(ctx context.Context, id string) (BridgeRecord, error) {
 	if s.enableBridgeFn != nil {
 		return s.enableBridgeFn(ctx, id)
 	}
 	return BridgeRecord{}, errors.New("unexpected EnableBridge call")
 }
 
-func (s stubClient) DisableBridge(ctx context.Context, id string) (BridgeRecord, error) {
+func (s *stubClient) DisableBridge(ctx context.Context, id string) (BridgeRecord, error) {
 	if s.disableBridgeFn != nil {
 		return s.disableBridgeFn(ctx, id)
 	}
 	return BridgeRecord{}, errors.New("unexpected DisableBridge call")
 }
 
-func (s stubClient) RestartBridge(ctx context.Context, id string) (BridgeRecord, error) {
+func (s *stubClient) RestartBridge(ctx context.Context, id string) (BridgeRecord, error) {
 	if s.restartBridgeFn != nil {
 		return s.restartBridgeFn(ctx, id)
 	}
 	return BridgeRecord{}, errors.New("unexpected RestartBridge call")
 }
 
-func (s stubClient) BridgeRoutes(ctx context.Context, id string) ([]BridgeRouteRecord, error) {
+func (s *stubClient) BridgeRoutes(ctx context.Context, id string) ([]BridgeRouteRecord, error) {
 	if s.bridgeRoutesFn != nil {
 		return s.bridgeRoutesFn(ctx, id)
 	}
 	return nil, errors.New("unexpected BridgeRoutes call")
 }
 
-func (s stubClient) TestBridgeDelivery(ctx context.Context, id string, request BridgeTestDeliveryRequest) (BridgeTestDeliveryRecord, error) {
+func (s *stubClient) TestBridgeDelivery(
+	ctx context.Context,
+	id string,
+	request BridgeTestDeliveryRequest,
+) (BridgeTestDeliveryRecord, error) {
 	if s.testBridgeDeliveryFn != nil {
 		return s.testBridgeDeliveryFn(ctx, id, request)
 	}
 	return BridgeTestDeliveryRecord{}, errors.New("unexpected TestBridgeDelivery call")
 }
 
-func (s stubClient) ListSessions(ctx context.Context, query SessionListQuery) ([]SessionRecord, error) {
+func (s *stubClient) ListSessions(
+	ctx context.Context,
+	query SessionListQuery,
+) ([]SessionRecord, error) {
 	if s.listSessionsFn != nil {
 		return s.listSessionsFn(ctx, query)
 	}
 	return nil, errors.New("unexpected ListSessions call")
 }
 
-func (s stubClient) CreateSession(ctx context.Context, request CreateSessionRequest) (SessionRecord, error) {
+func (s *stubClient) CreateSession(
+	ctx context.Context,
+	request CreateSessionRequest,
+) (SessionRecord, error) {
 	if s.createSessionFn != nil {
 		return s.createSessionFn(ctx, request)
 	}
 	return SessionRecord{}, errors.New("unexpected CreateSession call")
 }
 
-func (s stubClient) GetSession(ctx context.Context, id string) (SessionRecord, error) {
+func (s *stubClient) GetSession(ctx context.Context, id string) (SessionRecord, error) {
 	if s.getSessionFn != nil {
 		return s.getSessionFn(ctx, id)
 	}
 	return SessionRecord{}, errors.New("unexpected GetSession call")
 }
 
-func (s stubClient) StopSession(ctx context.Context, id string) error {
+func (s *stubClient) StopSession(ctx context.Context, id string) error {
 	if s.stopSessionFn != nil {
 		return s.stopSessionFn(ctx, id)
 	}
 	return errors.New("unexpected StopSession call")
 }
 
-func (s stubClient) ResumeSession(ctx context.Context, id string) (SessionRecord, error) {
+func (s *stubClient) ResumeSession(ctx context.Context, id string) (SessionRecord, error) {
 	if s.resumeSessionFn != nil {
 		return s.resumeSessionFn(ctx, id)
 	}
 	return SessionRecord{}, errors.New("unexpected ResumeSession call")
 }
 
-func (s stubClient) PromptSession(ctx context.Context, id string, message string) ([]AgentEventRecord, error) {
+func (s *stubClient) PromptSession(
+	ctx context.Context,
+	id string,
+	message string,
+) ([]AgentEventRecord, error) {
 	if s.promptSessionFn != nil {
 		return s.promptSessionFn(ctx, id, message)
 	}
 	return nil, errors.New("unexpected PromptSession call")
 }
 
-func (s stubClient) SessionEvents(ctx context.Context, id string, query SessionEventQuery) ([]SessionEventRecord, error) {
+func (s *stubClient) SessionEvents(
+	ctx context.Context,
+	id string,
+	query SessionEventQuery,
+) ([]SessionEventRecord, error) {
 	if s.sessionEventsFn != nil {
 		return s.sessionEventsFn(ctx, id, query)
 	}
 	return nil, errors.New("unexpected SessionEvents call")
 }
 
-func (s stubClient) StreamSessionEvents(ctx context.Context, id string, query SessionEventQuery, lastEventID string, handler SSEHandler) error {
+func (s *stubClient) StreamSessionEvents(
+	ctx context.Context,
+	id string,
+	query SessionEventQuery,
+	lastEventID string,
+	handler SSEHandler,
+) error {
 	if s.streamSessionFn != nil {
 		return s.streamSessionFn(ctx, id, query, lastEventID, handler)
 	}
 	return errors.New("unexpected StreamSessionEvents call")
 }
 
-func (s stubClient) SessionHistory(ctx context.Context, id string, query SessionEventQuery) ([]TurnHistoryRecord, error) {
+func (s *stubClient) SessionHistory(
+	ctx context.Context,
+	id string,
+	query SessionEventQuery,
+) ([]TurnHistoryRecord, error) {
 	if s.sessionHistoryFn != nil {
 		return s.sessionHistoryFn(ctx, id, query)
 	}
 	return nil, errors.New("unexpected SessionHistory call")
 }
 
-func (s stubClient) CreateWorkspace(ctx context.Context, request WorkspaceCreateRequest) (WorkspaceRecord, error) {
+func (s *stubClient) CreateWorkspace(
+	ctx context.Context,
+	request WorkspaceCreateRequest,
+) (WorkspaceRecord, error) {
 	if s.createWorkspaceFn != nil {
 		return s.createWorkspaceFn(ctx, request)
 	}
 	return WorkspaceRecord{}, errors.New("unexpected CreateWorkspace call")
 }
 
-func (s stubClient) ListWorkspaces(ctx context.Context) ([]WorkspaceRecord, error) {
+func (s *stubClient) ListWorkspaces(ctx context.Context) ([]WorkspaceRecord, error) {
 	if s.listWorkspacesFn != nil {
 		return s.listWorkspacesFn(ctx)
 	}
 	return nil, errors.New("unexpected ListWorkspaces call")
 }
 
-func (s stubClient) GetWorkspace(ctx context.Context, ref string) (WorkspaceDetailRecord, error) {
+func (s *stubClient) GetWorkspace(ctx context.Context, ref string) (WorkspaceDetailRecord, error) {
 	if s.getWorkspaceFn != nil {
 		return s.getWorkspaceFn(ctx, ref)
 	}
 	return WorkspaceDetailRecord{}, errors.New("unexpected GetWorkspace call")
 }
 
-func (s stubClient) UpdateWorkspace(ctx context.Context, ref string, request WorkspaceUpdateRequest) (WorkspaceRecord, error) {
+func (s *stubClient) UpdateWorkspace(
+	ctx context.Context,
+	ref string,
+	request WorkspaceUpdateRequest,
+) (WorkspaceRecord, error) {
 	if s.updateWorkspaceFn != nil {
 		return s.updateWorkspaceFn(ctx, ref, request)
 	}
 	return WorkspaceRecord{}, errors.New("unexpected UpdateWorkspace call")
 }
 
-func (s stubClient) DeleteWorkspace(ctx context.Context, ref string) error {
+func (s *stubClient) DeleteWorkspace(ctx context.Context, ref string) error {
 	if s.deleteWorkspaceFn != nil {
 		return s.deleteWorkspaceFn(ctx, ref)
 	}
 	return errors.New("unexpected DeleteWorkspace call")
 }
 
-func (s stubClient) ListAgents(ctx context.Context) ([]AgentRecord, error) {
+func (s *stubClient) ListAgents(ctx context.Context) ([]AgentRecord, error) {
 	if s.listAgentsFn != nil {
 		return s.listAgentsFn(ctx)
 	}
 	return nil, errors.New("unexpected ListAgents call")
 }
 
-func (s stubClient) GetAgent(ctx context.Context, name string) (AgentRecord, error) {
+func (s *stubClient) GetAgent(ctx context.Context, name string) (AgentRecord, error) {
 	if s.getAgentFn != nil {
 		return s.getAgentFn(ctx, name)
 	}
 	return AgentRecord{}, errors.New("unexpected GetAgent call")
 }
 
-func (s stubClient) HookCatalog(ctx context.Context, query HookCatalogQuery) ([]HookCatalogRecord, error) {
+func (s *stubClient) HookCatalog(
+	ctx context.Context,
+	query HookCatalogQuery,
+) ([]HookCatalogRecord, error) {
 	if s.hookCatalogFn != nil {
 		return s.hookCatalogFn(ctx, query)
 	}
 	return nil, errors.New("unexpected HookCatalog call")
 }
 
-func (s stubClient) HookRuns(ctx context.Context, query HookRunsQuery) ([]HookRunRecord, error) {
+func (s *stubClient) HookRuns(ctx context.Context, query HookRunsQuery) ([]HookRunRecord, error) {
 	if s.hookRunsFn != nil {
 		return s.hookRunsFn(ctx, query)
 	}
 	return nil, errors.New("unexpected HookRuns call")
 }
 
-func (s stubClient) HookEvents(ctx context.Context, query HookEventsQuery) ([]HookEventRecord, error) {
+func (s *stubClient) HookEvents(
+	ctx context.Context,
+	query HookEventsQuery,
+) ([]HookEventRecord, error) {
 	if s.hookEventsFn != nil {
 		return s.hookEventsFn(ctx, query)
 	}
 	return nil, errors.New("unexpected HookEvents call")
 }
 
-func (s stubClient) ObserveEvents(ctx context.Context, query ObserveEventQuery) ([]ObserveEventRecord, error) {
+func (s *stubClient) ObserveEvents(
+	ctx context.Context,
+	query ObserveEventQuery,
+) ([]ObserveEventRecord, error) {
 	if s.observeEventsFn != nil {
 		return s.observeEventsFn(ctx, query)
 	}
 	return nil, errors.New("unexpected ObserveEvents call")
 }
 
-func (s stubClient) StreamObserveEvents(ctx context.Context, query ObserveEventQuery, lastEventID string, handler SSEHandler) error {
+func (s *stubClient) StreamObserveEvents(
+	ctx context.Context,
+	query ObserveEventQuery,
+	lastEventID string,
+	handler SSEHandler,
+) error {
 	if s.streamObserveEventsFn != nil {
 		return s.streamObserveEventsFn(ctx, query, lastEventID, handler)
 	}
 	return errors.New("unexpected StreamObserveEvents call")
 }
 
-func (s stubClient) ObserveHealth(ctx context.Context) (HealthStatus, error) {
+func (s *stubClient) ObserveHealth(ctx context.Context) (HealthStatus, error) {
 	if s.observeHealthFn != nil {
 		return s.observeHealthFn(ctx)
 	}
 	return HealthStatus{}, errors.New("unexpected ObserveHealth call")
 }
 
-func (s stubClient) ListMemory(ctx context.Context, scope memory.Scope, workspace string) ([]MemoryHeaderRecord, error) {
+func (s *stubClient) ListMemory(
+	ctx context.Context,
+	scope memory.Scope,
+	workspace string,
+) ([]MemoryHeaderRecord, error) {
 	if s.listMemoryFn != nil {
 		return s.listMemoryFn(ctx, scope, workspace)
 	}
 	return nil, errors.New("unexpected ListMemory call")
 }
 
-func (s stubClient) ReadMemory(ctx context.Context, filename string, scope memory.Scope, workspace string) (MemoryReadRecord, error) {
+func (s *stubClient) ReadMemory(
+	ctx context.Context,
+	filename string,
+	scope memory.Scope,
+	workspace string,
+) (MemoryReadRecord, error) {
 	if s.readMemoryFn != nil {
 		return s.readMemoryFn(ctx, filename, scope, workspace)
 	}
 	return MemoryReadRecord{}, errors.New("unexpected ReadMemory call")
 }
 
-func (s stubClient) WriteMemory(ctx context.Context, filename string, request MemoryWriteRequest) (MemoryMutationRecord, error) {
+func (s *stubClient) WriteMemory(
+	ctx context.Context,
+	filename string,
+	request MemoryWriteRequest,
+) (MemoryMutationRecord, error) {
 	if s.writeMemoryFn != nil {
 		return s.writeMemoryFn(ctx, filename, request)
 	}
 	return MemoryMutationRecord{}, errors.New("unexpected WriteMemory call")
 }
 
-func (s stubClient) DeleteMemory(ctx context.Context, filename string, scope memory.Scope, workspace string) (MemoryMutationRecord, error) {
+func (s *stubClient) DeleteMemory(
+	ctx context.Context,
+	filename string,
+	scope memory.Scope,
+	workspace string,
+) (MemoryMutationRecord, error) {
 	if s.deleteMemoryFn != nil {
 		return s.deleteMemoryFn(ctx, filename, scope, workspace)
 	}
 	return MemoryMutationRecord{}, errors.New("unexpected DeleteMemory call")
 }
 
-func (s stubClient) ConsolidateMemory(ctx context.Context, workspace string) (MemoryConsolidateRecord, error) {
+func (s *stubClient) ConsolidateMemory(
+	ctx context.Context,
+	workspace string,
+) (MemoryConsolidateRecord, error) {
 	if s.consolidateMemoryFn != nil {
 		return s.consolidateMemoryFn(ctx, workspace)
 	}
 	return MemoryConsolidateRecord{}, errors.New("unexpected ConsolidateMemory call")
 }
 
-func (s stubClient) ListAutomationJobs(ctx context.Context, query AutomationJobQuery) ([]JobRecord, error) {
+func (s *stubClient) ListAutomationJobs(
+	ctx context.Context,
+	query AutomationJobQuery,
+) ([]JobRecord, error) {
 	if s.listAutomationJobsFn != nil {
 		return s.listAutomationJobsFn(ctx, query)
 	}
 	return nil, errors.New("unexpected ListAutomationJobs call")
 }
 
-func (s stubClient) CreateAutomationJob(ctx context.Context, request AutomationJobCreateRequest) (JobRecord, error) {
+func (s *stubClient) CreateAutomationJob(
+	ctx context.Context,
+	request AutomationJobCreateRequest,
+) (JobRecord, error) {
 	if s.createAutomationJobFn != nil {
 		return s.createAutomationJobFn(ctx, request)
 	}
 	return JobRecord{}, errors.New("unexpected CreateAutomationJob call")
 }
 
-func (s stubClient) GetAutomationJob(ctx context.Context, id string) (JobRecord, error) {
+func (s *stubClient) GetAutomationJob(ctx context.Context, id string) (JobRecord, error) {
 	if s.getAutomationJobFn != nil {
 		return s.getAutomationJobFn(ctx, id)
 	}
 	return JobRecord{}, errors.New("unexpected GetAutomationJob call")
 }
 
-func (s stubClient) UpdateAutomationJob(ctx context.Context, id string, request AutomationJobUpdateRequest) (JobRecord, error) {
+func (s *stubClient) UpdateAutomationJob(
+	ctx context.Context,
+	id string,
+	request AutomationJobUpdateRequest,
+) (JobRecord, error) {
 	if s.updateAutomationJobFn != nil {
 		return s.updateAutomationJobFn(ctx, id, request)
 	}
 	return JobRecord{}, errors.New("unexpected UpdateAutomationJob call")
 }
 
-func (s stubClient) DeleteAutomationJob(ctx context.Context, id string) error {
+func (s *stubClient) DeleteAutomationJob(ctx context.Context, id string) error {
 	if s.deleteAutomationJobFn != nil {
 		return s.deleteAutomationJobFn(ctx, id)
 	}
 	return errors.New("unexpected DeleteAutomationJob call")
 }
 
-func (s stubClient) TriggerAutomationJob(ctx context.Context, id string) (RunRecord, error) {
+func (s *stubClient) TriggerAutomationJob(ctx context.Context, id string) (RunRecord, error) {
 	if s.triggerAutomationJobFn != nil {
 		return s.triggerAutomationJobFn(ctx, id)
 	}
 	return RunRecord{}, errors.New("unexpected TriggerAutomationJob call")
 }
 
-func (s stubClient) AutomationJobRuns(ctx context.Context, id string, query AutomationRunQuery) ([]RunRecord, error) {
+func (s *stubClient) AutomationJobRuns(
+	ctx context.Context,
+	id string,
+	query AutomationRunQuery,
+) ([]RunRecord, error) {
 	if s.automationJobRunsFn != nil {
 		return s.automationJobRunsFn(ctx, id, query)
 	}
 	return nil, errors.New("unexpected AutomationJobRuns call")
 }
 
-func (s stubClient) ListAutomationTriggers(ctx context.Context, query AutomationTriggerQuery) ([]TriggerRecord, error) {
+func (s *stubClient) ListAutomationTriggers(
+	ctx context.Context,
+	query AutomationTriggerQuery,
+) ([]TriggerRecord, error) {
 	if s.listAutomationTriggersFn != nil {
 		return s.listAutomationTriggersFn(ctx, query)
 	}
 	return nil, errors.New("unexpected ListAutomationTriggers call")
 }
 
-func (s stubClient) CreateAutomationTrigger(ctx context.Context, request AutomationTriggerCreateRequest) (TriggerRecord, error) {
+func (s *stubClient) CreateAutomationTrigger(
+	ctx context.Context,
+	request AutomationTriggerCreateRequest,
+) (TriggerRecord, error) {
 	if s.createAutomationTriggerFn != nil {
 		return s.createAutomationTriggerFn(ctx, request)
 	}
 	return TriggerRecord{}, errors.New("unexpected CreateAutomationTrigger call")
 }
 
-func (s stubClient) GetAutomationTrigger(ctx context.Context, id string) (TriggerRecord, error) {
+func (s *stubClient) GetAutomationTrigger(ctx context.Context, id string) (TriggerRecord, error) {
 	if s.getAutomationTriggerFn != nil {
 		return s.getAutomationTriggerFn(ctx, id)
 	}
 	return TriggerRecord{}, errors.New("unexpected GetAutomationTrigger call")
 }
 
-func (s stubClient) UpdateAutomationTrigger(ctx context.Context, id string, request AutomationTriggerUpdateRequest) (TriggerRecord, error) {
+func (s *stubClient) UpdateAutomationTrigger(
+	ctx context.Context,
+	id string,
+	request AutomationTriggerUpdateRequest,
+) (TriggerRecord, error) {
 	if s.updateAutomationTriggerFn != nil {
 		return s.updateAutomationTriggerFn(ctx, id, request)
 	}
 	return TriggerRecord{}, errors.New("unexpected UpdateAutomationTrigger call")
 }
 
-func (s stubClient) DeleteAutomationTrigger(ctx context.Context, id string) error {
+func (s *stubClient) DeleteAutomationTrigger(ctx context.Context, id string) error {
 	if s.deleteAutomationTriggerFn != nil {
 		return s.deleteAutomationTriggerFn(ctx, id)
 	}
 	return errors.New("unexpected DeleteAutomationTrigger call")
 }
 
-func (s stubClient) AutomationTriggerRuns(ctx context.Context, id string, query AutomationRunQuery) ([]RunRecord, error) {
+func (s *stubClient) AutomationTriggerRuns(
+	ctx context.Context,
+	id string,
+	query AutomationRunQuery,
+) ([]RunRecord, error) {
 	if s.automationTriggerRunsFn != nil {
 		return s.automationTriggerRunsFn(ctx, id, query)
 	}
 	return nil, errors.New("unexpected AutomationTriggerRuns call")
 }
 
-func (s stubClient) ListAutomationRuns(ctx context.Context, query AutomationRunQuery) ([]RunRecord, error) {
+func (s *stubClient) ListAutomationRuns(
+	ctx context.Context,
+	query AutomationRunQuery,
+) ([]RunRecord, error) {
 	if s.listAutomationRunsFn != nil {
 		return s.listAutomationRunsFn(ctx, query)
 	}
 	return nil, errors.New("unexpected ListAutomationRuns call")
 }
 
-func (s stubClient) GetAutomationRun(ctx context.Context, id string) (RunRecord, error) {
+func (s *stubClient) GetAutomationRun(ctx context.Context, id string) (RunRecord, error) {
 	if s.getAutomationRunFn != nil {
 		return s.getAutomationRunFn(ctx, id)
 	}
 	return RunRecord{}, errors.New("unexpected GetAutomationRun call")
 }
 
-func (s stubClient) ListTasks(ctx context.Context, query TaskListQuery) ([]TaskSummaryRecord, error) {
+func (s *stubClient) ListTasks(
+	ctx context.Context,
+	query TaskListQuery,
+) ([]TaskSummaryRecord, error) {
 	if s.listTasksFn != nil {
 		return s.listTasksFn(ctx, query)
 	}
 	return nil, errors.New("unexpected ListTasks call")
 }
 
-func (s stubClient) CreateTask(ctx context.Context, request CreateTaskRequest) (TaskRecord, error) {
+func (s *stubClient) CreateTask(
+	ctx context.Context,
+	request CreateTaskRequest,
+) (TaskRecord, error) {
 	if s.createTaskFn != nil {
 		return s.createTaskFn(ctx, request)
 	}
 	return TaskRecord{}, errors.New("unexpected CreateTask call")
 }
 
-func (s stubClient) GetTask(ctx context.Context, id string) (TaskDetailRecord, error) {
+func (s *stubClient) GetTask(ctx context.Context, id string) (TaskDetailRecord, error) {
 	if s.getTaskFn != nil {
 		return s.getTaskFn(ctx, id)
 	}
 	return TaskDetailRecord{}, errors.New("unexpected GetTask call")
 }
 
-func (s stubClient) UpdateTask(ctx context.Context, id string, request UpdateTaskRequest) (TaskRecord, error) {
+func (s *stubClient) UpdateTask(
+	ctx context.Context,
+	id string,
+	request UpdateTaskRequest,
+) (TaskRecord, error) {
 	if s.updateTaskFn != nil {
 		return s.updateTaskFn(ctx, id, request)
 	}
 	return TaskRecord{}, errors.New("unexpected UpdateTask call")
 }
 
-func (s stubClient) CancelTask(ctx context.Context, id string, request CancelTaskRequest) (TaskRecord, error) {
+func (s *stubClient) CancelTask(
+	ctx context.Context,
+	id string,
+	request CancelTaskRequest,
+) (TaskRecord, error) {
 	if s.cancelTaskFn != nil {
 		return s.cancelTaskFn(ctx, id, request)
 	}
 	return TaskRecord{}, errors.New("unexpected CancelTask call")
 }
 
-func (s stubClient) CreateChildTask(ctx context.Context, id string, request CreateTaskChildRequest) (TaskRecord, error) {
+func (s *stubClient) CreateChildTask(
+	ctx context.Context,
+	id string,
+	request CreateTaskChildRequest,
+) (TaskRecord, error) {
 	if s.createChildTaskFn != nil {
 		return s.createChildTaskFn(ctx, id, request)
 	}
 	return TaskRecord{}, errors.New("unexpected CreateChildTask call")
 }
 
-func (s stubClient) AddTaskDependency(ctx context.Context, id string, request AddTaskDependencyRequest) (TaskDetailRecord, error) {
+func (s *stubClient) AddTaskDependency(
+	ctx context.Context,
+	id string,
+	request AddTaskDependencyRequest,
+) (TaskDetailRecord, error) {
 	if s.addTaskDependencyFn != nil {
 		return s.addTaskDependencyFn(ctx, id, request)
 	}
 	return TaskDetailRecord{}, errors.New("unexpected AddTaskDependency call")
 }
 
-func (s stubClient) RemoveTaskDependency(ctx context.Context, id string, dependsOnID string) (TaskDetailRecord, error) {
+func (s *stubClient) RemoveTaskDependency(
+	ctx context.Context,
+	id string,
+	dependsOnID string,
+) (TaskDetailRecord, error) {
 	if s.removeTaskDependencyFn != nil {
 		return s.removeTaskDependencyFn(ctx, id, dependsOnID)
 	}
 	return TaskDetailRecord{}, errors.New("unexpected RemoveTaskDependency call")
 }
 
-func (s stubClient) EnqueueTaskRun(ctx context.Context, id string, request EnqueueTaskRunRequest) (TaskRunRecord, error) {
+func (s *stubClient) EnqueueTaskRun(
+	ctx context.Context,
+	id string,
+	request EnqueueTaskRunRequest,
+) (TaskRunRecord, error) {
 	if s.enqueueTaskRunFn != nil {
 		return s.enqueueTaskRunFn(ctx, id, request)
 	}
 	return TaskRunRecord{}, errors.New("unexpected EnqueueTaskRun call")
 }
 
-func (s stubClient) ListTaskRuns(ctx context.Context, id string, query TaskRunListQuery) ([]TaskRunRecord, error) {
+func (s *stubClient) ListTaskRuns(
+	ctx context.Context,
+	id string,
+	query TaskRunListQuery,
+) ([]TaskRunRecord, error) {
 	if s.listTaskRunsFn != nil {
 		return s.listTaskRunsFn(ctx, id, query)
 	}
 	return nil, errors.New("unexpected ListTaskRuns call")
 }
 
-func (s stubClient) ClaimTaskRun(ctx context.Context, id string, request ClaimTaskRunRequest) (TaskRunRecord, error) {
+func (s *stubClient) ClaimTaskRun(
+	ctx context.Context,
+	id string,
+	request ClaimTaskRunRequest,
+) (TaskRunRecord, error) {
 	if s.claimTaskRunFn != nil {
 		return s.claimTaskRunFn(ctx, id, request)
 	}
 	return TaskRunRecord{}, errors.New("unexpected ClaimTaskRun call")
 }
 
-func (s stubClient) StartTaskRun(ctx context.Context, id string, request StartTaskRunRequest) (TaskRunRecord, error) {
+func (s *stubClient) StartTaskRun(
+	ctx context.Context,
+	id string,
+	request StartTaskRunRequest,
+) (TaskRunRecord, error) {
 	if s.startTaskRunFn != nil {
 		return s.startTaskRunFn(ctx, id, request)
 	}
 	return TaskRunRecord{}, errors.New("unexpected StartTaskRun call")
 }
 
-func (s stubClient) AttachTaskRunSession(ctx context.Context, id string, request AttachTaskRunSessionRequest) (TaskRunRecord, error) {
+func (s *stubClient) AttachTaskRunSession(
+	ctx context.Context,
+	id string,
+	request AttachTaskRunSessionRequest,
+) (TaskRunRecord, error) {
 	if s.attachTaskRunSessionFn != nil {
 		return s.attachTaskRunSessionFn(ctx, id, request)
 	}
 	return TaskRunRecord{}, errors.New("unexpected AttachTaskRunSession call")
 }
 
-func (s stubClient) CompleteTaskRun(ctx context.Context, id string, request CompleteTaskRunRequest) (TaskRunRecord, error) {
+func (s *stubClient) CompleteTaskRun(
+	ctx context.Context,
+	id string,
+	request CompleteTaskRunRequest,
+) (TaskRunRecord, error) {
 	if s.completeTaskRunFn != nil {
 		return s.completeTaskRunFn(ctx, id, request)
 	}
 	return TaskRunRecord{}, errors.New("unexpected CompleteTaskRun call")
 }
 
-func (s stubClient) FailTaskRun(ctx context.Context, id string, request FailTaskRunRequest) (TaskRunRecord, error) {
+func (s *stubClient) FailTaskRun(
+	ctx context.Context,
+	id string,
+	request FailTaskRunRequest,
+) (TaskRunRecord, error) {
 	if s.failTaskRunFn != nil {
 		return s.failTaskRunFn(ctx, id, request)
 	}
 	return TaskRunRecord{}, errors.New("unexpected FailTaskRun call")
 }
 
-func (s stubClient) CancelTaskRun(ctx context.Context, id string, request CancelTaskRunRequest) (TaskRunRecord, error) {
+func (s *stubClient) CancelTaskRun(
+	ctx context.Context,
+	id string,
+	request CancelTaskRunRequest,
+) (TaskRunRecord, error) {
 	if s.cancelTaskRunFn != nil {
 		return s.cancelTaskRunFn(ctx, id, request)
 	}
@@ -688,7 +866,11 @@ func executeRootCommand(t *testing.T, deps commandDeps, args ...string) (string,
 	return stdout.String(), stderr.String(), err
 }
 
-func executeRootCommandWithExit(t *testing.T, deps commandDeps, args ...string) (int, string, string) {
+func executeRootCommandWithExit(
+	t *testing.T,
+	deps commandDeps,
+	args ...string,
+) (int, string, string) {
 	t.Helper()
 
 	stdout, stderr, err := executeRootCommand(t, deps, args...)

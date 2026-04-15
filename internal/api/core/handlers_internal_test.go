@@ -22,18 +22,18 @@ import (
 )
 
 type sessionManagerStub struct {
-	status func(context.Context, string) (*session.SessionInfo, error)
+	status func(context.Context, string) (*session.Info, error)
 }
 
 func (s sessionManagerStub) Create(context.Context, session.CreateOpts) (*session.Session, error) {
 	return nil, nil
 }
 
-func (s sessionManagerStub) List() []*session.SessionInfo { return nil }
+func (s sessionManagerStub) List() []*session.Info { return nil }
 
-func (s sessionManagerStub) ListAll(context.Context) ([]*session.SessionInfo, error) { return nil, nil }
+func (s sessionManagerStub) ListAll(context.Context) ([]*session.Info, error) { return nil, nil }
 
-func (s sessionManagerStub) Status(ctx context.Context, id string) (*session.SessionInfo, error) {
+func (s sessionManagerStub) Status(ctx context.Context, id string) (*session.Info, error) {
 	if s.status != nil {
 		return s.status(ctx, id)
 	}
@@ -77,7 +77,7 @@ type bundleServiceStub struct {
 }
 
 type networkServiceStub struct {
-	statusFn func(context.Context) (*network.NetworkStatus, error)
+	statusFn func(context.Context) (*network.Status, error)
 }
 
 func (s networkServiceStub) Send(context.Context, network.SendRequest) (string, error) {
@@ -92,7 +92,7 @@ func (s networkServiceStub) ListChannels(context.Context) ([]network.ChannelInfo
 	return nil, nil
 }
 
-func (s networkServiceStub) Status(ctx context.Context) (*network.NetworkStatus, error) {
+func (s networkServiceStub) Status(ctx context.Context) (*network.Status, error) {
 	if s.statusFn != nil {
 		return s.statusFn(ctx)
 	}
@@ -107,7 +107,10 @@ func (s bundleServiceStub) Catalog(context.Context) ([]bundlepkg.CatalogEntry, e
 	return nil, nil
 }
 
-func (s bundleServiceStub) PreviewActivation(context.Context, bundlepkg.ActivateRequest) (bundlepkg.ActivationPreview, error) {
+func (s bundleServiceStub) PreviewActivation(
+	context.Context,
+	bundlepkg.ActivateRequest,
+) (bundlepkg.ActivationPreview, error) {
 	return bundlepkg.ActivationPreview{}, nil
 }
 
@@ -123,7 +126,10 @@ func (s bundleServiceStub) GetActivation(context.Context, string) (bundlepkg.Act
 	return bundlepkg.ActivationPreview{}, nil
 }
 
-func (s bundleServiceStub) UpdateActivation(context.Context, bundlepkg.UpdateActivationRequest) (bundlepkg.ActivationPreview, error) {
+func (s bundleServiceStub) UpdateActivation(
+	context.Context,
+	bundlepkg.UpdateActivationRequest,
+) (bundlepkg.ActivationPreview, error) {
 	return bundlepkg.ActivationPreview{}, nil
 }
 
@@ -214,7 +220,6 @@ func TestResolveUserHomeDir(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -237,7 +242,11 @@ func TestResolveUserHomeDir(t *testing.T) {
 				t.Fatalf("resolveUserHomeDir() error = %q, want substring %q", result.err.Error(), tt.wantErrContains)
 			}
 			if tt.wantErrNotContains != "" && strings.Contains(result.err.Error(), tt.wantErrNotContains) {
-				t.Fatalf("resolveUserHomeDir() error = %q, should not include %q", result.err.Error(), tt.wantErrNotContains)
+				t.Fatalf(
+					"resolveUserHomeDir() error = %q, should not include %q",
+					result.err.Error(),
+					tt.wantErrNotContains,
+				)
 			}
 		})
 	}
@@ -256,10 +265,10 @@ func TestBaseHandlersAccessorsAndSessionInfoHelpers(t *testing.T) {
 
 	done := make(chan struct{})
 	calls := 0
-	info := &session.SessionInfo{ID: "sess-1", WorkspaceID: "ws-alpha"}
+	info := &session.Info{ID: "sess-1", WorkspaceID: "ws-alpha"}
 	handlers := &BaseHandlers{
 		Sessions: sessionManagerStub{
-			status: func(_ context.Context, id string) (*session.SessionInfo, error) {
+			status: func(_ context.Context, id string) (*session.Info, error) {
 				calls++
 				if id != "sess-1" {
 					t.Fatalf("Status() id = %q, want sess-1", id)
@@ -327,7 +336,7 @@ func TestBaseHandlersAccessorsAndSessionInfoHelpers(t *testing.T) {
 	}
 
 	handlers.Sessions = sessionManagerStub{
-		status: func(context.Context, string) (*session.SessionInfo, error) {
+		status: func(context.Context, string) (*session.Info, error) {
 			return nil, errors.New("boom")
 		},
 	}
@@ -345,8 +354,8 @@ func TestNetworkStatusPayloadWrapsBundleSettingsErrors(t *testing.T) {
 			Network: aghconfig.NetworkConfig{Enabled: true},
 		},
 		Network: networkServiceStub{
-			statusFn: func(context.Context) (*network.NetworkStatus, error) {
-				return &network.NetworkStatus{}, nil
+			statusFn: func(context.Context) (*network.Status, error) {
+				return &network.Status{}, nil
 			},
 		},
 		Bundles: bundleServiceStub{
@@ -420,13 +429,17 @@ func TestBundleHandlersRejectNilReceiverWithoutPanicking(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			recorder := httptest.NewRecorder()
 			ctx, _ := gin.CreateTestContext(recorder)
-			ctx.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+			ctx.Request = httptest.NewRequestWithContext(
+				context.Background(),
+				http.MethodGet,
+				"/",
+				http.NoBody,
+			)
 			ctx.Params = gin.Params{{Key: "id", Value: "act-1"}}
 
 			tc.invoke(ctx)

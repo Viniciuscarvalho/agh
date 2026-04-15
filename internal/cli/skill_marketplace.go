@@ -18,17 +18,27 @@ import (
 	"github.com/pedronauck/agh/internal/skills"
 )
 
-type skillRegistrySourceLoader func(runtimeContext) ([]registrypkg.RegistrySource, error)
+const (
+	skillUpdateStatusCurrent   = "already up to date"
+	skillUpdateStatusAvailable = "update available"
+	skillUpdateStatusUpdated   = "updated"
+)
+
+type skillRegistrySourceLoader func(*runtimeContext) ([]registrypkg.Source, error)
 
 type skillRegistry interface {
 	registrypkg.Downloader
 	Info(ctx context.Context, slug string) (*registrypkg.Detail, error)
-	CheckUpdate(ctx context.Context, slug string, currentVersion string) (*registrypkg.UpdateInfo, error)
+	CheckUpdate(
+		ctx context.Context,
+		slug string,
+		currentVersion string,
+	) (*registrypkg.UpdateInfo, error)
 }
 
 type namedSkillRegistry interface {
 	skillRegistry
-	SourceNamed(name string) registrypkg.RegistrySource
+	SourceNamed(name string) registrypkg.Source
 }
 
 type installedMarketplaceSkill struct {
@@ -39,10 +49,12 @@ type installedMarketplaceSkill struct {
 }
 
 type sourceBackedSkillRegistry struct {
-	source registrypkg.RegistrySource
+	source registrypkg.Source
 }
 
-func defaultSkillRegistrySourceLoader(runtime runtimeContext) ([]registrypkg.RegistrySource, error) {
+func defaultSkillRegistrySourceLoader(
+	runtime *runtimeContext,
+) ([]registrypkg.Source, error) {
 	registryCfg := runtime.Config.Skills.Marketplace
 	registryName := strings.ToLower(strings.TrimSpace(registryCfg.Registry))
 	if registryName == "" {
@@ -51,7 +63,7 @@ func defaultSkillRegistrySourceLoader(runtime runtimeContext) ([]registrypkg.Reg
 
 	switch registryName {
 	case defaultMarketplaceRegistry:
-		return []registrypkg.RegistrySource{
+		return []registrypkg.Source{
 			registryclawhub.NewClient(registryCfg.BaseURL),
 		}, nil
 	default:
@@ -59,10 +71,10 @@ func defaultSkillRegistrySourceLoader(runtime runtimeContext) ([]registrypkg.Reg
 	}
 }
 
-func loadSkillRegistry(deps commandDeps) (runtimeContext, *registrypkg.MultiRegistry, error) {
+func loadSkillRegistry(deps commandDeps) (*runtimeContext, *registrypkg.MultiRegistry, error) {
 	runtime, err := loadRuntimeContext(deps)
 	if err != nil {
-		return runtimeContext{}, nil, err
+		return nil, nil, err
 	}
 
 	loader := deps.loadSkillRegistrySources
@@ -72,10 +84,10 @@ func loadSkillRegistry(deps commandDeps) (runtimeContext, *registrypkg.MultiRegi
 
 	sources, err := loader(runtime)
 	if err != nil {
-		return runtimeContext{}, nil, err
+		return nil, nil, err
 	}
 	if len(sources) == 0 {
-		return runtimeContext{}, nil, errors.New("cli: no skill registry sources are configured")
+		return nil, nil, errors.New("cli: no skill registry sources are configured")
 	}
 
 	return runtime, registrypkg.NewMultiRegistry(slog.Default(), sources...), nil
@@ -92,14 +104,21 @@ func normalizeSkillSlug(slug string) (string, error) {
 	return trimmed, nil
 }
 
-func (r sourceBackedSkillRegistry) Download(ctx context.Context, slug string, opts registrypkg.DownloadOpts) (*registrypkg.DownloadResult, error) {
+func (r sourceBackedSkillRegistry) Download(
+	ctx context.Context,
+	slug string,
+	opts registrypkg.DownloadOpts,
+) (*registrypkg.DownloadResult, error) {
 	if r.source == nil {
 		return nil, errors.New("cli: registry source is required")
 	}
 	return r.source.Download(ctx, slug, opts)
 }
 
-func (r sourceBackedSkillRegistry) Info(ctx context.Context, slug string) (*registrypkg.Detail, error) {
+func (r sourceBackedSkillRegistry) Info(
+	ctx context.Context,
+	slug string,
+) (*registrypkg.Detail, error) {
 	if r.source == nil {
 		return nil, errors.New("cli: registry source is required")
 	}
@@ -114,7 +133,11 @@ func (r sourceBackedSkillRegistry) Info(ctx context.Context, slug string) (*regi
 	return detail, nil
 }
 
-func (r sourceBackedSkillRegistry) CheckUpdate(ctx context.Context, slug string, currentVersion string) (*registrypkg.UpdateInfo, error) {
+func (r sourceBackedSkillRegistry) CheckUpdate(
+	ctx context.Context,
+	slug string,
+	currentVersion string,
+) (*registrypkg.UpdateInfo, error) {
 	detail, err := r.Info(ctx, slug)
 	if err != nil {
 		return nil, err
@@ -133,10 +156,16 @@ func (r sourceBackedSkillRegistry) CheckUpdate(ctx context.Context, slug string,
 	}, nil
 }
 
-func resolveInstalledSkillRegistry(registry skillRegistry, installed installedMarketplaceSkill) (skillRegistry, error) {
+func resolveInstalledSkillRegistry(
+	registry skillRegistry,
+	installed installedMarketplaceSkill,
+) (skillRegistry, error) {
 	registryName := strings.TrimSpace(installed.Provenance.Registry)
 	if registryName == "" {
-		return nil, fmt.Errorf("cli: marketplace skill %q is missing registry metadata", installed.Name)
+		return nil, fmt.Errorf(
+			"cli: marketplace skill %q is missing registry metadata",
+			installed.Name,
+		)
 	}
 
 	namedRegistry, ok := registry.(namedSkillRegistry)
@@ -146,7 +175,11 @@ func resolveInstalledSkillRegistry(registry skillRegistry, installed installedMa
 
 	source := namedRegistry.SourceNamed(registryName)
 	if source == nil {
-		return nil, fmt.Errorf("cli: marketplace registry source %q is not configured for %q", registryName, installed.Name)
+		return nil, fmt.Errorf(
+			"cli: marketplace registry source %q is not configured for %q",
+			registryName,
+			installed.Name,
+		)
 	}
 
 	return sourceBackedSkillRegistry{source: source}, nil
@@ -154,41 +187,26 @@ func resolveInstalledSkillRegistry(registry skillRegistry, installed installedMa
 
 func installMarketplaceSkill(
 	ctx context.Context,
-	runtime runtimeContext,
+	runtime *runtimeContext,
 	registry skillRegistry,
 	slug string,
 	version string,
 	targetDirOverride string,
 	now func() time.Time,
 ) (item skillInstallItem, err error) {
-	if err := os.MkdirAll(runtime.HomePaths.SkillsDir, 0o755); err != nil {
-		return skillInstallItem{}, fmt.Errorf("cli: create skills directory %q: %w", runtime.HomePaths.SkillsDir, err)
-	}
-
-	if now == nil {
-		now = func() time.Time {
-			return time.Now().UTC()
-		}
-	}
-
-	detail, err := registry.Info(ctx, slug)
-	if err != nil {
+	if err := ensureMarketplaceSkillsDir(runtime.HomePaths.SkillsDir); err != nil {
 		return skillInstallItem{}, err
 	}
-	if detail == nil {
-		return skillInstallItem{}, fmt.Errorf("cli: marketplace info returned no detail for %q", slug)
+	detail, err := loadMarketplaceSkillDetail(ctx, registry, slug)
+	if err != nil {
+		return skillInstallItem{}, err
 	}
 
 	tempRoot, err := os.MkdirTemp(runtime.HomePaths.SkillsDir, ".agh-skill-stage-*")
 	if err != nil {
 		return skillInstallItem{}, fmt.Errorf("cli: create temporary install directory: %w", err)
 	}
-	defer func() {
-		removeErr := os.RemoveAll(tempRoot)
-		if removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
-			err = errors.Join(err, fmt.Errorf("cli: remove temporary install directory %q: %w", tempRoot, removeErr))
-		}
-	}()
+	defer joinRemoveAll(&err, tempRoot, "cli: remove temporary install directory")
 
 	installer := registrypkg.NewInstaller(registry)
 	result, err := installer.Install(ctx, slug, registrypkg.DownloadOpts{
@@ -200,28 +218,32 @@ func installMarketplaceSkill(
 
 	hash, err := skills.ComputeDirectoryHash(result.InstallPath)
 	if err != nil {
-		return skillInstallItem{}, fmt.Errorf("cli: compute extracted skill hash for %q: %w", slug, err)
+		return skillInstallItem{}, fmt.Errorf(
+			"cli: compute extracted skill hash for %q: %w",
+			slug,
+			err,
+		)
 	}
 
-	installedAt := now()
-	if installedAt.IsZero() {
-		installedAt = time.Now().UTC()
-	} else {
-		installedAt = installedAt.UTC()
-	}
+	installedAt := normalizeMarketplaceInstallTime(now)
 	resolvedVersion := firstNonEmpty(result.Version, detail.Version)
 	registryName := firstNonEmpty(detail.Source, defaultMarketplaceRegistry)
-	if err := skills.WriteSidecar(result.InstallPath, skills.Provenance{
-		Hash:        hash,
-		Registry:    registryName,
-		Slug:        slug,
-		Version:     resolvedVersion,
-		InstalledAt: installedAt,
-	}); err != nil {
-		return skillInstallItem{}, fmt.Errorf("cli: write provenance for %q: %w", slug, err)
+	if err := persistInstalledMarketplaceSkill(
+		result.InstallPath,
+		hash,
+		registryName,
+		slug,
+		resolvedVersion,
+		installedAt,
+	); err != nil {
+		return skillInstallItem{}, err
 	}
 
-	targetDir, err := resolveMarketplaceInstallTarget(runtime.HomePaths.SkillsDir, result.Name, targetDirOverride)
+	targetDir, err := resolveMarketplaceInstallTarget(
+		runtime.HomePaths.SkillsDir,
+		result.Name,
+		targetDirOverride,
+	)
 	if err != nil {
 		return skillInstallItem{}, fmt.Errorf("cli: resolve install path for %q: %w", slug, err)
 	}
@@ -240,9 +262,80 @@ func installMarketplaceSkill(
 	}, nil
 }
 
+func persistInstalledMarketplaceSkill(
+	installPath string,
+	hash string,
+	registryName string,
+	slug string,
+	resolvedVersion string,
+	installedAt time.Time,
+) error {
+	return writeInstalledSkillProvenance(
+		installPath,
+		hash,
+		registryName,
+		slug,
+		resolvedVersion,
+		installedAt,
+	)
+}
+
+func ensureMarketplaceSkillsDir(skillsDir string) error {
+	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+		return fmt.Errorf("cli: create skills directory %q: %w", skillsDir, err)
+	}
+	return nil
+}
+
+func loadMarketplaceSkillDetail(
+	ctx context.Context,
+	registry skillRegistry,
+	slug string,
+) (*registrypkg.Detail, error) {
+	detail, err := registry.Info(ctx, slug)
+	if err != nil {
+		return nil, err
+	}
+	if detail == nil {
+		return nil, fmt.Errorf("cli: marketplace info returned no detail for %q", slug)
+	}
+	return detail, nil
+}
+
+func normalizeMarketplaceInstallTime(now func() time.Time) time.Time {
+	if now == nil {
+		return time.Now().UTC()
+	}
+	installedAt := now()
+	if installedAt.IsZero() {
+		return time.Now().UTC()
+	}
+	return installedAt.UTC()
+}
+
+func writeInstalledSkillProvenance(
+	installPath string,
+	hash string,
+	registryName string,
+	slug string,
+	resolvedVersion string,
+	installedAt time.Time,
+) error {
+	if err := skills.WriteSidecar(installPath, skills.Provenance{
+		Hash:        hash,
+		Registry:    registryName,
+		Slug:        slug,
+		Version:     resolvedVersion,
+		InstalledAt: installedAt,
+	}); err != nil {
+		return fmt.Errorf("cli: write provenance for %q: %w", slug, err)
+	}
+	return nil
+}
+
 func updateMarketplaceSkills(
 	ctx context.Context,
-	runtime runtimeContext,
+	runtime *runtimeContext,
 	registry skillRegistry,
 	args []string,
 	updateAll bool,
@@ -285,7 +378,7 @@ func updateMarketplaceSkills(
 
 func updateMarketplaceSkill(
 	ctx context.Context,
-	runtime runtimeContext,
+	runtime *runtimeContext,
 	registry skillRegistry,
 	installed installedMarketplaceSkill,
 	checkOnly bool,
@@ -293,7 +386,10 @@ func updateMarketplaceSkill(
 ) (skillUpdateItem, error) {
 	slug := strings.TrimSpace(installed.Provenance.Slug)
 	if slug == "" {
-		return skillUpdateItem{}, fmt.Errorf("cli: marketplace skill %q is missing registry slug metadata", installed.Name)
+		return skillUpdateItem{}, fmt.Errorf(
+			"cli: marketplace skill %q is missing registry slug metadata",
+			installed.Name,
+		)
 	}
 	resolvedRegistry, err := resolveInstalledSkillRegistry(registry, installed)
 	if err != nil {
@@ -306,7 +402,10 @@ func updateMarketplaceSkill(
 		return skillUpdateItem{}, err
 	}
 	if updateInfo == nil {
-		return skillUpdateItem{}, fmt.Errorf("cli: marketplace update check returned no result for %q", slug)
+		return skillUpdateItem{}, fmt.Errorf(
+			"cli: marketplace update check returned no result for %q",
+			slug,
+		)
 	}
 
 	latestVersion := strings.TrimSpace(updateInfo.LatestVersion)
@@ -319,15 +418,23 @@ func updateMarketplaceSkill(
 	}
 
 	if !updateInfo.HasUpdate {
-		item.Status = "already up to date"
+		item.Status = skillUpdateStatusCurrent
 		return item, nil
 	}
 	if checkOnly {
-		item.Status = "update available"
+		item.Status = skillUpdateStatusAvailable
 		return item, nil
 	}
 
-	installedItem, err := installMarketplaceSkill(ctx, runtime, resolvedRegistry, slug, latestVersion, installed.Dir, now)
+	installedItem, err := installMarketplaceSkill(
+		ctx,
+		runtime,
+		resolvedRegistry,
+		slug,
+		latestVersion,
+		installed.Dir,
+		now,
+	)
 	if err != nil {
 		return skillUpdateItem{}, err
 	}
@@ -335,11 +442,16 @@ func updateMarketplaceSkill(
 	item.Name = installedItem.Name
 	item.LatestVersion = firstNonEmpty(installedItem.Version, latestVersion)
 	item.Path = installedItem.Path
-	item.Status = "updated"
+	item.Status = skillUpdateStatusUpdated
 	return item, nil
 }
 
-func searchMarketplaceSkills(ctx context.Context, deps commandDeps, query string, limit int) (_ []registrypkg.Listing, err error) {
+func searchMarketplaceSkills(
+	ctx context.Context,
+	deps commandDeps,
+	query string,
+	limit int,
+) (_ []registrypkg.Listing, err error) {
 	if limit <= 0 {
 		return nil, fmt.Errorf("cli: search limit must be positive: %d", limit)
 	}
@@ -385,10 +497,17 @@ func removeMarketplaceSkill(skillsDir string, name string) (skillRemoveItem, err
 	}, nil
 }
 
-func findInstalledMarketplaceSkill(skillsDir string, name string) (installedMarketplaceSkill, error) {
+func findInstalledMarketplaceSkill(
+	skillsDir string,
+	name string,
+) (installedMarketplaceSkill, error) {
 	skillDir, err := pathWithinRoot(skillsDir, name)
 	if err != nil {
-		return installedMarketplaceSkill{}, fmt.Errorf("cli: resolve skill path for %q: %w", name, err)
+		return installedMarketplaceSkill{}, fmt.Errorf(
+			"cli: resolve skill path for %q: %w",
+			name,
+			err,
+		)
 	}
 
 	info, err := os.Stat(skillDir)
@@ -396,7 +515,11 @@ func findInstalledMarketplaceSkill(skillsDir string, name string) (installedMark
 		if errors.Is(err, os.ErrNotExist) {
 			return installedMarketplaceSkill{}, fmt.Errorf("skill %q not found", name)
 		}
-		return installedMarketplaceSkill{}, fmt.Errorf("cli: inspect skill directory %q: %w", skillDir, err)
+		return installedMarketplaceSkill{}, fmt.Errorf(
+			"cli: inspect skill directory %q: %w",
+			skillDir,
+			err,
+		)
 	}
 	if !info.IsDir() {
 		return installedMarketplaceSkill{}, fmt.Errorf("skill %q is not a directory", name)
@@ -407,7 +530,10 @@ func findInstalledMarketplaceSkill(skillsDir string, name string) (installedMark
 		return installedMarketplaceSkill{}, err
 	}
 	if !hasSidecar {
-		return installedMarketplaceSkill{}, fmt.Errorf("skill %q is not a marketplace-installed skill", name)
+		return installedMarketplaceSkill{}, fmt.Errorf(
+			"skill %q is not a marketplace-installed skill",
+			name,
+		)
 	}
 
 	return readInstalledMarketplaceSkill(skillDir)
@@ -430,7 +556,11 @@ func listInstalledMarketplaceSkills(skillsDir string) ([]installedMarketplaceSki
 
 		skillDir, err := pathWithinRoot(skillsDir, entry.Name())
 		if err != nil {
-			return nil, fmt.Errorf("cli: resolve installed skill path for %q: %w", entry.Name(), err)
+			return nil, fmt.Errorf(
+				"cli: resolve installed skill path for %q: %w",
+				entry.Name(),
+				err,
+			)
 		}
 
 		hasSidecar, err := skills.HasSidecar(skillDir)
@@ -465,7 +595,11 @@ func readInstalledMarketplaceSkill(skillDir string) (installedMarketplaceSkill, 
 
 	skillFile, err := pathWithinRoot(skillDir, skillMarkdownFileName)
 	if err != nil {
-		return installedMarketplaceSkill{}, fmt.Errorf("cli: resolve skill file in %q: %w", skillDir, err)
+		return installedMarketplaceSkill{}, fmt.Errorf(
+			"cli: resolve skill file in %q: %w",
+			skillDir,
+			err,
+		)
 	}
 
 	parsedSkill, err := skills.ParseSkillFile(skillFile)
@@ -546,7 +680,11 @@ func pathInsideRoot(root string, target string) (string, error) {
 	return absTarget, nil
 }
 
-func resolveMarketplaceInstallTarget(skillsDir string, parsedName string, targetDirOverride string) (string, error) {
+func resolveMarketplaceInstallTarget(
+	skillsDir string,
+	parsedName string,
+	targetDirOverride string,
+) (string, error) {
 	if trimmedOverride := strings.TrimSpace(targetDirOverride); trimmedOverride != "" {
 		return pathInsideRoot(skillsDir, trimmedOverride)
 	}

@@ -22,7 +22,7 @@ type taskSQLExecutor interface {
 }
 
 // CreateDependency inserts one durable task-dependency edge under a single SQLite write lock.
-func (g *GlobalDB) CreateDependency(ctx context.Context, dependency taskpkg.TaskDependency) error {
+func (g *GlobalDB) CreateDependency(ctx context.Context, dependency taskpkg.Dependency) error {
 	if err := g.checkReady(ctx, "create task dependency"); err != nil {
 		return err
 	}
@@ -125,11 +125,16 @@ func (g *GlobalDB) DeleteDependency(ctx context.Context, taskID string, dependsO
 		)
 	}
 
-	return requireRowsAffected(result, taskpkg.ErrTaskDependencyNotFound, trimmedTaskID+"->"+trimmedDependsOnID, "task dependency")
+	return requireRowsAffected(
+		result,
+		taskpkg.ErrTaskDependencyNotFound,
+		trimmedTaskID+"->"+trimmedDependsOnID,
+		"task dependency",
+	)
 }
 
 // ListDependencies returns the persisted dependency edges for one task.
-func (g *GlobalDB) ListDependencies(ctx context.Context, taskID string) ([]taskpkg.TaskDependency, error) {
+func (g *GlobalDB) ListDependencies(ctx context.Context, taskID string) ([]taskpkg.Dependency, error) {
 	if err := g.checkReady(ctx, "list task dependencies"); err != nil {
 		return nil, err
 	}
@@ -154,7 +159,7 @@ func (g *GlobalDB) ListDependencies(ctx context.Context, taskID string) ([]taskp
 		_ = rows.Close()
 	}()
 
-	dependencies := make([]taskpkg.TaskDependency, 0)
+	dependencies := make([]taskpkg.Dependency, 0)
 	for rows.Next() {
 		record, scanErr := scanTaskDependencyRecord(rows)
 		if scanErr != nil {
@@ -170,7 +175,7 @@ func (g *GlobalDB) ListDependencies(ctx context.Context, taskID string) ([]taskp
 }
 
 // ListDependents returns persisted dependency edges that point at one task.
-func (g *GlobalDB) ListDependents(ctx context.Context, dependsOnTaskID string) ([]taskpkg.TaskDependency, error) {
+func (g *GlobalDB) ListDependents(ctx context.Context, dependsOnTaskID string) ([]taskpkg.Dependency, error) {
 	if err := g.checkReady(ctx, "list task dependents"); err != nil {
 		return nil, err
 	}
@@ -195,7 +200,7 @@ func (g *GlobalDB) ListDependents(ctx context.Context, dependsOnTaskID string) (
 		_ = rows.Close()
 	}()
 
-	dependents := make([]taskpkg.TaskDependency, 0)
+	dependents := make([]taskpkg.Dependency, 0)
 	for rows.Next() {
 		record, scanErr := scanTaskDependencyRecord(rows)
 		if scanErr != nil {
@@ -243,7 +248,7 @@ func (g *GlobalDB) HasDependencyPath(ctx context.Context, fromTaskID string, toT
 }
 
 // CreateTaskEvent inserts one immutable task audit event.
-func (g *GlobalDB) CreateTaskEvent(ctx context.Context, event taskpkg.TaskEvent) error {
+func (g *GlobalDB) CreateTaskEvent(ctx context.Context, event taskpkg.Event) error {
 	if err := g.checkReady(ctx, "create task event"); err != nil {
 		return err
 	}
@@ -293,7 +298,7 @@ func (g *GlobalDB) CreateTaskEvent(ctx context.Context, event taskpkg.TaskEvent)
 }
 
 // ListTaskEvents returns persisted audit events that match the supplied filters.
-func (g *GlobalDB) ListTaskEvents(ctx context.Context, query taskpkg.TaskEventQuery) ([]taskpkg.TaskEvent, error) {
+func (g *GlobalDB) ListTaskEvents(ctx context.Context, query taskpkg.EventQuery) ([]taskpkg.Event, error) {
 	if err := g.checkReady(ctx, "list task events"); err != nil {
 		return nil, err
 	}
@@ -322,7 +327,7 @@ func (g *GlobalDB) ListTaskEvents(ctx context.Context, query taskpkg.TaskEventQu
 		_ = rows.Close()
 	}()
 
-	events := make([]taskpkg.TaskEvent, 0)
+	events := make([]taskpkg.Event, 0)
 	for rows.Next() {
 		event, scanErr := scanTaskEventRecord(rows)
 		if scanErr != nil {
@@ -338,14 +343,18 @@ func (g *GlobalDB) ListTaskEvents(ctx context.Context, query taskpkg.TaskEventQu
 }
 
 // GetTaskRunByIdempotencyKey returns the original persisted run bound to one origin-scoped idempotency key.
-func (g *GlobalDB) GetTaskRunByIdempotencyKey(ctx context.Context, key string, origin taskpkg.Origin) (taskpkg.TaskRun, error) {
+func (g *GlobalDB) GetTaskRunByIdempotencyKey(
+	ctx context.Context,
+	key string,
+	origin taskpkg.Origin,
+) (taskpkg.Run, error) {
 	if err := g.checkReady(ctx, "get task run by idempotency key"); err != nil {
-		return taskpkg.TaskRun{}, err
+		return taskpkg.Run{}, err
 	}
 
 	trimmedKey, normalizedOrigin, err := normalizeTaskRunIdempotencyLookup(key, origin)
 	if err != nil {
-		return taskpkg.TaskRun{}, err
+		return taskpkg.Run{}, err
 	}
 
 	row := g.db.QueryRowContext(
@@ -365,15 +374,15 @@ func (g *GlobalDB) GetTaskRunByIdempotencyKey(ctx context.Context, key string, o
 	run, err := scanTaskRunRecord(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return taskpkg.TaskRun{}, taskpkg.ErrTaskRunIdempotencyNotFound
+			return taskpkg.Run{}, taskpkg.ErrTaskRunIdempotencyNotFound
 		}
-		return taskpkg.TaskRun{}, err
+		return taskpkg.Run{}, err
 	}
 	return run, nil
 }
 
 // SaveTaskRunIdempotency inserts one origin-scoped idempotency binding for a persisted run.
-func (g *GlobalDB) SaveTaskRunIdempotency(ctx context.Context, record taskpkg.TaskRunIdempotency) error {
+func (g *GlobalDB) SaveTaskRunIdempotency(ctx context.Context, record taskpkg.RunIdempotency) error {
 	if err := g.checkReady(ctx, "save task run idempotency"); err != nil {
 		return err
 	}
@@ -438,40 +447,46 @@ func (g *GlobalDB) SaveTaskRunIdempotency(ctx context.Context, record taskpkg.Ta
 	return nil
 }
 
-func (g *GlobalDB) normalizeTaskDependencyForCreate(record taskpkg.TaskDependency) (taskpkg.TaskDependency, error) {
+func (g *GlobalDB) normalizeTaskDependencyForCreate(record taskpkg.Dependency) (taskpkg.Dependency, error) {
 	normalized := normalizeTaskDependencyRecord(record)
 	if normalized.CreatedAt.IsZero() {
 		normalized.CreatedAt = g.now()
 	}
 	if err := normalized.Validate(); err != nil {
-		return taskpkg.TaskDependency{}, err
+		return taskpkg.Dependency{}, err
 	}
 	return normalized, nil
 }
 
-func (g *GlobalDB) normalizeTaskEventForCreate(record taskpkg.TaskEvent) (taskpkg.TaskEvent, error) {
+func (g *GlobalDB) normalizeTaskEventForCreate(record taskpkg.Event) (taskpkg.Event, error) {
 	normalized := normalizeTaskEventRecord(record)
 	if normalized.Timestamp.IsZero() {
 		normalized.Timestamp = g.now()
 	}
 	if err := normalized.Validate(); err != nil {
-		return taskpkg.TaskEvent{}, err
+		return taskpkg.Event{}, err
 	}
 	return normalized, nil
 }
 
-func (g *GlobalDB) normalizeTaskRunIdempotencyForCreate(record taskpkg.TaskRunIdempotency) (taskpkg.TaskRunIdempotency, error) {
+func (g *GlobalDB) normalizeTaskRunIdempotencyForCreate(
+	record taskpkg.RunIdempotency,
+) (taskpkg.RunIdempotency, error) {
 	normalized := normalizeTaskRunIdempotencyRecord(record)
 	if normalized.CreatedAt.IsZero() {
 		normalized.CreatedAt = g.now()
 	}
 	if err := normalized.Validate(); err != nil {
-		return taskpkg.TaskRunIdempotency{}, err
+		return taskpkg.RunIdempotency{}, err
 	}
 	return normalized, nil
 }
 
-func (g *GlobalDB) withTaskImmediateTransaction(ctx context.Context, action string, run func(exec taskSQLExecutor) error) error {
+func (g *GlobalDB) withTaskImmediateTransaction(
+	ctx context.Context,
+	action string,
+	run func(exec taskSQLExecutor) error,
+) (err error) {
 	conn, err := g.db.Conn(ctx)
 	if err != nil {
 		return fmt.Errorf("store: open connection for %s: %w", action, err)
@@ -488,26 +503,15 @@ func (g *GlobalDB) withTaskImmediateTransaction(ctx context.Context, action stri
 	finished := false
 	defer func() {
 		if !finished {
-			_, _ = conn.ExecContext(rollbackCtx, "ROLLBACK")
+			joinCleanupError(&err, rollbackImmediate(rollbackCtx, conn, action))
 		}
 	}()
 
 	if err := run(conn); err != nil {
-		if _, rollbackErr := conn.ExecContext(rollbackCtx, "ROLLBACK"); rollbackErr != nil {
-			return errors.Join(err, fmt.Errorf("store: rollback %s transaction: %w", action, rollbackErr))
-		}
-		finished = true
 		return err
 	}
 
-	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
-		if _, rollbackErr := conn.ExecContext(rollbackCtx, "ROLLBACK"); rollbackErr != nil {
-			return errors.Join(
-				fmt.Errorf("store: commit %s transaction: %w", action, err),
-				fmt.Errorf("store: rollback %s transaction: %w", action, rollbackErr),
-			)
-		}
-		finished = true
+	if _, err = conn.ExecContext(ctx, "COMMIT"); err != nil {
 		return fmt.Errorf("store: commit %s transaction: %w", action, err)
 	}
 
@@ -532,10 +536,14 @@ func (g *GlobalDB) ensureTaskExistsWithExecutor(ctx context.Context, exec taskSQ
 	return nil
 }
 
-func (g *GlobalDB) getTaskRunWithExecutor(ctx context.Context, exec taskSQLExecutor, runID string) (taskpkg.TaskRun, error) {
+func (g *GlobalDB) getTaskRunWithExecutor(
+	ctx context.Context,
+	exec taskSQLExecutor,
+	runID string,
+) (taskpkg.Run, error) {
 	trimmedRunID, err := requireTaskValue(runID, "task run id")
 	if err != nil {
-		return taskpkg.TaskRun{}, err
+		return taskpkg.Run{}, err
 	}
 
 	row := exec.QueryRowContext(
@@ -551,14 +559,18 @@ func (g *GlobalDB) getTaskRunWithExecutor(ctx context.Context, exec taskSQLExecu
 	run, err := scanTaskRunRecord(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return taskpkg.TaskRun{}, taskpkg.ErrTaskRunNotFound
+			return taskpkg.Run{}, taskpkg.ErrTaskRunNotFound
 		}
-		return taskpkg.TaskRun{}, err
+		return taskpkg.Run{}, err
 	}
 	return run, nil
 }
 
-func (g *GlobalDB) countDependenciesWithExecutor(ctx context.Context, exec taskSQLExecutor, taskID string) (int, error) {
+func (g *GlobalDB) countDependenciesWithExecutor(
+	ctx context.Context,
+	exec taskSQLExecutor,
+	taskID string,
+) (int, error) {
 	var count int
 	if err := exec.QueryRowContext(
 		ctx,
@@ -570,7 +582,11 @@ func (g *GlobalDB) countDependenciesWithExecutor(ctx context.Context, exec taskS
 	return count, nil
 }
 
-func (g *GlobalDB) taskDependencyExists(ctx context.Context, exec taskSQLExecutor, dependency taskpkg.TaskDependency) (bool, error) {
+func (g *GlobalDB) taskDependencyExists(
+	ctx context.Context,
+	exec taskSQLExecutor,
+	dependency taskpkg.Dependency,
+) (bool, error) {
 	var exists int
 	if err := exec.QueryRowContext(
 		ctx,
@@ -594,7 +610,12 @@ func (g *GlobalDB) taskDependencyExists(ctx context.Context, exec taskSQLExecuto
 	return true, nil
 }
 
-func (g *GlobalDB) hasDependencyPathWithExecutor(ctx context.Context, exec taskSQLExecutor, fromTaskID string, toTaskID string) (bool, error) {
+func (g *GlobalDB) hasDependencyPathWithExecutor(
+	ctx context.Context,
+	exec taskSQLExecutor,
+	fromTaskID string,
+	toTaskID string,
+) (bool, error) {
 	var exists int
 	if err := exec.QueryRowContext(
 		ctx,
@@ -616,7 +637,12 @@ func (g *GlobalDB) hasDependencyPathWithExecutor(ctx context.Context, exec taskS
 	return exists == 1, nil
 }
 
-func getTaskRunIdempotencyRecord(ctx context.Context, exec taskSQLExecutor, key string, origin taskpkg.Origin) (taskpkg.TaskRunIdempotency, error) {
+func getTaskRunIdempotencyRecord(
+	ctx context.Context,
+	exec taskSQLExecutor,
+	key string,
+	origin taskpkg.Origin,
+) (taskpkg.RunIdempotency, error) {
 	row := exec.QueryRowContext(
 		ctx,
 		`SELECT idempotency_key, run_id, origin_kind, origin_ref, created_at
@@ -630,14 +656,14 @@ func getTaskRunIdempotencyRecord(ctx context.Context, exec taskSQLExecutor, key 
 	record, err := scanTaskRunIdempotencyRecord(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return taskpkg.TaskRunIdempotency{}, taskpkg.ErrTaskRunIdempotencyNotFound
+			return taskpkg.RunIdempotency{}, taskpkg.ErrTaskRunIdempotencyNotFound
 		}
-		return taskpkg.TaskRunIdempotency{}, err
+		return taskpkg.RunIdempotency{}, err
 	}
 	return record, nil
 }
 
-func normalizeTaskDependencyRecord(record taskpkg.TaskDependency) taskpkg.TaskDependency {
+func normalizeTaskDependencyRecord(record taskpkg.Dependency) taskpkg.Dependency {
 	normalized := record
 	normalized.TaskID = strings.TrimSpace(normalized.TaskID)
 	normalized.DependsOnTaskID = strings.TrimSpace(normalized.DependsOnTaskID)
@@ -648,7 +674,7 @@ func normalizeTaskDependencyRecord(record taskpkg.TaskDependency) taskpkg.TaskDe
 	return normalized
 }
 
-func normalizeTaskEventRecord(record taskpkg.TaskEvent) taskpkg.TaskEvent {
+func normalizeTaskEventRecord(record taskpkg.Event) taskpkg.Event {
 	normalized := record
 	normalized.ID = strings.TrimSpace(normalized.ID)
 	normalized.TaskID = strings.TrimSpace(normalized.TaskID)
@@ -665,7 +691,7 @@ func normalizeTaskEventRecord(record taskpkg.TaskEvent) taskpkg.TaskEvent {
 	return normalized
 }
 
-func normalizeTaskEventQuery(query taskpkg.TaskEventQuery) taskpkg.TaskEventQuery {
+func normalizeTaskEventQuery(query taskpkg.EventQuery) taskpkg.EventQuery {
 	normalized := query
 	normalized.TaskID = strings.TrimSpace(normalized.TaskID)
 	normalized.RunID = strings.TrimSpace(normalized.RunID)
@@ -690,7 +716,7 @@ func normalizeTaskRunIdempotencyLookup(key string, origin taskpkg.Origin) (strin
 	return trimmedKey, normalizedOrigin, nil
 }
 
-func normalizeTaskRunIdempotencyRecord(record taskpkg.TaskRunIdempotency) taskpkg.TaskRunIdempotency {
+func normalizeTaskRunIdempotencyRecord(record taskpkg.RunIdempotency) taskpkg.RunIdempotency {
 	normalized := record
 	normalized.IdempotencyKey = strings.TrimSpace(normalized.IdempotencyKey)
 	normalized.RunID = strings.TrimSpace(normalized.RunID)
@@ -702,9 +728,9 @@ func normalizeTaskRunIdempotencyRecord(record taskpkg.TaskRunIdempotency) taskpk
 	return normalized
 }
 
-func scanTaskDependencyRecord(scanner rowScanner) (taskpkg.TaskDependency, error) {
+func scanTaskDependencyRecord(scanner rowScanner) (taskpkg.Dependency, error) {
 	var (
-		record       taskpkg.TaskDependency
+		record       taskpkg.Dependency
 		kind         string
 		createdAtRaw string
 	)
@@ -714,26 +740,26 @@ func scanTaskDependencyRecord(scanner rowScanner) (taskpkg.TaskDependency, error
 		&kind,
 		&createdAtRaw,
 	); err != nil {
-		return taskpkg.TaskDependency{}, fmt.Errorf("store: scan task dependency: %w", err)
+		return taskpkg.Dependency{}, fmt.Errorf("store: scan task dependency: %w", err)
 	}
 
 	record.Kind = taskpkg.DependencyKind(strings.TrimSpace(kind))
 	createdAt, err := store.ParseTimestamp(createdAtRaw)
 	if err != nil {
-		return taskpkg.TaskDependency{}, err
+		return taskpkg.Dependency{}, err
 	}
 	record.CreatedAt = createdAt
 	record = normalizeTaskDependencyRecord(record)
 	if err := record.Validate(); err != nil {
-		return taskpkg.TaskDependency{}, err
+		return taskpkg.Dependency{}, err
 	}
 
 	return record, nil
 }
 
-func scanTaskEventRecord(scanner rowScanner) (taskpkg.TaskEvent, error) {
+func scanTaskEventRecord(scanner rowScanner) (taskpkg.Event, error) {
 	var (
-		record      taskpkg.TaskEvent
+		record      taskpkg.Event
 		runID       sql.NullString
 		actorKind   string
 		originKind  string
@@ -752,7 +778,7 @@ func scanTaskEventRecord(scanner rowScanner) (taskpkg.TaskEvent, error) {
 		&payloadJSON,
 		&timestamp,
 	); err != nil {
-		return taskpkg.TaskEvent{}, fmt.Errorf("store: scan task event: %w", err)
+		return taskpkg.Event{}, fmt.Errorf("store: scan task event: %w", err)
 	}
 
 	record.RunID = taskNullStringValue(runID)
@@ -760,26 +786,26 @@ func scanTaskEventRecord(scanner rowScanner) (taskpkg.TaskEvent, error) {
 	record.Origin.Kind = taskpkg.OriginKind(strings.TrimSpace(originKind))
 	payload, err := decodeTaskJSON(payloadJSON, "task_event.payload_json")
 	if err != nil {
-		return taskpkg.TaskEvent{}, err
+		return taskpkg.Event{}, err
 	}
 	record.Payload = payload
 
 	parsedTimestamp, err := store.ParseTimestamp(timestamp)
 	if err != nil {
-		return taskpkg.TaskEvent{}, err
+		return taskpkg.Event{}, err
 	}
 	record.Timestamp = parsedTimestamp
 	record = normalizeTaskEventRecord(record)
 	if err := record.Validate(); err != nil {
-		return taskpkg.TaskEvent{}, err
+		return taskpkg.Event{}, err
 	}
 
 	return record, nil
 }
 
-func scanTaskRunIdempotencyRecord(scanner rowScanner) (taskpkg.TaskRunIdempotency, error) {
+func scanTaskRunIdempotencyRecord(scanner rowScanner) (taskpkg.RunIdempotency, error) {
 	var (
-		record       taskpkg.TaskRunIdempotency
+		record       taskpkg.RunIdempotency
 		originKind   string
 		createdAtRaw string
 	)
@@ -790,23 +816,24 @@ func scanTaskRunIdempotencyRecord(scanner rowScanner) (taskpkg.TaskRunIdempotenc
 		&record.Origin.Ref,
 		&createdAtRaw,
 	); err != nil {
-		return taskpkg.TaskRunIdempotency{}, fmt.Errorf("store: scan task run idempotency: %w", err)
+		return taskpkg.RunIdempotency{}, fmt.Errorf("store: scan task run idempotency: %w", err)
 	}
 
 	record.Origin.Kind = taskpkg.OriginKind(strings.TrimSpace(originKind))
 	createdAt, err := store.ParseTimestamp(createdAtRaw)
 	if err != nil {
-		return taskpkg.TaskRunIdempotency{}, err
+		return taskpkg.RunIdempotency{}, err
 	}
 	record.CreatedAt = createdAt
 	record = normalizeTaskRunIdempotencyRecord(record)
 	if err := record.Validate(); err != nil {
-		return taskpkg.TaskRunIdempotency{}, err
+		return taskpkg.RunIdempotency{}, err
 	}
 
 	return record, nil
 }
 
 func taskOriginsEqual(left taskpkg.Origin, right taskpkg.Origin) bool {
-	return left.Kind.Normalize() == right.Kind.Normalize() && strings.TrimSpace(left.Ref) == strings.TrimSpace(right.Ref)
+	return left.Kind.Normalize() == right.Kind.Normalize() &&
+		strings.TrimSpace(left.Ref) == strings.TrimSpace(right.Ref)
 }

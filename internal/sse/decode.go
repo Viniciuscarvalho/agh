@@ -63,46 +63,53 @@ func Decode(ctx context.Context, body io.Reader, handler Handler) error {
 			return err
 		}
 
-		line := scanner.Text()
-		if line == "" {
-			if err := emit(); err != nil {
-				if errors.Is(err, ErrStop) {
-					return nil
-				}
+		shouldEmit := decodeLine(scanner.Text(), &event, &dataLines)
+		if shouldEmit {
+			if err := handleDecodedEvent(emit()); err != nil {
 				return err
 			}
-			continue
-		}
-		if strings.HasPrefix(line, ":") {
-			continue
-		}
-
-		field, value, found := strings.Cut(line, ":")
-		if !found {
-			continue
-		}
-		value = strings.TrimPrefix(value, " ")
-
-		switch field {
-		case "id":
-			event.ID = value
-		case "event":
-			event.Event = value
-		case "data":
-			dataLines = append(dataLines, value)
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("sse: read stream: %w", err)
 	}
-	if err := emit(); err != nil {
-		if errors.Is(err, ErrStop) {
-			return nil
-		}
+	if err := handleDecodedEvent(emit()); err != nil {
 		return err
 	}
 	return nil
+}
+
+func decodeLine(line string, event *Event, dataLines *[]string) bool {
+	if line == "" {
+		return true
+	}
+	if strings.HasPrefix(line, ":") {
+		return false
+	}
+
+	field, value, found := strings.Cut(line, ":")
+	if !found {
+		return false
+	}
+
+	switch field {
+	case "id":
+		event.ID = strings.TrimPrefix(value, " ")
+	case "event":
+		event.Event = strings.TrimPrefix(value, " ")
+	case "data":
+		*dataLines = append(*dataLines, strings.TrimPrefix(value, " "))
+	}
+
+	return false
+}
+
+func handleDecodedEvent(err error) error {
+	if errors.Is(err, ErrStop) {
+		return nil
+	}
+	return err
 }
 
 func readerIsNil(reader io.Reader) bool {

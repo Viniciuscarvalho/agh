@@ -59,81 +59,19 @@ func ParseEnvelope(data []byte, opts ValidateOptions) (Envelope, error) {
 func NormalizeEnvelope(env Envelope, opts ValidateOptions) (Envelope, error) {
 	opts = opts.withDefaults()
 
-	normalized := Envelope{
-		Protocol:      strings.TrimSpace(env.Protocol),
-		ID:            strings.TrimSpace(env.ID),
-		Kind:          Kind(strings.TrimSpace(string(env.Kind))),
-		Channel:       strings.TrimSpace(env.Channel),
-		From:          strings.TrimSpace(env.From),
-		TS:            env.TS,
-		Body:          cloneRawMessage(env.Body),
-		Proof:         cloneProof(env.Proof),
-		Ext:           cloneExtensionMap(env.Ext),
-		InteractionID: normalizeOptionalIdentifier(env.InteractionID),
-		ReplyTo:       normalizeOptionalIdentifier(env.ReplyTo),
-		TraceID:       normalizeOptionalIdentifier(env.TraceID),
-		CausationID:   normalizeOptionalIdentifier(env.CausationID),
-		To:            normalizeOptionalIdentifier(env.To),
-		ExpiresAt:     cloneInt64Ptr(env.ExpiresAt),
-	}
-
-	if normalized.Protocol == "" {
-		return Envelope{}, fmt.Errorf("%w: protocol is required", ErrMissingField)
-	}
-	if normalized.Protocol != ProtocolV0 {
-		return Envelope{}, fmt.Errorf("%w: protocol=%q", ErrInvalidField, normalized.Protocol)
-	}
-	if normalized.ID == "" {
-		return Envelope{}, fmt.Errorf("%w: id is required", ErrMissingField)
-	}
-	if err := normalized.Kind.Validate(); err != nil {
+	normalized := normalizeEnvelopeCopy(env)
+	if err := validateEnvelopeHeader(normalized); err != nil {
 		return Envelope{}, err
 	}
-	if normalized.Channel == "" {
-		return Envelope{}, fmt.Errorf("%w: channel is required", ErrMissingField)
-	}
-	if err := ValidateChannel(normalized.Channel); err != nil {
+	if err := validateEnvelopeParticipants(normalized); err != nil {
 		return Envelope{}, err
 	}
-	if normalized.From == "" {
-		return Envelope{}, fmt.Errorf("%w: from is required", ErrMissingField)
-	}
-	if err := ValidatePeerID(normalized.From); err != nil {
-		return Envelope{}, fmt.Errorf("%w: from", err)
-	}
-	if normalized.To != nil {
-		if err := ValidatePeerID(*normalized.To); err != nil {
-			return Envelope{}, fmt.Errorf("%w: to", err)
-		}
-	}
-	if normalized.InteractionID != nil && *normalized.InteractionID == "" {
-		return Envelope{}, fmt.Errorf("%w: interaction_id", ErrInvalidField)
-	}
-	if normalized.ReplyTo != nil && *normalized.ReplyTo == "" {
-		return Envelope{}, fmt.Errorf("%w: reply_to", ErrInvalidField)
-	}
-	if normalized.TraceID != nil && *normalized.TraceID == "" {
-		return Envelope{}, fmt.Errorf("%w: trace_id", ErrInvalidField)
-	}
-	if normalized.CausationID != nil && *normalized.CausationID == "" {
-		return Envelope{}, fmt.Errorf("%w: causation_id", ErrInvalidField)
-	}
-	if normalized.TS <= 0 {
-		return Envelope{}, fmt.Errorf("%w: ts is required", ErrMissingField)
-	}
-	if _, err := validateJSONObject("body", normalized.Body); err != nil {
+	if err := validateEnvelopeReferences(normalized); err != nil {
 		return Envelope{}, err
 	}
-	if _, err := normalized.DecodeBody(); err != nil {
+	if err := validateEnvelopeBodyAndFreshness(normalized, opts); err != nil {
 		return Envelope{}, err
 	}
-	if err := validateKindEnvelopeRules(normalized); err != nil {
-		return Envelope{}, err
-	}
-	if err := validateEnvelopeFreshness(normalized, opts); err != nil {
-		return Envelope{}, err
-	}
-
 	return normalized, nil
 }
 
@@ -176,80 +114,164 @@ func DecodeBody(kind Kind, raw json.RawMessage) (Body, error) {
 		return nil, err
 	}
 
+	decoder, err := bodyDecoderForKind(kind)
+	if err != nil {
+		return nil, err
+	}
+	return decoder(raw)
+}
+
+type bodyDecoder func(json.RawMessage) (Body, error)
+
+func normalizeEnvelopeCopy(env Envelope) Envelope {
+	return Envelope{
+		Protocol:      strings.TrimSpace(env.Protocol),
+		ID:            strings.TrimSpace(env.ID),
+		Kind:          Kind(strings.TrimSpace(string(env.Kind))),
+		Channel:       strings.TrimSpace(env.Channel),
+		From:          strings.TrimSpace(env.From),
+		TS:            env.TS,
+		Body:          cloneRawMessage(env.Body),
+		Proof:         cloneProof(env.Proof),
+		Ext:           cloneExtensionMap(env.Ext),
+		InteractionID: normalizeOptionalIdentifier(env.InteractionID),
+		ReplyTo:       normalizeOptionalIdentifier(env.ReplyTo),
+		TraceID:       normalizeOptionalIdentifier(env.TraceID),
+		CausationID:   normalizeOptionalIdentifier(env.CausationID),
+		To:            normalizeOptionalIdentifier(env.To),
+		ExpiresAt:     cloneInt64Ptr(env.ExpiresAt),
+	}
+}
+
+func validateEnvelopeHeader(env Envelope) error {
+	if env.Protocol == "" {
+		return fmt.Errorf("%w: protocol is required", ErrMissingField)
+	}
+	if env.Protocol != ProtocolV0 {
+		return fmt.Errorf("%w: protocol=%q", ErrInvalidField, env.Protocol)
+	}
+	if env.ID == "" {
+		return fmt.Errorf("%w: id is required", ErrMissingField)
+	}
+	if err := env.Kind.Validate(); err != nil {
+		return err
+	}
+	if env.Channel == "" {
+		return fmt.Errorf("%w: channel is required", ErrMissingField)
+	}
+	return ValidateChannel(env.Channel)
+}
+
+func validateEnvelopeParticipants(env Envelope) error {
+	if env.From == "" {
+		return fmt.Errorf("%w: from is required", ErrMissingField)
+	}
+	if err := ValidatePeerID(env.From); err != nil {
+		return fmt.Errorf("%w: from", err)
+	}
+	if env.To != nil {
+		if err := ValidatePeerID(*env.To); err != nil {
+			return fmt.Errorf("%w: to", err)
+		}
+	}
+	return nil
+}
+
+func validateEnvelopeReferences(env Envelope) error {
+	if err := validateOptionalIdentifierField(env.InteractionID, "interaction_id"); err != nil {
+		return err
+	}
+	if err := validateOptionalIdentifierField(env.ReplyTo, "reply_to"); err != nil {
+		return err
+	}
+	if err := validateOptionalIdentifierField(env.TraceID, "trace_id"); err != nil {
+		return err
+	}
+	if err := validateOptionalIdentifierField(env.CausationID, "causation_id"); err != nil {
+		return err
+	}
+	if env.TS <= 0 {
+		return fmt.Errorf("%w: ts is required", ErrMissingField)
+	}
+	return nil
+}
+
+func validateOptionalIdentifierField(value *string, field string) error {
+	if value != nil && *value == "" {
+		return fmt.Errorf("%w: %s", ErrInvalidField, field)
+	}
+	return nil
+}
+
+func validateEnvelopeBodyAndFreshness(env Envelope, opts ValidateOptions) error {
+	if _, err := validateJSONObject("body", env.Body); err != nil {
+		return err
+	}
+	if _, err := env.DecodeBody(); err != nil {
+		return err
+	}
+	if err := validateKindEnvelopeRules(env); err != nil {
+		return err
+	}
+	return validateEnvelopeFreshness(env, opts)
+}
+
+func bodyDecoderForKind(kind Kind) (bodyDecoder, error) {
 	switch kind {
 	case KindGreet:
-		var body GreetBody
-		if err := decodeJSON(raw, &body); err != nil {
-			return nil, fmt.Errorf("%w: greet body: %w", ErrInvalidBody, err)
-		}
-		if err := normalizeAndValidateGreetBody(&body); err != nil {
-			return nil, err
-		}
-		return body, nil
+		return func(raw json.RawMessage) (Body, error) {
+			return decodeNormalizedBody(raw, "greet", normalizeAndValidateGreetBody)
+		}, nil
 	case KindWhois:
-		var body WhoisBody
-		if err := decodeJSON(raw, &body); err != nil {
-			return nil, fmt.Errorf("%w: whois body: %w", ErrInvalidBody, err)
-		}
-		if err := normalizeAndValidateWhoisBody(&body); err != nil {
-			return nil, err
-		}
-		return body, nil
+		return func(raw json.RawMessage) (Body, error) {
+			return decodeNormalizedBody(raw, "whois", normalizeAndValidateWhoisBody)
+		}, nil
 	case KindSay:
-		var body SayBody
-		if err := decodeJSON(raw, &body); err != nil {
-			return nil, fmt.Errorf("%w: say body: %w", ErrInvalidBody, err)
-		}
-		if err := normalizeAndValidateSayBody(&body); err != nil {
-			return nil, err
-		}
-		return body, nil
+		return func(raw json.RawMessage) (Body, error) {
+			return decodeNormalizedBody(raw, "say", normalizeAndValidateSayBody)
+		}, nil
 	case KindDirect:
-		var body DirectBody
-		if err := decodeJSON(raw, &body); err != nil {
-			return nil, fmt.Errorf("%w: direct body: %w", ErrInvalidBody, err)
-		}
-		if err := normalizeAndValidateDirectBody(&body); err != nil {
-			return nil, err
-		}
-		return body, nil
+		return func(raw json.RawMessage) (Body, error) {
+			return decodeNormalizedBody(raw, "direct", normalizeAndValidateDirectBody)
+		}, nil
 	case KindRecipe:
-		object, err := validateJSONObject("body", raw)
-		if err != nil {
-			return nil, err
-		}
-		if _, ok := object["recipe"]; !ok {
-			return nil, fmt.Errorf("%w: recipe body must wrap artifact fields inside \"recipe\", e.g. {\"recipe\":{...}}", ErrInvalidBody)
-		}
-		var body RecipeBody
-		if err := decodeJSON(raw, &body); err != nil {
-			return nil, fmt.Errorf("%w: recipe body: %w", ErrInvalidBody, err)
-		}
-		if err := normalizeAndValidateRecipeBody(&body); err != nil {
-			return nil, err
-		}
-		return body, nil
+		return decodeRecipeEnvelopeBody, nil
 	case KindReceipt:
-		var body ReceiptBody
-		if err := decodeJSON(raw, &body); err != nil {
-			return nil, fmt.Errorf("%w: receipt body: %w", ErrInvalidBody, err)
-		}
-		if err := normalizeAndValidateReceiptBody(&body); err != nil {
-			return nil, err
-		}
-		return body, nil
+		return func(raw json.RawMessage) (Body, error) {
+			return decodeNormalizedBody(raw, "receipt", normalizeAndValidateReceiptBody)
+		}, nil
 	case KindTrace:
-		var body TraceBody
-		if err := decodeJSON(raw, &body); err != nil {
-			return nil, fmt.Errorf("%w: trace body: %w", ErrInvalidBody, err)
-		}
-		if err := normalizeAndValidateTraceBody(&body); err != nil {
-			return nil, err
-		}
-		return body, nil
+		return func(raw json.RawMessage) (Body, error) {
+			return decodeNormalizedBody(raw, "trace", normalizeAndValidateTraceBody)
+		}, nil
 	default:
 		return nil, fmt.Errorf("%w: kind=%q", ErrInvalidKind, string(kind))
 	}
+}
+
+func decodeRecipeEnvelopeBody(raw json.RawMessage) (Body, error) {
+	object, err := validateJSONObject("body", raw)
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := object["recipe"]; !ok {
+		return nil, fmt.Errorf(
+			"%w: recipe body must wrap artifact fields inside \"recipe\", e.g. {\"recipe\":{...}}",
+			ErrInvalidBody,
+		)
+	}
+	return decodeNormalizedBody(raw, "recipe", normalizeAndValidateRecipeBody)
+}
+
+func decodeNormalizedBody[T Body](raw json.RawMessage, label string, normalize func(*T) error) (Body, error) {
+	var body T
+	if err := decodeJSON(raw, &body); err != nil {
+		return nil, fmt.Errorf("%w: %s body: %w", ErrInvalidBody, label, err)
+	}
+	if err := normalize(&body); err != nil {
+		return nil, err
+	}
+	return body, nil
 }
 
 func validateKindEnvelopeRules(env Envelope) error {

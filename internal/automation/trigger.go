@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"sort"
 	"strconv"
 	"strings"
@@ -40,6 +41,7 @@ var (
 
 const (
 	webhookSignaturePrefix = "sha256="
+	triggerEventWebhook    = "webhook"
 )
 
 // DefaultWebhookFreshnessWindow is the default accepted clock skew for webhook requests.
@@ -52,7 +54,7 @@ type TriggerDispatcher interface {
 
 // HookSessionResolver resolves session metadata for hook-completion ingress.
 type HookSessionResolver interface {
-	Status(ctx context.Context, id string) (*session.SessionInfo, error)
+	Status(ctx context.Context, id string) (*session.Info, error)
 }
 
 // TriggerEngineOption customizes trigger runtime behavior.
@@ -77,17 +79,30 @@ func (r TriggerRegistration) Validate(path string) error {
 	}
 
 	trimmedSecret := strings.TrimSpace(r.WebhookSecret)
-	if strings.TrimSpace(r.Trigger.Event) != "webhook" {
+	if strings.TrimSpace(r.Trigger.Event) != triggerEventWebhook {
 		if trimmedSecret != "" {
-			return fmt.Errorf("%s must be empty when %s.trigger.event is %q", nestedPath(path, "webhook_secret"), path, strings.TrimSpace(r.Trigger.Event))
+			return fmt.Errorf(
+				"%s must be empty when %s.trigger.event is %q",
+				nestedPath(path, "webhook_secret"),
+				path,
+				strings.TrimSpace(r.Trigger.Event),
+			)
 		}
 		return nil
 	}
 	if strings.TrimSpace(r.Trigger.WebhookID) == "" {
-		return errors.New(nestedPath(path, "trigger.webhook_id") + " is required when trigger.event is \"webhook\"")
+		return fmt.Errorf(
+			"%s is required when trigger.event is %q",
+			nestedPath(path, "trigger.webhook_id"),
+			triggerEventWebhook,
+		)
 	}
 	if trimmedSecret == "" {
-		return errors.New(nestedPath(path, "webhook_secret") + " is required when trigger.event is \"webhook\"")
+		return fmt.Errorf(
+			"%s is required when trigger.event is %q",
+			nestedPath(path, "webhook_secret"),
+			triggerEventWebhook,
+		)
 	}
 
 	return nil
@@ -101,14 +116,14 @@ type ParsedWebhookEndpoint struct {
 
 // WebhookRequest is the transport-neutral webhook delivery input consumed by the trigger engine.
 type WebhookRequest struct {
-	Scope       AutomationScope `json:"scope"`
-	WorkspaceID string          `json:"workspace_id,omitempty"`
-	Endpoint    string          `json:"endpoint"`
-	DeliveryID  string          `json:"delivery_id"`
-	Timestamp   time.Time       `json:"timestamp"`
-	Signature   string          `json:"signature"`
-	Payload     []byte          `json:"payload,omitempty"`
-	Data        map[string]any  `json:"data,omitempty"`
+	Scope       Scope          `json:"scope"`
+	WorkspaceID string         `json:"workspace_id,omitempty"`
+	Endpoint    string         `json:"endpoint"`
+	DeliveryID  string         `json:"delivery_id"`
+	Timestamp   time.Time      `json:"timestamp"`
+	Signature   string         `json:"signature"`
+	Payload     []byte         `json:"payload,omitempty"`
+	Data        map[string]any `json:"data,omitempty"`
 }
 
 // Validate ensures the request can be normalized before any dispatch occurs.
@@ -134,7 +149,7 @@ func (r WebhookRequest) Validate(path string) error {
 // MemoryConsolidatedEvent is the observer-facing completion payload used for normalized memory ingress.
 type MemoryConsolidatedEvent struct {
 	WorkspaceID string         `json:"workspace_id,omitempty"`
-	Timestamp   time.Time      `json:"timestamp,omitempty"`
+	Timestamp   time.Time      `json:"timestamp"`
 	Data        map[string]any `json:"data,omitempty"`
 }
 
@@ -372,7 +387,10 @@ func (e *TriggerEngine) FireSessionStopped(ctx context.Context, sess *session.Se
 }
 
 // FireMemoryConsolidated normalizes a dream-consolidation completion into the shared matching path.
-func (e *TriggerEngine) FireMemoryConsolidated(ctx context.Context, event MemoryConsolidatedEvent) (TriggerResult, error) {
+func (e *TriggerEngine) FireMemoryConsolidated(
+	ctx context.Context,
+	event MemoryConsolidatedEvent,
+) (TriggerResult, error) {
 	envelope, err := memoryConsolidatedEnvelope(event)
 	if err != nil {
 		return TriggerResult{}, err
@@ -381,7 +399,11 @@ func (e *TriggerEngine) FireMemoryConsolidated(ctx context.Context, event Memory
 }
 
 // FireHookCompletion normalizes one hook-completion telemetry record into the shared matching path.
-func (e *TriggerEngine) FireHookCompletion(ctx context.Context, sessionID string, record hookspkg.HookRunRecord) (TriggerResult, error) {
+func (e *TriggerEngine) FireHookCompletion(
+	ctx context.Context,
+	sessionID string,
+	record hookspkg.HookRunRecord,
+) (TriggerResult, error) {
 	if ctx == nil {
 		return TriggerResult{}, errors.New("automation: trigger fire context is required")
 	}
@@ -412,7 +434,12 @@ func (e *TriggerEngine) HandleWebhook(ctx context.Context, request WebhookReques
 	if err := ValidateWebhookTimestamp(request.Timestamp, e.now(), e.webhookFreshnessWindow); err != nil {
 		return TriggerResult{}, err
 	}
-	if err := ValidateWebhookSignature(registration.WebhookSecret, request.Timestamp, request.Payload, request.Signature); err != nil {
+	if err := ValidateWebhookSignature(
+		registration.WebhookSecret,
+		request.Timestamp,
+		request.Payload,
+		request.Signature,
+	); err != nil {
 		return TriggerResult{}, err
 	}
 	if err := e.claimWebhookDelivery(registration.Trigger.ID, request.DeliveryID); err != nil {
@@ -459,10 +486,17 @@ func ParseWebhookEndpoint(endpoint string) (ParsedWebhookEndpoint, error) {
 		WebhookID:    strings.TrimSpace(trimmed[separator+2:]),
 	}
 	if parsed.EndpointSlug == "" || parsed.WebhookID == "" {
-		return ParsedWebhookEndpoint{}, fmt.Errorf("%w: expected non-empty slug and webhook id", ErrWebhookEndpointInvalid)
+		return ParsedWebhookEndpoint{}, fmt.Errorf(
+			"%w: expected non-empty slug and webhook id",
+			ErrWebhookEndpointInvalid,
+		)
 	}
 	if !strings.HasPrefix(parsed.WebhookID, "wbh_") {
-		return ParsedWebhookEndpoint{}, fmt.Errorf("%w: webhook id %q must start with \"wbh_\"", ErrWebhookEndpointInvalid, parsed.WebhookID)
+		return ParsedWebhookEndpoint{}, fmt.Errorf(
+			"%w: webhook id %q must start with \"wbh_\"",
+			ErrWebhookEndpointInvalid,
+			parsed.WebhookID,
+		)
 	}
 
 	return parsed, nil
@@ -558,7 +592,11 @@ func (e *TriggerEngine) matchingRegistrations(envelope ActivationEnvelope) ([]Tr
 	return matches, nil
 }
 
-func (e *TriggerEngine) dispatchMatches(ctx context.Context, envelope ActivationEnvelope, registrations []TriggerRegistration) (TriggerResult, error) {
+func (e *TriggerEngine) dispatchMatches(
+	ctx context.Context,
+	envelope ActivationEnvelope,
+	registrations []TriggerRegistration,
+) (TriggerResult, error) {
 	result := TriggerResult{
 		Runs: make([]Run, 0, len(registrations)),
 	}
@@ -591,7 +629,11 @@ func (e *TriggerEngine) dispatchMatches(ctx context.Context, envelope Activation
 	return result, errors.Join(errs...)
 }
 
-func (e *TriggerEngine) webhookRegistration(scope AutomationScope, workspaceID string, webhookID string) (TriggerRegistration, error) {
+func (e *TriggerEngine) webhookRegistration(
+	scope Scope,
+	workspaceID string,
+	webhookID string,
+) (TriggerRegistration, error) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
@@ -607,7 +649,8 @@ func (e *TriggerEngine) webhookRegistration(scope AutomationScope, workspaceID s
 	if !ok {
 		return TriggerRegistration{}, ErrWebhookTriggerNotRegistered
 	}
-	if registration.Trigger.Scope != scope || strings.TrimSpace(registration.Trigger.WorkspaceID) != strings.TrimSpace(workspaceID) {
+	if registration.Trigger.Scope != scope ||
+		strings.TrimSpace(registration.Trigger.WorkspaceID) != strings.TrimSpace(workspaceID) {
 		return TriggerRegistration{}, ErrWebhookTriggerNotRegistered
 	}
 	return cloneTriggerRegistration(registration), nil
@@ -683,7 +726,11 @@ func webhookDeliveryKey(triggerID string, deliveryID string) string {
 	return strings.TrimSpace(triggerID) + "\x00" + strings.TrimSpace(deliveryID)
 }
 
-func (e *TriggerEngine) hookCompletionEnvelope(ctx context.Context, sessionID string, record hookspkg.HookRunRecord) (ActivationEnvelope, error) {
+func (e *TriggerEngine) hookCompletionEnvelope(
+	ctx context.Context,
+	sessionID string,
+	record hookspkg.HookRunRecord,
+) (ActivationEnvelope, error) {
 	if strings.TrimSpace(sessionID) == "" {
 		return ActivationEnvelope{}, errors.New("automation: hook completion session id is required")
 	}
@@ -1026,9 +1073,7 @@ func cloneStringMap(src map[string]string) map[string]string {
 		return nil
 	}
 	cloned := make(map[string]string, len(src))
-	for key, value := range src {
-		cloned[key] = value
-	}
+	maps.Copy(cloned, src)
 	return cloned
 }
 
@@ -1037,13 +1082,11 @@ func cloneAnyMap(src map[string]any) map[string]any {
 		return nil
 	}
 	cloned := make(map[string]any, len(src))
-	for key, value := range src {
-		cloned[key] = value
-	}
+	maps.Copy(cloned, src)
 	return cloned
 }
 
-func scopeFromWorkspaceID(workspaceID string) AutomationScope {
+func scopeFromWorkspaceID(workspaceID string) Scope {
 	if strings.TrimSpace(workspaceID) == "" {
 		return AutomationScopeGlobal
 	}
@@ -1095,7 +1138,11 @@ type triggerHookTelemetrySink struct {
 	engine *TriggerEngine
 }
 
-func (s *triggerHookTelemetrySink) WriteHookRecord(ctx context.Context, sessionID string, record hookspkg.HookRunRecord) error {
+func (s *triggerHookTelemetrySink) WriteHookRecord(
+	ctx context.Context,
+	sessionID string,
+	record hookspkg.HookRunRecord,
+) error {
 	if s == nil || s.engine == nil {
 		return nil
 	}

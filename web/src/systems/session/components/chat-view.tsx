@@ -1,114 +1,16 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useMemo, useState } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { memo } from "react";
 import { ArrowDown, MessageSquare } from "lucide-react";
 
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { useChatViewContent } from "../hooks/use-chat-view-content";
+import { mergeToolPairs, type RowDescriptor } from "../hooks/use-chat-view-rows";
 import type { UIMessage } from "../types";
 import { MessageBubble } from "./message-bubble";
 import { ProcessingIndicator } from "./processing-indicator";
 import { ToolGroupSection } from "./tool-group-section";
 
-// ── Row model ──
-
-export type RowDescriptor =
-  | { kind: "message"; msg: UIMessage }
-  | { kind: "tool_group"; tools: UIMessage[] }
-  | { kind: "processing" };
-
-const PROCESSING_ROW: RowDescriptor = { kind: "processing" };
-const BOTTOM_LOCK_THRESHOLD_PX = 80;
-
-/**
- * Pure function to build row descriptors from messages.
- * Groups consecutive tool_call/tool_result messages into tool_group rows.
- * Adds a processing indicator row when streaming.
- */
-export function buildRows(messages: UIMessage[], isStreaming: boolean): RowDescriptor[] {
-  const rows: RowDescriptor[] = [];
-  let i = 0;
-
-  while (i < messages.length) {
-    const msg = messages[i];
-
-    if (msg.role === "tool_call" || msg.role === "tool_result") {
-      // Collect consecutive tool messages into a group
-      const tools: UIMessage[] = [];
-      while (
-        i < messages.length &&
-        (messages[i].role === "tool_call" || messages[i].role === "tool_result")
-      ) {
-        tools.push(messages[i]);
-        i++;
-      }
-      rows.push({ kind: "tool_group", tools });
-      continue;
-    }
-
-    rows.push({ kind: "message", msg });
-    i++;
-  }
-
-  if (isStreaming) {
-    // Only show processing if no message is currently streaming content
-    const hasActiveStream = messages.some(
-      m => m.role === "assistant" && m.isStreaming && (m.content || m.thinking)
-    );
-    if (!hasActiveStream) {
-      rows.push(PROCESSING_ROW);
-    }
-  }
-
-  return rows;
-}
-
-function getRowKey(row: RowDescriptor, index: number): string {
-  if (row.kind === "processing") return "__processing__";
-  if (row.kind === "tool_group") return `tg-${row.tools[0]?.id ?? index}`;
-  return row.msg.id;
-}
-
-function estimateRowHeight(row: RowDescriptor): number {
-  if (row.kind === "processing") return 44;
-  if (row.kind === "tool_group") return 36 * mergeToolPairs(row.tools).length;
-  const msg = row.msg;
-  if (msg.role === "user") return Math.max(56, Math.min(200, 56 + msg.content.length / 3));
-  if (msg.role === "assistant") return Math.max(56, Math.min(600, 56 + msg.content.length / 2));
-  return 48;
-}
-
-/**
- * Merge consecutive tool_call + tool_result pairs into single UIMessages.
- * Each tool_call gets its matching tool_result (by id) merged onto it.
- * Only tool_call messages are returned; tool_result-only messages are consumed.
- */
-export function mergeToolPairs(tools: UIMessage[]): UIMessage[] {
-  const resultMap = new Map<string, UIMessage>();
-  for (const t of tools) {
-    if (t.role === "tool_result") {
-      resultMap.set(t.id, t);
-    }
-  }
-
-  const merged: UIMessage[] = [];
-  for (const t of tools) {
-    if (t.role !== "tool_call") continue;
-    const result = resultMap.get(t.id);
-    if (result) {
-      merged.push({
-        ...t,
-        toolResult: result.toolResult,
-        toolError: result.toolError,
-      });
-    } else {
-      merged.push(t);
-    }
-  }
-
-  return merged;
-}
-
-// ── ChatMessageRow ──
+export { buildRows, mergeToolPairs, type RowDescriptor } from "../hooks/use-chat-view-rows";
 
 interface ChatMessageRowProps {
   row: RowDescriptor;
@@ -128,10 +30,8 @@ const ChatMessageRow = memo(
 
     return <MessageBubble message={row.msg} agentName={agentName} />;
   },
-  (prev, next) => prev.row === next.row && prev.agentName === next.agentName
+  (previous, next) => previous.row === next.row && previous.agentName === next.agentName
 );
-
-// ── ChatView ──
 
 export interface ChatViewProps {
   messages: UIMessage[];
@@ -160,176 +60,39 @@ export const ChatView = memo(function ChatView({
   return <ChatViewContent messages={messages} isStreaming={isStreaming} agentName={agentName} />;
 });
 
-/**
- * Structural sharing: preserves row references when content is unchanged,
- * preventing unnecessary virtualizer re-renders during streaming.
- */
-function isRowUnchanged(a: RowDescriptor, b: RowDescriptor): boolean {
-  if (a.kind !== b.kind) return false;
-  if (a.kind === "processing") return true;
-  if (a.kind === "tool_group" && b.kind === "tool_group") {
-    return (
-      a.tools === b.tools ||
-      (a.tools.length === b.tools.length && a.tools.every((t, i) => t === b.tools[i]))
-    );
-  }
-  if (a.kind === "message" && b.kind === "message") {
-    return a.msg === b.msg;
-  }
-  return false;
-}
-
-function computeStableRows(prev: RowDescriptor[], next: RowDescriptor[]): RowDescriptor[] {
-  if (prev.length === 0) return next;
-
-  let changed = false;
-  const stable = next.map((row, i) => {
-    if (i < prev.length && isRowUnchanged(prev[i], row)) {
-      return prev[i];
-    }
-    changed = true;
-    return row;
-  });
-
-  if (!changed && prev.length === next.length) return prev;
-  return stable;
-}
-
-function useStableRows(messages: UIMessage[], isStreaming: boolean): RowDescriptor[] {
-  const prevRef = useRef<RowDescriptor[]>([]);
-  return useMemo(() => {
-    const next = buildRows(messages, isStreaming);
-    const stable = computeStableRows(prevRef.current, next);
-    prevRef.current = stable;
-    return stable;
-  }, [messages, isStreaming]);
-}
-
 function ChatViewContent({ messages, isStreaming, agentName }: ChatViewProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const bottomLockedRef = useRef(true);
-  const userScrollIntentRef = useRef(0);
-  const [showScrollButton, setShowScrollButton] = useState(false);
-
-  const rows = useStableRows(messages, isStreaming);
-
-  const virtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: i => estimateRowHeight(rows[i]),
-    overscan: 10,
-    getItemKey: i => getRowKey(rows[i], i),
-  });
-
-  // ── Bottom-lock scroll ──
-
-  const scrollToBottom = useCallback(() => {
-    const el = scrollRef.current;
-    if (el) {
-      el.scrollTop = el.scrollHeight;
-      bottomLockedRef.current = true;
-      setShowScrollButton(false);
-    }
-  }, []);
-
-  const scheduleFollowBottom = useCallback(() => {
-    if (!bottomLockedRef.current) return;
-    requestAnimationFrame(() => {
-      const el = scrollRef.current;
-      if (el && bottomLockedRef.current) {
-        el.scrollTop = el.scrollHeight;
-      }
-    });
-  }, []);
-
-  // Follow bottom on new rows
-  useEffect(() => {
-    scheduleFollowBottom();
-  }, [rows.length, scheduleFollowBottom]);
-
-  // Follow bottom during streaming content growth
-  useEffect(() => {
-    if (!isStreaming) return;
-    const el = scrollRef.current;
-    if (!el) return;
-
-    const observer = new ResizeObserver(() => {
-      scheduleFollowBottom();
-    });
-    const inner = el.firstElementChild;
-    if (inner) observer.observe(inner);
-    return () => observer.disconnect();
-  }, [isStreaming, scheduleFollowBottom]);
-
-  // Initial scroll to bottom
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (el) {
-      el.scrollTop = el.scrollHeight;
-    }
-  }, []);
-
-  const markUserIntent = useCallback(() => {
-    userScrollIntentRef.current = Date.now() + 250;
-  }, []);
-
-  const handleScroll = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const { scrollTop, scrollHeight, clientHeight } = el;
-    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-    const hasRecentUserIntent = Date.now() <= userScrollIntentRef.current;
-
-    if (hasRecentUserIntent && distanceFromBottom > BOTTOM_LOCK_THRESHOLD_PX) {
-      bottomLockedRef.current = false;
-      setShowScrollButton(true);
-    } else if (distanceFromBottom <= BOTTOM_LOCK_THRESHOLD_PX) {
-      bottomLockedRef.current = true;
-      setShowScrollButton(false);
-    }
-  }, []);
-
-  // Passive wheel/touch listeners
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.addEventListener("wheel", markUserIntent, { passive: true });
-    el.addEventListener("touchmove", markUserIntent, { passive: true });
-    return () => {
-      el.removeEventListener("wheel", markUserIntent);
-      el.removeEventListener("touchmove", markUserIntent);
-    };
-  }, [markUserIntent]);
+  const view = useChatViewContent({ messages, isStreaming });
 
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden" data-testid="chat-view">
       <div
-        ref={scrollRef}
+        ref={view.scrollRef}
         className="min-h-0 flex-1 overflow-y-auto"
         style={{ overscrollBehaviorY: "contain" }}
-        onScroll={handleScroll}
-        onPointerDown={markUserIntent}
+        onPointerDown={view.markUserIntent}
+        onScroll={view.handleScroll}
       >
         <div
           style={{
-            height: `${virtualizer.getTotalSize()}px`,
-            width: "100%",
+            height: `${view.virtualizer.getTotalSize()}px`,
             position: "relative",
+            width: "100%",
           }}
         >
-          {virtualizer.getVirtualItems().map(virtualRow => {
-            const row = rows[virtualRow.index];
+          {view.virtualizer.getVirtualItems().map(virtualRow => {
+            const row = view.rows[virtualRow.index];
+
             return (
               <div
                 key={virtualRow.key}
-                ref={virtualizer.measureElement}
+                ref={view.virtualizer.measureElement}
                 data-index={virtualRow.index}
                 style={{
+                  left: 0,
                   position: "absolute",
                   top: 0,
-                  left: 0,
-                  width: "100%",
                   transform: `translateY(${virtualRow.start}px)`,
+                  width: "100%",
                 }}
               >
                 <ChatMessageRow row={row} agentName={agentName} />
@@ -339,12 +102,12 @@ function ChatViewContent({ messages, isStreaming, agentName }: ChatViewProps) {
         </div>
       </div>
 
-      {showScrollButton && (
+      {view.showScrollButton && (
         <div className="absolute bottom-2 left-1/2 -translate-x-1/2">
           <Button
             variant="secondary"
             size="sm"
-            onClick={scrollToBottom}
+            onClick={view.scrollToBottom}
             className={cn("border border-[color:var(--color-divider)]")}
             data-testid="scroll-to-bottom"
           >

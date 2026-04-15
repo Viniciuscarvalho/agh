@@ -101,81 +101,8 @@ func SummarizeConformanceReport(
 		Platform: strings.TrimSpace(platform),
 		Targets:  normalizeCoverageTargets(targets),
 	}
-	if summary.Provider == "" && report.Handshake != nil && report.Handshake.Request.Runtime.Bridge != nil {
-		summary.Provider = strings.TrimSpace(report.Handshake.Request.Runtime.Bridge.Provider)
-	}
-	if summary.Platform == "" && report.Handshake != nil && report.Handshake.Request.Runtime.Bridge != nil {
-		summary.Platform = strings.TrimSpace(report.Handshake.Request.Runtime.Bridge.Platform)
-	}
-
-	managedByID := make(map[string]ManagedInstanceOutcome)
-	if report.Handshake != nil && report.Handshake.Request.Runtime.Bridge != nil {
-		for _, managed := range report.Handshake.Request.Runtime.Bridge.ManagedInstances {
-			instanceID := strings.TrimSpace(managed.Instance.ID)
-			if instanceID == "" {
-				continue
-			}
-			outcome := ManagedInstanceOutcome{
-				InstanceID:  instanceID,
-				FinalStatus: managed.Instance.Status.Normalize(),
-			}
-			if managed.Instance.Degradation != nil {
-				outcome.DegradationReason = managed.Instance.Degradation.Reason.Normalize()
-			}
-			managedByID[instanceID] = outcome
-		}
-	}
-	if report.Ownership != nil {
-		seedOutcomeFromInstance := func(instance bridgepkg.BridgeInstance) {
-			instanceID := strings.TrimSpace(instance.ID)
-			if instanceID == "" {
-				return
-			}
-			if _, ok := managedByID[instanceID]; ok {
-				return
-			}
-			outcome := ManagedInstanceOutcome{
-				InstanceID:  instanceID,
-				FinalStatus: instance.Status.Normalize(),
-			}
-			if instance.Degradation != nil {
-				outcome.DegradationReason = instance.Degradation.Reason.Normalize()
-			}
-			managedByID[instanceID] = outcome
-		}
-		for _, instance := range report.Ownership.Listed {
-			seedOutcomeFromInstance(instance)
-		}
-		for _, instance := range report.Ownership.Fetched {
-			seedOutcomeFromInstance(instance)
-		}
-	}
-
-	for _, record := range report.States {
-		instanceID := strings.TrimSpace(record.BridgeInstanceID)
-		if instanceID == "" {
-			instanceID = strings.TrimSpace(record.Instance.ID)
-		}
-		if instanceID == "" {
-			continue
-		}
-		outcome := managedByID[instanceID]
-		outcome.InstanceID = instanceID
-		outcome.FinalStatus = record.Status.Normalize()
-		outcome.DegradationReason = ""
-		if record.Instance.Degradation != nil {
-			outcome.DegradationReason = record.Instance.Degradation.Reason.Normalize()
-		}
-		managedByID[instanceID] = outcome
-	}
-
-	summary.ManagedInstances = make([]ManagedInstanceOutcome, 0, len(managedByID))
-	for _, outcome := range managedByID {
-		summary.ManagedInstances = append(summary.ManagedInstances, outcome)
-	}
-	slices.SortFunc(summary.ManagedInstances, func(left, right ManagedInstanceOutcome) int {
-		return strings.Compare(left.InstanceID, right.InstanceID)
-	})
+	populateSummaryIdentity(&summary, report)
+	summary.ManagedInstances = summarizeManagedInstanceOutcomes(report)
 	return summary
 }
 
@@ -196,7 +123,10 @@ func BuildConformanceMatrix(entries ...ProviderConformanceSummary) []ProviderCon
 		key := normalized.Provider + "|" + normalized.Platform
 		if existing, ok := merged[key]; ok {
 			existing.Targets = normalizeCoverageTargets(append(existing.Targets, normalized.Targets...))
-			existing.ManagedInstances = mergeManagedInstanceOutcomes(existing.ManagedInstances, normalized.ManagedInstances)
+			existing.ManagedInstances = mergeManagedInstanceOutcomes(
+				existing.ManagedInstances,
+				normalized.ManagedInstances,
+			)
 			merged[key] = existing
 			continue
 		}
@@ -233,46 +163,7 @@ func ValidateConformanceMatrix(entries []ProviderConformanceSummary, requiredTar
 	for _, entry := range matrix {
 		key := entry.Provider + "|" + entry.Platform
 		seenProviders[key] = struct{}{}
-
-		if strings.TrimSpace(entry.Provider) == "" {
-			issues = append(issues, ConformanceMatrixIssue{
-				Code:    "missing_provider",
-				Message: "conformance matrix entry omitted provider",
-			})
-		}
-		if strings.TrimSpace(entry.Platform) == "" {
-			issues = append(issues, ConformanceMatrixIssue{
-				Code:    "missing_platform",
-				Message: fmt.Sprintf("provider %q conformance matrix entry omitted platform", entry.Provider),
-			})
-		}
-		if len(entry.ManagedInstances) == 0 {
-			issues = append(issues, ConformanceMatrixIssue{
-				Code:    "missing_managed_instances",
-				Message: fmt.Sprintf("provider %q did not report any managed instances in the matrix", entry.Provider),
-			})
-		}
-		if len(entry.Targets) == 0 {
-			issues = append(issues, ConformanceMatrixIssue{
-				Code:    "missing_targets",
-				Message: fmt.Sprintf("provider %q did not declare any conformance targets", entry.Provider),
-			})
-		}
-		if slices.Contains(entry.Targets, CoverageTargetMultiInstance) && len(entry.ManagedInstances) < 2 {
-			issues = append(issues, ConformanceMatrixIssue{
-				Code:    "insufficient_multi_instance_coverage",
-				Message: fmt.Sprintf("provider %q marked multi-instance coverage with only %d managed instance(s)", entry.Provider, len(entry.ManagedInstances)),
-			})
-		}
-
-		for _, outcome := range entry.ManagedInstances {
-			if strings.TrimSpace(outcome.InstanceID) == "" {
-				issues = append(issues, ConformanceMatrixIssue{
-					Code:    "missing_instance_id",
-					Message: fmt.Sprintf("provider %q included a matrix row without bridge instance id", entry.Provider),
-				})
-			}
-		}
+		issues = append(issues, validateConformanceMatrixEntry(entry)...)
 		for _, target := range entry.Targets {
 			coveredTargets[target]++
 		}
@@ -293,32 +184,205 @@ func ValidateConformanceMatrix(entries []ProviderConformanceSummary, requiredTar
 	return nil
 }
 
+func populateSummaryIdentity(summary *ProviderConformanceSummary, report ConformanceReport) {
+	if summary == nil || report.Handshake == nil || report.Handshake.Request.Runtime.Bridge == nil {
+		return
+	}
+	runtime := report.Handshake.Request.Runtime.Bridge
+	if summary.Provider == "" {
+		summary.Provider = strings.TrimSpace(runtime.Provider)
+	}
+	if summary.Platform == "" {
+		summary.Platform = strings.TrimSpace(runtime.Platform)
+	}
+}
+
+func summarizeManagedInstanceOutcomes(report ConformanceReport) []ManagedInstanceOutcome {
+	managedByID := make(map[string]ManagedInstanceOutcome)
+	seedManagedInstanceOutcomes(managedByID, report)
+	mergeManagedInstanceStateRecords(managedByID, report.States)
+	return managedInstanceOutcomesFromMap(managedByID)
+}
+
+func seedManagedInstanceOutcomes(managedByID map[string]ManagedInstanceOutcome, report ConformanceReport) {
+	if report.Handshake != nil && report.Handshake.Request.Runtime.Bridge != nil {
+		for _, managed := range report.Handshake.Request.Runtime.Bridge.ManagedInstances {
+			instanceID := strings.TrimSpace(managed.Instance.ID)
+			if instanceID == "" {
+				continue
+			}
+			outcome := ManagedInstanceOutcome{
+				InstanceID:  instanceID,
+				FinalStatus: managed.Instance.Status.Normalize(),
+			}
+			if managed.Instance.Degradation != nil {
+				outcome.DegradationReason = managed.Instance.Degradation.Reason.Normalize()
+			}
+			managedByID[instanceID] = outcome
+		}
+	}
+	if report.Ownership == nil {
+		return
+	}
+	for _, instance := range report.Ownership.Listed {
+		seedOutcomeFromInstance(managedByID, instance)
+	}
+	for _, instance := range report.Ownership.Fetched {
+		seedOutcomeFromInstance(managedByID, instance)
+	}
+}
+
+func seedOutcomeFromInstance(managedByID map[string]ManagedInstanceOutcome, instance bridgepkg.BridgeInstance) {
+	instanceID := strings.TrimSpace(instance.ID)
+	if instanceID == "" {
+		return
+	}
+	if _, ok := managedByID[instanceID]; ok {
+		return
+	}
+	outcome := ManagedInstanceOutcome{
+		InstanceID:  instanceID,
+		FinalStatus: instance.Status.Normalize(),
+	}
+	if instance.Degradation != nil {
+		outcome.DegradationReason = instance.Degradation.Reason.Normalize()
+	}
+	managedByID[instanceID] = outcome
+}
+
+func mergeManagedInstanceStateRecords(
+	managedByID map[string]ManagedInstanceOutcome,
+	states []StateRecord,
+) {
+	for _, record := range states {
+		instanceID := strings.TrimSpace(record.BridgeInstanceID)
+		if instanceID == "" {
+			instanceID = strings.TrimSpace(record.Instance.ID)
+		}
+		if instanceID == "" {
+			continue
+		}
+		outcome := managedByID[instanceID]
+		outcome.InstanceID = instanceID
+		outcome.FinalStatus = record.Status.Normalize()
+		outcome.DegradationReason = ""
+		if record.Instance.Degradation != nil {
+			outcome.DegradationReason = record.Instance.Degradation.Reason.Normalize()
+		}
+		managedByID[instanceID] = outcome
+	}
+}
+
+func managedInstanceOutcomesFromMap(managedByID map[string]ManagedInstanceOutcome) []ManagedInstanceOutcome {
+	outcomes := make([]ManagedInstanceOutcome, 0, len(managedByID))
+	for _, outcome := range managedByID {
+		outcomes = append(outcomes, outcome)
+	}
+	slices.SortFunc(outcomes, func(left, right ManagedInstanceOutcome) int {
+		return strings.Compare(left.InstanceID, right.InstanceID)
+	})
+	return outcomes
+}
+
+func validateConformanceMatrixEntry(entry ProviderConformanceSummary) []ConformanceMatrixIssue {
+	issues := make([]ConformanceMatrixIssue, 0)
+	if strings.TrimSpace(entry.Provider) == "" {
+		issues = append(issues, ConformanceMatrixIssue{
+			Code:    "missing_provider",
+			Message: "conformance matrix entry omitted provider",
+		})
+	}
+	if strings.TrimSpace(entry.Platform) == "" {
+		issues = append(issues, ConformanceMatrixIssue{
+			Code:    "missing_platform",
+			Message: fmt.Sprintf("provider %q conformance matrix entry omitted platform", entry.Provider),
+		})
+	}
+	if len(entry.ManagedInstances) == 0 {
+		issues = append(issues, ConformanceMatrixIssue{
+			Code:    "missing_managed_instances",
+			Message: fmt.Sprintf("provider %q did not report any managed instances in the matrix", entry.Provider),
+		})
+	}
+	if len(entry.Targets) == 0 {
+		issues = append(issues, ConformanceMatrixIssue{
+			Code:    "missing_targets",
+			Message: fmt.Sprintf("provider %q did not declare any conformance targets", entry.Provider),
+		})
+	}
+	if slices.Contains(entry.Targets, CoverageTargetMultiInstance) && len(entry.ManagedInstances) < 2 {
+		issues = append(issues, ConformanceMatrixIssue{
+			Code: "insufficient_multi_instance_coverage",
+			Message: fmt.Sprintf(
+				"provider %q marked multi-instance coverage with only %d managed instance(s)",
+				entry.Provider,
+				len(entry.ManagedInstances),
+			),
+		})
+	}
+	for _, outcome := range entry.ManagedInstances {
+		if strings.TrimSpace(outcome.InstanceID) == "" {
+			issues = append(issues, ConformanceMatrixIssue{
+				Code: "missing_instance_id",
+				Message: fmt.Sprintf(
+					"provider %q included a matrix row without bridge instance id",
+					entry.Provider,
+				),
+			})
+		}
+	}
+	return issues
+}
+
 // ValidateClassifiedOutcome asserts that a classified recovery outcome matches the shared expectation.
 func ValidateClassifiedOutcome(actual ClassifiedOutcome, expect ClassifiedOutcomeExpectation) error {
 	issues := make([]ConformanceMatrixIssue, 0)
 
 	if got, want := actual.Classification.normalize(), expect.Classification.normalize(); got != want {
 		issues = append(issues, ConformanceMatrixIssue{
-			Code:    "wrong_classification",
-			Message: fmt.Sprintf("provider %q classification = %q, want %q", actual.Provider, actual.Classification, expect.Classification),
+			Code: "wrong_classification",
+			Message: fmt.Sprintf(
+				"provider %q classification = %q, want %q",
+				actual.Provider,
+				actual.Classification,
+				expect.Classification,
+			),
 		})
 	}
 	if got, want := actual.Status.Normalize(), expect.Status.Normalize(); got != want {
 		issues = append(issues, ConformanceMatrixIssue{
-			Code:    "wrong_status",
-			Message: fmt.Sprintf("provider %q status = %q, want %q for %q", actual.Provider, actual.Status, expect.Status, actual.Classification),
+			Code: "wrong_status",
+			Message: fmt.Sprintf(
+				"provider %q status = %q, want %q for %q",
+				actual.Provider,
+				actual.Status,
+				expect.Status,
+				actual.Classification,
+			),
 		})
 	}
 	if got, want := actual.Reason.Normalize(), expect.Reason.Normalize(); got != want {
 		issues = append(issues, ConformanceMatrixIssue{
-			Code:    "wrong_degradation_reason",
-			Message: fmt.Sprintf("provider %q degradation reason = %q, want %q for %q", actual.Provider, actual.Reason, expect.Reason, actual.Classification),
+			Code: "wrong_degradation_reason",
+			Message: fmt.Sprintf(
+				"provider %q degradation reason = %q, want %q for %q",
+				actual.Provider,
+				actual.Reason,
+				expect.Reason,
+				actual.Classification,
+			),
 		})
 	}
 	if actual.Retryable != expect.Retryable {
 		issues = append(issues, ConformanceMatrixIssue{
-			Code:    "wrong_retryability",
-			Message: fmt.Sprintf("provider %q retryable = %t, want %t for %q", actual.Provider, actual.Retryable, expect.Retryable, actual.Classification),
+			Code: "wrong_retryability",
+			Message: fmt.Sprintf(
+				"provider %q retryable = %t, want %t for %q",
+				actual.Provider,
+				actual.Retryable,
+				expect.Retryable,
+				actual.Classification,
+			),
 		})
 	}
 
@@ -354,7 +418,10 @@ func cloneManagedInstanceOutcomes(entries []ManagedInstanceOutcome) []ManagedIns
 	return cloned
 }
 
-func mergeManagedInstanceOutcomes(existing []ManagedInstanceOutcome, incoming []ManagedInstanceOutcome) []ManagedInstanceOutcome {
+func mergeManagedInstanceOutcomes(
+	existing []ManagedInstanceOutcome,
+	incoming []ManagedInstanceOutcome,
+) []ManagedInstanceOutcome {
 	merged := make(map[string]ManagedInstanceOutcome, len(existing)+len(incoming))
 	for _, outcome := range existing {
 		instanceID := strings.TrimSpace(outcome.InstanceID)

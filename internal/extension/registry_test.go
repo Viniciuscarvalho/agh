@@ -1,4 +1,4 @@
-package extension
+package extensionpkg
 
 import (
 	"context"
@@ -235,7 +235,12 @@ func TestRegistryListReturnsAllInstalledExtensions(t *testing.T) {
 	if err := env.registry.Install(alphaManifest, alphaDir, alphaChecksum); err != nil {
 		t.Fatalf("Install(alpha) error = %v", err)
 	}
-	if err := env.registry.Install(betaManifest, betaDir, betaChecksum, WithInstallSource(SourceMarketplace)); err != nil {
+	if err := env.registry.Install(
+		betaManifest,
+		betaDir,
+		betaChecksum,
+		WithInstallSource(SourceMarketplace),
+	); err != nil {
 		t.Fatalf("Install(beta) error = %v", err)
 	}
 
@@ -418,7 +423,16 @@ func TestRegistryInstallReplaceExistingUpdatesMarketplaceRecord(t *testing.T) {
 		t.Fatalf("Install(first) error = %v", err)
 	}
 
-	writeFile(t, filepath.Join(dir, manifestTOMLFileName), strings.Replace(registryManifestTOML("replace-registry", registryManifestOptions{}), `version = "0.2.1"`, `version = "0.3.0"`, 1))
+	writeFile(
+		t,
+		filepath.Join(dir, manifestTOMLFileName),
+		strings.Replace(
+			registryManifestTOML("replace-registry", registryManifestOptions{}),
+			`version = "0.2.1"`,
+			`version = "0.3.0"`,
+			1,
+		),
+	)
 	updatedManifest, err := LoadManifest(dir)
 	if err != nil {
 		t.Fatalf("LoadManifest(updated) error = %v", err)
@@ -470,7 +484,16 @@ func TestRegistryInstallReplaceExistingPreservesEnabledState(t *testing.T) {
 		t.Fatalf("Disable() error = %v", err)
 	}
 
-	writeFile(t, filepath.Join(dir, manifestTOMLFileName), strings.Replace(registryManifestTOML("disabled-replace-registry", registryManifestOptions{}), `version = "0.2.1"`, `version = "0.3.0"`, 1))
+	writeFile(
+		t,
+		filepath.Join(dir, manifestTOMLFileName),
+		strings.Replace(
+			registryManifestTOML("disabled-replace-registry", registryManifestOptions{}),
+			`version = "0.2.1"`,
+			`version = "0.3.0"`,
+			1,
+		),
+	)
 	updatedManifest, err := LoadManifest(dir)
 	if err != nil {
 		t.Fatalf("LoadManifest(updated) error = %v", err)
@@ -785,10 +808,16 @@ func TestRegistryUtilityHelpers(t *testing.T) {
 		if err := os.MkdirAll(nodeModulesDir, 0o755); err != nil {
 			t.Fatalf("os.MkdirAll(%q) error = %v", nodeModulesDir, err)
 		}
-		if err := os.Symlink(filepath.Join("..", "..", "packages", "typescript"), filepath.Join(dir, "node_modules", "typescript")); err != nil {
+		if err := os.Symlink(
+			filepath.Join("..", "..", "packages", "typescript"),
+			filepath.Join(dir, "node_modules", "typescript"),
+		); err != nil {
 			t.Skipf("os.Symlink(directory) unavailable: %v", err)
 		}
-		if err := os.Symlink(filepath.Join("..", "typescript", "bin", "tsc"), filepath.Join(nodeModulesDir, "tsc")); err != nil {
+		if err := os.Symlink(
+			filepath.Join("..", "typescript", "bin", "tsc"),
+			filepath.Join(nodeModulesDir, "tsc"),
+		); err != nil {
 			t.Skipf("os.Symlink(file) unavailable: %v", err)
 		}
 
@@ -801,13 +830,20 @@ func TestRegistryUtilityHelpers(t *testing.T) {
 			t.Fatalf("ComputeDirectoryChecksum(dir with repeated symlink hash) error = %v", err)
 		}
 		if first != second {
-			t.Fatalf("ComputeDirectoryChecksum(dir with symlink) = %q on first pass, %q on second pass, want stable checksum", first, second)
+			t.Fatalf(
+				"ComputeDirectoryChecksum(dir with symlink) = %q on first pass, %q on second pass, want stable checksum",
+				first,
+				second,
+			)
 		}
 
 		if err := os.Remove(filepath.Join(nodeModulesDir, "tsc")); err != nil {
 			t.Fatalf("os.Remove(tsc symlink) error = %v", err)
 		}
-		if err := os.Symlink(filepath.Join("..", "..", "payload.txt"), filepath.Join(nodeModulesDir, "tsc")); err != nil {
+		if err := os.Symlink(
+			filepath.Join("..", "..", "payload.txt"),
+			filepath.Join(nodeModulesDir, "tsc"),
+		); err != nil {
 			t.Fatalf("os.Symlink(updated file target) error = %v", err)
 		}
 
@@ -816,7 +852,11 @@ func TestRegistryUtilityHelpers(t *testing.T) {
 			t.Fatalf("ComputeDirectoryChecksum(dir after symlink target change) error = %v", err)
 		}
 		if updated == first {
-			t.Fatalf("ComputeDirectoryChecksum(dir after symlink target change) = %q, want checksum change from %q", updated, first)
+			t.Fatalf(
+				"ComputeDirectoryChecksum(dir after symlink target change) = %q, want checksum change from %q",
+				updated,
+				first,
+			)
 		}
 	})
 

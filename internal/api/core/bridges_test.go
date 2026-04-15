@@ -97,7 +97,8 @@ func TestBridgeHandlersCreateListGetAndUpdate(t *testing.T) {
 			if req.ProviderConfig == nil || string(*req.ProviderConfig) != `{"mode":"comments"}` {
 				t.Fatalf("UpdateInstance().ProviderConfig = %#v", req.ProviderConfig)
 			}
-			if req.DeliveryDefaults == nil || string(*req.DeliveryDefaults) != `{"group_id":"ops","mode":"direct-send"}` {
+			if req.DeliveryDefaults == nil ||
+				string(*req.DeliveryDefaults) != `{"group_id":"ops","mode":"direct-send"}` {
 				t.Fatalf("UpdateInstance().DeliveryDefaults = %#v", req.DeliveryDefaults)
 			}
 			if req.Degradation == nil || req.Degradation.Reason != bridgepkg.BridgeDegradationReasonAuthFailed {
@@ -120,7 +121,15 @@ func TestBridgeHandlersCreateListGetAndUpdate(t *testing.T) {
 		},
 	})
 
-	createResp := performRequest(t, engine, http.MethodPost, "/bridges", []byte(`{"scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":true,"status":"starting","dm_policy":"pairing","routing_policy":{"include_peer":true},"provider_config":{"mode":"bot","tenant":"acme"},"delivery_defaults":{"peer_id":"peer-default","mode":"reply"}}`))
+	createResp := performRequest(
+		t,
+		engine,
+		http.MethodPost,
+		"/bridges",
+		[]byte(
+			`{"scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":true,"status":"starting","dm_policy":"pairing","routing_policy":{"include_peer":true},"provider_config":{"mode":"bot","tenant":"acme"},"delivery_defaults":{"peer_id":"peer-default","mode":"reply"}}`,
+		),
+	)
 	if createResp.Code != http.StatusCreated || !createCalled {
 		t.Fatalf("create status = %d createCalled=%v body=%s", createResp.Code, createCalled, createResp.Body.String())
 	}
@@ -137,7 +146,9 @@ func TestBridgeHandlersCreateListGetAndUpdate(t *testing.T) {
 	if got, want := string(listPayload.Bridges[0].ProviderConfig), `{"mode":"bot","tenant":"acme"}`; got != want {
 		t.Fatalf("list provider_config = %s, want %s", got, want)
 	}
-	if got, want := string(listPayload.Bridges[0].DeliveryDefaults), `{"peer_id":"peer-default","mode":"reply"}`; got != want {
+	if got, want := string(
+		listPayload.Bridges[0].DeliveryDefaults,
+	), `{"peer_id":"peer-default","mode":"reply"}`; got != want {
 		t.Fatalf("list delivery_defaults = %s, want %s", got, want)
 	}
 
@@ -150,15 +161,23 @@ func TestBridgeHandlersCreateListGetAndUpdate(t *testing.T) {
 	if getPayload.Bridge.DMPolicy != bridgepkg.BridgeDMPolicyOpen {
 		t.Fatalf("get bridge dm_policy = %q, want %q", getPayload.Bridge.DMPolicy, bridgepkg.BridgeDMPolicyOpen)
 	}
-	if getPayload.Bridge.Degradation == nil || getPayload.Bridge.Degradation.Reason != bridgepkg.BridgeDegradationReasonProviderTimeout {
+	if getPayload.Bridge.Degradation == nil ||
+		getPayload.Bridge.Degradation.Reason != bridgepkg.BridgeDegradationReasonProviderTimeout {
 		t.Fatalf("get bridge degradation = %#v", getPayload.Bridge.Degradation)
 	}
 
-	updateResp := performRequest(t, engine, http.MethodPatch, "/bridges/brg-core", []byte(`{"display_name":"Renamed","dm_policy":"allowlist","provider_config":{"mode":"comments"},"delivery_defaults":{"group_id":"ops","mode":"direct-send"},"degradation":{"reason":"auth_failed"}}`))
+	updateResp := performRequest(
+		t,
+		engine,
+		http.MethodPatch,
+		"/bridges/brg-core",
+		[]byte(
+			`{"display_name":"Renamed","dm_policy":"allowlist","provider_config":{"mode":"comments"},"delivery_defaults":{"group_id":"ops","mode":"direct-send"},"degradation":{"reason":"auth_failed"}}`,
+		),
+	)
 	if updateResp.Code != http.StatusOK || !updateCalled {
 		t.Fatalf("update status = %d updateCalled=%v body=%s", updateResp.Code, updateCalled, updateResp.Body.String())
 	}
-
 }
 
 func TestBridgeHandlersLifecycleTransitions(t *testing.T) {
@@ -166,13 +185,40 @@ func TestBridgeHandlersLifecycleTransitions(t *testing.T) {
 
 	_, engine := newBridgeHandlerFixture(t, testutil.StubBridgeService{
 		StartInstanceFn: func(_ context.Context, id string) (*bridgepkg.BridgeInstance, error) {
-			return &bridgepkg.BridgeInstance{ID: id, Scope: bridgepkg.ScopeGlobal, Platform: "telegram", ExtensionName: "ext-telegram", DisplayName: "Support", Enabled: true, Status: bridgepkg.BridgeStatusStarting, RoutingPolicy: bridgepkg.RoutingPolicy{IncludePeer: true}}, nil
+			return &bridgepkg.BridgeInstance{
+				ID:            id,
+				Scope:         bridgepkg.ScopeGlobal,
+				Platform:      "telegram",
+				ExtensionName: "ext-telegram",
+				DisplayName:   "Support",
+				Enabled:       true,
+				Status:        bridgepkg.BridgeStatusStarting,
+				RoutingPolicy: bridgepkg.RoutingPolicy{IncludePeer: true},
+			}, nil
 		},
 		StopInstanceFn: func(_ context.Context, id string) (*bridgepkg.BridgeInstance, error) {
-			return &bridgepkg.BridgeInstance{ID: id, Scope: bridgepkg.ScopeGlobal, Platform: "telegram", ExtensionName: "ext-telegram", DisplayName: "Support", Enabled: false, Status: bridgepkg.BridgeStatusDisabled, RoutingPolicy: bridgepkg.RoutingPolicy{IncludePeer: true}}, nil
+			return &bridgepkg.BridgeInstance{
+				ID:            id,
+				Scope:         bridgepkg.ScopeGlobal,
+				Platform:      "telegram",
+				ExtensionName: "ext-telegram",
+				DisplayName:   "Support",
+				Enabled:       false,
+				Status:        bridgepkg.BridgeStatusDisabled,
+				RoutingPolicy: bridgepkg.RoutingPolicy{IncludePeer: true},
+			}, nil
 		},
 		RestartInstanceFn: func(_ context.Context, id string) (*bridgepkg.BridgeInstance, error) {
-			return &bridgepkg.BridgeInstance{ID: id, Scope: bridgepkg.ScopeGlobal, Platform: "telegram", ExtensionName: "ext-telegram", DisplayName: "Support", Enabled: true, Status: bridgepkg.BridgeStatusStarting, RoutingPolicy: bridgepkg.RoutingPolicy{IncludePeer: true}}, nil
+			return &bridgepkg.BridgeInstance{
+				ID:            id,
+				Scope:         bridgepkg.ScopeGlobal,
+				Platform:      "telegram",
+				ExtensionName: "ext-telegram",
+				DisplayName:   "Support",
+				Enabled:       true,
+				Status:        bridgepkg.BridgeStatusStarting,
+				RoutingPolicy: bridgepkg.RoutingPolicy{IncludePeer: true},
+			}, nil
 		},
 	})
 
@@ -185,7 +231,6 @@ func TestBridgeHandlersLifecycleTransitions(t *testing.T) {
 		{name: "Should disable bridge", path: "/bridges/brg-core/disable", status: bridgepkg.BridgeStatusDisabled},
 		{name: "Should restart bridge", path: "/bridges/brg-core/restart", status: bridgepkg.BridgeStatusStarting},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			resp := performRequest(t, engine, http.MethodPost, tc.path, nil)
 			if resp.Code != http.StatusOK {
@@ -238,7 +283,13 @@ func TestBridgeHandlersRoutesAndTestDelivery(t *testing.T) {
 		t.Fatalf("len(routes) = %d, want %d", got, want)
 	}
 
-	testResp := performRequest(t, engine, http.MethodPost, "/bridges/brg-core/test-delivery", []byte(`{"target":{"thread_id":"thread-1"}}`))
+	testResp := performRequest(
+		t,
+		engine,
+		http.MethodPost,
+		"/bridges/brg-core/test-delivery",
+		[]byte(`{"target":{"thread_id":"thread-1"}}`),
+	)
 	if testResp.Code != http.StatusOK {
 		t.Fatalf("test delivery status = %d body=%s", testResp.Code, testResp.Body.String())
 	}
@@ -294,11 +345,19 @@ func TestBridgeHandlersSecretBindingsCRUD(t *testing.T) {
 		t.Fatalf("binding = %#v", listPayload.Bindings[0])
 	}
 
-	putResp := performRequest(t, engine, http.MethodPut, "/bridges/brg-core/secret-bindings/bot_token", []byte(`{"vault_ref":"env:TG_TOKEN","kind":"env"}`))
+	putResp := performRequest(
+		t,
+		engine,
+		http.MethodPut,
+		"/bridges/brg-core/secret-bindings/bot_token",
+		[]byte(`{"vault_ref":"env:TG_TOKEN","kind":"env"}`),
+	)
 	if putResp.Code != http.StatusOK {
 		t.Fatalf("put secret binding status = %d body=%s", putResp.Code, putResp.Body.String())
 	}
-	if putBinding.BridgeInstanceID != "brg-core" || putBinding.BindingName != "bot_token" || putBinding.VaultRef != "env:TG_TOKEN" || putBinding.Kind != "env" {
+	if putBinding.BridgeInstanceID != "brg-core" || putBinding.BindingName != "bot_token" ||
+		putBinding.VaultRef != "env:TG_TOKEN" ||
+		putBinding.Kind != "env" {
 		t.Fatalf("put binding = %#v", putBinding)
 	}
 
@@ -338,23 +397,44 @@ func TestBridgeHandlersLifecycleAndSecretBindingErrorPaths(t *testing.T) {
 			path   string
 			body   []byte
 		}{
-			{method: http.MethodPost, path: "/bridges", body: []byte(`{"scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":true,"status":"starting","routing_policy":{"include_peer":true}}`)},
+			{
+				method: http.MethodPost,
+				path:   "/bridges",
+				body: []byte(
+					`{"scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":true,"status":"starting","routing_policy":{"include_peer":true}}`,
+				),
+			},
 			{method: http.MethodGet, path: "/bridges/brg-core"},
 			{method: http.MethodPatch, path: "/bridges/brg-core", body: []byte(`{"display_name":"Renamed"}`)},
 			{method: http.MethodGet, path: "/bridges/brg-core/routes"},
-			{method: http.MethodPost, path: "/bridges/brg-core/test-delivery", body: []byte(`{"target":{"peer_id":"peer-1"}}`)},
+			{
+				method: http.MethodPost,
+				path:   "/bridges/brg-core/test-delivery",
+				body:   []byte(`{"target":{"peer_id":"peer-1"}}`),
+			},
 			{method: http.MethodPost, path: "/bridges/brg-core/enable"},
 			{method: http.MethodPost, path: "/bridges/brg-core/disable"},
 			{method: http.MethodPost, path: "/bridges/brg-core/restart"},
 			{method: http.MethodGet, path: "/bridges/brg-core/secret-bindings"},
-			{method: http.MethodPut, path: "/bridges/brg-core/secret-bindings/bot_token", body: []byte(`{"vault_ref":"env:TG_TOKEN","kind":"env"}`)},
+			{
+				method: http.MethodPut,
+				path:   "/bridges/brg-core/secret-bindings/bot_token",
+				body:   []byte(`{"vault_ref":"env:TG_TOKEN","kind":"env"}`),
+			},
 			{method: http.MethodDelete, path: "/bridges/brg-core/secret-bindings/bot_token"},
 		}
 
 		for _, tc := range tests {
 			resp := performRequest(t, engine, tc.method, tc.path, tc.body)
 			if resp.Code != http.StatusServiceUnavailable {
-				t.Fatalf("%s %s status = %d, want %d body=%s", tc.method, tc.path, resp.Code, http.StatusServiceUnavailable, resp.Body.String())
+				t.Fatalf(
+					"%s %s status = %d, want %d body=%s",
+					tc.method,
+					tc.path,
+					resp.Code,
+					http.StatusServiceUnavailable,
+					resp.Body.String(),
+				)
 			}
 		}
 	})
@@ -369,9 +449,20 @@ func TestBridgeHandlersLifecycleAndSecretBindingErrorPaths(t *testing.T) {
 			},
 		})
 
-		resp := performRequest(t, engine, http.MethodPut, "/bridges/brg-core/secret-bindings/bot_token", []byte(`{"vault_ref":"env:TG_TOKEN","kind":7}`))
+		resp := performRequest(
+			t,
+			engine,
+			http.MethodPut,
+			"/bridges/brg-core/secret-bindings/bot_token",
+			[]byte(`{"vault_ref":"env:TG_TOKEN","kind":7}`),
+		)
 		if resp.Code != http.StatusBadRequest {
-			t.Fatalf("put invalid secret binding status = %d, want %d body=%s", resp.Code, http.StatusBadRequest, resp.Body.String())
+			t.Fatalf(
+				"put invalid secret binding status = %d, want %d body=%s",
+				resp.Code,
+				http.StatusBadRequest,
+				resp.Body.String(),
+			)
 		}
 	})
 
@@ -380,13 +471,27 @@ func TestBridgeHandlersLifecycleAndSecretBindingErrorPaths(t *testing.T) {
 
 		_, engine := newBridgeHandlerFixture(t, testutil.StubBridgeService{
 			PutSecretBindingFn: func(context.Context, bridgepkg.BridgeSecretBinding) error {
-				return fmt.Errorf("%w: stock daemon bridge secret refs must use env:NAME", bridgepkg.ErrInvalidBridgeSecretBinding)
+				return fmt.Errorf(
+					"%w: stock daemon bridge secret refs must use env:NAME",
+					bridgepkg.ErrInvalidBridgeSecretBinding,
+				)
 			},
 		})
 
-		resp := performRequest(t, engine, http.MethodPut, "/bridges/brg-core/secret-bindings/bot_token", []byte(`{"vault_ref":"env:TG_TOKEN","kind":"env"}`))
+		resp := performRequest(
+			t,
+			engine,
+			http.MethodPut,
+			"/bridges/brg-core/secret-bindings/bot_token",
+			[]byte(`{"vault_ref":"env:TG_TOKEN","kind":"env"}`),
+		)
 		if resp.Code != http.StatusBadRequest {
-			t.Fatalf("put invalid secret binding service error status = %d, want %d body=%s", resp.Code, http.StatusBadRequest, resp.Body.String())
+			t.Fatalf(
+				"put invalid secret binding service error status = %d, want %d body=%s",
+				resp.Code,
+				http.StatusBadRequest,
+				resp.Body.String(),
+			)
 		}
 	})
 }
@@ -406,7 +511,12 @@ func TestBridgeHandlersRequestDecodeAndServiceErrorPaths(t *testing.T) {
 
 		resp := performRequest(t, engine, http.MethodPost, "/bridges", []byte(`{"scope":"global"`))
 		if resp.Code != http.StatusBadRequest {
-			t.Fatalf("create malformed json status = %d, want %d body=%s", resp.Code, http.StatusBadRequest, resp.Body.String())
+			t.Fatalf(
+				"create malformed json status = %d, want %d body=%s",
+				resp.Code,
+				http.StatusBadRequest,
+				resp.Body.String(),
+			)
 		}
 	})
 
@@ -419,9 +529,22 @@ func TestBridgeHandlersRequestDecodeAndServiceErrorPaths(t *testing.T) {
 			},
 		})
 
-		resp := performRequest(t, engine, http.MethodPost, "/bridges", []byte(`{"scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":true,"status":"starting","routing_policy":{"include_peer":true}}`))
+		resp := performRequest(
+			t,
+			engine,
+			http.MethodPost,
+			"/bridges",
+			[]byte(
+				`{"scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":true,"status":"starting","routing_policy":{"include_peer":true}}`,
+			),
+		)
 		if resp.Code != http.StatusConflict {
-			t.Fatalf("create service error status = %d, want %d body=%s", resp.Code, http.StatusConflict, resp.Body.String())
+			t.Fatalf(
+				"create service error status = %d, want %d body=%s",
+				resp.Code,
+				http.StatusConflict,
+				resp.Body.String(),
+			)
 		}
 	})
 
@@ -452,7 +575,12 @@ func TestBridgeHandlersRequestDecodeAndServiceErrorPaths(t *testing.T) {
 
 		resp := performRequest(t, engine, http.MethodPatch, "/bridges/brg-core", []byte(`{"display_name":"broken"`))
 		if resp.Code != http.StatusBadRequest {
-			t.Fatalf("update malformed json status = %d, want %d body=%s", resp.Code, http.StatusBadRequest, resp.Body.String())
+			t.Fatalf(
+				"update malformed json status = %d, want %d body=%s",
+				resp.Code,
+				http.StatusBadRequest,
+				resp.Body.String(),
+			)
 		}
 	})
 
@@ -467,7 +595,12 @@ func TestBridgeHandlersRequestDecodeAndServiceErrorPaths(t *testing.T) {
 
 		resp := performRequest(t, engine, http.MethodPatch, "/bridges/brg-core", []byte(`{"display_name":"Renamed"}`))
 		if resp.Code != http.StatusConflict {
-			t.Fatalf("update service error status = %d, want %d body=%s", resp.Code, http.StatusConflict, resp.Body.String())
+			t.Fatalf(
+				"update service error status = %d, want %d body=%s",
+				resp.Code,
+				http.StatusConflict,
+				resp.Body.String(),
+			)
 		}
 	})
 
@@ -481,9 +614,20 @@ func TestBridgeHandlersRequestDecodeAndServiceErrorPaths(t *testing.T) {
 			},
 		})
 
-		resp := performRequest(t, engine, http.MethodPatch, "/bridges/brg-core", []byte(`{"delivery_defaults":{"thread_id":"thr-1"}}`))
+		resp := performRequest(
+			t,
+			engine,
+			http.MethodPatch,
+			"/bridges/brg-core",
+			[]byte(`{"delivery_defaults":{"thread_id":"thr-1"}}`),
+		)
 		if resp.Code != http.StatusBadRequest {
-			t.Fatalf("update invalid payload status = %d, want %d body=%s", resp.Code, http.StatusBadRequest, resp.Body.String())
+			t.Fatalf(
+				"update invalid payload status = %d, want %d body=%s",
+				resp.Code,
+				http.StatusBadRequest,
+				resp.Body.String(),
+			)
 		}
 	})
 
@@ -511,9 +655,20 @@ func TestBridgeHandlersRequestDecodeAndServiceErrorPaths(t *testing.T) {
 			},
 		})
 
-		resp := performRequest(t, engine, http.MethodPut, "/bridges/brg-core/secret-bindings/bot_token", []byte(`{"vault_ref":"env:TG_TOKEN","kind":"env"}`))
+		resp := performRequest(
+			t,
+			engine,
+			http.MethodPut,
+			"/bridges/brg-core/secret-bindings/bot_token",
+			[]byte(`{"vault_ref":"env:TG_TOKEN","kind":"env"}`),
+		)
 		if resp.Code != http.StatusConflict {
-			t.Fatalf("put secret binding service error status = %d, want %d body=%s", resp.Code, http.StatusConflict, resp.Body.String())
+			t.Fatalf(
+				"put secret binding service error status = %d, want %d body=%s",
+				resp.Code,
+				http.StatusConflict,
+				resp.Body.String(),
+			)
 		}
 	})
 
@@ -527,9 +682,20 @@ func TestBridgeHandlersRequestDecodeAndServiceErrorPaths(t *testing.T) {
 			},
 		})
 
-		resp := performRequest(t, engine, http.MethodPut, "/bridges/brg-core/secret-bindings/bot_token", []byte(`{"vault_ref"`))
+		resp := performRequest(
+			t,
+			engine,
+			http.MethodPut,
+			"/bridges/brg-core/secret-bindings/bot_token",
+			[]byte(`{"vault_ref"`),
+		)
 		if resp.Code != http.StatusBadRequest {
-			t.Fatalf("put secret binding malformed json status = %d, want %d body=%s", resp.Code, http.StatusBadRequest, resp.Body.String())
+			t.Fatalf(
+				"put secret binding malformed json status = %d, want %d body=%s",
+				resp.Code,
+				http.StatusBadRequest,
+				resp.Body.String(),
+			)
 		}
 	})
 
@@ -544,7 +710,12 @@ func TestBridgeHandlersRequestDecodeAndServiceErrorPaths(t *testing.T) {
 
 		resp := performRequest(t, engine, http.MethodDelete, "/bridges/brg-core/secret-bindings/bot_token", nil)
 		if resp.Code != http.StatusNotFound {
-			t.Fatalf("delete secret binding missing status = %d, want %d body=%s", resp.Code, http.StatusNotFound, resp.Body.String())
+			t.Fatalf(
+				"delete secret binding missing status = %d, want %d body=%s",
+				resp.Code,
+				http.StatusNotFound,
+				resp.Body.String(),
+			)
 		}
 	})
 
@@ -560,7 +731,12 @@ func TestBridgeHandlersRequestDecodeAndServiceErrorPaths(t *testing.T) {
 
 		resp := performRequest(t, engine, http.MethodPost, "/bridges/brg-core/test-delivery", []byte(`{"target"`))
 		if resp.Code != http.StatusBadRequest {
-			t.Fatalf("test delivery malformed json status = %d, want %d body=%s", resp.Code, http.StatusBadRequest, resp.Body.String())
+			t.Fatalf(
+				"test delivery malformed json status = %d, want %d body=%s",
+				resp.Code,
+				http.StatusBadRequest,
+				resp.Body.String(),
+			)
 		}
 	})
 
@@ -573,9 +749,20 @@ func TestBridgeHandlersRequestDecodeAndServiceErrorPaths(t *testing.T) {
 			},
 		})
 
-		resp := performRequest(t, engine, http.MethodPost, "/bridges/brg-core/test-delivery", []byte(`{"target":{"peer_id":"peer-1"}}`))
+		resp := performRequest(
+			t,
+			engine,
+			http.MethodPost,
+			"/bridges/brg-core/test-delivery",
+			[]byte(`{"target":{"peer_id":"peer-1"}}`),
+		)
 		if resp.Code != http.StatusServiceUnavailable {
-			t.Fatalf("test delivery service error status = %d, want %d body=%s", resp.Code, http.StatusServiceUnavailable, resp.Body.String())
+			t.Fatalf(
+				"test delivery service error status = %d, want %d body=%s",
+				resp.Code,
+				http.StatusServiceUnavailable,
+				resp.Body.String(),
+			)
 		}
 	})
 
@@ -589,9 +776,20 @@ func TestBridgeHandlersRequestDecodeAndServiceErrorPaths(t *testing.T) {
 			},
 		})
 
-		resp := performRequest(t, engine, http.MethodPost, "/bridges/brg-core/test-delivery", []byte(`{"target":{"bridge_instance_id":"brg-other","peer_id":"peer-1"}}`))
+		resp := performRequest(
+			t,
+			engine,
+			http.MethodPost,
+			"/bridges/brg-core/test-delivery",
+			[]byte(`{"target":{"bridge_instance_id":"brg-other","peer_id":"peer-1"}}`),
+		)
 		if resp.Code != http.StatusBadRequest {
-			t.Fatalf("test delivery mismatched bridge id status = %d, want %d body=%s", resp.Code, http.StatusBadRequest, resp.Body.String())
+			t.Fatalf(
+				"test delivery mismatched bridge id status = %d, want %d body=%s",
+				resp.Code,
+				http.StatusBadRequest,
+				resp.Body.String(),
+			)
 		}
 	})
 }
@@ -628,7 +826,6 @@ func TestBridgeHandlersLifecycleHelperErrorPaths(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -690,7 +887,6 @@ func TestBridgeHandlersListProviders(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			_, engine := newBridgeHandlerFixture(t, testutil.StubBridgeService{
 				ListProvidersFn: tt.listProvidersFn,
@@ -723,7 +919,8 @@ func TestBridgeHandlersListProviders(t *testing.T) {
 			if len(payload.Providers[0].SecretSlots) != 1 || payload.Providers[0].SecretSlots[0].Name != "bot_token" {
 				t.Fatalf("provider secret_slots = %#v", payload.Providers[0].SecretSlots)
 			}
-			if payload.Providers[0].ConfigSchema == nil || payload.Providers[0].ConfigSchema.Schema != "agh.bridge.telegram" {
+			if payload.Providers[0].ConfigSchema == nil ||
+				payload.Providers[0].ConfigSchema.Schema != "agh.bridge.telegram" {
 				t.Fatalf("provider config_schema = %#v", payload.Providers[0].ConfigSchema)
 			}
 		})
@@ -754,7 +951,7 @@ func TestBridgeHandlersIncludeObservedHealthPayloads(t *testing.T) {
 		},
 	}
 
-	handlers := core.NewBaseHandlers(core.BaseHandlerConfig{
+	handlers := core.NewBaseHandlers(&core.BaseHandlerConfig{
 		TransportName:                "api-core-test",
 		MaskInternalErrors:           false,
 		IncludeSessionWorkspaceInSSE: true,
@@ -800,7 +997,8 @@ func TestBridgeHandlersIncludeObservedHealthPayloads(t *testing.T) {
 	if got, want := listPayload.BridgeHealth[bridge.ID].DeliveryBacklog, 1; got != want {
 		t.Fatalf("bridge_health backlog = %d, want %d", got, want)
 	}
-	if listPayload.BridgeHealth[bridge.ID].Degradation == nil || listPayload.BridgeHealth[bridge.ID].Degradation.Reason != bridgepkg.BridgeDegradationReasonRateLimited {
+	if listPayload.BridgeHealth[bridge.ID].Degradation == nil ||
+		listPayload.BridgeHealth[bridge.ID].Degradation.Reason != bridgepkg.BridgeDegradationReasonRateLimited {
 		t.Fatalf("bridge_health degradation = %#v", listPayload.BridgeHealth[bridge.ID].Degradation)
 	}
 
@@ -816,10 +1014,12 @@ func TestBridgeHandlersIncludeObservedHealthPayloads(t *testing.T) {
 	if got, want := getPayload.Health.RouteCount, 2; got != want {
 		t.Fatalf("get health route_count = %d, want %d", got, want)
 	}
-	if getPayload.Health.Degradation == nil || getPayload.Health.Degradation.Reason != bridgepkg.BridgeDegradationReasonRateLimited {
+	if getPayload.Health.Degradation == nil ||
+		getPayload.Health.Degradation.Reason != bridgepkg.BridgeDegradationReasonRateLimited {
 		t.Fatalf("get health degradation = %#v", getPayload.Health.Degradation)
 	}
-	if getPayload.Health.LastSuccessAt == nil || !getPayload.Health.LastSuccessAt.Equal(time.Date(2026, 4, 3, 11, 59, 0, 0, time.UTC)) {
+	if getPayload.Health.LastSuccessAt == nil ||
+		!getPayload.Health.LastSuccessAt.Equal(time.Date(2026, 4, 3, 11, 59, 0, 0, time.UTC)) {
 		t.Fatalf("get health last_success_at = %#v, want 2026-04-03T11:59:00Z", getPayload.Health.LastSuccessAt)
 	}
 }
@@ -844,7 +1044,7 @@ func TestBridgeHandlersMutationReturnsBestEffortPayloadWhenHealthLookupFails(t *
 		RoutingPolicy: bridgepkg.RoutingPolicy{IncludePeer: true},
 	}
 
-	handlers := core.NewBaseHandlers(core.BaseHandlerConfig{
+	handlers := core.NewBaseHandlers(&core.BaseHandlerConfig{
 		TransportName:                "api-core-test",
 		MaskInternalErrors:           false,
 		IncludeSessionWorkspaceInSSE: true,
@@ -873,7 +1073,15 @@ func TestBridgeHandlersMutationReturnsBestEffortPayloadWhenHealthLookupFails(t *
 	engine := gin.New()
 	engine.POST("/bridges", handlers.CreateBridge)
 
-	resp := performRequest(t, engine, http.MethodPost, "/bridges", []byte(`{"scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":true,"status":"starting","routing_policy":{"include_peer":true}}`))
+	resp := performRequest(
+		t,
+		engine,
+		http.MethodPost,
+		"/bridges",
+		[]byte(
+			`{"scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":true,"status":"starting","routing_policy":{"include_peer":true}}`,
+		),
+	)
 	if resp.Code != http.StatusCreated {
 		t.Fatalf("create status = %d, want %d; body=%s", resp.Code, http.StatusCreated, resp.Body.String())
 	}
@@ -883,7 +1091,8 @@ func TestBridgeHandlersMutationReturnsBestEffortPayloadWhenHealthLookupFails(t *
 	if payload.Bridge.ID != bridge.ID || payload.Bridge.Status != bridgepkg.BridgeStatusStarting {
 		t.Fatalf("payload.Bridge = %#v, want created bridge payload", payload.Bridge)
 	}
-	if payload.Health.BridgeInstanceID != bridge.ID || payload.Health.Status != bridgepkg.BridgeStatusStarting || payload.Health.RouteCount != 0 {
+	if payload.Health.BridgeInstanceID != bridge.ID || payload.Health.Status != bridgepkg.BridgeStatusStarting ||
+		payload.Health.RouteCount != 0 {
 		t.Fatalf("payload.Health = %#v, want best-effort bridge identity and zero counters", payload.Health)
 	}
 }
@@ -907,7 +1116,7 @@ func newBridgeHandlerFixture(t *testing.T, bridges core.BridgeService) (*core.Ba
 	cfg.HTTP.Host = "127.0.0.1"
 	cfg.HTTP.Port = 2123
 
-	handlers := core.NewBaseHandlers(core.BaseHandlerConfig{
+	handlers := core.NewBaseHandlers(&core.BaseHandlerConfig{
 		TransportName:                "api-core-test",
 		MaskInternalErrors:           false,
 		IncludeSessionWorkspaceInSSE: true,

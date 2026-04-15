@@ -21,28 +21,37 @@ type countingTaskRegistry struct {
 	listAuditCalls int
 }
 
-func (r *countingTaskRegistry) ListTasks(ctx context.Context, query taskpkg.TaskQuery) ([]taskpkg.TaskSummary, error) {
+func (r *countingTaskRegistry) ListTasks(ctx context.Context, query taskpkg.Query) ([]taskpkg.Summary, error) {
 	r.mu.Lock()
 	r.listTasksCalls++
 	r.mu.Unlock()
 	return r.Registry.ListTasks(ctx, query)
 }
 
-func (r *countingTaskRegistry) ListTaskRuns(ctx context.Context, query taskpkg.TaskRunQuery) ([]taskpkg.TaskRun, error) {
+func (r *countingTaskRegistry) ListTaskRuns(
+	ctx context.Context,
+	query taskpkg.RunQuery,
+) ([]taskpkg.Run, error) {
 	r.mu.Lock()
 	r.listRunsCalls++
 	r.mu.Unlock()
 	return r.Registry.ListTaskRuns(ctx, query)
 }
 
-func (r *countingTaskRegistry) ListTaskEvents(ctx context.Context, query taskpkg.TaskEventQuery) ([]taskpkg.TaskEvent, error) {
+func (r *countingTaskRegistry) ListTaskEvents(
+	ctx context.Context,
+	query taskpkg.EventQuery,
+) ([]taskpkg.Event, error) {
 	r.mu.Lock()
 	r.listEventCalls++
 	r.mu.Unlock()
 	return r.Registry.ListTaskEvents(ctx, query)
 }
 
-func (r *countingTaskRegistry) ListNetworkAudit(ctx context.Context, query store.NetworkAuditQuery) ([]store.NetworkAuditEntry, error) {
+func (r *countingTaskRegistry) ListNetworkAudit(
+	ctx context.Context,
+	query store.NetworkAuditQuery,
+) ([]store.NetworkAuditEntry, error) {
 	r.mu.Lock()
 	r.listAuditCalls++
 	r.mu.Unlock()
@@ -67,7 +76,7 @@ func TestHealthLoadsTaskDataOncePerSnapshot(t *testing.T) {
 		CreatedAt:   h.now,
 		UpdatedAt:   h.now,
 	})
-	createObserveRun(t, h, taskpkg.TaskRun{
+	createObserveRun(t, h, taskpkg.Run{
 		ID:        "run-health-once",
 		TaskID:    "task-health-once",
 		Status:    taskpkg.TaskRunStatusClaimed,

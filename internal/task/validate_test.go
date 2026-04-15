@@ -25,7 +25,6 @@ func TestValidateScopeBinding(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -109,7 +108,6 @@ func TestValidateImmutableTaskFields(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -181,7 +179,6 @@ func TestPayloadSizeGuards(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -247,7 +244,6 @@ func TestGraphLimitGuards(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -311,13 +307,13 @@ func TestDomainValidationHelpers(t *testing.T) {
 
 	t.Run("task dependency self dependency", func(t *testing.T) {
 		t.Parallel()
-		err := (TaskDependency{
+		err := (Dependency{
 			TaskID:          "task-1",
 			DependsOnTaskID: "task-1",
 			Kind:            DependencyKindBlocks,
 		}).Validate()
 		if err == nil || !errors.Is(err, ErrValidation) {
-			t.Fatalf("TaskDependency.Validate() error = %v, want ErrValidation", err)
+			t.Fatalf("Dependency.Validate() error = %v, want ErrValidation", err)
 		}
 	})
 
@@ -327,7 +323,7 @@ func TestDomainValidationHelpers(t *testing.T) {
 		run.SessionID = "sess-1"
 		err := run.Validate()
 		if err == nil || !errors.Is(err, ErrValidation) {
-			t.Fatalf("TaskRun.Validate() error = %v, want ErrValidation", err)
+			t.Fatalf("Run.Validate() error = %v, want ErrValidation", err)
 		}
 	})
 
@@ -337,15 +333,15 @@ func TestDomainValidationHelpers(t *testing.T) {
 		event.Payload = json.RawMessage(`{`)
 		err := event.Validate()
 		if err == nil || !errors.Is(err, ErrValidation) {
-			t.Fatalf("TaskEvent.Validate() error = %v, want ErrValidation", err)
+			t.Fatalf("Event.Validate() error = %v, want ErrValidation", err)
 		}
 	})
 
 	t.Run("task patch requires mutable field", func(t *testing.T) {
 		t.Parallel()
-		err := (TaskPatch{}).Validate("patch")
+		err := (Patch{}).Validate("patch")
 		if err == nil || !errors.Is(err, ErrValidation) {
-			t.Fatalf("TaskPatch.Validate() error = %v, want ErrValidation", err)
+			t.Fatalf("Patch.Validate() error = %v, want ErrValidation", err)
 		}
 	})
 
@@ -373,7 +369,7 @@ func TestDomainValidationHelpers(t *testing.T) {
 
 	t.Run("task query validates filters", func(t *testing.T) {
 		t.Parallel()
-		err := (TaskQuery{
+		err := (Query{
 			Scope:       ScopeWorkspace,
 			WorkspaceID: "ws-1",
 			Status:      TaskStatusReady,
@@ -381,7 +377,7 @@ func TestDomainValidationHelpers(t *testing.T) {
 			Limit:       10,
 		}).Validate("query")
 		if err != nil {
-			t.Fatalf("TaskQuery.Validate() error = %v", err)
+			t.Fatalf("Query.Validate() error = %v", err)
 		}
 	})
 
@@ -418,9 +414,9 @@ func validTask() Task {
 	}
 }
 
-func validRun() TaskRun {
+func validRun() Run {
 	now := time.Date(2026, 4, 14, 12, 30, 0, 0, time.UTC)
-	return TaskRun{
+	return Run{
 		ID:       "run-1",
 		TaskID:   "task-1",
 		Status:   TaskRunStatusQueued,
@@ -431,9 +427,9 @@ func validRun() TaskRun {
 	}
 }
 
-func validEvent() TaskEvent {
+func validEvent() Event {
 	now := time.Date(2026, 4, 14, 13, 0, 0, 0, time.UTC)
-	return TaskEvent{
+	return Event{
 		ID:        "evt-1",
 		TaskID:    "task-1",
 		EventType: "task.created",
@@ -444,9 +440,9 @@ func validEvent() TaskEvent {
 	}
 }
 
-func validTaskRunIdempotency() TaskRunIdempotency {
+func validTaskRunIdempotency() RunIdempotency {
 	now := time.Date(2026, 4, 14, 13, 30, 0, 0, time.UTC)
-	return TaskRunIdempotency{
+	return RunIdempotency{
 		IdempotencyKey: "idem-1",
 		RunID:          "run-1",
 		Origin:         Origin{Kind: OriginKindAutomation, Ref: "rule:nightly"},
@@ -483,25 +479,68 @@ func TestEnumAndIdentityValidation(t *testing.T) {
 		wantErr error
 	}{
 		{name: "task status valid", run: func() error { return TaskStatusReady.Validate("status") }},
-		{name: "task status invalid", run: func() error { return TaskStatus("waiting").Validate("status") }, wantErr: ErrValidation},
+		{
+			name:    "task status invalid",
+			run:     func() error { return Status("waiting").Validate("status") },
+			wantErr: ErrValidation,
+		},
 		{name: "task run status valid", run: func() error { return TaskRunStatusRunning.Validate("run.status") }},
-		{name: "task run status invalid", run: func() error { return TaskRunStatus("paused").Validate("run.status") }, wantErr: ErrValidation},
+		{
+			name:    "task run status invalid",
+			run:     func() error { return RunStatus("paused").Validate("run.status") },
+			wantErr: ErrValidation,
+		},
 		{name: "actor kind valid", run: func() error { return ActorKindHuman.Validate("actor.kind") }},
-		{name: "actor kind invalid", run: func() error { return ActorKind("bot").Validate("actor.kind") }, wantErr: ErrValidation},
+		{
+			name:    "actor kind invalid",
+			run:     func() error { return ActorKind("bot").Validate("actor.kind") },
+			wantErr: ErrValidation,
+		},
 		{name: "owner kind valid", run: func() error { return OwnerKindPool.Validate("owner.kind") }},
-		{name: "owner kind invalid", run: func() error { return OwnerKind("queue").Validate("owner.kind") }, wantErr: ErrValidation},
+		{
+			name:    "owner kind invalid",
+			run:     func() error { return OwnerKind("queue").Validate("owner.kind") },
+			wantErr: ErrValidation,
+		},
 		{name: "origin kind valid", run: func() error { return OriginKindCLI.Validate("origin.kind") }},
-		{name: "origin kind invalid", run: func() error { return OriginKind("mqtt").Validate("origin.kind") }, wantErr: ErrValidation},
+		{
+			name:    "origin kind invalid",
+			run:     func() error { return OriginKind("mqtt").Validate("origin.kind") },
+			wantErr: ErrValidation,
+		},
 		{name: "dependency kind valid", run: func() error { return DependencyKindBlocks.Validate("dependency.kind") }},
-		{name: "dependency kind invalid", run: func() error { return DependencyKind("soft").Validate("dependency.kind") }, wantErr: ErrValidation},
+		{
+			name:    "dependency kind invalid",
+			run:     func() error { return DependencyKind("soft").Validate("dependency.kind") },
+			wantErr: ErrValidation,
+		},
 		{name: "stop reason valid", run: func() error { return StopReasonCancellation.Validate("stop.reason") }},
-		{name: "stop reason invalid", run: func() error { return StopReason("later").Validate("stop.reason") }, wantErr: ErrValidation},
-		{name: "run boot recovery action valid", run: func() error { return RunBootRecoveryMarkRunning.Validate("recovery.action") }},
-		{name: "run boot recovery action invalid", run: func() error { return RunBootRecoveryAction("resume").Validate("recovery.action") }, wantErr: ErrValidation},
+		{
+			name:    "stop reason invalid",
+			run:     func() error { return StopReason("later").Validate("stop.reason") },
+			wantErr: ErrValidation,
+		},
+		{
+			name: "run boot recovery action valid",
+			run:  func() error { return RunBootRecoveryMarkRunning.Validate("recovery.action") },
+		},
+		{
+			name:    "run boot recovery action invalid",
+			run:     func() error { return RunBootRecoveryAction("resume").Validate("recovery.action") },
+			wantErr: ErrValidation,
+		},
 		{name: "actor identity valid", run: func() error { return validTask().CreatedBy.Validate("actor") }},
-		{name: "actor identity invalid", run: func() error { return ActorIdentity{Kind: ActorKindHuman}.Validate("actor") }, wantErr: ErrValidation},
+		{
+			name:    "actor identity invalid",
+			run:     func() error { return ActorIdentity{Kind: ActorKindHuman}.Validate("actor") },
+			wantErr: ErrValidation,
+		},
 		{name: "origin valid", run: func() error { return validTask().Origin.Validate("origin") }},
-		{name: "origin invalid", run: func() error { return Origin{Kind: OriginKindCLI}.Validate("origin") }, wantErr: ErrValidation},
+		{
+			name:    "origin invalid",
+			run:     func() error { return Origin{Kind: OriginKindCLI}.Validate("origin") },
+			wantErr: ErrValidation,
+		},
 		{name: "authority valid", run: func() error { return validActorContext().Authority.Validate("authority") }},
 		{name: "authority invalid", run: func() error {
 			return Authority{CreateGlobal: true}.Validate("authority")
@@ -521,7 +560,6 @@ func TestEnumAndIdentityValidation(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -581,7 +619,7 @@ func TestRequestAndQueryValidation(t *testing.T) {
 		{
 			name: "task patch valid",
 			run: func() error {
-				return TaskPatch{
+				return Patch{
 					Title:          &title,
 					NetworkChannel: &channel,
 					Metadata:       &metadata,
@@ -591,7 +629,7 @@ func TestRequestAndQueryValidation(t *testing.T) {
 		{
 			name: "task patch owner conflict",
 			run: func() error {
-				return TaskPatch{
+				return Patch{
 					Owner:      &Ownership{Kind: OwnerKindPool, Ref: "triage"},
 					ClearOwner: true,
 				}.Validate("patch")
@@ -679,26 +717,26 @@ func TestRequestAndQueryValidation(t *testing.T) {
 		{
 			name: "task run query valid",
 			run: func() error {
-				return TaskRunQuery{Status: TaskRunStatusRunning, Limit: 2}.Validate("runs")
+				return RunQuery{Status: TaskRunStatusRunning, Limit: 2}.Validate("runs")
 			},
 		},
 		{
 			name: "task run query invalid",
 			run: func() error {
-				return TaskRunQuery{Limit: -1}.Validate("runs")
+				return RunQuery{Limit: -1}.Validate("runs")
 			},
 			wantErr: ErrValidation,
 		},
 		{
 			name: "task event query valid",
 			run: func() error {
-				return TaskEventQuery{Limit: 1}.Validate("events")
+				return EventQuery{Limit: 1}.Validate("events")
 			},
 		},
 		{
 			name: "task event query invalid",
 			run: func() error {
-				return TaskEventQuery{Limit: -1}.Validate("events")
+				return EventQuery{Limit: -1}.Validate("events")
 			},
 			wantErr: ErrValidation,
 		},
@@ -733,7 +771,6 @@ func TestRequestAndQueryValidation(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -805,7 +842,7 @@ func TestAdditionalBranchCoverage(t *testing.T) {
 		run.ClaimedBy = &ActorIdentity{Kind: ActorKindHuman}
 		err := run.Validate()
 		if err == nil || !errors.Is(err, ErrValidation) {
-			t.Fatalf("TaskRun.Validate() error = %v, want ErrValidation", err)
+			t.Fatalf("Run.Validate() error = %v, want ErrValidation", err)
 		}
 	})
 
@@ -815,7 +852,7 @@ func TestAdditionalBranchCoverage(t *testing.T) {
 		run.Attempt = 0
 		err := run.Validate()
 		if err == nil || !errors.Is(err, ErrValidation) {
-			t.Fatalf("TaskRun.Validate() error = %v, want ErrValidation", err)
+			t.Fatalf("Run.Validate() error = %v, want ErrValidation", err)
 		}
 	})
 
@@ -825,7 +862,7 @@ func TestAdditionalBranchCoverage(t *testing.T) {
 		event.EventType = ""
 		err := event.Validate()
 		if err == nil || !errors.Is(err, ErrValidation) {
-			t.Fatalf("TaskEvent.Validate() error = %v, want ErrValidation", err)
+			t.Fatalf("Event.Validate() error = %v, want ErrValidation", err)
 		}
 	})
 
@@ -835,7 +872,7 @@ func TestAdditionalBranchCoverage(t *testing.T) {
 		event.Origin.Ref = ""
 		err := event.Validate()
 		if err == nil || !errors.Is(err, ErrValidation) {
-			t.Fatalf("TaskEvent.Validate() error = %v, want ErrValidation", err)
+			t.Fatalf("Event.Validate() error = %v, want ErrValidation", err)
 		}
 	})
 

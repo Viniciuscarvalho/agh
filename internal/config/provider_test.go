@@ -246,7 +246,8 @@ func TestResolveAgentMergesTopLevelProviderAndAgentMCPServers(t *testing.T) {
 func TestResolveProviderRejectsUnknownProvider(t *testing.T) {
 	t.Parallel()
 
-	if _, err := (Config{}).ResolveProvider("unknown"); err == nil {
+	cfg := Config{}
+	if _, err := cfg.ResolveProvider("unknown"); err == nil {
 		t.Fatal("ResolveProvider() error = nil, want non-nil")
 	}
 }

@@ -222,7 +222,10 @@ func (b *Broker) DeliveryMetrics() map[string]BridgeDeliveryMetrics {
 
 // RegisterPromptDelivery binds one prompted session turn to a live delivery
 // projection and optionally seeds the broker from already-persisted turn events.
-func (b *Broker) RegisterPromptDelivery(ctx context.Context, reg PromptDeliveryRegistration) (*DeliverySnapshot, error) {
+func (b *Broker) RegisterPromptDelivery(
+	ctx context.Context,
+	reg PromptDeliveryRegistration,
+) (*DeliverySnapshot, error) {
 	if b == nil {
 		return nil, errors.New("bridges: delivery broker is required")
 	}
@@ -571,7 +574,10 @@ func (b *Broker) processQueueItem(route *routeWorker, item deliveryQueueItem) bo
 	return false
 }
 
-func (b *Broker) prepareRequest(route *routeWorker, item deliveryQueueItem) (DeliveryRequest, string, int64, string, bool) {
+func (b *Broker) prepareRequest(
+	_ *routeWorker,
+	item deliveryQueueItem,
+) (DeliveryRequest, string, int64, string, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -684,7 +690,8 @@ func (b *Broker) handleSendFailure(route *routeWorker, deliveryID string, reason
 		}}, route.queue...)
 		delivery.queuedTerminal = true
 		delivery.updatedAt = b.now()
-		if reason != nil && (delivery.latestEventType != DeliveryEventTypeError || strings.TrimSpace(delivery.errorText) == "") {
+		if reason != nil &&
+			(delivery.latestEventType != DeliveryEventTypeError || strings.TrimSpace(delivery.errorText) == "") {
 			b.recordDeliveryIssueLocked(delivery.bridgeInstanceID, reason.Error())
 		}
 		return
@@ -709,7 +716,13 @@ func (b *Broker) handleSendFailure(route *routeWorker, deliveryID string, reason
 	}
 }
 
-func (b *Broker) handleSendSuccess(route *routeWorker, deliveryID string, eventType string, eventSeq int64, ack DeliveryAck) {
+func (b *Broker) handleSendSuccess(
+	route *routeWorker,
+	deliveryID string,
+	eventType string,
+	eventSeq int64,
+	ack DeliveryAck,
+) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -730,7 +743,8 @@ func (b *Broker) handleSendSuccess(route *routeWorker, deliveryID string, eventT
 	if ack.ReplaceRemoteMessageID != "" {
 		delivery.replaceRemoteMessageID = strings.TrimSpace(ack.ReplaceRemoteMessageID)
 	}
-	if normalizeDeliveryEventType(eventType) == DeliveryEventTypeStart || normalizeDeliveryEventType(eventType) == DeliveryEventTypeResume {
+	if normalizeDeliveryEventType(eventType) == DeliveryEventTypeStart ||
+		normalizeDeliveryEventType(eventType) == DeliveryEventTypeResume {
 		if delivery.latestSeq > 0 && delivery.latestEventType != DeliveryEventTypeError {
 			delivery.startDelivered = true
 		}
@@ -781,7 +795,10 @@ func (b *Broker) enqueueEventLocked(route *routeWorker, delivery *activeDelivery
 		cloned := cloneDeliveryEvent(event)
 		delivery.pendingStart = &cloned
 		delivery.queuedStart = true
-		route.queue = append(route.queue, deliveryQueueItem{deliveryID: delivery.deliveryID, kind: deliveryQueueKindStart})
+		route.queue = append(
+			route.queue,
+			deliveryQueueItem{deliveryID: delivery.deliveryID, kind: deliveryQueueKindStart},
+		)
 		return nil
 	case DeliveryEventTypeDelta:
 		if !delivery.startDelivered && delivery.queuedStart && delivery.pendingStart != nil {
@@ -805,7 +822,10 @@ func (b *Broker) enqueueEventLocked(route *routeWorker, delivery *activeDelivery
 		cloned := cloneDeliveryEvent(event)
 		delivery.pendingDelta = &cloned
 		delivery.queuedDelta = true
-		route.queue = append(route.queue, deliveryQueueItem{deliveryID: delivery.deliveryID, kind: deliveryQueueKindDelta})
+		route.queue = append(
+			route.queue,
+			deliveryQueueItem{deliveryID: delivery.deliveryID, kind: deliveryQueueKindDelta},
+		)
 		return nil
 	case DeliveryEventTypeFinal, DeliveryEventTypeError, DeliveryEventTypeDelete:
 		b.removeQueuedSlotLocked(route, delivery.deliveryID, deliveryQueueKindDelta)
@@ -822,14 +842,20 @@ func (b *Broker) enqueueEventLocked(route *routeWorker, delivery *activeDelivery
 		cloned := cloneDeliveryEvent(event)
 		delivery.pendingTerminal = &cloned
 		delivery.queuedTerminal = true
-		route.queue = append(route.queue, deliveryQueueItem{deliveryID: delivery.deliveryID, kind: deliveryQueueKindTerminal})
+		route.queue = append(
+			route.queue,
+			deliveryQueueItem{deliveryID: delivery.deliveryID, kind: deliveryQueueKindTerminal},
+		)
 		return nil
 	default:
 		return fmt.Errorf("bridges: unsupported projected delivery event type %q", event.EventType)
 	}
 }
 
-func (b *Broker) projectEventLocked(delivery *activeDelivery, event DeliveryProjectionEvent) (DeliveryEvent, bool, error) {
+func (b *Broker) projectEventLocked(
+	delivery *activeDelivery,
+	event DeliveryProjectionEvent,
+) (DeliveryEvent, bool, error) {
 	if delivery == nil {
 		return DeliveryEvent{}, false, ErrDeliveryNotFound
 	}
@@ -1036,15 +1062,13 @@ func (b *Broker) recordDeliverySuccessLocked(bridgeInstanceID string, deliveredA
 	metrics.lastSuccessAt = deliveredAt.UTC()
 }
 
-func (b *Broker) removeQueuedSlotLocked(route *routeWorker, deliveryID string, kind deliveryQueueKind) bool {
+func (b *Broker) removeQueuedSlotLocked(route *routeWorker, deliveryID string, kind deliveryQueueKind) {
 	if route == nil {
-		return false
+		return
 	}
-	removed := false
 	next := route.queue[:0]
 	for _, item := range route.queue {
 		if item.deliveryID == deliveryID && item.kind == kind {
-			removed = true
 			continue
 		}
 		next = append(next, item)
@@ -1053,7 +1077,7 @@ func (b *Broker) removeQueuedSlotLocked(route *routeWorker, deliveryID string, k
 
 	delivery := b.deliveries[deliveryID]
 	if delivery == nil {
-		return removed
+		return
 	}
 	switch kind {
 	case deliveryQueueKindStart:
@@ -1065,7 +1089,6 @@ func (b *Broker) removeQueuedSlotLocked(route *routeWorker, deliveryID string, k
 	case deliveryQueueKindResume:
 		delivery.queuedResume = false
 	}
-	return removed
 }
 
 func (b *Broker) sessionDeliveriesLocked(sessionID string) []string {
@@ -1110,7 +1133,13 @@ func agentEventFingerprint(event DeliveryProjectionEvent) string {
 	if fingerprint := strings.TrimSpace(event.Fingerprint); fingerprint != "" {
 		return fingerprint
 	}
-	return strings.TrimSpace(event.Type) + "|" + strings.TrimSpace(event.TurnID) + "|" + event.Timestamp.UTC().Format(time.RFC3339Nano) + "|" + event.Text + "|" + event.Error
+	return strings.TrimSpace(
+		event.Type,
+	) + "|" + strings.TrimSpace(
+		event.TurnID,
+	) + "|" + event.Timestamp.UTC().
+		Format(time.RFC3339Nano) +
+		"|" + event.Text + "|" + event.Error
 }
 
 func cloneDeliveryReference(reference *DeliveryMessageReference) *DeliveryMessageReference {

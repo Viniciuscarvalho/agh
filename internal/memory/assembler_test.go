@@ -52,7 +52,8 @@ func TestAssemblerAssemble(t *testing.T) {
 		env.writeWorkspaceIndex(t, "- [Workspace](workspace.md) - workspace note")
 
 		got := env.assemble(t)
-		if !strings.Contains(got, "## Global MEMORY.md Index") || !strings.Contains(got, "## Workspace MEMORY.md Index") {
+		if !strings.Contains(got, "## Global MEMORY.md Index") ||
+			!strings.Contains(got, "## Workspace MEMORY.md Index") {
 			t.Fatalf("assembled prompt missing expected sections: %q", got)
 		}
 	})
@@ -102,7 +103,8 @@ func TestAssemblerAssemble(t *testing.T) {
 		env.writeGlobalIndex(t, "- [Global](global.md) - global note")
 
 		got := env.assemble(t)
-		if !strings.Contains(got, "## Staleness Policy") || !strings.Contains(got, "Memories older than 1 day should be verified") {
+		if !strings.Contains(got, "## Staleness Policy") ||
+			!strings.Contains(got, "Memories older than 1 day should be verified") {
 			t.Fatalf("assembled prompt missing staleness policy: %q", got)
 		}
 	})
@@ -120,7 +122,11 @@ func TestAssemblerAssemble(t *testing.T) {
 			t.Fatalf("assembled prompt missing expected components: %q", got)
 		}
 		if memoryIndex >= agentIndex {
-			t.Fatalf("memory context index = %d, agent prompt index = %d, want memory before agent prompt", memoryIndex, agentIndex)
+			t.Fatalf(
+				"memory context index = %d, agent prompt index = %d, want memory before agent prompt",
+				memoryIndex,
+				agentIndex,
+			)
 		}
 	})
 }
@@ -135,7 +141,7 @@ func TestAssemblerPromptSection(t *testing.T) {
 		env.writeGlobalIndex(t, "- [Global](global.md) - global note")
 		env.writeWorkspaceIndex(t, "- [Workspace](workspace.md) - workspace note")
 
-		got := env.promptSection(t, context.Background())
+		got := env.promptSection(context.Background(), t)
 		want := strings.Join([]string{
 			memoryPromptIntro,
 			"## Global MEMORY.md Index\n\n- [Global](global.md) - global note",
@@ -158,7 +164,7 @@ func TestAssemblerPromptSection(t *testing.T) {
 
 		env := newAssemblerTestEnv(t)
 
-		got := env.promptSection(t, context.Background())
+		got := env.promptSection(context.Background(), t)
 		if got != "" {
 			t.Fatalf("PromptSection() = %q, want empty string", got)
 		}
@@ -173,7 +179,7 @@ func TestAssemblerPromptSection(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		_, err := env.assembler.PromptSection(ctx, testResolvedWorkspace(env.workspace))
+		_, err := env.assembler.PromptSection(ctx, resolvedWorkspacePtr(env.workspace))
 		if err != context.Canceled {
 			t.Fatalf("PromptSection() error = %v, want %v", err, context.Canceled)
 		}
@@ -188,7 +194,7 @@ func TestAssemblerAssembleRegressionMatchesPromptSectionAndBasePrompt(t *testing
 	env.writeGlobalIndex(t, "- [Global](global.md) - global note")
 	env.writeWorkspaceIndex(t, "- [Workspace](workspace.md) - workspace note")
 
-	section := env.promptSection(t, context.Background())
+	section := env.promptSection(context.Background(), t)
 	got := env.assemble(t)
 	want := section + "\n\n" + strings.TrimSpace(env.agent.Prompt)
 
@@ -233,21 +239,27 @@ func newAssemblerTestEnv(t *testing.T) assemblerTestEnv {
 func (e assemblerTestEnv) assemble(t *testing.T) string {
 	t.Helper()
 
-	got, err := e.assembler.Assemble(context.Background(), e.agent, testResolvedWorkspace(e.workspace))
+	workspace := testResolvedWorkspace(e.workspace)
+	got, err := e.assembler.Assemble(context.Background(), e.agent, &workspace)
 	if err != nil {
 		t.Fatalf("Assembler.Assemble() error = %v", err)
 	}
 	return got
 }
 
-func (e assemblerTestEnv) promptSection(t *testing.T, ctx context.Context) string {
+func (e assemblerTestEnv) promptSection(ctx context.Context, t *testing.T) string {
 	t.Helper()
 
-	got, err := e.assembler.PromptSection(ctx, testResolvedWorkspace(e.workspace))
+	got, err := e.assembler.PromptSection(ctx, resolvedWorkspacePtr(e.workspace))
 	if err != nil {
 		t.Fatalf("Assembler.PromptSection() error = %v", err)
 	}
 	return got
+}
+
+func resolvedWorkspacePtr(root string) *workspacepkg.ResolvedWorkspace {
+	workspace := testResolvedWorkspace(root)
+	return &workspace
 }
 
 func (e assemblerTestEnv) writeGlobalIndex(t *testing.T, content string) {

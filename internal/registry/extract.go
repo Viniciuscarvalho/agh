@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path"
 	"path/filepath"
@@ -114,56 +115,103 @@ func extractArchive(reader io.Reader, destRoot string, limits extractLimits) (er
 			return fmt.Errorf("resolve archive entry %q: %w", header.Name, err)
 		}
 
-		switch header.Typeflag {
-		case tar.TypeDir:
-			if err := ensureExtractionPathSafe(destRoot, targetPath); err != nil {
-				return fmt.Errorf("validate archive directory %q: %w", targetPath, err)
-			}
-
-			dirMode := archiveDirMode(header)
-			if err := os.MkdirAll(targetPath, dirMode); err != nil {
-				return fmt.Errorf("create archive directory %q: %w", targetPath, err)
-			}
-			if err := os.Chmod(targetPath, dirMode); err != nil {
-				return fmt.Errorf("set archive directory mode %q: %w", targetPath, err)
-			}
-		case tar.TypeReg, 0:
-			parentDir := filepath.Dir(targetPath)
-			if err := ensureExtractionPathSafe(destRoot, parentDir); err != nil {
-				return fmt.Errorf("validate archive parent %q: %w", parentDir, err)
-			}
-			if err := os.MkdirAll(parentDir, 0o755); err != nil {
-				return fmt.Errorf("create archive parent %q: %w", parentDir, err)
-			}
-
-			if err := ensureExtractionPathSafe(destRoot, targetPath); err != nil {
-				return fmt.Errorf("validate archive file %q: %w", targetPath, err)
-			}
-
-			fileMode := archiveFileMode(header)
-			file, err := os.OpenFile(targetPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, fileMode)
-			if err != nil {
-				return fmt.Errorf("create archive file %q: %w", targetPath, err)
-			}
-
-			counter := &countingLimitWriter{
-				total: &totalExtracted,
-				limit: limits.maxDecompressedSize,
-			}
-			teeReader := io.TeeReader(tarReader, counter)
-			if _, err := io.Copy(file, teeReader); err != nil {
-				return cleanupArchiveFile(file, targetPath, fmt.Errorf("write archive file %q: %w", targetPath, err), false)
-			}
-			if err := file.Close(); err != nil {
-				return cleanupArchiveFile(nil, targetPath, fmt.Errorf("close archive file %q: %w", targetPath, err), true)
-			}
-			if err := os.Chmod(targetPath, fileMode); err != nil {
-				return fmt.Errorf("set archive file mode %q: %w", targetPath, err)
-			}
-		default:
-			return fmt.Errorf("%w %d for %q", ErrUnsupportedArchiveEntryType, header.Typeflag, header.Name)
+		if err := extractArchiveEntry(
+			tarReader,
+			destRoot,
+			targetPath,
+			header,
+			&totalExtracted,
+			limits.maxDecompressedSize,
+		); err != nil {
+			return fmt.Errorf("extract archive entry %q: %w", header.Name, err)
 		}
 	}
+}
+
+func extractArchiveEntry(
+	tarReader *tar.Reader,
+	destRoot string,
+	targetPath string,
+	header *tar.Header,
+	totalExtracted *int64,
+	maxDecompressedSize int64,
+) error {
+	switch header.Typeflag {
+	case tar.TypeDir:
+		return extractArchiveDirectory(destRoot, targetPath, header)
+	case tar.TypeReg, 0:
+		return extractArchiveFile(tarReader, destRoot, targetPath, header, totalExtracted, maxDecompressedSize)
+	default:
+		return fmt.Errorf("%w %d", ErrUnsupportedArchiveEntryType, header.Typeflag)
+	}
+}
+
+func extractArchiveDirectory(destRoot string, targetPath string, header *tar.Header) error {
+	if err := ensureExtractionPathSafe(destRoot, targetPath); err != nil {
+		return fmt.Errorf("validate archive directory %q: %w", targetPath, err)
+	}
+
+	dirMode := archiveDirMode(header)
+	if err := os.MkdirAll(targetPath, dirMode); err != nil {
+		return fmt.Errorf("create archive directory %q: %w", targetPath, err)
+	}
+	if err := os.Chmod(targetPath, dirMode); err != nil {
+		return fmt.Errorf("set archive directory mode %q: %w", targetPath, err)
+	}
+	return nil
+}
+
+func extractArchiveFile(
+	tarReader *tar.Reader,
+	destRoot string,
+	targetPath string,
+	header *tar.Header,
+	totalExtracted *int64,
+	maxDecompressedSize int64,
+) error {
+	parentDir := filepath.Dir(targetPath)
+	if err := ensureExtractionPathSafe(destRoot, parentDir); err != nil {
+		return fmt.Errorf("validate archive parent %q: %w", parentDir, err)
+	}
+	if err := os.MkdirAll(parentDir, 0o755); err != nil {
+		return fmt.Errorf("create archive parent %q: %w", parentDir, err)
+	}
+
+	if err := ensureExtractionPathSafe(destRoot, targetPath); err != nil {
+		return fmt.Errorf("validate archive file %q: %w", targetPath, err)
+	}
+
+	fileMode := archiveFileMode(header)
+	file, err := os.OpenFile(targetPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, fileMode)
+	if err != nil {
+		return fmt.Errorf("create archive file %q: %w", targetPath, err)
+	}
+
+	counter := &countingLimitWriter{
+		total: totalExtracted,
+		limit: maxDecompressedSize,
+	}
+	teeReader := io.TeeReader(tarReader, counter)
+	if _, err := io.Copy(file, teeReader); err != nil {
+		return cleanupArchiveFile(
+			file,
+			targetPath,
+			fmt.Errorf("write archive file %q: %w", targetPath, err),
+			false,
+		)
+	}
+	if err := file.Close(); err != nil {
+		return cleanupArchiveFile(
+			nil,
+			targetPath,
+			fmt.Errorf("close archive file %q: %w", targetPath, err),
+			true,
+		)
+	}
+	if err := os.Chmod(targetPath, fileMode); err != nil {
+		return fmt.Errorf("set archive file mode %q: %w", targetPath, err)
+	}
+	return nil
 }
 
 type countingLimitWriter struct {
@@ -306,25 +354,23 @@ func PathWithinRoot(root string, child string) (string, error) {
 }
 
 func archiveDirMode(header *tar.Header) os.FileMode {
-	if header == nil {
-		return 0o755
-	}
-
-	mode := os.FileMode(header.Mode) & os.ModePerm
-	if mode == 0 {
-		return 0o755
-	}
-	return mode
+	return archiveEntryMode(header, 0o755)
 }
 
 func archiveFileMode(header *tar.Header) os.FileMode {
-	if header == nil {
-		return 0o644
-	}
+	return archiveEntryMode(header, 0o644)
+}
 
-	mode := os.FileMode(header.Mode) & os.ModePerm
+func archiveEntryMode(header *tar.Header, fallback os.FileMode) os.FileMode {
+	if header == nil {
+		return fallback
+	}
+	if header.Mode < 0 || header.Mode > math.MaxUint32 {
+		return fallback
+	}
+	mode := os.FileMode(uint32(header.Mode)) & os.ModePerm
 	if mode == 0 {
-		return 0o644
+		return fallback
 	}
 	return mode
 }
@@ -352,7 +398,7 @@ func ensureExtractionPathSafe(root string, targetPath string) error {
 	}
 
 	current := absRoot
-	for _, component := range strings.Split(relative, string(filepath.Separator)) {
+	for component := range strings.SplitSeq(relative, string(filepath.Separator)) {
 		if component == "" || component == "." {
 			continue
 		}

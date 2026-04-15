@@ -53,7 +53,10 @@ func (c *HostAPIClient) ListBridgeInstances(ctx context.Context) ([]bridgepkg.Br
 }
 
 // GetBridgeInstance returns one provider-owned bridge instance.
-func (c *HostAPIClient) GetBridgeInstance(ctx context.Context, bridgeInstanceID string) (*bridgepkg.BridgeInstance, error) {
+func (c *HostAPIClient) GetBridgeInstance(
+	ctx context.Context,
+	bridgeInstanceID string,
+) (*bridgepkg.BridgeInstance, error) {
 	var result bridgepkg.BridgeInstance
 	if err := c.Call(ctx, "bridges/instances/get", extensioncontract.BridgeInstanceTargetParams{
 		BridgeInstanceID: bridgeInstanceID,

@@ -40,7 +40,11 @@ type Handlers struct {
 	staticFS fs.FS
 }
 
-func newHandlers(cfg handlerConfig) *Handlers {
+func newHandlers(cfg *handlerConfig) *Handlers {
+	if cfg == nil {
+		cfg = &handlerConfig{}
+	}
+
 	if cfg.pollInterval <= 0 {
 		cfg.pollInterval = defaultPollInterval
 	}
@@ -49,7 +53,7 @@ func newHandlers(cfg handlerConfig) *Handlers {
 	}
 
 	return &Handlers{
-		BaseHandlers: core.NewBaseHandlers(core.BaseHandlerConfig{
+		BaseHandlers: core.NewBaseHandlers(&core.BaseHandlerConfig{
 			TransportName:                "httpapi",
 			MaskInternalErrors:           true,
 			IncludeSessionWorkspaceInSSE: false,

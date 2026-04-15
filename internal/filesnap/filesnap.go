@@ -2,6 +2,7 @@ package filesnap
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"time"
 )
@@ -54,8 +55,6 @@ func Clone(src map[string]Snapshot) map[string]Snapshot {
 	}
 
 	cloned := make(map[string]Snapshot, len(src))
-	for path, snapshot := range src {
-		cloned[path] = snapshot
-	}
+	maps.Copy(cloned, src)
 	return cloned
 }

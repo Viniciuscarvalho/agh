@@ -120,7 +120,12 @@ query LinearProviderViewer {
 	}, nil
 }
 
-func (c *linearClient) CreateComment(ctx context.Context, issueID string, body string, parentID string) (*linearComment, error) {
+func (c *linearClient) CreateComment(
+	ctx context.Context,
+	issueID string,
+	body string,
+	parentID string,
+) (*linearComment, error) {
 	type createCommentResponse struct {
 		CommentCreate struct {
 			Success bool          `json:"success"`
@@ -233,7 +238,11 @@ mutation LinearProviderDeleteComment($id: String!) {
 	return nil
 }
 
-func (c *linearClient) CreateAgentActivity(ctx context.Context, agentSessionID string, body string) (*linearAgentActivity, error) {
+func (c *linearClient) CreateAgentActivity(
+	ctx context.Context,
+	agentSessionID string,
+	body string,
+) (*linearAgentActivity, error) {
 	type createActivityResponse struct {
 		AgentActivityCreate struct {
 			Success       bool                `json:"success"`
@@ -317,7 +326,9 @@ func doLinearGraphQL[T any](ctx context.Context, c *linearClient, request linear
 				messages = append(messages, text)
 			}
 		}
-		return zero, &bridgesdk.PermanentError{Err: fmt.Errorf("linear: graphql error: %s", strings.Join(messages, "; "))}
+		return zero, &bridgesdk.PermanentError{
+			Err: fmt.Errorf("linear: graphql error: %s", strings.Join(messages, "; ")),
+		}
 	}
 
 	return envelope.Data, nil
@@ -340,7 +351,8 @@ func (c *linearClient) ensureOAuthToken(ctx context.Context) string {
 	defer cache.mu.Unlock()
 
 	now := c.now()
-	if strings.TrimSpace(cache.token) != "" && (cache.expiresAt.IsZero() || cache.expiresAt.After(now.Add(time.Minute))) {
+	if strings.TrimSpace(cache.token) != "" &&
+		(cache.expiresAt.IsZero() || cache.expiresAt.After(now.Add(time.Minute))) {
 		return cache.token
 	}
 
@@ -350,7 +362,12 @@ func (c *linearClient) ensureOAuthToken(ctx context.Context) string {
 	values.Set("client_secret", c.cfg.clientSecret)
 	values.Set("scope", strings.Join(defaultLinearOAuthScopes(c.cfg.mode), ","))
 
-	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.oauthTokenURL, strings.NewReader(values.Encode()))
+	httpRequest, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		c.cfg.oauthTokenURL,
+		strings.NewReader(values.Encode()),
+	)
 	if err != nil {
 		cache.token = ""
 		cache.expiresAt = time.Time{}

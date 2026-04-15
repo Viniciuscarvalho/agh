@@ -37,16 +37,16 @@ type Registry interface {
 	WritePermissionLog(ctx context.Context, entry store.PermissionLogEntry) error
 	ListPermissionLog(ctx context.Context, query store.PermissionLogQuery) ([]store.PermissionLogEntry, error)
 	ListNetworkAudit(ctx context.Context, query store.NetworkAuditQuery) ([]store.NetworkAuditEntry, error)
-	ListTasks(ctx context.Context, query taskpkg.TaskQuery) ([]taskpkg.TaskSummary, error)
-	ListTaskRuns(ctx context.Context, query taskpkg.TaskRunQuery) ([]taskpkg.TaskRun, error)
-	ListTaskEvents(ctx context.Context, query taskpkg.TaskEventQuery) ([]taskpkg.TaskEvent, error)
+	ListTasks(ctx context.Context, query taskpkg.Query) ([]taskpkg.Summary, error)
+	ListTaskRuns(ctx context.Context, query taskpkg.RunQuery) ([]taskpkg.Run, error)
+	ListTaskEvents(ctx context.Context, query taskpkg.EventQuery) ([]taskpkg.Event, error)
 	Path() string
 	Close(ctx context.Context) error
 }
 
 // SessionSource reports the currently active in-memory sessions.
 type SessionSource interface {
-	List() []*session.SessionInfo
+	List() []*session.Info
 }
 
 // PermissionModeResolver resolves the effective permission mode for a live
@@ -95,7 +95,7 @@ type Observer struct {
 	homePaths             aghconfig.HomePaths
 	sessionSource         SessionSource
 	resolvePermissionMode PermissionModeResolver
-	workspaceResolver     workspacepkg.WorkspaceResolver
+	workspaceResolver     workspacepkg.RuntimeResolver
 	now                   func() time.Time
 	startedAt             time.Time
 	logger                *slog.Logger
@@ -140,7 +140,7 @@ func WithPermissionModeResolver(resolver PermissionModeResolver) Option {
 
 // WithWorkspaceResolver injects workspace resolution for config lookups that
 // need a filesystem root.
-func WithWorkspaceResolver(resolver workspacepkg.WorkspaceResolver) Option {
+func WithWorkspaceResolver(resolver workspacepkg.RuntimeResolver) Option {
 	return func(observer *Observer) {
 		observer.workspaceResolver = resolver
 	}
@@ -341,7 +341,17 @@ func (o *Observer) OnSessionCreated(ctx context.Context, sess *session.Session) 
 	if o.resolvePermissionMode != nil {
 		permissionMode, err := o.resolvePermissionMode(ctx, info.AgentName, info.WorkspaceID)
 		if err != nil {
-			o.logger.Warn("observe: resolve permission mode failed", "session_id", info.ID, "agent_name", info.AgentName, "workspace_id", info.WorkspaceID, "error", err)
+			o.logger.Warn(
+				"observe: resolve permission mode failed",
+				"session_id",
+				info.ID,
+				"agent_name",
+				info.AgentName,
+				"workspace_id",
+				info.WorkspaceID,
+				"error",
+				err,
+			)
 		} else {
 			snapshot.permissionMode = strings.TrimSpace(permissionMode)
 		}
@@ -350,7 +360,17 @@ func (o *Observer) OnSessionCreated(ctx context.Context, sess *session.Session) 
 	o.trackSession(info.ID, snapshot)
 
 	if err := o.registry.RegisterSession(ctx, sessionInfoFromSession(info)); err != nil {
-		o.logger.Warn("observe: register session failed", "session_id", info.ID, "agent_name", info.AgentName, "workspace_id", info.WorkspaceID, "error", err)
+		o.logger.Warn(
+			"observe: register session failed",
+			"session_id",
+			info.ID,
+			"agent_name",
+			info.AgentName,
+			"workspace_id",
+			info.WorkspaceID,
+			"error",
+			err,
+		)
 	}
 }
 
@@ -367,7 +387,19 @@ func (o *Observer) OnSessionStopped(ctx context.Context, sess *session.Session) 
 		StopDetail:    info.StopDetail,
 		UpdatedAt:     info.UpdatedAt,
 	}); err != nil {
-		o.logger.Warn("observe: update session state failed", "session_id", info.ID, "agent_name", info.AgentName, "workspace_id", info.WorkspaceID, "state", info.State, "error", err)
+		o.logger.Warn(
+			"observe: update session state failed",
+			"session_id",
+			info.ID,
+			"agent_name",
+			info.AgentName,
+			"workspace_id",
+			info.WorkspaceID,
+			"state",
+			info.State,
+			"error",
+			err,
+		)
 	}
 
 	o.untrackSession(info.ID)
@@ -381,81 +413,188 @@ func (o *Observer) OnAgentEvent(ctx context.Context, sessionID string, payload a
 		return
 	}
 
+	id, snapshot, ok := o.validateObservedEvent(sessionID, event)
+	if !ok {
+		return
+	}
+
+	timestamp := observedEventTimestamp(event, o.now)
+
+	if err := o.writeObservedEventSummary(ctx, id, snapshot, event, timestamp); err != nil {
+		o.logObservedEventFailure("observe: write event summary failed", id, snapshot, event, err)
+	}
+	if err := o.aggregateObservedUsage(ctx, id, snapshot, event, timestamp); err != nil {
+		o.logger.Warn(
+			"observe: update token stats failed",
+			"session_id",
+			id,
+			"agent_name",
+			snapshot.agentName,
+			"workspace_id",
+			snapshot.workspaceID,
+			"turn_id",
+			event.TurnID,
+			"error",
+			err,
+		)
+	}
+	if err := o.writeObservedPermissionLog(ctx, id, snapshot, event, timestamp); err != nil {
+		o.logger.Warn(
+			"observe: write permission log failed",
+			"session_id",
+			id,
+			"agent_name",
+			snapshot.agentName,
+			"workspace_id",
+			snapshot.workspaceID,
+			"error",
+			err,
+		)
+	}
+}
+
+func (o *Observer) validateObservedEvent(
+	sessionID string,
+	event acp.AgentEvent,
+) (string, observedSession, bool) {
 	id := strings.TrimSpace(sessionID)
 	if id == "" {
 		o.logger.Warn("observe: skipped agent event with empty session id", "event_type", event.Type)
-		return
+		return "", observedSession{}, false
 	}
 
 	snapshot, ok := o.sessionSnapshot(id)
 	if !ok {
 		o.logger.Warn("observe: skipped agent event for unknown session", "session_id", id, "event_type", event.Type)
-		return
+		return "", observedSession{}, false
 	}
 	if strings.TrimSpace(event.Type) == "" {
-		o.logger.Warn("observe: skipped agent event with empty type", "session_id", id, "agent_name", snapshot.agentName, "workspace_id", snapshot.workspaceID)
-		return
+		o.logger.Warn(
+			"observe: skipped agent event with empty type",
+			"session_id",
+			id,
+			"agent_name",
+			snapshot.agentName,
+			"workspace_id",
+			snapshot.workspaceID,
+		)
+		return "", observedSession{}, false
 	}
 
-	timestamp := event.Timestamp
-	if timestamp.IsZero() {
-		timestamp = o.now()
-	}
+	return id, snapshot, true
+}
 
-	if err := o.registry.WriteEventSummary(ctx, store.EventSummary{
-		SessionID: id,
+func observedEventTimestamp(event acp.AgentEvent, now func() time.Time) time.Time {
+	if !event.Timestamp.IsZero() {
+		return event.Timestamp
+	}
+	return now()
+}
+
+func (o *Observer) writeObservedEventSummary(
+	ctx context.Context,
+	sessionID string,
+	snapshot observedSession,
+	event acp.AgentEvent,
+	timestamp time.Time,
+) error {
+	return o.registry.WriteEventSummary(ctx, store.EventSummary{
+		SessionID: sessionID,
 		Type:      strings.TrimSpace(event.Type),
 		AgentName: snapshot.agentName,
 		Summary:   summarizeEvent(event),
 		Timestamp: timestamp,
-	}); err != nil {
-		o.logger.Warn("observe: write event summary failed", "session_id", id, "agent_name", snapshot.agentName, "workspace_id", snapshot.workspaceID, "event_type", event.Type, "error", err)
+	})
+}
+
+func (o *Observer) aggregateObservedUsage(
+	ctx context.Context,
+	sessionID string,
+	snapshot observedSession,
+	event acp.AgentEvent,
+	timestamp time.Time,
+) error {
+	if !shouldAggregateUsage(event) {
+		return nil
 	}
 
-	if shouldAggregateUsage(event) {
-		usageTimestamp := timestamp
-		if !event.Usage.Timestamp.IsZero() {
-			usageTimestamp = event.Usage.Timestamp
-		}
-		if err := o.registry.UpdateTokenStats(ctx, store.TokenStatsUpdate{
-			SessionID:    id,
-			AgentName:    snapshot.agentName,
-			InputTokens:  event.Usage.InputTokens,
-			OutputTokens: event.Usage.OutputTokens,
-			TotalTokens:  event.Usage.TotalTokens,
-			CostAmount:   event.Usage.CostAmount,
-			CostCurrency: event.Usage.CostCurrency,
-			Turns:        1,
-			UpdatedAt:    usageTimestamp,
-		}); err != nil {
-			o.logger.Warn("observe: update token stats failed", "session_id", id, "agent_name", snapshot.agentName, "workspace_id", snapshot.workspaceID, "turn_id", event.TurnID, "error", err)
-		}
+	usageTimestamp := timestamp
+	if !event.Usage.Timestamp.IsZero() {
+		usageTimestamp = event.Usage.Timestamp
 	}
 
+	return o.registry.UpdateTokenStats(ctx, store.TokenStatsUpdate{
+		SessionID:    sessionID,
+		AgentName:    snapshot.agentName,
+		InputTokens:  event.Usage.InputTokens,
+		OutputTokens: event.Usage.OutputTokens,
+		TotalTokens:  event.Usage.TotalTokens,
+		CostAmount:   event.Usage.CostAmount,
+		CostCurrency: event.Usage.CostCurrency,
+		Turns:        1,
+		UpdatedAt:    usageTimestamp,
+	})
+}
+
+func (o *Observer) writeObservedPermissionLog(
+	ctx context.Context,
+	sessionID string,
+	snapshot observedSession,
+	event acp.AgentEvent,
+	timestamp time.Time,
+) error {
 	if strings.TrimSpace(event.Type) != acp.EventTypePermission {
-		return
+		return nil
 	}
 
 	policyUsed := strings.TrimSpace(snapshot.permissionMode)
 	if policyUsed == "" {
-		o.logger.Warn("observe: skipped permission log without resolved policy", "session_id", id, "agent_name", snapshot.agentName, "workspace_id", snapshot.workspaceID)
-		return
+		o.logger.Warn(
+			"observe: skipped permission log without resolved policy",
+			"session_id",
+			sessionID,
+			"agent_name",
+			snapshot.agentName,
+			"workspace_id",
+			snapshot.workspaceID,
+		)
+		return nil
 	}
 	if strings.TrimSpace(event.Decision) == "" {
-		return
+		return nil
 	}
 
-	if err := o.registry.WritePermissionLog(ctx, store.PermissionLogEntry{
-		SessionID:  id,
+	return o.registry.WritePermissionLog(ctx, store.PermissionLogEntry{
+		SessionID:  sessionID,
 		AgentName:  snapshot.agentName,
 		Action:     strings.TrimSpace(event.Action),
 		Resource:   strings.TrimSpace(event.Resource),
 		Decision:   strings.TrimSpace(event.Decision),
 		PolicyUsed: policyUsed,
 		Timestamp:  timestamp,
-	}); err != nil {
-		o.logger.Warn("observe: write permission log failed", "session_id", id, "agent_name", snapshot.agentName, "workspace_id", snapshot.workspaceID, "error", err)
-	}
+	})
+}
+
+func (o *Observer) logObservedEventFailure(
+	message string,
+	sessionID string,
+	snapshot observedSession,
+	event acp.AgentEvent,
+	err error,
+) {
+	o.logger.Warn(
+		message,
+		"session_id",
+		sessionID,
+		"agent_name",
+		snapshot.agentName,
+		"workspace_id",
+		snapshot.workspaceID,
+		"event_type",
+		event.Type,
+		"error",
+		err,
+	)
 }
 
 func normalizeObservedAgentEvent(payload any) (acp.AgentEvent, bool) {
@@ -491,7 +630,10 @@ func (o *Observer) sessionSnapshot(id string) (observedSession, bool) {
 	return snapshot, ok
 }
 
-func defaultPermissionModeResolver(homePaths aghconfig.HomePaths, resolver workspacepkg.WorkspaceResolver) PermissionModeResolver {
+func defaultPermissionModeResolver(
+	homePaths aghconfig.HomePaths,
+	resolver workspacepkg.RuntimeResolver,
+) PermissionModeResolver {
 	return func(ctx context.Context, agentName, workspaceID string) (string, error) {
 		if ctx == nil {
 			return "", errors.New("observe: permission resolver context is required")
@@ -551,7 +693,7 @@ func agentDefByName(agents []aghconfig.AgentDef, name string) (aghconfig.AgentDe
 	return aghconfig.AgentDef{}, workspacepkg.ErrAgentNotAvailable
 }
 
-func sessionInfoFromSession(info *session.SessionInfo) store.SessionInfo {
+func sessionInfoFromSession(info *session.Info) store.SessionInfo {
 	if info == nil {
 		return store.SessionInfo{}
 	}

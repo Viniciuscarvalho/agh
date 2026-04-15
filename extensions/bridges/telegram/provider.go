@@ -26,8 +26,10 @@ const (
 	telegramListenAddrEnv = "AGH_BRIDGE_TELEGRAM_LISTEN_ADDR"
 	telegramAPIBaseEnv    = "AGH_BRIDGE_TELEGRAM_API_BASE_URL"
 
-	telegramDefaultAPIBaseURL = "https://api.telegram.org"
-	telegramGeneralTopicID    = "1"
+	telegramDefaultAPIBaseURL        = "https://api.telegram.org"
+	telegramGeneralTopicID           = "1"
+	telegramWebhookReadHeaderTimeout = 10 * time.Second
+	telegramWebhookIdleTimeout       = 30 * time.Second
 
 	rpcCodeNotInitialized = -32003
 )
@@ -67,18 +69,18 @@ type telegramProviderConfig struct {
 	Webhook    struct {
 		ListenAddr string `json:"listen_addr,omitempty"`
 		Path       string `json:"path,omitempty"`
-	} `json:"webhook,omitempty"`
+	} `json:"webhook"`
 	Batching struct {
 		DelayMS        int `json:"delay_ms,omitempty"`
 		SplitDelayMS   int `json:"split_delay_ms,omitempty"`
 		SplitThreshold int `json:"split_threshold,omitempty"`
-	} `json:"batching,omitempty"`
+	} `json:"batching"`
 	DM struct {
 		AllowUserIDs    []string `json:"allow_user_ids,omitempty"`
 		AllowUsernames  []string `json:"allow_usernames,omitempty"`
 		PairedUserIDs   []string `json:"paired_user_ids,omitempty"`
 		PairedUsernames []string `json:"paired_usernames,omitempty"`
-	} `json:"dm,omitempty"`
+	} `json:"dm"`
 }
 
 type resolvedInstanceConfig struct {
@@ -149,7 +151,7 @@ type telegramAPIEnvelope[T any] struct {
 	Result      T                       `json:"result"`
 	Description string                  `json:"description,omitempty"`
 	ErrorCode   int                     `json:"error_code,omitempty"`
-	Parameters  telegramAPIErrorDetails `json:"parameters,omitempty"`
+	Parameters  telegramAPIErrorDetails `json:"parameters"`
 }
 
 type telegramAPIErrorDetails struct {
@@ -230,7 +232,10 @@ func newTelegramProvider(stderr io.Writer) (*telegramProvider, error) {
 }
 
 func (p *telegramProvider) serve(stdin io.Reader, stdout io.Writer) error {
-	p.reportSideEffectError("write start marker", appendMarkerLine(p.env.startsPath, fmt.Sprintf("pid=%d", os.Getpid())))
+	p.reportSideEffectError(
+		"write start marker",
+		appendMarkerLine(p.env.startsPath, fmt.Sprintf("pid=%d", os.Getpid())),
+	)
 	return p.sdk.Serve(context.Background(), stdin, stdout)
 }
 
@@ -246,11 +251,9 @@ func (p *telegramProvider) handleInitialize(_ context.Context, session *bridgesd
 	p.reportSideEffectError("write initialize marker", writeJSONFile(p.env.handshakePath, marker))
 	p.clearLastError()
 
-	p.wg.Add(1)
-	go func() {
-		defer p.wg.Done()
+	p.wg.Go(func() {
 		p.afterInitialize(session)
-	}()
+	})
 
 	return nil
 }
@@ -289,10 +292,7 @@ func (p *telegramProvider) afterInitialize(session *bridgesdk.Session) {
 		return
 	}
 
-	configs, reconcileErr := p.reconcileInstanceConfigs(ctx, session, listed)
-	if reconcileErr != nil && ownershipErr == nil {
-		ownershipErr = reconcileErr
-	}
+	configs := p.reconcileInstanceConfigs(ctx, session, listed)
 	for _, cfg := range configs {
 		if p.stopped() {
 			return
@@ -302,7 +302,14 @@ func (p *telegramProvider) afterInitialize(session *bridgesdk.Session) {
 		if status == "" {
 			status = bridgepkg.BridgeStatusReady
 		}
-		if _, err := p.reportState(ctx, session, cfg.instanceID, status, degradation); err != nil && ownershipErr == nil {
+		if err := p.reportState(
+			ctx,
+			session,
+			cfg.instanceID,
+			status,
+			degradation,
+		); err != nil &&
+			ownershipErr == nil {
 			ownershipErr = err
 		}
 	}
@@ -324,30 +331,51 @@ func (p *telegramProvider) handleBridgesDeliver(
 		Request: request,
 	}
 
-	cfg, err := p.waitForInstanceConfig(strings.TrimSpace(request.Event.BridgeInstanceID), 500*time.Millisecond)
+	cfg, err := p.waitForInstanceConfig(
+		strings.TrimSpace(request.Event.BridgeInstanceID),
+		500*time.Millisecond,
+	)
 	if err != nil {
 		marker.Error = err.Error()
-		p.reportSideEffectError("write failed delivery marker", appendJSONLine(p.env.deliveryPath, marker))
+		p.reportSideEffectError(
+			"write failed delivery marker",
+			appendJSONLine(p.env.deliveryPath, marker),
+		)
 		p.setLastError(err)
 		return bridgepkg.DeliveryAck{}, err
 	}
 
 	if shouldCrashOnce(p.env.crashOncePath) {
-		p.reportSideEffectError("write pre-crash delivery marker", appendJSONLine(p.env.deliveryPath, marker))
-		p.reportSideEffectError("write crash marker", writeJSONFile(p.env.crashOncePath, map[string]any{
-			"crashed":            true,
-			"pid":                os.Getpid(),
-			"delivery_id":        strings.TrimSpace(request.Event.DeliveryID),
-			"bridge_instance_id": cfg.instanceID,
-		}))
+		p.reportSideEffectError(
+			"write pre-crash delivery marker",
+			appendJSONLine(p.env.deliveryPath, marker),
+		)
+		p.reportSideEffectError(
+			"write crash marker",
+			writeJSONFile(p.env.crashOncePath, map[string]any{
+				"crashed":            true,
+				"pid":                os.Getpid(),
+				"delivery_id":        strings.TrimSpace(request.Event.DeliveryID),
+				"bridge_instance_id": cfg.instanceID,
+			}),
+		)
 		os.Exit(23)
 	}
 
 	api := p.apiFactory(cfg)
-	ack, state, err := executeDelivery(ctx, api, cfg, request, p.deliveryState(cfg.instanceID, request.Event.DeliveryID))
+	ack, state, err := executeDelivery(
+		ctx,
+		api,
+		cfg,
+		request,
+		p.deliveryState(cfg.instanceID, request.Event.DeliveryID),
+	)
 	if err != nil {
 		marker.Error = err.Error()
-		p.reportSideEffectError("write failed delivery marker", appendJSONLine(p.env.deliveryPath, marker))
+		p.reportSideEffectError(
+			"write failed delivery marker",
+			appendJSONLine(p.env.deliveryPath, marker),
+		)
 		classified := bridgesdk.ClassifyError(err)
 		_, _, reportErr := session.ReportClassifiedError(ctx, cfg.instanceID, classified)
 		if reportErr != nil {
@@ -359,11 +387,14 @@ func (p *telegramProvider) handleBridgesDeliver(
 	}
 
 	p.storeDeliveryState(cfg.instanceID, request.Event.DeliveryID, state)
-	p.reportReadyIfNeeded(ctx, session, cfg.instanceID)
+	if err := p.reportReadyIfNeeded(ctx, session, cfg.instanceID); err != nil {
+		p.setLastError(err)
+	} else {
+		p.clearLastError()
+	}
 
 	marker.Ack = &ack
 	p.reportSideEffectError("write delivery marker", appendJSONLine(p.env.deliveryPath, marker))
-	p.clearLastError()
 	return ack, nil
 }
 
@@ -386,7 +417,10 @@ func (p *telegramProvider) handleShutdown(
 	shutdownCtx := context.Background()
 	if request.DeadlineMS > 0 {
 		var cancel context.CancelFunc
-		shutdownCtx, cancel = context.WithTimeout(context.Background(), time.Duration(request.DeadlineMS)*time.Millisecond)
+		shutdownCtx, cancel = context.WithTimeout(
+			context.Background(),
+			time.Duration(request.DeadlineMS)*time.Millisecond,
+		)
 		defer cancel()
 	}
 
@@ -401,7 +435,10 @@ func (p *telegramProvider) handleShutdown(
 		_ = listener.Close()
 	}
 	if server != nil {
-		_ = server.Shutdown(shutdownCtx)
+		if err := server.Shutdown(shutdownCtx); err != nil &&
+			!errors.Is(err, http.ErrServerClosed) {
+			p.setLastError(err)
+		}
 		_ = server.Close()
 	}
 
@@ -416,7 +453,10 @@ func (p *telegramProvider) handleShutdown(
 	case <-shutdownCtx.Done():
 	}
 
-	p.reportSideEffectError("write shutdown marker", appendMarkerLine(p.env.shutdownPath, fmt.Sprintf("pid=%d", os.Getpid())))
+	p.reportSideEffectError(
+		"write shutdown marker",
+		appendMarkerLine(p.env.shutdownPath, fmt.Sprintf("pid=%d", os.Getpid())),
+	)
 	return nil
 }
 
@@ -472,26 +512,30 @@ func (p *telegramProvider) reportState(
 	bridgeInstanceID string,
 	status bridgepkg.BridgeStatus,
 	degradation *bridgepkg.BridgeDegradation,
-) (*bridgepkg.BridgeInstance, error) {
+) error {
 	var result *bridgepkg.BridgeInstance
 	err := p.retryHostCall(ctx, func(callCtx context.Context) error {
-		instance, callErr := session.HostAPI().ReportBridgeInstanceState(callCtx, extensioncontract.BridgesInstancesReportStateParams{
-			BridgeInstanceID: strings.TrimSpace(bridgeInstanceID),
-			Status:           status,
-			Degradation:      cloneDegradation(degradation),
-		})
+		instance, callErr := session.HostAPI().
+			ReportBridgeInstanceState(callCtx, extensioncontract.BridgesInstancesReportStateParams{
+				BridgeInstanceID: strings.TrimSpace(bridgeInstanceID),
+				Status:           status,
+				Degradation:      cloneDegradation(degradation),
+			})
 		if callErr == nil {
 			result = instance
 		}
 		return callErr
 	})
 	if err != nil {
-		p.reportSideEffectError("write failed state marker", appendJSONLine(p.env.statePath, stateMarker{
-			BridgeInstanceID: strings.TrimSpace(bridgeInstanceID),
-			Status:           status,
-			Error:            err.Error(),
-		}))
-		return nil, err
+		p.reportSideEffectError(
+			"write failed state marker",
+			appendJSONLine(p.env.statePath, stateMarker{
+				BridgeInstanceID: strings.TrimSpace(bridgeInstanceID),
+				Status:           status,
+				Error:            err.Error(),
+			}),
+		)
+		return err
 	}
 
 	p.mu.Lock()
@@ -502,17 +546,22 @@ func (p *telegramProvider) reportState(
 		Status:           result.Status,
 		Instance:         *result,
 	}))
-	return result, nil
+	return nil
 }
 
-func (p *telegramProvider) reportReadyIfNeeded(ctx context.Context, session *bridgesdk.Session, bridgeInstanceID string) {
+func (p *telegramProvider) reportReadyIfNeeded(
+	ctx context.Context,
+	session *bridgesdk.Session,
+	bridgeInstanceID string,
+) error {
+	bridgeInstanceID = strings.TrimSpace(bridgeInstanceID)
 	p.mu.RLock()
-	status := p.reportedStatus[strings.TrimSpace(bridgeInstanceID)]
+	status := p.reportedStatus[bridgeInstanceID]
 	p.mu.RUnlock()
 	if status == bridgepkg.BridgeStatusReady {
-		return
+		return nil
 	}
-	_, _ = p.reportState(ctx, session, bridgeInstanceID, bridgepkg.BridgeStatusReady, nil)
+	return p.reportState(ctx, session, bridgeInstanceID, bridgepkg.BridgeStatusReady, nil)
 }
 
 func (p *telegramProvider) ingestBridgeMessage(
@@ -531,14 +580,17 @@ func (p *telegramProvider) ingestBridgeMessage(
 	return result, err
 }
 
-func (p *telegramProvider) retryHostCall(ctx context.Context, fn func(context.Context) error) error {
+func (p *telegramProvider) retryHostCall(
+	ctx context.Context,
+	fn func(context.Context) error,
+) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
 	delay := 10 * time.Millisecond
 	var lastErr error
-	for attempt := 0; attempt < 6; attempt++ {
+	for range 6 {
 		err := fn(ctx)
 		if err == nil {
 			return nil
@@ -590,124 +642,89 @@ func (p *telegramProvider) reconcileInstanceConfigs(
 	ctx context.Context,
 	session *bridgesdk.Session,
 	managed []subprocess.InitializeBridgeManagedInstance,
-) ([]resolvedInstanceConfig, error) {
+) []resolvedInstanceConfig {
 	if len(managed) == 0 {
 		p.mu.Lock()
 		p.routes = make(map[string]resolvedInstanceConfig)
 		p.mu.Unlock()
-		return nil, nil
+		return nil
 	}
 
-	configs := make([]resolvedInstanceConfig, 0, len(managed))
-	requestedListen := strings.TrimSpace(os.Getenv(telegramListenAddrEnv))
-	usedPaths := make(map[string]string, len(managed))
-
-	for _, item := range managed {
-		cfg := p.resolveInstanceConfig(session, item)
-		if cfg.listenAddr != "" {
-			if requestedListen == "" {
-				requestedListen = cfg.listenAddr
-			} else if requestedListen != cfg.listenAddr && cfg.configError == nil {
-				cfg.configError = fmt.Errorf("telegram: instance %q configured incompatible listen_addr %q (runtime uses %q)", cfg.instanceID, cfg.listenAddr, requestedListen)
-			}
-		}
-		if owner, ok := usedPaths[cfg.webhookPath]; ok && cfg.webhookPath != "" && cfg.configError == nil {
-			cfg.configError = fmt.Errorf("telegram: webhook path %q is shared by %q and %q", cfg.webhookPath, owner, cfg.instanceID)
-		}
-		if cfg.webhookPath != "" {
-			usedPaths[cfg.webhookPath] = cfg.instanceID
-		}
-		configs = append(configs, cfg)
-	}
+	configs, requestedListen := p.resolveTelegramManagedConfigs(session, managed)
 
 	if p.stopped() {
-		for idx := range configs {
-			if configs[idx].batcher != nil {
-				configs[idx].batcher.Close()
-				configs[idx].batcher = nil
-			}
-		}
-		return nil, nil
+		closeTelegramBatchers(configs)
+		return nil
 	}
 
-	if requestedListen == "" {
-		for idx := range configs {
-			if configs[idx].configError == nil {
-				configs[idx].configError = errors.New("telegram: webhook listen address is required")
-			}
-		}
-	} else if err := p.startServer(requestedListen); err != nil {
-		for idx := range configs {
-			if configs[idx].configError == nil {
-				configs[idx].configError = err
-			}
-		}
-	}
-
-	nextRoutes := make(map[string]resolvedInstanceConfig, len(configs))
-	p.mu.Lock()
-	existing := p.routes
-	for _, cfg := range configs {
-		if prior, ok := existing[cfg.instanceID]; ok && prior.batcher != nil && cfg.batcher == nil {
-			prior.batcher.Close()
-		}
-		nextRoutes[cfg.instanceID] = cfg
-	}
-	for instanceID, prior := range existing {
-		if _, ok := nextRoutes[instanceID]; ok {
-			continue
-		}
-		if prior.batcher != nil {
-			prior.batcher.Close()
-		}
-	}
-	p.routes = nextRoutes
-	p.listenAddr = requestedListen
-	p.mu.Unlock()
-
-	for idx := range configs {
-		status, degradation, err := p.determineInitialState(ctx, configs[idx])
-		if err != nil {
-			p.setLastError(err)
-		}
-		configs[idx].initialStatus = status
-		configs[idx].initialDegradation = degradation
-	}
-
-	return configs, nil
+	applyTelegramListenErrors(configs, requestedListen, p.startServer)
+	p.swapTelegramRoutes(configs, requestedListen)
+	p.populateTelegramInitialStates(ctx, configs)
+	return configs
 }
 
 func (p *telegramProvider) resolveInstanceConfig(
 	session *bridgesdk.Session,
 	managed subprocess.InitializeBridgeManagedInstance,
 ) resolvedInstanceConfig {
-	cfg := telegramProviderConfig{}
-	if len(managed.Instance.ProviderConfig) > 0 {
-		if err := json.Unmarshal(managed.Instance.ProviderConfig, &cfg); err != nil {
-			return resolvedInstanceConfig{
-				managed:    managed,
-				instanceID: managed.Instance.ID,
-				configError: fmt.Errorf(
-					"telegram: decode provider_config for %q: %w",
-					managed.Instance.ID,
-					err,
-				),
-			}
+	cfg, err := decodeTelegramProviderConfig(managed)
+	if err != nil {
+		return resolvedInstanceConfig{
+			managed:    managed,
+			instanceID: managed.Instance.ID,
+			configError: fmt.Errorf(
+				"telegram: decode provider_config for %q: %w",
+				managed.Instance.ID,
+				err,
+			),
 		}
 	}
 
+	resolved := buildTelegramResolvedInstance(session, managed, cfg)
+	validateTelegramResolvedConfig(&resolved)
+	if resolved.configError != nil {
+		return resolved
+	}
+	configureTelegramBatcher(p, cfg, &resolved)
+	return resolved
+}
+
+func decodeTelegramProviderConfig(managed subprocess.InitializeBridgeManagedInstance) (telegramProviderConfig, error) {
+	cfg := telegramProviderConfig{}
+	if len(managed.Instance.ProviderConfig) == 0 {
+		return cfg, nil
+	}
+	if err := json.Unmarshal(managed.Instance.ProviderConfig, &cfg); err != nil {
+		return telegramProviderConfig{}, err
+	}
+	return cfg, nil
+}
+
+func buildTelegramResolvedInstance(
+	session *bridgesdk.Session,
+	managed subprocess.InitializeBridgeManagedInstance,
+	cfg telegramProviderConfig,
+) resolvedInstanceConfig {
 	botToken, _ := session.Cache().BoundSecretValue(managed.Instance.ID, "bot_token")
 	webhookSecret, _ := session.Cache().BoundSecretValue(managed.Instance.ID, "webhook_secret")
-	listenAddr := firstNonEmpty(cfg.Webhook.ListenAddr, strings.TrimSpace(os.Getenv(telegramListenAddrEnv)))
-	webhookPath := normalizeWebhookPath(firstNonEmpty(cfg.Webhook.Path, "/telegram/"+strings.TrimSpace(managed.Instance.ID)))
-	apiBaseURL := normalizeURL(firstNonEmpty(cfg.APIBaseURL, strings.TrimSpace(os.Getenv(telegramAPIBaseEnv)), telegramDefaultAPIBaseURL))
 
 	resolved := resolvedInstanceConfig{
-		managed:         managed,
-		instanceID:      strings.TrimSpace(managed.Instance.ID),
-		listenAddr:      listenAddr,
-		webhookPath:     webhookPath,
-		apiBaseURL:      apiBaseURL,
+		managed:    managed,
+		instanceID: strings.TrimSpace(managed.Instance.ID),
+		listenAddr: firstNonEmpty(
+			cfg.Webhook.ListenAddr,
+			strings.TrimSpace(os.Getenv(telegramListenAddrEnv)),
+		),
+		webhookPath: normalizeWebhookPath(
+			firstNonEmpty(cfg.Webhook.Path, "/telegram/"+strings.TrimSpace(managed.Instance.ID)),
+		),
+		apiBaseURL: normalizeURL(
+			firstNonEmpty(
+				cfg.APIBaseURL,
+				strings.TrimSpace(os.Getenv(telegramAPIBaseEnv)),
+				telegramDefaultAPIBaseURL,
+			),
+		),
 		botToken:        strings.TrimSpace(botToken),
 		webhookSecret:   strings.TrimSpace(webhookSecret),
 		dmPolicy:        managed.Instance.DMPolicy.Normalize(),
@@ -719,39 +736,50 @@ func (p *telegramProvider) resolveInstanceConfig(
 		rateLimiter:     bridgesdk.NewFixedWindowRateLimiter(100, time.Minute),
 		inFlightLimiter: bridgesdk.NewInFlightLimiter(16),
 	}
-
 	if resolved.dmPolicy == "" {
 		resolved.dmPolicy = bridgepkg.BridgeDMPolicyOpen
 	}
+	return resolved
+}
+
+func validateTelegramResolvedConfig(resolved *resolvedInstanceConfig) {
+	if resolved == nil {
+		return
+	}
 	if resolved.webhookPath == "" {
 		resolved.configError = errors.New("telegram: webhook path is required")
-		return resolved
+	}
+}
+
+func configureTelegramBatcher(
+	provider *telegramProvider,
+	cfg telegramProviderConfig,
+	resolved *resolvedInstanceConfig,
+) {
+	if resolved == nil || cfg.Batching.DelayMS <= 0 {
+		return
 	}
 
-	if cfg.Batching.DelayMS > 0 {
-		batcher, err := bridgesdk.NewInboundBatcher(bridgesdk.InboundBatcherConfig{
-			Context: context.Background(),
-			Delay:   time.Duration(cfg.Batching.DelayMS) * time.Millisecond,
-			SplitDelay: func() time.Duration {
-				if cfg.Batching.SplitDelayMS <= 0 {
-					return time.Duration(cfg.Batching.DelayMS) * time.Millisecond
-				}
-				return time.Duration(cfg.Batching.SplitDelayMS) * time.Millisecond
-			}(),
-			SplitThreshold: cfg.Batching.SplitThreshold,
-			Dispatch: func(ctx context.Context, batch bridgesdk.InboundBatch) error {
-				return p.dispatchInboundBatch(ctx, resolved.instanceID, batch)
-			},
-			Now: func() time.Time { return p.now() },
-		})
-		if err != nil {
-			resolved.configError = err
-			return resolved
-		}
-		resolved.batcher = batcher
+	batcher, err := bridgesdk.NewInboundBatcher(bridgesdk.InboundBatcherConfig{
+		Context: context.Background(),
+		Delay:   time.Duration(cfg.Batching.DelayMS) * time.Millisecond,
+		SplitDelay: func() time.Duration {
+			if cfg.Batching.SplitDelayMS <= 0 {
+				return time.Duration(cfg.Batching.DelayMS) * time.Millisecond
+			}
+			return time.Duration(cfg.Batching.SplitDelayMS) * time.Millisecond
+		}(),
+		SplitThreshold: cfg.Batching.SplitThreshold,
+		Dispatch: func(ctx context.Context, batch bridgesdk.InboundBatch) error {
+			return provider.dispatchInboundBatch(ctx, resolved.instanceID, batch)
+		},
+		Now: func() time.Time { return provider.now() },
+	})
+	if err != nil {
+		resolved.configError = err
+		return
 	}
-
-	return resolved
+	resolved.batcher = batcher
 }
 
 func (p *telegramProvider) determineInitialState(
@@ -797,12 +825,16 @@ func (p *telegramProvider) startServer(listenAddr string) error {
 	p.mu.RUnlock()
 	if server != nil {
 		if currentListen != "" && currentListen != strings.TrimSpace(listenAddr) {
-			return fmt.Errorf("telegram: runtime already listening on %q, cannot switch to %q", currentListen, listenAddr)
+			return fmt.Errorf(
+				"telegram: runtime already listening on %q, cannot switch to %q",
+				currentListen,
+				listenAddr,
+			)
 		}
 		return nil
 	}
 
-	ln, err := net.Listen("tcp", strings.TrimSpace(listenAddr))
+	ln, err := listenTelegramWebhook(strings.TrimSpace(listenAddr))
 	if err != nil {
 		return fmt.Errorf("telegram: listen %q: %w", listenAddr, err)
 	}
@@ -812,7 +844,9 @@ func (p *telegramProvider) startServer(listenAddr string) error {
 	}
 
 	httpServer := &http.Server{
-		Handler: http.HandlerFunc(p.serveWebhookHTTP),
+		Handler:           http.HandlerFunc(p.serveWebhookHTTP),
+		ReadHeaderTimeout: telegramWebhookReadHeaderTimeout,
+		IdleTimeout:       telegramWebhookIdleTimeout,
 	}
 
 	actualAddr := ln.Addr().String()
@@ -823,12 +857,14 @@ func (p *telegramProvider) startServer(listenAddr string) error {
 	p.listenAddr = strings.TrimSpace(listenAddr)
 	p.mu.Unlock()
 
-	p.reportSideEffectError("write start marker", appendMarkerLine(p.env.startsPath, fmt.Sprintf("listen=%s", actualAddr)))
+	p.reportSideEffectError(
+		"write start marker",
+		appendMarkerLine(p.env.startsPath, fmt.Sprintf("listen=%s", actualAddr)),
+	)
 
-	p.wg.Add(1)
-	go func() {
-		defer p.wg.Done()
-		if serveErr := httpServer.Serve(ln); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+	p.wg.Go(func() {
+		if serveErr := httpServer.Serve(ln); serveErr != nil &&
+			!errors.Is(serveErr, http.ErrServerClosed) {
 			p.setLastError(serveErr)
 		}
 		p.mu.Lock()
@@ -838,7 +874,7 @@ func (p *telegramProvider) startServer(listenAddr string) error {
 			p.serverAddr = ""
 		}
 		p.mu.Unlock()
-	}()
+	})
 
 	return nil
 }
@@ -867,7 +903,11 @@ func (p *telegramProvider) serveWebhookHTTP(w http.ResponseWriter, r *http.Reque
 		return p.handleWebhookRequest(w, r, cfg, request)
 	})
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(
+			w,
+			http.StatusText(http.StatusInternalServerError),
+			http.StatusInternalServerError,
+		)
 		p.setLastError(err)
 		return
 	}
@@ -882,13 +922,14 @@ func (p *telegramProvider) handleWebhookRequest(
 ) error {
 	update := telegramUpdate{}
 	if err := json.Unmarshal(request.Body, &update); err != nil {
-		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: "invalid telegram webhook payload"}
+		return &bridgesdk.HTTPError{
+			StatusCode: http.StatusBadRequest,
+			Message:    "invalid telegram webhook payload",
+		}
 	}
 	message := selectTelegramMessage(update)
 	if message == nil {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("OK"))
-		return nil
+		return writeTelegramWebhookOK(w)
 	}
 
 	envelope, err := mapTelegramUpdate(update, cfg.managed, request.ReceivedAt)
@@ -896,19 +937,18 @@ func (p *telegramProvider) handleWebhookRequest(
 		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
 	}
 	if cfg.dedup.Mark(envelope.IdempotencyKey) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("OK"))
-		return nil
+		return writeTelegramWebhookOK(w)
 	}
 	if !allowDirectMessage(cfg, *message) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("OK"))
-		return nil
+		return writeTelegramWebhookOK(w)
 	}
 
 	if cfg.batcher != nil {
 		if err := cfg.batcher.Enqueue(envelope); err != nil {
-			return &bridgesdk.HTTPError{StatusCode: http.StatusInternalServerError, Message: err.Error()}
+			return &bridgesdk.HTTPError{
+				StatusCode: http.StatusInternalServerError,
+				Message:    err.Error(),
+			}
 		}
 	} else {
 		if err := p.dispatchInboundEnvelope(context.Background(), cfg.instanceID, envelope); err != nil {
@@ -916,12 +956,14 @@ func (p *telegramProvider) handleWebhookRequest(
 		}
 	}
 
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("OK"))
-	return nil
+	return writeTelegramWebhookOK(w)
 }
 
-func (p *telegramProvider) dispatchInboundBatch(ctx context.Context, bridgeInstanceID string, batch bridgesdk.InboundBatch) error {
+func (p *telegramProvider) dispatchInboundBatch(
+	ctx context.Context,
+	bridgeInstanceID string,
+	batch bridgesdk.InboundBatch,
+) error {
 	if len(batch.Items) == 0 {
 		return nil
 	}
@@ -939,7 +981,11 @@ func (p *telegramProvider) dispatchInboundBatch(ctx context.Context, bridgeInsta
 	return p.dispatchInboundEnvelope(ctx, bridgeInstanceID, merged)
 }
 
-func (p *telegramProvider) dispatchInboundEnvelope(ctx context.Context, bridgeInstanceID string, envelope bridgepkg.InboundMessageEnvelope) error {
+func (p *telegramProvider) dispatchInboundEnvelope(
+	ctx context.Context,
+	bridgeInstanceID string,
+	envelope bridgepkg.InboundMessageEnvelope,
+) error {
 	session := p.currentSession()
 	if session == nil {
 		return errors.New("telegram: runtime session is not initialized")
@@ -951,17 +997,24 @@ func (p *telegramProvider) dispatchInboundEnvelope(ctx context.Context, bridgeIn
 
 	result, err := p.ingestBridgeMessage(ctx, session, envelope)
 	if err != nil {
-		p.reportSideEffectError("write failed ingest marker", appendJSONLine(p.env.ingestPath, ingestMarker{
-			Envelope: envelope,
-			Error:    err.Error(),
-		}))
+		p.reportSideEffectError(
+			"write failed ingest marker",
+			appendJSONLine(p.env.ingestPath, ingestMarker{
+				Envelope: envelope,
+				Error:    err.Error(),
+			}),
+		)
 		return err
 	}
 	p.reportSideEffectError("write ingest marker", appendJSONLine(p.env.ingestPath, ingestMarker{
 		Envelope: envelope,
 		Result:   *result,
 	}))
-	p.reportReadyIfNeeded(ctx, session, cfg.instanceID)
+	if err := p.reportReadyIfNeeded(ctx, session, cfg.instanceID); err != nil {
+		p.setLastError(err)
+	} else {
+		p.clearLastError()
+	}
 	return nil
 }
 
@@ -970,12 +1023,18 @@ func (p *telegramProvider) configForInstance(instanceID string) (resolvedInstanc
 	defer p.mu.RUnlock()
 	cfg, ok := p.routes[strings.TrimSpace(instanceID)]
 	if !ok {
-		return resolvedInstanceConfig{}, fmt.Errorf("telegram: delivery targeted unmanaged instance %q", instanceID)
+		return resolvedInstanceConfig{}, fmt.Errorf(
+			"telegram: delivery targeted unmanaged instance %q",
+			instanceID,
+		)
 	}
 	return cfg, nil
 }
 
-func (p *telegramProvider) waitForInstanceConfig(instanceID string, timeout time.Duration) (resolvedInstanceConfig, error) {
+func (p *telegramProvider) waitForInstanceConfig(
+	instanceID string,
+	timeout time.Duration,
+) (resolvedInstanceConfig, error) {
 	if timeout <= 0 {
 		return p.configForInstance(instanceID)
 	}
@@ -1025,7 +1084,11 @@ func (p *telegramProvider) deliveryState(instanceID string, deliveryID string) d
 	return p.deliveries[deliveryStateKey(instanceID, deliveryID)]
 }
 
-func (p *telegramProvider) storeDeliveryState(instanceID string, deliveryID string, state deliveryState) {
+func (p *telegramProvider) storeDeliveryState(
+	instanceID string,
+	deliveryID string,
+	state deliveryState,
+) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.deliveries[deliveryStateKey(instanceID, deliveryID)] = state
@@ -1053,7 +1116,7 @@ func (p *telegramProvider) reportSideEffectError(action string, err error) {
 func executeDelivery(
 	ctx context.Context,
 	api telegramAPI,
-	cfg resolvedInstanceConfig,
+	_ resolvedInstanceConfig,
 	request bridgepkg.DeliveryRequest,
 	state deliveryState,
 ) (bridgepkg.DeliveryAck, deliveryState, error) {
@@ -1069,12 +1132,7 @@ func executeDelivery(
 			state.LastSeq,
 		)
 	}
-	if event.EventType == bridgepkg.DeliveryEventTypeResume && request.Snapshot != nil {
-		state.LastSeq = request.Snapshot.LastAckedSeq
-		state.LastContent = request.Snapshot.CurrentContent.Text
-		state.RemoteMessageID = strings.TrimSpace(request.Snapshot.RemoteMessageID)
-		state.ReplaceRemoteMessageID = strings.TrimSpace(request.Snapshot.ReplaceRemoteMessageID)
-	}
+	state = applyTelegramDeliverySnapshot(state, event, request.Snapshot)
 
 	targetChatID, targetThreadID, err := resolveDeliveryTarget(event)
 	if err != nil {
@@ -1082,107 +1140,301 @@ func executeDelivery(
 	}
 
 	switch {
-	case event.Operation.Normalize() == bridgepkg.DeliveryOperationDelete || normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeDelete:
-		remoteID := firstNonEmpty(
-			referenceRemoteMessageID(event.Reference),
-			state.RemoteMessageID,
-		)
-		if remoteID == "" && request.Snapshot != nil {
-			remoteID = strings.TrimSpace(request.Snapshot.RemoteMessageID)
-		}
-		if remoteID == "" {
-			return bridgepkg.DeliveryAck{}, state, errors.New("telegram: delete delivery requires a remote message id")
-		}
-		chatID, messageID, err := decodeRemoteMessageID(remoteID)
-		if err != nil {
-			return bridgepkg.DeliveryAck{}, state, err
-		}
-		if err := api.DeleteMessage(ctx, telegramDeleteMessageRequest{
-			ChatID:    chatID,
-			MessageID: messageID,
-		}); err != nil {
-			return bridgepkg.DeliveryAck{}, state, err
-		}
-		ack := bridgepkg.DeliveryAck{
-			DeliveryID:             event.DeliveryID,
-			Seq:                    event.Seq,
-			RemoteMessageID:        remoteID,
-			ReplaceRemoteMessageID: firstNonEmpty(state.RemoteMessageID, remoteID),
-		}
-		state.LastSeq = event.Seq
-		state.LastContent = ""
-		state.RemoteMessageID = remoteID
-		state.ReplaceRemoteMessageID = ack.ReplaceRemoteMessageID
-		return ack, state, ack.ValidateFor(event)
+	case isTelegramDeleteDelivery(event):
+		return executeTelegramDelete(ctx, api, event, request.Snapshot, state)
 	case shouldPostNewMessage(event, state, request):
-		sent, err := api.SendMessage(ctx, telegramSendMessageRequest{
-			ChatID:          targetChatID,
-			Text:            event.Content.Text,
-			MessageThreadID: resolveTelegramThreadID(targetThreadID, targetChatID),
-		})
-		if err != nil {
-			return bridgepkg.DeliveryAck{}, state, err
-		}
-		remoteID := encodeRemoteMessageID(targetChatID, sent.MessageID)
-		ack := bridgepkg.DeliveryAck{
-			DeliveryID:      event.DeliveryID,
-			Seq:             event.Seq,
-			RemoteMessageID: remoteID,
-		}
-		state.LastSeq = event.Seq
-		state.LastContent = event.Content.Text
-		state.ReplaceRemoteMessageID = state.RemoteMessageID
-		state.RemoteMessageID = remoteID
-		if state.ReplaceRemoteMessageID != "" {
-			ack.ReplaceRemoteMessageID = state.ReplaceRemoteMessageID
-		}
-		return ack, state, ack.ValidateFor(event)
+		return executeTelegramPost(ctx, api, event, targetChatID, targetThreadID, state)
 	default:
-		remoteID := state.RemoteMessageID
-		if remoteID == "" && request.Snapshot != nil {
-			remoteID = strings.TrimSpace(request.Snapshot.RemoteMessageID)
+		return executeTelegramEdit(ctx, api, event, request.Snapshot, state)
+	}
+}
+
+func (p *telegramProvider) resolveTelegramManagedConfigs(
+	session *bridgesdk.Session,
+	managed []subprocess.InitializeBridgeManagedInstance,
+) ([]resolvedInstanceConfig, string) {
+	configs := make([]resolvedInstanceConfig, 0, len(managed))
+	requestedListen := strings.TrimSpace(os.Getenv(telegramListenAddrEnv))
+	usedPaths := make(map[string]string, len(managed))
+
+	for _, item := range managed {
+		cfg := p.resolveInstanceConfig(session, item)
+		requestedListen = updateTelegramRequestedListen(&cfg, requestedListen)
+		markDuplicateTelegramWebhookPath(&cfg, usedPaths)
+		configs = append(configs, cfg)
+	}
+	return configs, requestedListen
+}
+
+func updateTelegramRequestedListen(cfg *resolvedInstanceConfig, requestedListen string) string {
+	if cfg == nil || cfg.listenAddr == "" {
+		return requestedListen
+	}
+	if requestedListen == "" {
+		return cfg.listenAddr
+	}
+	if requestedListen != cfg.listenAddr && cfg.configError == nil {
+		cfg.configError = fmt.Errorf(
+			"telegram: instance %q configured incompatible listen_addr %q (runtime uses %q)",
+			cfg.instanceID,
+			cfg.listenAddr,
+			requestedListen,
+		)
+	}
+	return requestedListen
+}
+
+func markDuplicateTelegramWebhookPath(cfg *resolvedInstanceConfig, usedPaths map[string]string) {
+	if cfg == nil || cfg.webhookPath == "" {
+		return
+	}
+	if owner, ok := usedPaths[cfg.webhookPath]; ok && cfg.configError == nil {
+		cfg.configError = fmt.Errorf(
+			"telegram: webhook path %q is shared by %q and %q",
+			cfg.webhookPath,
+			owner,
+			cfg.instanceID,
+		)
+	}
+	usedPaths[cfg.webhookPath] = cfg.instanceID
+}
+
+func closeTelegramBatchers(configs []resolvedInstanceConfig) {
+	for idx := range configs {
+		if configs[idx].batcher != nil {
+			configs[idx].batcher.Close()
+			configs[idx].batcher = nil
 		}
-		if remoteID == "" {
-			return bridgepkg.DeliveryAck{}, state, errors.New("telegram: edit delivery requires a remote message id")
-		}
-		if event.Content.Text == state.LastContent {
-			ack := bridgepkg.DeliveryAck{
-				DeliveryID:             event.DeliveryID,
-				Seq:                    event.Seq,
-				RemoteMessageID:        remoteID,
-				ReplaceRemoteMessageID: firstNonEmpty(state.RemoteMessageID, remoteID),
+	}
+}
+
+func applyTelegramListenErrors(
+	configs []resolvedInstanceConfig,
+	requestedListen string,
+	startServer func(string) error,
+) {
+	if requestedListen == "" {
+		for idx := range configs {
+			if configs[idx].configError == nil {
+				configs[idx].configError = errors.New(
+					"telegram: webhook listen address is required",
+				)
 			}
-			state.LastSeq = event.Seq
-			state.RemoteMessageID = remoteID
-			state.ReplaceRemoteMessageID = ack.ReplaceRemoteMessageID
-			return ack, state, ack.ValidateFor(event)
 		}
-		chatID, messageID, err := decodeRemoteMessageID(remoteID)
+		return
+	}
+
+	if err := startServer(requestedListen); err != nil {
+		for idx := range configs {
+			if configs[idx].configError == nil {
+				configs[idx].configError = err
+			}
+		}
+	}
+}
+
+func (p *telegramProvider) swapTelegramRoutes(
+	configs []resolvedInstanceConfig,
+	requestedListen string,
+) {
+	nextRoutes := make(map[string]resolvedInstanceConfig, len(configs))
+
+	p.mu.Lock()
+	existing := p.routes
+	for _, cfg := range configs {
+		if prior, ok := existing[cfg.instanceID]; ok && prior.batcher != nil && cfg.batcher == nil {
+			prior.batcher.Close()
+		}
+		nextRoutes[cfg.instanceID] = cfg
+	}
+	for instanceID, prior := range existing {
+		if _, ok := nextRoutes[instanceID]; ok {
+			continue
+		}
+		if prior.batcher != nil {
+			prior.batcher.Close()
+		}
+	}
+	p.routes = nextRoutes
+	p.listenAddr = requestedListen
+	p.mu.Unlock()
+}
+
+func (p *telegramProvider) populateTelegramInitialStates(
+	ctx context.Context,
+	configs []resolvedInstanceConfig,
+) {
+	for idx := range configs {
+		status, degradation, err := p.determineInitialState(ctx, configs[idx])
 		if err != nil {
-			return bridgepkg.DeliveryAck{}, state, err
+			p.setLastError(err)
 		}
-		if err := api.EditMessageText(ctx, telegramEditMessageTextRequest{
-			ChatID:    chatID,
-			MessageID: messageID,
-			Text:      event.Content.Text,
-		}); err != nil {
-			return bridgepkg.DeliveryAck{}, state, err
-		}
-		ack := bridgepkg.DeliveryAck{
-			DeliveryID:             event.DeliveryID,
-			Seq:                    event.Seq,
-			RemoteMessageID:        remoteID,
-			ReplaceRemoteMessageID: firstNonEmpty(state.RemoteMessageID, remoteID),
-		}
+		configs[idx].initialStatus = status
+		configs[idx].initialDegradation = degradation
+	}
+}
+
+func listenTelegramWebhook(listenAddr string) (net.Listener, error) {
+	var listenConfig net.ListenConfig
+	return listenConfig.Listen(context.Background(), "tcp", strings.TrimSpace(listenAddr))
+}
+
+func writeTelegramWebhookOK(w http.ResponseWriter) error {
+	if w == nil {
+		return nil
+	}
+	w.WriteHeader(http.StatusOK)
+	_, err := w.Write([]byte("OK"))
+	return err
+}
+
+func applyTelegramDeliverySnapshot(
+	state deliveryState,
+	event bridgepkg.DeliveryEvent,
+	snapshot *bridgepkg.DeliverySnapshot,
+) deliveryState {
+	if event.EventType != bridgepkg.DeliveryEventTypeResume || snapshot == nil {
+		return state
+	}
+	state.LastSeq = snapshot.LastAckedSeq
+	state.LastContent = snapshot.CurrentContent.Text
+	state.RemoteMessageID = strings.TrimSpace(snapshot.RemoteMessageID)
+	state.ReplaceRemoteMessageID = strings.TrimSpace(snapshot.ReplaceRemoteMessageID)
+	return state
+}
+
+func isTelegramDeleteDelivery(event bridgepkg.DeliveryEvent) bool {
+	return event.Operation.Normalize() == bridgepkg.DeliveryOperationDelete ||
+		normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeDelete
+}
+
+func executeTelegramDelete(
+	ctx context.Context,
+	api telegramAPI,
+	event bridgepkg.DeliveryEvent,
+	snapshot *bridgepkg.DeliverySnapshot,
+	state deliveryState,
+) (bridgepkg.DeliveryAck, deliveryState, error) {
+	remoteID := firstNonEmpty(referenceRemoteMessageID(event.Reference), state.RemoteMessageID)
+	if remoteID == "" && snapshot != nil {
+		remoteID = strings.TrimSpace(snapshot.RemoteMessageID)
+	}
+	if remoteID == "" {
+		return bridgepkg.DeliveryAck{}, state, errors.New(
+			"telegram: delete delivery requires a remote message id",
+		)
+	}
+
+	chatID, messageID, err := decodeRemoteMessageID(remoteID)
+	if err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
+	}
+	if err := api.DeleteMessage(ctx, telegramDeleteMessageRequest{
+		ChatID:    chatID,
+		MessageID: messageID,
+	}); err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
+	}
+
+	ack := newTelegramDeliveryAck(event, remoteID, firstNonEmpty(state.RemoteMessageID, remoteID))
+	state.LastSeq = event.Seq
+	state.LastContent = ""
+	state.RemoteMessageID = remoteID
+	state.ReplaceRemoteMessageID = ack.ReplaceRemoteMessageID
+	return ack, state, ack.ValidateFor(event)
+}
+
+func executeTelegramPost(
+	ctx context.Context,
+	api telegramAPI,
+	event bridgepkg.DeliveryEvent,
+	targetChatID string,
+	targetThreadID string,
+	state deliveryState,
+) (bridgepkg.DeliveryAck, deliveryState, error) {
+	sent, err := api.SendMessage(ctx, telegramSendMessageRequest{
+		ChatID:          targetChatID,
+		Text:            event.Content.Text,
+		MessageThreadID: resolveTelegramThreadID(targetThreadID, targetChatID),
+	})
+	if err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
+	}
+
+	remoteID := encodeRemoteMessageID(targetChatID, sent.MessageID)
+	ack := newTelegramDeliveryAck(event, remoteID, state.RemoteMessageID)
+	state.LastSeq = event.Seq
+	state.LastContent = event.Content.Text
+	state.ReplaceRemoteMessageID = state.RemoteMessageID
+	state.RemoteMessageID = remoteID
+	return ack, state, ack.ValidateFor(event)
+}
+
+func executeTelegramEdit(
+	ctx context.Context,
+	api telegramAPI,
+	event bridgepkg.DeliveryEvent,
+	snapshot *bridgepkg.DeliverySnapshot,
+	state deliveryState,
+) (bridgepkg.DeliveryAck, deliveryState, error) {
+	remoteID := state.RemoteMessageID
+	if remoteID == "" && snapshot != nil {
+		remoteID = strings.TrimSpace(snapshot.RemoteMessageID)
+	}
+	if remoteID == "" {
+		return bridgepkg.DeliveryAck{}, state, errors.New(
+			"telegram: edit delivery requires a remote message id",
+		)
+	}
+
+	ack := newTelegramDeliveryAck(event, remoteID, firstNonEmpty(state.RemoteMessageID, remoteID))
+	if event.Content.Text == state.LastContent {
 		state.LastSeq = event.Seq
-		state.LastContent = event.Content.Text
 		state.RemoteMessageID = remoteID
 		state.ReplaceRemoteMessageID = ack.ReplaceRemoteMessageID
 		return ack, state, ack.ValidateFor(event)
 	}
+
+	chatID, messageID, err := decodeRemoteMessageID(remoteID)
+	if err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
+	}
+	if err := api.EditMessageText(ctx, telegramEditMessageTextRequest{
+		ChatID:    chatID,
+		MessageID: messageID,
+		Text:      event.Content.Text,
+	}); err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
+	}
+
+	state.LastSeq = event.Seq
+	state.LastContent = event.Content.Text
+	state.RemoteMessageID = remoteID
+	state.ReplaceRemoteMessageID = ack.ReplaceRemoteMessageID
+	return ack, state, ack.ValidateFor(event)
 }
 
-func shouldPostNewMessage(event bridgepkg.DeliveryEvent, state deliveryState, request bridgepkg.DeliveryRequest) bool {
+func newTelegramDeliveryAck(
+	event bridgepkg.DeliveryEvent,
+	remoteMessageID string,
+	replaceRemoteMessageID string,
+) bridgepkg.DeliveryAck {
+	ack := bridgepkg.DeliveryAck{
+		DeliveryID:      event.DeliveryID,
+		Seq:             event.Seq,
+		RemoteMessageID: remoteMessageID,
+	}
+	if strings.TrimSpace(replaceRemoteMessageID) != "" {
+		ack.ReplaceRemoteMessageID = strings.TrimSpace(replaceRemoteMessageID)
+	}
+	return ack
+}
+
+func shouldPostNewMessage(
+	event bridgepkg.DeliveryEvent,
+	state deliveryState,
+	request bridgepkg.DeliveryRequest,
+) bool {
 	if normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeStart {
 		return true
 	}
@@ -1215,7 +1467,11 @@ func allowDirectMessage(cfg resolvedInstanceConfig, message telegramMessage) boo
 	}
 }
 
-func identityAllowed(ids map[string]struct{}, usernames map[string]struct{}, user telegramUser) bool {
+func identityAllowed(
+	ids map[string]struct{},
+	usernames map[string]struct{},
+	user telegramUser,
+) bool {
 	if len(ids) == 0 && len(usernames) == 0 {
 		return false
 	}
@@ -1235,7 +1491,9 @@ func mapTelegramUpdate(
 ) (bridgepkg.InboundMessageEnvelope, error) {
 	message := selectTelegramMessage(update)
 	if message == nil {
-		return bridgepkg.InboundMessageEnvelope{}, errors.New("telegram: message update is required")
+		return bridgepkg.InboundMessageEnvelope{}, errors.New(
+			"telegram: message update is required",
+		)
 	}
 	if receivedAt.IsZero() {
 		receivedAt = time.Now().UTC()
@@ -1249,7 +1507,9 @@ func mapTelegramUpdate(
 		text = strings.TrimSpace(message.Caption)
 	}
 
-	senderName := strings.TrimSpace(strings.Join([]string{strings.TrimSpace(message.From.FirstName), strings.TrimSpace(message.From.LastName)}, " "))
+	senderName := strings.TrimSpace(
+		strings.TrimSpace(message.From.FirstName) + " " + strings.TrimSpace(message.From.LastName),
+	)
 	threadID := inboundThreadID(message.Chat, message.MessageThreadID)
 	envelope := bridgepkg.InboundMessageEnvelope{
 		BridgeInstanceID:  managed.Instance.ID,
@@ -1313,7 +1573,8 @@ func resolveTelegramThreadID(threadID string, chatID string) int64 {
 	if strings.TrimSpace(threadID) == "" {
 		return 0
 	}
-	if strings.TrimSpace(threadID) == telegramGeneralTopicID && strings.HasPrefix(strings.TrimSpace(chatID), "-") {
+	if strings.TrimSpace(threadID) == telegramGeneralTopicID &&
+		strings.HasPrefix(strings.TrimSpace(chatID), "-") {
 		return 0
 	}
 	value, err := strconv.ParseInt(strings.TrimSpace(threadID), 10, 64)
@@ -1346,7 +1607,10 @@ func (c *telegramBotClient) GetMe(ctx context.Context) (*telegramBotIdentity, er
 	return &result, nil
 }
 
-func (c *telegramBotClient) SendMessage(ctx context.Context, req telegramSendMessageRequest) (*telegramSentMessage, error) {
+func (c *telegramBotClient) SendMessage(
+	ctx context.Context,
+	req telegramSendMessageRequest,
+) (*telegramSentMessage, error) {
 	var result telegramSentMessage
 	if err := c.call(ctx, "sendMessage", req, &result); err != nil {
 		return nil, err
@@ -1354,17 +1618,28 @@ func (c *telegramBotClient) SendMessage(ctx context.Context, req telegramSendMes
 	return &result, nil
 }
 
-func (c *telegramBotClient) EditMessageText(ctx context.Context, req telegramEditMessageTextRequest) error {
+func (c *telegramBotClient) EditMessageText(
+	ctx context.Context,
+	req telegramEditMessageTextRequest,
+) error {
 	var result json.RawMessage
 	return c.call(ctx, "editMessageText", req, &result)
 }
 
-func (c *telegramBotClient) DeleteMessage(ctx context.Context, req telegramDeleteMessageRequest) error {
+func (c *telegramBotClient) DeleteMessage(
+	ctx context.Context,
+	req telegramDeleteMessageRequest,
+) error {
 	var result bool
 	return c.call(ctx, "deleteMessage", req, &result)
 }
 
-func (c *telegramBotClient) call(ctx context.Context, method string, payload any, result any) error {
+func (c *telegramBotClient) call(
+	ctx context.Context,
+	method string,
+	payload any,
+	result any,
+) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -1379,7 +1654,14 @@ func (c *telegramBotClient) call(ctx context.Context, method string, payload any
 	if err != nil {
 		return fmt.Errorf("telegram: marshal %s payload: %w", method, err)
 	}
-	endpoint := strings.TrimRight(strings.TrimSpace(c.baseURL), "/") + "/bot" + strings.TrimSpace(c.botToken) + "/" + strings.TrimSpace(method)
+	endpoint := strings.TrimRight(
+		strings.TrimSpace(c.baseURL),
+		"/",
+	) + "/bot" + strings.TrimSpace(
+		c.botToken,
+	) + "/" + strings.TrimSpace(
+		method,
+	)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("telegram: build %s request: %w", method, err)
@@ -1406,7 +1688,11 @@ func (c *telegramBotClient) call(ctx context.Context, method string, payload any
 	if err := json.Unmarshal(raw, &response); err != nil {
 		return &bridgesdk.HTTPError{
 			StatusCode: resp.StatusCode,
-			Message:    fmt.Sprintf("telegram %s returned invalid JSON: %s", method, strings.TrimSpace(string(raw))),
+			Message: fmt.Sprintf(
+				"telegram %s returned invalid JSON: %s",
+				method,
+				strings.TrimSpace(string(raw)),
+			),
 		}
 	}
 	if resp.StatusCode >= 400 || !response.OK {
@@ -1421,7 +1707,10 @@ func (c *telegramBotClient) call(ctx context.Context, method string, payload any
 	return nil
 }
 
-func classifyTelegramHTTPError(statusCode int, response telegramAPIEnvelope[json.RawMessage]) error {
+func classifyTelegramHTTPError(
+	statusCode int,
+	response telegramAPIEnvelope[json.RawMessage],
+) error {
 	message := strings.TrimSpace(response.Description)
 	if message == "" {
 		message = fmt.Sprintf("telegram bot api error %d", maxInt(statusCode, response.ErrorCode))
@@ -1432,7 +1721,11 @@ func classifyTelegramHTTPError(statusCode int, response telegramAPIEnvelope[json
 	}
 	if statusCode == 429 {
 		return &bridgesdk.RateLimitError{
-			Err:        &bridgesdk.HTTPError{StatusCode: statusCode, Message: message, RetryAfter: retryAfter},
+			Err: &bridgesdk.HTTPError{
+				StatusCode: statusCode,
+				Message:    message,
+				RetryAfter: retryAfter,
+			},
 			RetryAfter: retryAfter,
 		}
 	}
@@ -1545,7 +1838,9 @@ func normalizeUsername(value string) string {
 	return strings.ToLower(trimmed)
 }
 
-func managedInstancesToInstances(items []subprocess.InitializeBridgeManagedInstance) []bridgepkg.BridgeInstance {
+func managedInstancesToInstances(
+	items []subprocess.InitializeBridgeManagedInstance,
+) []bridgepkg.BridgeInstance {
 	instances := make([]bridgepkg.BridgeInstance, 0, len(items))
 	for _, item := range items {
 		instances = append(instances, item.Instance)
@@ -1576,7 +1871,8 @@ func isNotInitializedRPCError(err error) bool {
 	if !errors.As(err, &rpcErr) {
 		return false
 	}
-	return rpcErr.Code == rpcCodeNotInitialized || strings.EqualFold(strings.TrimSpace(rpcErr.Message), "Not initialized")
+	return rpcErr.Code == rpcCodeNotInitialized ||
+		strings.EqualFold(strings.TrimSpace(rpcErr.Message), "Not initialized")
 }
 
 func cloneDegradation(degradation *bridgepkg.BridgeDegradation) *bridgepkg.BridgeDegradation {

@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"reflect"
@@ -35,7 +37,10 @@ func TestUnixSocketClientMethods(t *testing.T) {
 					if got := req.URL.Query().Get("workspace"); got != "ws-1" {
 						t.Fatalf("session workspace query = %q, want %q", got, "ws-1")
 					}
-					return newHTTPResponse(http.StatusOK, `{"sessions":[{"id":"sess-1","agent_name":"coder","workspace_id":"ws-1","workspace_path":"/tmp","state":"active","created_at":"2026-04-03T12:00:00Z","updated_at":"2026-04-03T12:00:00Z"}]}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"sessions":[{"id":"sess-1","agent_name":"coder","workspace_id":"ws-1","workspace_path":"/tmp","state":"active","created_at":"2026-04-03T12:00:00Z","updated_at":"2026-04-03T12:00:00Z"}]}`,
+					), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/sessions":
 					body, err := io.ReadAll(req.Body)
 					if err != nil {
@@ -44,13 +49,22 @@ func TestUnixSocketClientMethods(t *testing.T) {
 					if !strings.Contains(string(body), `"agent_name":"coder"`) {
 						t.Fatalf("session create body = %s, want agent_name", body)
 					}
-					return newHTTPResponse(http.StatusCreated, `{"session":{"id":"sess-new","agent_name":"coder","workspace_id":"ws-1","workspace_path":"/tmp","state":"active","created_at":"2026-04-03T12:00:00Z","updated_at":"2026-04-03T12:00:00Z"}}`), nil
+					return newHTTPResponse(
+						http.StatusCreated,
+						`{"session":{"id":"sess-new","agent_name":"coder","workspace_id":"ws-1","workspace_path":"/tmp","state":"active","created_at":"2026-04-03T12:00:00Z","updated_at":"2026-04-03T12:00:00Z"}}`,
+					), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/sessions/sess-1":
-					return newHTTPResponse(http.StatusOK, `{"session":{"id":"sess-1","agent_name":"coder","workspace_id":"ws-1","workspace_path":"/tmp","state":"active","created_at":"2026-04-03T12:00:00Z","updated_at":"2026-04-03T12:00:00Z"}}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"session":{"id":"sess-1","agent_name":"coder","workspace_id":"ws-1","workspace_path":"/tmp","state":"active","created_at":"2026-04-03T12:00:00Z","updated_at":"2026-04-03T12:00:00Z"}}`,
+					), nil
 				case req.Method == http.MethodDelete && req.URL.Path == "/api/sessions/sess-1":
 					return newHTTPResponse(http.StatusNoContent, ``), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/sessions/sess-1/resume":
-					return newHTTPResponse(http.StatusOK, `{"session":{"id":"sess-1","agent_name":"coder","workspace_id":"ws-1","workspace_path":"/tmp","state":"active","created_at":"2026-04-03T12:00:00Z","updated_at":"2026-04-03T12:00:00Z"}}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"session":{"id":"sess-1","agent_name":"coder","workspace_id":"ws-1","workspace_path":"/tmp","state":"active","created_at":"2026-04-03T12:00:00Z","updated_at":"2026-04-03T12:00:00Z"}}`,
+					), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/sessions/sess-1/prompt":
 					body, err := io.ReadAll(req.Body)
 					if err != nil {
@@ -69,12 +83,18 @@ func TestUnixSocketClientMethods(t *testing.T) {
 					if got := req.URL.Query().Get("type"); got != "tool_call" {
 						t.Fatalf("session events type query = %q, want %q", got, "tool_call")
 					}
-					return newHTTPResponse(http.StatusOK, `{"events":[{"id":"evt-1","session_id":"sess-1","sequence":1,"turn_id":"turn-1","type":"tool_call","agent_name":"coder","timestamp":"2026-04-03T12:00:00Z"}]}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"events":[{"id":"evt-1","session_id":"sess-1","sequence":1,"turn_id":"turn-1","type":"tool_call","agent_name":"coder","timestamp":"2026-04-03T12:00:00Z"}]}`,
+					), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/sessions/sess-1/history":
 					if got := req.URL.Query().Get("limit"); got != "2" {
 						t.Fatalf("history limit query = %q, want %q", got, "2")
 					}
-					return newHTTPResponse(http.StatusOK, `{"history":[{"turn_id":"turn-1","events":[{"id":"evt-1","session_id":"sess-1","sequence":1,"turn_id":"turn-1","type":"agent_message","agent_name":"coder","content":{"text":"hi"},"timestamp":"2026-04-03T12:00:00Z"}]}]}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"history":[{"turn_id":"turn-1","events":[{"id":"evt-1","session_id":"sess-1","sequence":1,"turn_id":"turn-1","type":"agent_message","agent_name":"coder","content":{"text":"hi"},"timestamp":"2026-04-03T12:00:00Z"}]}]}`,
+					), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/workspaces":
 					body, err := io.ReadAll(req.Body)
 					if err != nil {
@@ -83,11 +103,20 @@ func TestUnixSocketClientMethods(t *testing.T) {
 					if !strings.Contains(string(body), `"root_dir":"/workspace/project"`) {
 						t.Fatalf("workspace create body = %s, want root_dir", body)
 					}
-					return newHTTPResponse(http.StatusCreated, `{"workspace":{"id":"ws-1","root_dir":"/workspace/project","name":"alpha","created_at":"2026-04-03T12:00:00Z","updated_at":"2026-04-03T12:00:00Z"}}`), nil
+					return newHTTPResponse(
+						http.StatusCreated,
+						`{"workspace":{"id":"ws-1","root_dir":"/workspace/project","name":"alpha","created_at":"2026-04-03T12:00:00Z","updated_at":"2026-04-03T12:00:00Z"}}`,
+					), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/workspaces":
-					return newHTTPResponse(http.StatusOK, `{"workspaces":[{"id":"ws-1","root_dir":"/workspace/project","name":"alpha","created_at":"2026-04-03T12:00:00Z","updated_at":"2026-04-03T12:00:00Z"}]}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"workspaces":[{"id":"ws-1","root_dir":"/workspace/project","name":"alpha","created_at":"2026-04-03T12:00:00Z","updated_at":"2026-04-03T12:00:00Z"}]}`,
+					), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/workspaces/alpha":
-					return newHTTPResponse(http.StatusOK, `{"workspace":{"id":"ws-1","root_dir":"/workspace/project","name":"alpha","created_at":"2026-04-03T12:00:00Z","updated_at":"2026-04-03T12:00:00Z"},"sessions":[{"id":"sess-1","agent_name":"coder","workspace_id":"ws-1","workspace_path":"/workspace/project","state":"active","created_at":"2026-04-03T12:00:00Z","updated_at":"2026-04-03T12:00:00Z"}],"agents":[{"name":"coder","provider":"fake","prompt":"hi"}],"skills":[{"name":"review","dir":"/workspace/project/.agh/skills/review","source":"workspace"}]}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"workspace":{"id":"ws-1","root_dir":"/workspace/project","name":"alpha","created_at":"2026-04-03T12:00:00Z","updated_at":"2026-04-03T12:00:00Z"},"sessions":[{"id":"sess-1","agent_name":"coder","workspace_id":"ws-1","workspace_path":"/workspace/project","state":"active","created_at":"2026-04-03T12:00:00Z","updated_at":"2026-04-03T12:00:00Z"}],"agents":[{"name":"coder","provider":"fake","prompt":"hi"}],"skills":[{"name":"review","dir":"/workspace/project/.agh/skills/review","source":"workspace"}]}`,
+					), nil
 				case req.Method == http.MethodPatch && req.URL.Path == "/api/workspaces/ws-1":
 					body, err := io.ReadAll(req.Body)
 					if err != nil {
@@ -96,13 +125,22 @@ func TestUnixSocketClientMethods(t *testing.T) {
 					if !strings.Contains(string(body), `"name":"beta"`) {
 						t.Fatalf("workspace update body = %s, want name", body)
 					}
-					return newHTTPResponse(http.StatusOK, `{"workspace":{"id":"ws-1","root_dir":"/workspace/project","name":"beta","created_at":"2026-04-03T12:00:00Z","updated_at":"2026-04-03T12:05:00Z"}}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"workspace":{"id":"ws-1","root_dir":"/workspace/project","name":"beta","created_at":"2026-04-03T12:00:00Z","updated_at":"2026-04-03T12:05:00Z"}}`,
+					), nil
 				case req.Method == http.MethodDelete && req.URL.Path == "/api/workspaces/ws-1":
 					return newHTTPResponse(http.StatusNoContent, ``), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/agents":
-					return newHTTPResponse(http.StatusOK, `{"agents":[{"name":"coder","provider":"fake","prompt":"You are coder."}]}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"agents":[{"name":"coder","provider":"fake","prompt":"You are coder."}]}`,
+					), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/agents/coder":
-					return newHTTPResponse(http.StatusOK, `{"agent":{"name":"coder","provider":"fake","prompt":"You are coder."}}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"agent":{"name":"coder","provider":"fake","prompt":"You are coder."}}`,
+					), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/hooks/catalog":
 					if got := req.URL.Query().Get("workspace"); got != "alpha" {
 						t.Fatalf("hook catalog workspace query = %q, want %q", got, "alpha")
@@ -119,7 +157,10 @@ func TestUnixSocketClientMethods(t *testing.T) {
 					if got := req.URL.Query().Get("mode"); got != "sync" {
 						t.Fatalf("hook catalog mode query = %q, want %q", got, "sync")
 					}
-					return newHTTPResponse(http.StatusOK, `{"hooks":[{"order":1,"name":"permission-guard","event":"tool.pre_call","source":"config","mode":"sync","priority":10,"executor_kind":"subprocess"}]}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"hooks":[{"order":1,"name":"permission-guard","event":"tool.pre_call","source":"config","mode":"sync","priority":10,"executor_kind":"subprocess"}]}`,
+					), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/hooks/runs":
 					if got := req.URL.Query().Get("session"); got != "sess-1" {
 						t.Fatalf("hook runs session query = %q, want %q", got, "sess-1")
@@ -136,7 +177,10 @@ func TestUnixSocketClientMethods(t *testing.T) {
 					if got := req.URL.Query().Get("last"); got != "2" {
 						t.Fatalf("hook runs last query = %q, want %q", got, "2")
 					}
-					return newHTTPResponse(http.StatusOK, `{"runs":[{"hook_name":"permission-guard","event":"permission.request","source":"config","mode":"sync","duration_ms":12,"outcome":"failed","error":"boom","recorded_at":"2026-04-03T12:00:00Z"}]}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"runs":[{"hook_name":"permission-guard","event":"permission.request","source":"config","mode":"sync","duration_ms":12,"outcome":"failed","error":"boom","recorded_at":"2026-04-03T12:00:00Z"}]}`,
+					), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/hooks/events":
 					if got := req.URL.Query().Get("family"); got != "tool" {
 						t.Fatalf("hook events family query = %q, want %q", got, "tool")
@@ -144,12 +188,18 @@ func TestUnixSocketClientMethods(t *testing.T) {
 					if got := req.URL.Query().Get("sync_only"); got != "true" {
 						t.Fatalf("hook events sync_only query = %q, want %q", got, "true")
 					}
-					return newHTTPResponse(http.StatusOK, `{"events":[{"event":"tool.pre_call","family":"tool","sync_eligible":true,"payload_schema":"ToolPreCallPayload","patch_schema":"ToolCallPatch"}]}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"events":[{"event":"tool.pre_call","family":"tool","sync_eligible":true,"payload_schema":"ToolPreCallPayload","patch_schema":"ToolCallPatch"}]}`,
+					), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/observe/events":
 					if got := req.URL.Query().Get("session_id"); got != "sess-1" {
 						t.Fatalf("observe session_id query = %q, want %q", got, "sess-1")
 					}
-					return newHTTPResponse(http.StatusOK, `{"events":[{"id":"sum-1","session_id":"sess-1","type":"agent_message","agent_name":"coder","timestamp":"2026-04-03T12:00:00Z"}]}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"events":[{"id":"sum-1","session_id":"sess-1","type":"agent_message","agent_name":"coder","timestamp":"2026-04-03T12:00:00Z"}]}`,
+					), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/observe/events/stream":
 					if got := req.Header.Get("Last-Event-ID"); got != "cursor-1" {
 						t.Fatalf("Last-Event-ID = %q, want %q", got, "cursor-1")
@@ -161,12 +211,18 @@ func TestUnixSocketClientMethods(t *testing.T) {
 						"",
 					}, "\n")), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/observe/health":
-					return newHTTPResponse(http.StatusOK, `{"health":{"status":"ok","uptime_seconds":10,"active_sessions":1,"active_agents":1,"global_db_size_bytes":100,"session_db_size_bytes":200,"version":"dev"}}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"health":{"status":"ok","uptime_seconds":10,"active_sessions":1,"active_agents":1,"global_db_size_bytes":100,"session_db_size_bytes":200,"version":"dev"}}`,
+					), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/memory":
 					if got := req.URL.Query().Get("scope"); got != "global" {
 						t.Fatalf("memory scope query = %q, want %q", got, "global")
 					}
-					return newHTTPResponse(http.StatusOK, `[{"filename":"memory.md","mod_time":"2026-04-03T12:00:00Z","name":"Memory","description":"desc","type":"user"}]`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`[{"filename":"memory.md","mod_time":"2026-04-03T12:00:00Z","name":"Memory","description":"desc","type":"user"}]`,
+					), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/memory/memory.md":
 					return newHTTPResponse(http.StatusOK, `{"content":"---\nname: Memory\n---\n\nhello"}`), nil
 				case req.Method == http.MethodPut && req.URL.Path == "/api/memory/memory.md":
@@ -179,7 +235,10 @@ func TestUnixSocketClientMethods(t *testing.T) {
 				case req.Method == http.MethodPost && req.URL.Path == "/api/memory/consolidate":
 					return newHTTPResponse(http.StatusOK, `{"triggered":true}`), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/daemon/status":
-					return newHTTPResponse(http.StatusOK, `{"daemon":{"status":"running","pid":10,"started_at":"2026-04-03T12:00:00Z","socket":"/tmp/agh.sock","http_host":"localhost","http_port":2123,"active_sessions":1,"total_sessions":1,"version":"dev"}}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"daemon":{"status":"running","pid":10,"started_at":"2026-04-03T12:00:00Z","socket":"/tmp/agh.sock","http_host":"localhost","http_port":2123,"active_sessions":1,"total_sessions":1,"version":"dev"}}`,
+					), nil
 				default:
 					return newHTTPResponse(http.StatusNotFound, `{"error":"missing"}`), nil
 				}
@@ -356,22 +415,38 @@ func TestUnixSocketClientExtensionMethods(t *testing.T) {
 			Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				switch {
 				case req.Method == http.MethodGet && req.URL.Path == "/api/extensions":
-					return newHTTPResponse(http.StatusOK, `{"extensions":[{"name":"ext-a","version":"0.1.0","type":"resource","source":"user","enabled":true,"state":"active","daemon_running":true}]}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"extensions":[{"name":"ext-a","version":"0.1.0","type":"resource","source":"user","enabled":true,"state":"active","daemon_running":true}]}`,
+					), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/extensions":
 					body, err := io.ReadAll(req.Body)
 					if err != nil {
 						t.Fatalf("io.ReadAll(extension install body) error = %v", err)
 					}
-					if !strings.Contains(string(body), `"path":"/tmp/ext-a"`) || !strings.Contains(string(body), `"checksum":"abc123"`) {
+					if !strings.Contains(string(body), `"path":"/tmp/ext-a"`) ||
+						!strings.Contains(string(body), `"checksum":"abc123"`) {
 						t.Fatalf("extension install body = %s, want path and checksum", body)
 					}
-					return newHTTPResponse(http.StatusCreated, `{"extension":{"name":"ext-a","version":"0.1.0","type":"resource","source":"user","enabled":true,"state":"active","daemon_running":true}}`), nil
+					return newHTTPResponse(
+						http.StatusCreated,
+						`{"extension":{"name":"ext-a","version":"0.1.0","type":"resource","source":"user","enabled":true,"state":"active","daemon_running":true}}`,
+					), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/extensions/ext-a/enable":
-					return newHTTPResponse(http.StatusOK, `{"extension":{"name":"ext-a","version":"0.1.0","type":"resource","source":"user","enabled":true,"state":"active","daemon_running":true}}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"extension":{"name":"ext-a","version":"0.1.0","type":"resource","source":"user","enabled":true,"state":"active","daemon_running":true}}`,
+					), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/extensions/ext-a/disable":
-					return newHTTPResponse(http.StatusOK, `{"extension":{"name":"ext-a","version":"0.1.0","type":"resource","source":"user","enabled":false,"state":"disabled","daemon_running":true}}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"extension":{"name":"ext-a","version":"0.1.0","type":"resource","source":"user","enabled":false,"state":"disabled","daemon_running":true}}`,
+					), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/extensions/ext-a":
-					return newHTTPResponse(http.StatusOK, `{"extension":{"name":"ext-a","version":"0.1.0","type":"resource","source":"user","enabled":true,"state":"active","daemon_running":true}}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"extension":{"name":"ext-a","version":"0.1.0","type":"resource","source":"user","enabled":true,"state":"active","daemon_running":true}}`,
+					), nil
 				default:
 					return newHTTPResponse(http.StatusNotFound, `{"error":"missing"}`), nil
 				}
@@ -434,31 +509,48 @@ func TestUnixSocketClientAutomationMethods(t *testing.T) {
 					if got := req.URL.Query().Get("limit"); got != "3" {
 						t.Fatalf("job limit query = %q, want %q", got, "3")
 					}
-					return newHTTPResponse(http.StatusOK, `{"jobs":[{"id":"job-1","scope":"workspace","workspace_id":"ws-alpha","name":"nightly","agent_name":"coder","prompt":"review repo","schedule":{"mode":"every","interval":"1h"},"enabled":true,"retry":{"strategy":"none"},"fire_limit":{"max":12,"window":"1h"},"source":"dynamic","created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:00:00Z"}]}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"jobs":[{"id":"job-1","scope":"workspace","workspace_id":"ws-alpha","name":"nightly","agent_name":"coder","prompt":"review repo","schedule":{"mode":"every","interval":"1h"},"enabled":true,"retry":{"strategy":"none"},"fire_limit":{"max":12,"window":"1h"},"source":"dynamic","created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:00:00Z"}]}`,
+					), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/automation/jobs":
 					body, err := io.ReadAll(req.Body)
 					if err != nil {
 						t.Fatalf("io.ReadAll(job create body) error = %v", err)
 					}
-					if !strings.Contains(string(body), `"workspace_id":"ws-alpha"`) || !strings.Contains(string(body), `"mode":"every"`) {
+					if !strings.Contains(string(body), `"workspace_id":"ws-alpha"`) ||
+						!strings.Contains(string(body), `"mode":"every"`) {
 						t.Fatalf("job create body = %s, want workspace_id and schedule", body)
 					}
-					return newHTTPResponse(http.StatusCreated, `{"job":{"id":"job-created","scope":"workspace","workspace_id":"ws-alpha","name":"nightly","agent_name":"coder","prompt":"review repo","schedule":{"mode":"every","interval":"1h"},"enabled":true,"retry":{"strategy":"none"},"fire_limit":{"max":12,"window":"1h"},"source":"dynamic","created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:00:00Z"}}`), nil
+					return newHTTPResponse(
+						http.StatusCreated,
+						`{"job":{"id":"job-created","scope":"workspace","workspace_id":"ws-alpha","name":"nightly","agent_name":"coder","prompt":"review repo","schedule":{"mode":"every","interval":"1h"},"enabled":true,"retry":{"strategy":"none"},"fire_limit":{"max":12,"window":"1h"},"source":"dynamic","created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:00:00Z"}}`,
+					), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/automation/jobs/job-created":
-					return newHTTPResponse(http.StatusOK, `{"job":{"id":"job-created","scope":"workspace","workspace_id":"ws-alpha","name":"nightly","agent_name":"coder","prompt":"review repo","schedule":{"mode":"every","interval":"1h"},"enabled":true,"retry":{"strategy":"none"},"fire_limit":{"max":12,"window":"1h"},"source":"dynamic","created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:00:00Z","next_run":"2026-04-11T13:00:00Z"}}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"job":{"id":"job-created","scope":"workspace","workspace_id":"ws-alpha","name":"nightly","agent_name":"coder","prompt":"review repo","schedule":{"mode":"every","interval":"1h"},"enabled":true,"retry":{"strategy":"none"},"fire_limit":{"max":12,"window":"1h"},"source":"dynamic","created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:00:00Z","next_run":"2026-04-11T13:00:00Z"}}`,
+					), nil
 				case req.Method == http.MethodPatch && req.URL.Path == "/api/automation/jobs/job-created":
 					body, err := io.ReadAll(req.Body)
 					if err != nil {
 						t.Fatalf("io.ReadAll(job update body) error = %v", err)
 					}
-					if !strings.Contains(string(body), `"enabled":false`) || !strings.Contains(string(body), `"prompt":"review now"`) {
+					if !strings.Contains(string(body), `"enabled":false`) ||
+						!strings.Contains(string(body), `"prompt":"review now"`) {
 						t.Fatalf("job update body = %s, want enabled and prompt", body)
 					}
-					return newHTTPResponse(http.StatusOK, `{"job":{"id":"job-created","scope":"workspace","workspace_id":"ws-alpha","name":"nightly","agent_name":"coder","prompt":"review now","schedule":{"mode":"every","interval":"1h"},"enabled":false,"retry":{"strategy":"none"},"fire_limit":{"max":12,"window":"1h"},"source":"dynamic","created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:05:00Z"}}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"job":{"id":"job-created","scope":"workspace","workspace_id":"ws-alpha","name":"nightly","agent_name":"coder","prompt":"review now","schedule":{"mode":"every","interval":"1h"},"enabled":false,"retry":{"strategy":"none"},"fire_limit":{"max":12,"window":"1h"},"source":"dynamic","created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:05:00Z"}}`,
+					), nil
 				case req.Method == http.MethodDelete && req.URL.Path == "/api/automation/jobs/job-created":
 					return newHTTPResponse(http.StatusNoContent, ``), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/automation/jobs/job-created/trigger":
-					return newHTTPResponse(http.StatusOK, `{"run":{"id":"run-job","job_id":"job-created","session_id":"sess-job","status":"completed","attempt":1,"started_at":"2026-04-11T12:00:00Z","ended_at":"2026-04-11T12:02:00Z"}}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"run":{"id":"run-job","job_id":"job-created","session_id":"sess-job","status":"completed","attempt":1,"started_at":"2026-04-11T12:00:00Z","ended_at":"2026-04-11T12:02:00Z"}}`,
+					), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/automation/jobs/job-created/runs":
 					if got := req.URL.Query().Get("status"); got != "completed" {
 						t.Fatalf("job runs status query = %q, want %q", got, "completed")
@@ -472,7 +564,10 @@ func TestUnixSocketClientAutomationMethods(t *testing.T) {
 					if got := req.URL.Query().Get("limit"); got != "2" {
 						t.Fatalf("job runs limit query = %q, want %q", got, "2")
 					}
-					return newHTTPResponse(http.StatusOK, `{"runs":[{"id":"run-job","job_id":"job-created","session_id":"sess-job","status":"completed","attempt":1,"started_at":"2026-04-11T12:00:00Z","ended_at":"2026-04-11T12:02:00Z"}]}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"runs":[{"id":"run-job","job_id":"job-created","session_id":"sess-job","status":"completed","attempt":1,"started_at":"2026-04-11T12:00:00Z","ended_at":"2026-04-11T12:02:00Z"}]}`,
+					), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/automation/triggers":
 					if got := req.URL.Query().Get("scope"); got != "workspace" {
 						t.Fatalf("trigger scope query = %q, want %q", got, "workspace")
@@ -489,27 +584,41 @@ func TestUnixSocketClientAutomationMethods(t *testing.T) {
 					if got := req.URL.Query().Get("limit"); got != "2" {
 						t.Fatalf("trigger limit query = %q, want %q", got, "2")
 					}
-					return newHTTPResponse(http.StatusOK, `{"triggers":[{"id":"trg-1","scope":"workspace","workspace_id":"ws-alpha","name":"deploy-review","agent_name":"coder","prompt":"review {{ index .Data \"payload\" }}","event":"webhook","filter":{"data.branch":"main"},"enabled":true,"retry":{"strategy":"none"},"fire_limit":{"max":12,"window":"1h"},"source":"dynamic","webhook_id":"wbh_123","endpoint_slug":"deploy-review","created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:00:00Z"}]}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"triggers":[{"id":"trg-1","scope":"workspace","workspace_id":"ws-alpha","name":"deploy-review","agent_name":"coder","prompt":"review {{ index .Data \"payload\" }}","event":"webhook","filter":{"data.branch":"main"},"enabled":true,"retry":{"strategy":"none"},"fire_limit":{"max":12,"window":"1h"},"source":"dynamic","webhook_id":"wbh_123","endpoint_slug":"deploy-review","created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:00:00Z"}]}`,
+					), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/automation/triggers":
 					body, err := io.ReadAll(req.Body)
 					if err != nil {
 						t.Fatalf("io.ReadAll(trigger create body) error = %v", err)
 					}
-					if !strings.Contains(string(body), `"event":"webhook"`) || !strings.Contains(string(body), `"data.branch":"main"`) {
+					if !strings.Contains(string(body), `"event":"webhook"`) ||
+						!strings.Contains(string(body), `"data.branch":"main"`) {
 						t.Fatalf("trigger create body = %s, want event and filter", body)
 					}
-					return newHTTPResponse(http.StatusCreated, `{"trigger":{"id":"trg-created","scope":"workspace","workspace_id":"ws-alpha","name":"deploy-review","agent_name":"coder","prompt":"review {{ index .Data \"payload\" }}","event":"webhook","filter":{"data.branch":"main"},"enabled":true,"retry":{"strategy":"none"},"fire_limit":{"max":12,"window":"1h"},"source":"dynamic","webhook_id":"wbh_123","endpoint_slug":"deploy-review","created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:00:00Z"}}`), nil
+					return newHTTPResponse(
+						http.StatusCreated,
+						`{"trigger":{"id":"trg-created","scope":"workspace","workspace_id":"ws-alpha","name":"deploy-review","agent_name":"coder","prompt":"review {{ index .Data \"payload\" }}","event":"webhook","filter":{"data.branch":"main"},"enabled":true,"retry":{"strategy":"none"},"fire_limit":{"max":12,"window":"1h"},"source":"dynamic","webhook_id":"wbh_123","endpoint_slug":"deploy-review","created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:00:00Z"}}`,
+					), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/automation/triggers/trg-created":
-					return newHTTPResponse(http.StatusOK, `{"trigger":{"id":"trg-created","scope":"workspace","workspace_id":"ws-alpha","name":"deploy-review","agent_name":"coder","prompt":"review {{ index .Data \"payload\" }}","event":"webhook","filter":{"data.branch":"main"},"enabled":true,"retry":{"strategy":"none"},"fire_limit":{"max":12,"window":"1h"},"source":"dynamic","webhook_id":"wbh_123","endpoint_slug":"deploy-review","created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:00:00Z"}}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"trigger":{"id":"trg-created","scope":"workspace","workspace_id":"ws-alpha","name":"deploy-review","agent_name":"coder","prompt":"review {{ index .Data \"payload\" }}","event":"webhook","filter":{"data.branch":"main"},"enabled":true,"retry":{"strategy":"none"},"fire_limit":{"max":12,"window":"1h"},"source":"dynamic","webhook_id":"wbh_123","endpoint_slug":"deploy-review","created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:00:00Z"}}`,
+					), nil
 				case req.Method == http.MethodPatch && req.URL.Path == "/api/automation/triggers/trg-created":
 					body, err := io.ReadAll(req.Body)
 					if err != nil {
 						t.Fatalf("io.ReadAll(trigger update body) error = %v", err)
 					}
-					if !strings.Contains(string(body), `"prompt":"inspect {{ index .Data \"payload\" }}"`) || !strings.Contains(string(body), `"enabled":false`) {
+					if !strings.Contains(string(body), `"prompt":"inspect {{ index .Data \"payload\" }}"`) ||
+						!strings.Contains(string(body), `"enabled":false`) {
 						t.Fatalf("trigger update body = %s, want prompt and enabled", body)
 					}
-					return newHTTPResponse(http.StatusOK, `{"trigger":{"id":"trg-created","scope":"workspace","workspace_id":"ws-alpha","name":"deploy-review","agent_name":"coder","prompt":"inspect {{ index .Data \"payload\" }}","event":"webhook","filter":{"data.branch":"main"},"enabled":false,"retry":{"strategy":"none"},"fire_limit":{"max":12,"window":"1h"},"source":"dynamic","webhook_id":"wbh_123","endpoint_slug":"deploy-review","created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:05:00Z"}}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"trigger":{"id":"trg-created","scope":"workspace","workspace_id":"ws-alpha","name":"deploy-review","agent_name":"coder","prompt":"inspect {{ index .Data \"payload\" }}","event":"webhook","filter":{"data.branch":"main"},"enabled":false,"retry":{"strategy":"none"},"fire_limit":{"max":12,"window":"1h"},"source":"dynamic","webhook_id":"wbh_123","endpoint_slug":"deploy-review","created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:05:00Z"}}`,
+					), nil
 				case req.Method == http.MethodDelete && req.URL.Path == "/api/automation/triggers/trg-created":
 					return newHTTPResponse(http.StatusNoContent, ``), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/automation/triggers/trg-created/runs":
@@ -519,7 +628,10 @@ func TestUnixSocketClientAutomationMethods(t *testing.T) {
 					if got := req.URL.Query().Get("limit"); got != "1" {
 						t.Fatalf("trigger runs limit query = %q, want %q", got, "1")
 					}
-					return newHTTPResponse(http.StatusOK, `{"runs":[{"id":"run-trigger","trigger_id":"trg-created","session_id":"sess-trigger","status":"completed","attempt":1,"started_at":"2026-04-11T12:00:00Z","ended_at":"2026-04-11T12:02:00Z"}]}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"runs":[{"id":"run-trigger","trigger_id":"trg-created","session_id":"sess-trigger","status":"completed","attempt":1,"started_at":"2026-04-11T12:00:00Z","ended_at":"2026-04-11T12:02:00Z"}]}`,
+					), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/automation/runs":
 					if got := req.URL.Query().Get("job_id"); got != "job-created" {
 						t.Fatalf("runs job_id query = %q, want %q", got, "job-created")
@@ -539,9 +651,15 @@ func TestUnixSocketClientAutomationMethods(t *testing.T) {
 					if got := req.URL.Query().Get("limit"); got != "5" {
 						t.Fatalf("runs limit query = %q, want %q", got, "5")
 					}
-					return newHTTPResponse(http.StatusOK, `{"runs":[{"id":"run-shared","job_id":"job-created","trigger_id":"trg-created","session_id":"sess-shared","status":"completed","attempt":1,"started_at":"2026-04-11T12:00:00Z","ended_at":"2026-04-11T12:02:00Z"}]}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"runs":[{"id":"run-shared","job_id":"job-created","trigger_id":"trg-created","session_id":"sess-shared","status":"completed","attempt":1,"started_at":"2026-04-11T12:00:00Z","ended_at":"2026-04-11T12:02:00Z"}]}`,
+					), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/automation/runs/run-shared":
-					return newHTTPResponse(http.StatusOK, `{"run":{"id":"run-shared","job_id":"job-created","trigger_id":"trg-created","session_id":"sess-shared","status":"completed","attempt":1,"started_at":"2026-04-11T12:00:00Z","ended_at":"2026-04-11T12:02:00Z"}}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"run":{"id":"run-shared","job_id":"job-created","trigger_id":"trg-created","session_id":"sess-shared","status":"completed","attempt":1,"started_at":"2026-04-11T12:00:00Z","ended_at":"2026-04-11T12:02:00Z"}}`,
+					), nil
 				default:
 					return newHTTPResponse(http.StatusNotFound, `{"error":"missing"}`), nil
 				}
@@ -740,7 +858,10 @@ func TestUnixSocketClientTaskMethods(t *testing.T) {
 					if got := req.URL.Query().Get("limit"); got != "3" {
 						t.Fatalf("task limit query = %q, want %q", got, "3")
 					}
-					body := mustJSON(t, contract.TasksResponse{Tasks: []contract.TaskSummaryPayload{sampleTaskSummaryRecord()}})
+					body := mustJSON(
+						t,
+						contract.TasksResponse{Tasks: []contract.TaskSummaryPayload{sampleTaskSummaryRecord()}},
+					)
 					return newHTTPResponse(http.StatusOK, string(body)), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/tasks":
 					var payload contract.CreateTaskRequest
@@ -766,7 +887,9 @@ func TestUnixSocketClientTaskMethods(t *testing.T) {
 					if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
 						t.Fatalf("json.Decode(update task body) error = %v", err)
 					}
-					if payload.Title == nil || *payload.Title != "Investigate resolved" || payload.NetworkChannel == nil || *payload.NetworkChannel != "ops" {
+					if payload.Title == nil || *payload.Title != "Investigate resolved" ||
+						payload.NetworkChannel == nil ||
+						*payload.NetworkChannel != "ops" {
 						t.Fatalf("update task payload = %#v", payload)
 					}
 					updated := sampleTaskRecord()
@@ -782,16 +905,17 @@ func TestUnixSocketClientTaskMethods(t *testing.T) {
 					if payload.Reason != "operator-request" {
 						t.Fatalf("cancel task payload = %#v, want reason", payload)
 					}
-					cancelled := sampleTaskRecord()
-					cancelled.Status = taskpkg.TaskStatusCancelled
-					body := mustJSON(t, contract.TaskResponse{Task: cancelled})
+					canceled := sampleTaskRecord()
+					canceled.Status = taskpkg.TaskStatusCanceled
+					body := mustJSON(t, contract.TaskResponse{Task: canceled})
 					return newHTTPResponse(http.StatusOK, string(body)), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/tasks/task-1/children":
 					var payload contract.CreateTaskChildRequest
 					if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
 						t.Fatalf("json.Decode(create child body) error = %v", err)
 					}
-					if payload.Scope != taskpkg.ScopeWorkspace || payload.Workspace != "alpha" || payload.Title != "Check runtime logs" {
+					if payload.Scope != taskpkg.ScopeWorkspace || payload.Workspace != "alpha" ||
+						payload.Title != "Check runtime logs" {
 						t.Fatalf("create child payload = %#v", payload)
 					}
 					child := sampleTaskRecord()
@@ -832,7 +956,12 @@ func TestUnixSocketClientTaskMethods(t *testing.T) {
 					if got := req.URL.Query().Get("limit"); got != "2" {
 						t.Fatalf("task runs limit query = %q, want %q", got, "2")
 					}
-					body := mustJSON(t, contract.TaskRunsResponse{Runs: []contract.TaskRunPayload{sampleTaskRunRecord(taskpkg.TaskRunStatusRunning)}})
+					body := mustJSON(
+						t,
+						contract.TaskRunsResponse{
+							Runs: []contract.TaskRunPayload{sampleTaskRunRecord(taskpkg.TaskRunStatusRunning)},
+						},
+					)
 					return newHTTPResponse(http.StatusOK, string(body)), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/task-runs/run-1/claim":
 					var payload contract.ClaimTaskRunRequest
@@ -842,7 +971,10 @@ func TestUnixSocketClientTaskMethods(t *testing.T) {
 					if payload.IdempotencyKey != "idem-claim" {
 						t.Fatalf("claim run payload = %#v", payload)
 					}
-					body := mustJSON(t, contract.TaskRunResponse{Run: sampleTaskRunRecord(taskpkg.TaskRunStatusClaimed)})
+					body := mustJSON(
+						t,
+						contract.TaskRunResponse{Run: sampleTaskRunRecord(taskpkg.TaskRunStatusClaimed)},
+					)
 					return newHTTPResponse(http.StatusOK, string(body)), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/task-runs/run-1/start":
 					var payload contract.StartTaskRunRequest
@@ -852,7 +984,10 @@ func TestUnixSocketClientTaskMethods(t *testing.T) {
 					if payload.IdempotencyKey != "idem-start" {
 						t.Fatalf("start run payload = %#v", payload)
 					}
-					body := mustJSON(t, contract.TaskRunResponse{Run: sampleTaskRunRecord(taskpkg.TaskRunStatusRunning)})
+					body := mustJSON(
+						t,
+						contract.TaskRunResponse{Run: sampleTaskRunRecord(taskpkg.TaskRunStatusRunning)},
+					)
 					return newHTTPResponse(http.StatusOK, string(body)), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/task-runs/run-1/attach-session":
 					var payload contract.AttachTaskRunSessionRequest
@@ -862,7 +997,10 @@ func TestUnixSocketClientTaskMethods(t *testing.T) {
 					if payload.SessionID != "sess-attach" {
 						t.Fatalf("attach session payload = %#v", payload)
 					}
-					body := mustJSON(t, contract.TaskRunResponse{Run: sampleTaskRunRecord(taskpkg.TaskRunStatusStarting)})
+					body := mustJSON(
+						t,
+						contract.TaskRunResponse{Run: sampleTaskRunRecord(taskpkg.TaskRunStatusStarting)},
+					)
 					return newHTTPResponse(http.StatusOK, string(body)), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/task-runs/run-1/complete":
 					var payload contract.CompleteTaskRunRequest
@@ -872,7 +1010,10 @@ func TestUnixSocketClientTaskMethods(t *testing.T) {
 					if string(payload.Result) != `{"ok":true}` {
 						t.Fatalf("complete run payload = %#v", payload)
 					}
-					body := mustJSON(t, contract.TaskRunResponse{Run: sampleTaskRunRecord(taskpkg.TaskRunStatusCompleted)})
+					body := mustJSON(
+						t,
+						contract.TaskRunResponse{Run: sampleTaskRunRecord(taskpkg.TaskRunStatusCompleted)},
+					)
 					return newHTTPResponse(http.StatusOK, string(body)), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/task-runs/run-1/fail":
 					var payload contract.FailTaskRunRequest
@@ -892,7 +1033,10 @@ func TestUnixSocketClientTaskMethods(t *testing.T) {
 					if payload.Reason != "operator-request" || string(payload.Metadata) != `{"source":"cli"}` {
 						t.Fatalf("cancel run payload = %#v", payload)
 					}
-					body := mustJSON(t, contract.TaskRunResponse{Run: sampleTaskRunRecord(taskpkg.TaskRunStatusCancelled)})
+					body := mustJSON(
+						t,
+						contract.TaskRunResponse{Run: sampleTaskRunRecord(taskpkg.TaskRunStatusCanceled)},
+					)
 					return newHTTPResponse(http.StatusOK, string(body)), nil
 				default:
 					return newHTTPResponse(http.StatusNotFound, `{"error":"missing"}`), nil
@@ -944,9 +1088,9 @@ func TestUnixSocketClientTaskMethods(t *testing.T) {
 			t.Fatalf("UpdateTask() = %#v, %v", updated, err)
 		}
 
-		cancelled, err := client.CancelTask(ctx, "task-1", CancelTaskRequest{Reason: "operator-request"})
-		if err != nil || cancelled.Status != taskpkg.TaskStatusCancelled {
-			t.Fatalf("CancelTask() = %#v, %v", cancelled, err)
+		canceled, err := client.CancelTask(ctx, "task-1", CancelTaskRequest{Reason: "operator-request"})
+		if err != nil || canceled.Status != taskpkg.TaskStatusCanceled {
+			t.Fatalf("CancelTask() = %#v, %v", canceled, err)
 		}
 	})
 
@@ -1000,24 +1144,40 @@ func TestUnixSocketClientTaskMethods(t *testing.T) {
 			t.Fatalf("StartTaskRun() = %#v, %v", started, err)
 		}
 
-		attached, err := client.AttachTaskRunSession(ctx, "run-1", AttachTaskRunSessionRequest{SessionID: "sess-attach"})
+		attached, err := client.AttachTaskRunSession(
+			ctx,
+			"run-1",
+			AttachTaskRunSessionRequest{SessionID: "sess-attach"},
+		)
 		if err != nil || attached.Status != taskpkg.TaskRunStatusStarting {
 			t.Fatalf("AttachTaskRunSession() = %#v, %v", attached, err)
 		}
 
-		completed, err := client.CompleteTaskRun(ctx, "run-1", CompleteTaskRunRequest{Result: mustJSON(t, map[string]bool{"ok": true})})
+		completed, err := client.CompleteTaskRun(
+			ctx,
+			"run-1",
+			CompleteTaskRunRequest{Result: mustJSON(t, map[string]bool{"ok": true})},
+		)
 		if err != nil || completed.Status != taskpkg.TaskRunStatusCompleted {
 			t.Fatalf("CompleteTaskRun() = %#v, %v", completed, err)
 		}
 
-		failed, err := client.FailTaskRun(ctx, "run-1", FailTaskRunRequest{Error: "boom", Metadata: mustJSON(t, map[string]string{"code": "E_TASK"})})
+		failed, err := client.FailTaskRun(
+			ctx,
+			"run-1",
+			FailTaskRunRequest{Error: "boom", Metadata: mustJSON(t, map[string]string{"code": "E_TASK"})},
+		)
 		if err != nil || failed.Status != taskpkg.TaskRunStatusFailed {
 			t.Fatalf("FailTaskRun() = %#v, %v", failed, err)
 		}
 
-		cancelled, err := client.CancelTaskRun(ctx, "run-1", CancelTaskRunRequest{Reason: "operator-request", Metadata: mustJSON(t, map[string]string{"source": "cli"})})
-		if err != nil || cancelled.Status != taskpkg.TaskRunStatusCancelled {
-			t.Fatalf("CancelTaskRun() = %#v, %v", cancelled, err)
+		canceled, err := client.CancelTaskRun(
+			ctx,
+			"run-1",
+			CancelTaskRunRequest{Reason: "operator-request", Metadata: mustJSON(t, map[string]string{"source": "cli"})},
+		)
+		if err != nil || canceled.Status != taskpkg.TaskRunStatusCanceled {
+			t.Fatalf("CancelTaskRun() = %#v, %v", canceled, err)
 		}
 	})
 }
@@ -1031,7 +1191,10 @@ func TestUnixSocketClientBridgeMethods(t *testing.T) {
 			Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				switch {
 				case req.Method == http.MethodGet && req.URL.Path == "/api/bridges":
-					return newHTTPResponse(http.StatusOK, `{"bridges":[{"id":"brg-a","scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":true,"status":"ready","routing_policy":{"include_peer":true},"created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:00:00Z"}]}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"bridges":[{"id":"brg-a","scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":true,"status":"ready","routing_policy":{"include_peer":true},"created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:00:00Z"}]}`,
+					), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/bridges":
 					var payload contract.CreateBridgeRequest
 					if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
@@ -1048,9 +1211,15 @@ func TestUnixSocketClientBridgeMethods(t *testing.T) {
 						len(payload.DeliveryDefaults) != 0 {
 						t.Fatalf("create bridge payload = %#v", payload)
 					}
-					return newHTTPResponse(http.StatusCreated, `{"bridge":{"id":"brg-a","scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":true,"status":"starting","routing_policy":{"include_peer":true},"created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:00:00Z"}}`), nil
+					return newHTTPResponse(
+						http.StatusCreated,
+						`{"bridge":{"id":"brg-a","scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":true,"status":"starting","routing_policy":{"include_peer":true},"created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:00:00Z"}}`,
+					), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/bridges/brg-a":
-					return newHTTPResponse(http.StatusOK, `{"bridge":{"id":"brg-a","scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":true,"status":"ready","routing_policy":{"include_peer":true},"created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:00:00Z"}}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"bridge":{"id":"brg-a","scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":true,"status":"ready","routing_policy":{"include_peer":true},"created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:00:00Z"}}`,
+					), nil
 				case req.Method == http.MethodPatch && req.URL.Path == "/api/bridges/brg-a":
 					var payload contract.UpdateBridgeRequest
 					if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
@@ -1059,28 +1228,51 @@ func TestUnixSocketClientBridgeMethods(t *testing.T) {
 					if payload.DisplayName == nil ||
 						*payload.DisplayName != "Support Ops" ||
 						payload.RoutingPolicy == nil ||
-						!reflect.DeepEqual(*payload.RoutingPolicy, bridgepkg.RoutingPolicy{IncludePeer: true, IncludeThread: true}) ||
+						!reflect.DeepEqual(
+							*payload.RoutingPolicy,
+							bridgepkg.RoutingPolicy{IncludePeer: true, IncludeThread: true},
+						) ||
 						payload.DeliveryDefaults != nil {
 						t.Fatalf("update bridge payload = %#v, want updated display name", payload)
 					}
-					return newHTTPResponse(http.StatusOK, `{"bridge":{"id":"brg-a","scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support Ops","enabled":true,"status":"ready","routing_policy":{"include_peer":true,"include_thread":true},"created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:05:00Z"}}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"bridge":{"id":"brg-a","scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support Ops","enabled":true,"status":"ready","routing_policy":{"include_peer":true,"include_thread":true},"created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:05:00Z"}}`,
+					), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/bridges/brg-a/enable":
-					return newHTTPResponse(http.StatusOK, `{"bridge":{"id":"brg-a","scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":true,"status":"starting","routing_policy":{"include_peer":true},"created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:06:00Z"}}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"bridge":{"id":"brg-a","scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":true,"status":"starting","routing_policy":{"include_peer":true},"created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:06:00Z"}}`,
+					), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/bridges/brg-a/disable":
-					return newHTTPResponse(http.StatusOK, `{"bridge":{"id":"brg-a","scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":false,"status":"disabled","routing_policy":{"include_peer":true},"created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:07:00Z"}}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"bridge":{"id":"brg-a","scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":false,"status":"disabled","routing_policy":{"include_peer":true},"created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:07:00Z"}}`,
+					), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/bridges/brg-a/restart":
-					return newHTTPResponse(http.StatusOK, `{"bridge":{"id":"brg-a","scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":true,"status":"starting","routing_policy":{"include_peer":true},"created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:08:00Z"}}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"bridge":{"id":"brg-a","scope":"global","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":true,"status":"starting","routing_policy":{"include_peer":true},"created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:08:00Z"}}`,
+					), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/bridges/brg-a/routes":
-					return newHTTPResponse(http.StatusOK, `{"routes":[{"routing_key_hash":"hash-a","scope":"global","bridge_instance_id":"brg-a","peer_id":"peer-1","thread_id":"thread-1","session_id":"sess-1","agent_name":"coder","last_activity_at":"2026-04-11T12:09:00Z","created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:09:00Z"}]}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"routes":[{"routing_key_hash":"hash-a","scope":"global","bridge_instance_id":"brg-a","peer_id":"peer-1","thread_id":"thread-1","session_id":"sess-1","agent_name":"coder","last_activity_at":"2026-04-11T12:09:00Z","created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:09:00Z"}]}`,
+					), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/bridges/brg-a/test-delivery":
 					var payload contract.BridgeTestDeliveryRequest
 					if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
 						t.Fatalf("json.Decode(test delivery body) error = %v", err)
 					}
-					if payload.Message != "hello" || payload.Target.PeerID != "peer-1" || payload.Target.ThreadID != "thread-1" || payload.Target.Mode != bridgepkg.DeliveryModeReply {
+					if payload.Message != "hello" || payload.Target.PeerID != "peer-1" ||
+						payload.Target.ThreadID != "thread-1" ||
+						payload.Target.Mode != bridgepkg.DeliveryModeReply {
 						t.Fatalf("test delivery payload = %#v", payload)
 					}
-					return newHTTPResponse(http.StatusOK, `{"status":"resolved","message":"hello","delivery_target":{"bridge_instance_id":"brg-a","peer_id":"peer-1","thread_id":"thread-1","mode":"reply"}}`), nil
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"status":"resolved","message":"hello","delivery_target":{"bridge_instance_id":"brg-a","peer_id":"peer-1","thread_id":"thread-1","mode":"reply"}}`,
+					), nil
 				default:
 					return newHTTPResponse(http.StatusNotFound, `{"error":"missing"}`), nil
 				}
@@ -1152,7 +1344,8 @@ func TestUnixSocketClientBridgeMethods(t *testing.T) {
 			Mode:     bridgepkg.DeliveryModeReply,
 		},
 	})
-	if err != nil || delivery.DeliveryTarget.Mode != bridgepkg.DeliveryModeReply || delivery.DeliveryTarget.ThreadID != "thread-1" {
+	if err != nil || delivery.DeliveryTarget.Mode != bridgepkg.DeliveryModeReply ||
+		delivery.DeliveryTarget.ThreadID != "thread-1" {
 		t.Fatalf("TestBridgeDelivery() = %#v, %v", delivery, err)
 	}
 }
@@ -1161,6 +1354,9 @@ func TestReadAPIErrorAndHelpers(t *testing.T) {
 	t.Parallel()
 
 	resp := newHTTPResponse(http.StatusBadRequest, `{"error":"boom"}`)
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	err := readAPIError(resp)
 	if err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("readAPIError() = %v, want boom", err)
@@ -1211,11 +1407,18 @@ func TestReadAPIErrorAndHelpers(t *testing.T) {
 		t.Fatalf("hookRunsValues() = %v, want all hook runs filters", got)
 	}
 
-	if got := hookEventsValues(HookEventsQuery{Family: "tool", SyncOnly: true}); got.Get("family") != "tool" || got.Get("sync_only") != "true" {
+	if got := hookEventsValues(
+		HookEventsQuery{Family: "tool", SyncOnly: true},
+	); got.Get("family") != "tool" ||
+		got.Get("sync_only") != "true" {
 		t.Fatalf("hookEventsValues() = %v, want family/sync_only", got)
 	}
 
-	if got := memoryValues(memory.ScopeWorkspace, "/workspace/project"); got.Get("scope") != "workspace" || got.Get("workspace") != "/workspace/project" {
+	if got := memoryValues(
+		memory.ScopeWorkspace,
+		"/workspace/project",
+	); got.Get("scope") != "workspace" ||
+		got.Get("workspace") != "/workspace/project" {
 		t.Fatalf("memoryValues() = %v, want scope/workspace", got)
 	}
 
@@ -1271,11 +1474,17 @@ func TestReadAPIErrorAndHelpers(t *testing.T) {
 	}
 
 	plain := newHTTPResponse(http.StatusInternalServerError, "plain failure")
+	defer func() {
+		_ = plain.Body.Close()
+	}()
 	if err := readAPIError(plain); err == nil || !strings.Contains(err.Error(), "plain failure") {
 		t.Fatalf("readAPIError(plain) = %v, want plain failure", err)
 	}
 
 	large := newHTTPResponse(http.StatusInternalServerError, strings.Repeat("x", 2<<20))
+	defer func() {
+		_ = large.Body.Close()
+	}()
 	if err := readAPIError(large); err == nil {
 		t.Fatal("readAPIError(large) error = nil, want non-nil")
 	} else if len(err.Error()) > (1<<20)+128 {
@@ -1310,6 +1519,70 @@ func TestDecodeSSEStopsEarly(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("decodeSSE() count = %d, want 1", count)
+	}
+}
+
+func TestDecodeSSERejectsNilArguments(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		ctx     context.Context
+		body    io.Reader
+		handler SSEHandler
+		wantErr string
+	}{
+		{
+			name:    "nil context",
+			ctx:     nil,
+			body:    strings.NewReader("event: ping\n\n"),
+			handler: func(SSEEvent) error { return nil },
+			wantErr: "sse: context is required",
+		},
+		{
+			name:    "nil body",
+			ctx:     context.Background(),
+			body:    nil,
+			handler: func(SSEEvent) error { return nil },
+			wantErr: "sse: body is required",
+		},
+		{
+			name:    "nil handler",
+			ctx:     context.Background(),
+			body:    strings.NewReader("event: ping\n\n"),
+			handler: nil,
+			wantErr: "sse: handler is required",
+		},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := decodeSSE(tt.ctx, tt.body, tt.handler)
+			if err == nil || err.Error() != tt.wantErr {
+				t.Fatalf("decodeSSE() error = %v, want %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestDecodeSSEPropagatesHandlerError(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("boom")
+	body := strings.Join([]string{
+		"id: 1",
+		"event: done",
+		`data: {"ok":true}`,
+		"",
+	}, "\n")
+
+	err := decodeSSE(context.Background(), strings.NewReader(body), func(SSEEvent) error {
+		return wantErr
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("decodeSSE() error = %v, want %v", err, wantErr)
 	}
 }
 
@@ -1360,9 +1633,17 @@ func TestDoRequestSetsHeaders(t *testing.T) {
 		},
 	}
 
-	err := client.doSSE(context.Background(), http.MethodGet, "/api/observe/events/stream", observeEventValues(ObserveEventQuery{Since: time.Now().UTC()}), nil, "cursor-9", func(SSEEvent) error {
-		return nil
-	})
+	err := client.doSSE(
+		context.Background(),
+		http.MethodGet,
+		"/api/observe/events/stream",
+		observeEventValues(ObserveEventQuery{Since: time.Now().UTC()}),
+		nil,
+		"cursor-9",
+		func(SSEEvent) error {
+			return nil
+		},
+	)
 	if err != nil {
 		t.Fatalf("doSSE() error = %v", err)
 	}
@@ -1376,7 +1657,13 @@ func TestDoRequestRejectsNilContext(t *testing.T) {
 		httpClient: &http.Client{},
 	}
 
-	if _, err := client.doRequest(nilContext(), http.MethodGet, "/api/daemon/status", nil, nil, ""); err == nil {
+	response, err := client.doRequest(nilContext(), http.MethodGet, "/api/daemon/status", nil, nil, "")
+	if response != nil {
+		defer func() {
+			_ = response.Body.Close()
+		}()
+	}
+	if err == nil {
 		t.Fatal("doRequest(nil) error = nil, want non-nil")
 	}
 }
@@ -1389,43 +1676,183 @@ func TestCLIUsesSharedContractAliases(t *testing.T) {
 		cliType any
 		want    any
 	}{
-		{name: "Should alias CreateSessionRequest to the shared contract", cliType: CreateSessionRequest{}, want: contract.CreateSessionRequest{}},
-		{name: "Should alias SessionRecord to the shared contract", cliType: SessionRecord{}, want: contract.SessionPayload{}},
-		{name: "Should alias SessionEventRecord to the shared contract", cliType: SessionEventRecord{}, want: contract.SessionEventPayload{}},
-		{name: "Should alias TurnHistoryRecord to the shared contract", cliType: TurnHistoryRecord{}, want: contract.TurnHistoryPayload{}},
-		{name: "Should alias AgentRecord to the shared contract", cliType: AgentRecord{}, want: contract.AgentPayload{}},
-		{name: "Should alias AgentEventRecord to the shared contract", cliType: AgentEventRecord{}, want: contract.AgentEventPayload{}},
-		{name: "Should alias HookCatalogQuery to the shared contract", cliType: HookCatalogQuery{}, want: contract.HookCatalogQuery{}},
-		{name: "Should alias HookCatalogRecord to the shared contract", cliType: HookCatalogRecord{}, want: contract.HookCatalogPayload{}},
-		{name: "Should alias HookRunsQuery to the shared contract", cliType: HookRunsQuery{}, want: contract.HookRunsQuery{}},
-		{name: "Should alias HookRunRecord to the shared contract", cliType: HookRunRecord{}, want: contract.HookRunPayload{}},
-		{name: "Should alias HookEventsQuery to the shared contract", cliType: HookEventsQuery{}, want: contract.HookEventsQuery{}},
-		{name: "Should alias HookEventRecord to the shared contract", cliType: HookEventRecord{}, want: contract.HookEventPayload{}},
-		{name: "Should alias ObserveEventRecord to the shared contract", cliType: ObserveEventRecord{}, want: contract.ObserveEventPayload{}},
-		{name: "Should alias WorkspaceCreateRequest to the shared contract", cliType: WorkspaceCreateRequest{}, want: contract.CreateWorkspaceRequest{}},
-		{name: "Should alias WorkspaceUpdateRequest to the shared contract", cliType: WorkspaceUpdateRequest{}, want: contract.UpdateWorkspaceRequest{}},
-		{name: "Should alias WorkspaceRecord to the shared contract", cliType: WorkspaceRecord{}, want: contract.WorkspacePayload{}},
-		{name: "Should alias WorkspaceSkillRecord to the shared contract", cliType: WorkspaceSkillRecord{}, want: contract.WorkspaceSkillPayload{}},
-		{name: "Should alias MemoryReadRecord to the shared contract", cliType: MemoryReadRecord{}, want: contract.MemoryReadResponse{}},
-		{name: "Should alias MemoryWriteRequest to the shared contract", cliType: MemoryWriteRequest{}, want: contract.MemoryWriteRequest{}},
-		{name: "Should alias MemoryMutationRecord to the shared contract", cliType: MemoryMutationRecord{}, want: contract.MemoryMutationResponse{}},
-		{name: "Should alias MemoryConsolidateRecord to the shared contract", cliType: MemoryConsolidateRecord{}, want: contract.MemoryConsolidateResponse{}},
-		{name: "Should alias AutomationJobCreateRequest to the shared contract", cliType: AutomationJobCreateRequest{}, want: contract.CreateJobRequest{}},
-		{name: "Should alias AutomationJobUpdateRequest to the shared contract", cliType: AutomationJobUpdateRequest{}, want: contract.UpdateJobRequest{}},
-		{name: "Should alias AutomationTriggerCreateRequest to the shared contract", cliType: AutomationTriggerCreateRequest{}, want: contract.CreateTriggerRequest{}},
-		{name: "Should alias AutomationTriggerUpdateRequest to the shared contract", cliType: AutomationTriggerUpdateRequest{}, want: contract.UpdateTriggerRequest{}},
+		{
+			name:    "Should alias CreateSessionRequest to the shared contract",
+			cliType: CreateSessionRequest{},
+			want:    contract.CreateSessionRequest{},
+		},
+		{
+			name:    "Should alias SessionRecord to the shared contract",
+			cliType: SessionRecord{},
+			want:    contract.SessionPayload{},
+		},
+		{
+			name:    "Should alias SessionEventRecord to the shared contract",
+			cliType: SessionEventRecord{},
+			want:    contract.SessionEventPayload{},
+		},
+		{
+			name:    "Should alias TurnHistoryRecord to the shared contract",
+			cliType: TurnHistoryRecord{},
+			want:    contract.TurnHistoryPayload{},
+		},
+		{
+			name:    "Should alias AgentRecord to the shared contract",
+			cliType: AgentRecord{},
+			want:    contract.AgentPayload{},
+		},
+		{
+			name:    "Should alias AgentEventRecord to the shared contract",
+			cliType: AgentEventRecord{},
+			want:    contract.AgentEventPayload{},
+		},
+		{
+			name:    "Should alias HookCatalogQuery to the shared contract",
+			cliType: HookCatalogQuery{},
+			want:    contract.HookCatalogQuery{},
+		},
+		{
+			name:    "Should alias HookCatalogRecord to the shared contract",
+			cliType: HookCatalogRecord{},
+			want:    contract.HookCatalogPayload{},
+		},
+		{
+			name:    "Should alias HookRunsQuery to the shared contract",
+			cliType: HookRunsQuery{},
+			want:    contract.HookRunsQuery{},
+		},
+		{
+			name:    "Should alias HookRunRecord to the shared contract",
+			cliType: HookRunRecord{},
+			want:    contract.HookRunPayload{},
+		},
+		{
+			name:    "Should alias HookEventsQuery to the shared contract",
+			cliType: HookEventsQuery{},
+			want:    contract.HookEventsQuery{},
+		},
+		{
+			name:    "Should alias HookEventRecord to the shared contract",
+			cliType: HookEventRecord{},
+			want:    contract.HookEventPayload{},
+		},
+		{
+			name:    "Should alias ObserveEventRecord to the shared contract",
+			cliType: ObserveEventRecord{},
+			want:    contract.ObserveEventPayload{},
+		},
+		{
+			name:    "Should alias WorkspaceCreateRequest to the shared contract",
+			cliType: WorkspaceCreateRequest{},
+			want:    contract.CreateWorkspaceRequest{},
+		},
+		{
+			name:    "Should alias WorkspaceUpdateRequest to the shared contract",
+			cliType: WorkspaceUpdateRequest{},
+			want:    contract.UpdateWorkspaceRequest{},
+		},
+		{
+			name:    "Should alias WorkspaceRecord to the shared contract",
+			cliType: WorkspaceRecord{},
+			want:    contract.WorkspacePayload{},
+		},
+		{
+			name:    "Should alias WorkspaceSkillRecord to the shared contract",
+			cliType: WorkspaceSkillRecord{},
+			want:    contract.WorkspaceSkillPayload{},
+		},
+		{
+			name:    "Should alias MemoryReadRecord to the shared contract",
+			cliType: MemoryReadRecord{},
+			want:    contract.MemoryReadResponse{},
+		},
+		{
+			name:    "Should alias MemoryWriteRequest to the shared contract",
+			cliType: MemoryWriteRequest{},
+			want:    contract.MemoryWriteRequest{},
+		},
+		{
+			name:    "Should alias MemoryMutationRecord to the shared contract",
+			cliType: MemoryMutationRecord{},
+			want:    contract.MemoryMutationResponse{},
+		},
+		{
+			name:    "Should alias MemoryConsolidateRecord to the shared contract",
+			cliType: MemoryConsolidateRecord{},
+			want:    contract.MemoryConsolidateResponse{},
+		},
+		{
+			name:    "Should alias AutomationJobCreateRequest to the shared contract",
+			cliType: AutomationJobCreateRequest{},
+			want:    contract.CreateJobRequest{},
+		},
+		{
+			name:    "Should alias AutomationJobUpdateRequest to the shared contract",
+			cliType: AutomationJobUpdateRequest{},
+			want:    contract.UpdateJobRequest{},
+		},
+		{
+			name:    "Should alias AutomationTriggerCreateRequest to the shared contract",
+			cliType: AutomationTriggerCreateRequest{},
+			want:    contract.CreateTriggerRequest{},
+		},
+		{
+			name:    "Should alias AutomationTriggerUpdateRequest to the shared contract",
+			cliType: AutomationTriggerUpdateRequest{},
+			want:    contract.UpdateTriggerRequest{},
+		},
 		{name: "Should alias JobRecord to the shared contract", cliType: JobRecord{}, want: contract.JobPayload{}},
-		{name: "Should alias TriggerRecord to the shared contract", cliType: TriggerRecord{}, want: contract.TriggerPayload{}},
+		{
+			name:    "Should alias TriggerRecord to the shared contract",
+			cliType: TriggerRecord{},
+			want:    contract.TriggerPayload{},
+		},
 		{name: "Should alias RunRecord to the shared contract", cliType: RunRecord{}, want: contract.RunPayload{}},
-		{name: "Should alias DaemonStatus to the shared contract", cliType: DaemonStatus{}, want: contract.DaemonStatusPayload{}},
-		{name: "Should alias CreateBridgeRequest to the shared contract", cliType: CreateBridgeRequest{}, want: contract.CreateBridgeRequest{}},
-		{name: "Should alias UpdateBridgeRequest to the shared contract", cliType: UpdateBridgeRequest{}, want: contract.UpdateBridgeRequest{}},
-		{name: "Should alias BridgeTestDeliveryRequest to the shared contract", cliType: BridgeTestDeliveryRequest{}, want: contract.BridgeTestDeliveryRequest{}},
-		{name: "Should alias BridgeDeliveryTargetInput to the shared contract", cliType: BridgeDeliveryTargetInput{}, want: contract.BridgeDeliveryTargetInput{}},
-		{name: "Should alias BridgeRecord to the bridge domain type", cliType: BridgeRecord{}, want: bridgepkg.BridgeInstance{}},
-		{name: "Should alias BridgeRouteRecord to the bridge domain type", cliType: BridgeRouteRecord{}, want: bridgepkg.BridgeRoute{}},
-		{name: "Should alias DeliveryTargetRecord to the bridge domain type", cliType: DeliveryTargetRecord{}, want: bridgepkg.DeliveryTarget{}},
-		{name: "Should alias BridgeTestDeliveryRecord to the shared contract", cliType: BridgeTestDeliveryRecord{}, want: contract.BridgeTestDeliveryResponse{}},
+		{
+			name:    "Should alias DaemonStatus to the shared contract",
+			cliType: DaemonStatus{},
+			want:    contract.DaemonStatusPayload{},
+		},
+		{
+			name:    "Should alias CreateBridgeRequest to the shared contract",
+			cliType: CreateBridgeRequest{},
+			want:    contract.CreateBridgeRequest{},
+		},
+		{
+			name:    "Should alias UpdateBridgeRequest to the shared contract",
+			cliType: UpdateBridgeRequest{},
+			want:    contract.UpdateBridgeRequest{},
+		},
+		{
+			name:    "Should alias BridgeTestDeliveryRequest to the shared contract",
+			cliType: BridgeTestDeliveryRequest{},
+			want:    contract.BridgeTestDeliveryRequest{},
+		},
+		{
+			name:    "Should alias BridgeDeliveryTargetInput to the shared contract",
+			cliType: BridgeDeliveryTargetInput{},
+			want:    contract.BridgeDeliveryTargetInput{},
+		},
+		{
+			name:    "Should alias BridgeRecord to the bridge domain type",
+			cliType: BridgeRecord{},
+			want:    bridgepkg.BridgeInstance{},
+		},
+		{
+			name:    "Should alias BridgeRouteRecord to the bridge domain type",
+			cliType: BridgeRouteRecord{},
+			want:    bridgepkg.BridgeRoute{},
+		},
+		{
+			name:    "Should alias DeliveryTargetRecord to the bridge domain type",
+			cliType: DeliveryTargetRecord{},
+			want:    bridgepkg.DeliveryTarget{},
+		},
+		{
+			name:    "Should alias BridgeTestDeliveryRecord to the shared contract",
+			cliType: BridgeTestDeliveryRecord{},
+			want:    contract.BridgeTestDeliveryResponse{},
+		},
 	}
 
 	for _, tt := range tests {
@@ -1451,7 +1878,8 @@ func TestSharedContractJSONParity(t *testing.T) {
 	if err := json.Unmarshal([]byte(sessionResponse), &cliSessions); err != nil {
 		t.Fatalf("json.Unmarshal(cli session response) error = %v", err)
 	}
-	if len(cliSessions.Sessions) != 1 || cliSessions.Sessions[0].ACPCaps == nil || !cliSessions.Sessions[0].ACPCaps.SupportsLoadSession {
+	if len(cliSessions.Sessions) != 1 || cliSessions.Sessions[0].ACPCaps == nil ||
+		!cliSessions.Sessions[0].ACPCaps.SupportsLoadSession {
 		t.Fatalf("cli session decode = %#v, want decoded shared contract payload", cliSessions)
 	}
 
@@ -1460,11 +1888,12 @@ func TestSharedContractJSONParity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("json.Marshal(cli memory request) error = %v", err)
 	}
-	sharedMemoryJSON, err := json.Marshal(contract.MemoryWriteRequest(memoryRequest))
+	var sharedMemoryRequest = memoryRequest
+	sharedMemoryJSON, err := json.Marshal(sharedMemoryRequest)
 	if err != nil {
 		t.Fatalf("json.Marshal(shared memory request) error = %v", err)
 	}
-	if string(cliMemoryJSON) != string(sharedMemoryJSON) {
+	if !bytes.Equal(cliMemoryJSON, sharedMemoryJSON) {
 		t.Fatalf("memory request json = %s, want %s", cliMemoryJSON, sharedMemoryJSON)
 	}
 
@@ -1481,11 +1910,12 @@ func TestSharedContractJSONParity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("json.Marshal(cli bridge request) error = %v", err)
 	}
-	sharedBridgeJSON, err := json.Marshal(contract.CreateBridgeRequest(bridgeRequest))
+	var sharedBridgeRequest = bridgeRequest
+	sharedBridgeJSON, err := json.Marshal(sharedBridgeRequest)
 	if err != nil {
 		t.Fatalf("json.Marshal(shared bridge request) error = %v", err)
 	}
-	if string(cliBridgeJSON) != string(sharedBridgeJSON) {
+	if !bytes.Equal(cliBridgeJSON, sharedBridgeJSON) {
 		t.Fatalf("bridge request json = %s, want %s", cliBridgeJSON, sharedBridgeJSON)
 	}
 

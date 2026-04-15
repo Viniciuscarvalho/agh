@@ -30,19 +30,19 @@ var (
 
 // JobListQuery filters persisted automation job listings.
 type JobListQuery struct {
-	Scope       AutomationScope `json:"scope,omitempty"`
-	WorkspaceID string          `json:"workspace_id,omitempty"`
-	Source      JobSource       `json:"source,omitempty"`
-	Limit       int             `json:"limit,omitempty"`
+	Scope       Scope     `json:"scope,omitempty"`
+	WorkspaceID string    `json:"workspace_id,omitempty"`
+	Source      JobSource `json:"source,omitempty"`
+	Limit       int       `json:"limit,omitempty"`
 }
 
 // TriggerListQuery filters persisted automation trigger listings.
 type TriggerListQuery struct {
-	Scope       AutomationScope `json:"scope,omitempty"`
-	WorkspaceID string          `json:"workspace_id,omitempty"`
-	Event       string          `json:"event,omitempty"`
-	Source      JobSource       `json:"source,omitempty"`
-	Limit       int             `json:"limit,omitempty"`
+	Scope       Scope     `json:"scope,omitempty"`
+	WorkspaceID string    `json:"workspace_id,omitempty"`
+	Event       string    `json:"event,omitempty"`
+	Source      JobSource `json:"source,omitempty"`
+	Limit       int       `json:"limit,omitempty"`
 }
 
 // RunQuery filters automation run history and fire-limit window lookups.
@@ -50,8 +50,8 @@ type RunQuery struct {
 	JobID     string    `json:"job_id,omitempty"`
 	TriggerID string    `json:"trigger_id,omitempty"`
 	Status    RunStatus `json:"status,omitempty"`
-	Since     time.Time `json:"since,omitempty"`
-	Until     time.Time `json:"until,omitempty"`
+	Since     time.Time `json:"since"`
+	Until     time.Time `json:"until"`
 	Limit     int       `json:"limit,omitempty"`
 }
 

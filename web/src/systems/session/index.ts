@@ -66,7 +66,7 @@ export {
 } from "./lib/tool-labels";
 
 // Stores
-export { useSessionStore } from "./stores/session-store";
+export { useSessionStore } from "./hooks/use-session-store";
 export type {
   SessionState as SessionStoreState,
   SessionActions,

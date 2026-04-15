@@ -89,7 +89,11 @@ func TestHooksRebuildPopulatesSnapshot(t *testing.T) {
 		t.Fatalf("native source = %q, want %q", hooks.snapshot[HookSessionPostCreate][0].Source, HookSourceNative)
 	}
 	if hooks.snapshot[HookToolPostCall][0].Decl.SkillSource != HookSkillSourceUser {
-		t.Fatalf("skill source = %q, want %q", hooks.snapshot[HookToolPostCall][0].Decl.SkillSource, HookSkillSourceUser)
+		t.Fatalf(
+			"skill source = %q, want %q",
+			hooks.snapshot[HookToolPostCall][0].Decl.SkillSource,
+			HookSkillSourceUser,
+		)
 	}
 }
 
@@ -225,38 +229,38 @@ func TestHooksConcurrentRebuildAndDispatch(t *testing.T) {
 			return cloneHookDecls(declsB), nil
 		}),
 		WithExecutorResolver(testExecutorResolver(map[string]Executor{
-			"native-a": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, payload InputPreSubmitPayload) (InputPreSubmitPatch, error) {
-				msg := payload.Message + "a"
-				return InputPreSubmitPatch{Message: &msg}, nil
-			}),
-			"native-b": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, payload InputPreSubmitPayload) (InputPreSubmitPatch, error) {
-				msg := payload.Message + "b"
-				return InputPreSubmitPatch{Message: &msg}, nil
-			}),
+			"native-a": NewTypedNativeExecutor(
+				func(_ context.Context, _ RegisteredHook, payload InputPreSubmitPayload) (InputPreSubmitPatch, error) {
+					msg := payload.Message + "a"
+					return InputPreSubmitPatch{Message: &msg}, nil
+				},
+			),
+			"native-b": NewTypedNativeExecutor(
+				func(_ context.Context, _ RegisteredHook, payload InputPreSubmitPayload) (InputPreSubmitPatch, error) {
+					msg := payload.Message + "b"
+					return InputPreSubmitPatch{Message: &msg}, nil
+				},
+			),
 		})),
 	)
 
 	var wg sync.WaitGroup
 	errCh := make(chan error, 16)
 
-	for i := 0; i < 2; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < 100; j++ {
+	for range 2 {
+		wg.Go(func() {
+			for range 100 {
 				if err := hooks.Rebuild(context.Background()); err != nil {
 					errCh <- err
 					return
 				}
 			}
-		}()
+		})
 	}
 
-	for i := 0; i < 4; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < 100; j++ {
+	for range 4 {
+		wg.Go(func() {
+			for range 100 {
 				if _, err := hooks.DispatchInputPreSubmit(context.Background(), InputPreSubmitPayload{
 					PayloadBase: PayloadBase{Event: HookInputPreSubmit},
 					Message:     "seed-",
@@ -265,7 +269,7 @@ func TestHooksConcurrentRebuildAndDispatch(t *testing.T) {
 					return
 				}
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -287,7 +291,11 @@ func TestDispatchInputPreSubmitRejectsNilHooksAndContext(t *testing.T) {
 	}
 
 	var nilHooks *Hooks
-	if _, err := nilHooks.DispatchInputPreSubmit(context.Background(), payload); err == nil || !strings.Contains(err.Error(), "dispatcher is nil") {
+	if _, err := nilHooks.DispatchInputPreSubmit(
+		context.Background(),
+		payload,
+	); err == nil ||
+		!strings.Contains(err.Error(), "dispatcher is nil") {
 		t.Fatalf("DispatchInputPreSubmit(nil hooks) error = %v, want nil dispatcher detail", err)
 	}
 
@@ -297,7 +305,11 @@ func TestDispatchInputPreSubmitRejectsNilHooksAndContext(t *testing.T) {
 	if err := hooks.Rebuild(t.Context()); err != nil {
 		t.Fatalf("Rebuild() error = %v", err)
 	}
-	if _, err := hooks.DispatchInputPreSubmit(nilTestContext(), payload); err == nil || !strings.Contains(err.Error(), "dispatch context is nil") {
+	if _, err := hooks.DispatchInputPreSubmit(
+		nilTestContext(),
+		payload,
+	); err == nil ||
+		!strings.Contains(err.Error(), "dispatch context is nil") {
 		t.Fatalf("DispatchInputPreSubmit(nil context) error = %v, want nil context detail", err)
 	}
 }
@@ -335,98 +347,140 @@ func TestDispatchMethodsSmokeNoHooks(t *testing.T) {
 		{
 			name: "Should dispatch session.pre_create without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchSessionPreCreate(ctx, SessionPreCreatePayload{PayloadBase: PayloadBase{Event: HookSessionPreCreate}})
+				_, err := hooks.DispatchSessionPreCreate(
+					ctx,
+					SessionPreCreatePayload{PayloadBase: PayloadBase{Event: HookSessionPreCreate}},
+				)
 				return err
 			},
 		},
 		{
 			name: "Should dispatch session.post_create without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchSessionPostCreate(ctx, SessionPostCreatePayload{PayloadBase: PayloadBase{Event: HookSessionPostCreate}})
+				_, err := hooks.DispatchSessionPostCreate(
+					ctx,
+					SessionPostCreatePayload{PayloadBase: PayloadBase{Event: HookSessionPostCreate}},
+				)
 				return err
 			},
 		},
 		{
 			name: "Should dispatch session.pre_resume without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchSessionPreResume(ctx, SessionPreResumePayload{PayloadBase: PayloadBase{Event: HookSessionPreResume}})
+				_, err := hooks.DispatchSessionPreResume(
+					ctx,
+					SessionPreResumePayload{PayloadBase: PayloadBase{Event: HookSessionPreResume}},
+				)
 				return err
 			},
 		},
 		{
 			name: "Should dispatch session.post_resume without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchSessionPostResume(ctx, SessionPostResumePayload{PayloadBase: PayloadBase{Event: HookSessionPostResume}})
+				_, err := hooks.DispatchSessionPostResume(
+					ctx,
+					SessionPostResumePayload{PayloadBase: PayloadBase{Event: HookSessionPostResume}},
+				)
 				return err
 			},
 		},
 		{
 			name: "Should dispatch session.pre_stop without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchSessionPreStop(ctx, SessionPreStopPayload{PayloadBase: PayloadBase{Event: HookSessionPreStop}})
+				_, err := hooks.DispatchSessionPreStop(
+					ctx,
+					SessionPreStopPayload{PayloadBase: PayloadBase{Event: HookSessionPreStop}},
+				)
 				return err
 			},
 		},
 		{
 			name: "Should dispatch session.post_stop without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchSessionPostStop(ctx, SessionPostStopPayload{PayloadBase: PayloadBase{Event: HookSessionPostStop}})
+				_, err := hooks.DispatchSessionPostStop(
+					ctx,
+					SessionPostStopPayload{PayloadBase: PayloadBase{Event: HookSessionPostStop}},
+				)
 				return err
 			},
 		},
 		{
 			name: "Should dispatch input.pre_submit without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchInputPreSubmit(ctx, InputPreSubmitPayload{PayloadBase: PayloadBase{Event: HookInputPreSubmit}})
+				_, err := hooks.DispatchInputPreSubmit(
+					ctx,
+					InputPreSubmitPayload{PayloadBase: PayloadBase{Event: HookInputPreSubmit}},
+				)
 				return err
 			},
 		},
 		{
 			name: "Should dispatch prompt.post_assemble without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchPromptPostAssemble(ctx, PromptPayload{PayloadBase: PayloadBase{Event: HookPromptPostAssemble}})
+				_, err := hooks.DispatchPromptPostAssemble(
+					ctx,
+					PromptPayload{PayloadBase: PayloadBase{Event: HookPromptPostAssemble}},
+				)
 				return err
 			},
 		},
 		{
 			name: "Should dispatch event.pre_record without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchEventPreRecord(ctx, EventPreRecordPayload{PayloadBase: PayloadBase{Event: HookEventPreRecord}})
+				_, err := hooks.DispatchEventPreRecord(
+					ctx,
+					EventPreRecordPayload{PayloadBase: PayloadBase{Event: HookEventPreRecord}},
+				)
 				return err
 			},
 		},
 		{
 			name: "Should dispatch event.post_record without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchEventPostRecord(ctx, EventPostRecordPayload{PayloadBase: PayloadBase{Event: HookEventPostRecord}})
+				_, err := hooks.DispatchEventPostRecord(
+					ctx,
+					EventPostRecordPayload{PayloadBase: PayloadBase{Event: HookEventPostRecord}},
+				)
 				return err
 			},
 		},
 		{
 			name: "Should dispatch agent.pre_start without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchAgentPreStart(ctx, AgentPreStartPayload{PayloadBase: PayloadBase{Event: HookAgentPreStart}})
+				_, err := hooks.DispatchAgentPreStart(
+					ctx,
+					AgentPreStartPayload{PayloadBase: PayloadBase{Event: HookAgentPreStart}},
+				)
 				return err
 			},
 		},
 		{
 			name: "Should dispatch agent.spawned without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchAgentSpawned(ctx, AgentSpawnedPayload{PayloadBase: PayloadBase{Event: HookAgentSpawned}})
+				_, err := hooks.DispatchAgentSpawned(
+					ctx,
+					AgentSpawnedPayload{PayloadBase: PayloadBase{Event: HookAgentSpawned}},
+				)
 				return err
 			},
 		},
 		{
 			name: "Should dispatch agent.crashed without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchAgentCrashed(ctx, AgentCrashedPayload{PayloadBase: PayloadBase{Event: HookAgentCrashed}})
+				_, err := hooks.DispatchAgentCrashed(
+					ctx,
+					AgentCrashedPayload{PayloadBase: PayloadBase{Event: HookAgentCrashed}},
+				)
 				return err
 			},
 		},
 		{
 			name: "Should dispatch agent.stopped without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchAgentStopped(ctx, AgentStoppedPayload{PayloadBase: PayloadBase{Event: HookAgentStopped}})
+				_, err := hooks.DispatchAgentStopped(
+					ctx,
+					AgentStoppedPayload{PayloadBase: PayloadBase{Event: HookAgentStopped}},
+				)
 				return err
 			},
 		},
@@ -447,84 +501,116 @@ func TestDispatchMethodsSmokeNoHooks(t *testing.T) {
 		{
 			name: "Should dispatch message.start without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchMessageStart(ctx, MessageStartPayload{PayloadBase: PayloadBase{Event: HookMessageStart}})
+				_, err := hooks.DispatchMessageStart(
+					ctx,
+					MessageStartPayload{PayloadBase: PayloadBase{Event: HookMessageStart}},
+				)
 				return err
 			},
 		},
 		{
 			name: "Should dispatch message.delta without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchMessageDelta(ctx, MessageDeltaPayload{PayloadBase: PayloadBase{Event: HookMessageDelta}})
+				_, err := hooks.DispatchMessageDelta(
+					ctx,
+					MessageDeltaPayload{PayloadBase: PayloadBase{Event: HookMessageDelta}},
+				)
 				return err
 			},
 		},
 		{
 			name: "Should dispatch message.end without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchMessageEnd(ctx, MessageEndPayload{PayloadBase: PayloadBase{Event: HookMessageEnd}})
+				_, err := hooks.DispatchMessageEnd(
+					ctx,
+					MessageEndPayload{PayloadBase: PayloadBase{Event: HookMessageEnd}},
+				)
 				return err
 			},
 		},
 		{
 			name: "Should dispatch tool.pre_call without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchToolPreCall(ctx, ToolPreCallPayload{PayloadBase: PayloadBase{Event: HookToolPreCall}})
+				_, err := hooks.DispatchToolPreCall(
+					ctx,
+					ToolPreCallPayload{PayloadBase: PayloadBase{Event: HookToolPreCall}},
+				)
 				return err
 			},
 		},
 		{
 			name: "Should dispatch tool.post_call without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchToolPostCall(ctx, ToolPostCallPayload{PayloadBase: PayloadBase{Event: HookToolPostCall}})
+				_, err := hooks.DispatchToolPostCall(
+					ctx,
+					ToolPostCallPayload{PayloadBase: PayloadBase{Event: HookToolPostCall}},
+				)
 				return err
 			},
 		},
 		{
 			name: "Should dispatch tool.post_error without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchToolPostError(ctx, ToolPostErrorPayload{PayloadBase: PayloadBase{Event: HookToolPostError}})
+				_, err := hooks.DispatchToolPostError(
+					ctx,
+					ToolPostErrorPayload{PayloadBase: PayloadBase{Event: HookToolPostError}},
+				)
 				return err
 			},
 		},
 		{
 			name: "Should dispatch permission.request without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchPermissionRequest(ctx, PermissionRequestPayload{PayloadBase: PayloadBase{Event: HookPermissionRequest}})
+				_, err := hooks.DispatchPermissionRequest(
+					ctx,
+					PermissionRequestPayload{PayloadBase: PayloadBase{Event: HookPermissionRequest}},
+				)
 				return err
 			},
 		},
 		{
 			name: "Should dispatch permission.resolved without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchPermissionResolved(ctx, PermissionResolvedPayload{PayloadBase: PayloadBase{Event: HookPermissionResolved}})
+				_, err := hooks.DispatchPermissionResolved(
+					ctx,
+					PermissionResolvedPayload{PayloadBase: PayloadBase{Event: HookPermissionResolved}},
+				)
 				return err
 			},
 		},
 		{
 			name: "Should dispatch permission.denied without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchPermissionDenied(ctx, PermissionDeniedPayload{PayloadBase: PayloadBase{Event: HookPermissionDenied}})
+				_, err := hooks.DispatchPermissionDenied(
+					ctx,
+					PermissionDeniedPayload{PayloadBase: PayloadBase{Event: HookPermissionDenied}},
+				)
 				return err
 			},
 		},
 		{
 			name: "Should dispatch context.pre_compact without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchContextPreCompact(ctx, ContextPreCompactPayload{PayloadBase: PayloadBase{Event: HookContextPreCompact}})
+				_, err := hooks.DispatchContextPreCompact(
+					ctx,
+					ContextPreCompactPayload{PayloadBase: PayloadBase{Event: HookContextPreCompact}},
+				)
 				return err
 			},
 		},
 		{
 			name: "Should dispatch context.post_compact without hooks",
 			run: func(ctx context.Context, hooks *Hooks) error {
-				_, err := hooks.DispatchContextPostCompact(ctx, ContextPostCompactPayload{PayloadBase: PayloadBase{Event: HookContextPostCompact}})
+				_, err := hooks.DispatchContextPostCompact(
+					ctx,
+					ContextPostCompactPayload{PayloadBase: PayloadBase{Event: HookContextPostCompact}},
+				)
 				return err
 			},
 		},
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -561,16 +647,20 @@ func TestDispatchInputPreSubmitAppliesMatchingHooksInOrder(t *testing.T) {
 			},
 		}),
 		WithExecutorResolver(testExecutorResolver(map[string]Executor{
-			"append-a": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, payload InputPreSubmitPayload) (InputPreSubmitPatch, error) {
-				seen = append(seen, payload.Message)
-				msg := payload.Message + "a"
-				return InputPreSubmitPatch{Message: &msg}, nil
-			}),
-			"append-b": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, payload InputPreSubmitPayload) (InputPreSubmitPatch, error) {
-				seen = append(seen, payload.Message)
-				msg := payload.Message + "b"
-				return InputPreSubmitPatch{Message: &msg}, nil
-			}),
+			"append-a": NewTypedNativeExecutor(
+				func(_ context.Context, _ RegisteredHook, payload InputPreSubmitPayload) (InputPreSubmitPatch, error) {
+					seen = append(seen, payload.Message)
+					msg := payload.Message + "a"
+					return InputPreSubmitPatch{Message: &msg}, nil
+				},
+			),
+			"append-b": NewTypedNativeExecutor(
+				func(_ context.Context, _ RegisteredHook, payload InputPreSubmitPayload) (InputPreSubmitPatch, error) {
+					seen = append(seen, payload.Message)
+					msg := payload.Message + "b"
+					return InputPreSubmitPatch{Message: &msg}, nil
+				},
+			),
 		})),
 	)
 
@@ -611,14 +701,16 @@ func TestDispatchSessionPreCreateAppliesPatch(t *testing.T) {
 			},
 		}),
 		WithExecutorResolver(testExecutorResolver(map[string]Executor{
-			"session-precreate": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, _ SessionPreCreatePayload) (SessionCreatePatch, error) {
-				name := "renamed"
-				workspace := "/tmp/next"
-				return SessionCreatePatch{
-					SessionName: &name,
-					Workspace:   &workspace,
-				}, nil
-			}),
+			"session-precreate": NewTypedNativeExecutor(
+				func(_ context.Context, _ RegisteredHook, _ SessionPreCreatePayload) (SessionCreatePatch, error) {
+					name := "renamed"
+					workspace := "/tmp/next"
+					return SessionCreatePatch{
+						SessionName: &name,
+						Workspace:   &workspace,
+					}, nil
+				},
+			),
 		})),
 	)
 
@@ -660,13 +752,17 @@ func TestDispatchPromptPostAssembleAppliesPatch(t *testing.T) {
 			},
 		}),
 		WithExecutorResolver(testExecutorResolver(map[string]Executor{
-			"prompt-post-assemble": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, _ PromptPayload) (PromptPatch, error) {
-				prompt := "patched"
-				return PromptPatch{
-					Prompt:        &prompt,
-					ContextBlocks: []ContextBlock{{Kind: "note", Text: "ctx", Metadata: map[string]string{"k": "v"}}},
-				}, nil
-			}),
+			"prompt-post-assemble": NewTypedNativeExecutor(
+				func(_ context.Context, _ RegisteredHook, _ PromptPayload) (PromptPatch, error) {
+					prompt := "patched"
+					return PromptPatch{
+						Prompt: &prompt,
+						ContextBlocks: []ContextBlock{
+							{Kind: "note", Text: "ctx", Metadata: map[string]string{"k": "v"}},
+						},
+					}, nil
+				},
+			),
 		})),
 	)
 
@@ -709,10 +805,12 @@ func TestDispatchEventPreRecordRunsAsyncHook(t *testing.T) {
 			},
 		}),
 		WithExecutorResolver(testExecutorResolver(map[string]Executor{
-			"event-observer": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, payload EventPreRecordPayload) (EventPreRecordPatch, error) {
-				called <- payload.RecordType
-				return EventPreRecordPatch{}, nil
-			}),
+			"event-observer": NewTypedNativeExecutor(
+				func(_ context.Context, _ RegisteredHook, payload EventPreRecordPayload) (EventPreRecordPatch, error) {
+					called <- payload.RecordType
+					return EventPreRecordPatch{}, nil
+				},
+			),
 		})),
 	)
 
@@ -752,11 +850,13 @@ func TestDispatchEventPreRecordAsyncHookUsesParentCancellation(t *testing.T) {
 			},
 		}),
 		WithExecutorResolver(testExecutorResolver(map[string]Executor{
-			"event-observer": NewTypedNativeExecutor(func(ctx context.Context, _ RegisteredHook, _ EventPreRecordPayload) (EventPreRecordPatch, error) {
-				<-ctx.Done()
-				canceled <- ctx.Err()
-				return EventPreRecordPatch{}, ctx.Err()
-			}),
+			"event-observer": NewTypedNativeExecutor(
+				func(ctx context.Context, _ RegisteredHook, _ EventPreRecordPayload) (EventPreRecordPatch, error) {
+					<-ctx.Done()
+					canceled <- ctx.Err()
+					return EventPreRecordPatch{}, ctx.Err()
+				},
+			),
 		})),
 	)
 
@@ -812,7 +912,6 @@ func TestDispatchInputPreSubmitSkipsAsyncHooksWhenSyncPhaseDoesNotSucceed(t *tes
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -836,10 +935,12 @@ func TestDispatchInputPreSubmitSkipsAsyncHooksWhenSyncPhaseDoesNotSucceed(t *tes
 				}),
 				WithExecutorResolver(testExecutorResolver(map[string]Executor{
 					"sync-input": NewTypedNativeExecutor(tc.syncExecutor),
-					"async-input": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, _ InputPreSubmitPayload) (InputPreSubmitPatch, error) {
-						asyncCalled <- struct{}{}
-						return InputPreSubmitPatch{}, nil
-					}),
+					"async-input": NewTypedNativeExecutor(
+						func(_ context.Context, _ RegisteredHook, _ InputPreSubmitPayload) (InputPreSubmitPatch, error) {
+							asyncCalled <- struct{}{}
+							return InputPreSubmitPatch{}, nil
+						},
+					),
 				})),
 			)
 
@@ -887,19 +988,23 @@ func TestDispatchAgentHooksApplyPatches(t *testing.T) {
 			},
 		}),
 		WithExecutorResolver(testExecutorResolver(map[string]Executor{
-			"agent-prestart": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, _ AgentPreStartPayload) (AgentStartPatch, error) {
-				command := "/bin/next"
-				cwd := "/tmp/next"
-				return AgentStartPatch{
-					Command: &command,
-					Args:    []string{"--next"},
-					Cwd:     &cwd,
-				}, nil
-			}),
-			"agent-spawned": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, _ AgentSpawnedPayload) (AgentSpawnedPatch, error) {
-				spawned <- struct{}{}
-				return AgentSpawnedPatch{}, nil
-			}),
+			"agent-prestart": NewTypedNativeExecutor(
+				func(_ context.Context, _ RegisteredHook, _ AgentPreStartPayload) (AgentStartPatch, error) {
+					command := "/bin/next"
+					cwd := "/tmp/next"
+					return AgentStartPatch{
+						Command: &command,
+						Args:    []string{"--next"},
+						Cwd:     &cwd,
+					}, nil
+				},
+			),
+			"agent-spawned": NewTypedNativeExecutor(
+				func(_ context.Context, _ RegisteredHook, _ AgentSpawnedPayload) (AgentSpawnedPatch, error) {
+					spawned <- struct{}{}
+					return AgentSpawnedPatch{}, nil
+				},
+			),
 		})),
 	)
 
@@ -963,20 +1068,24 @@ func TestDispatchTurnAndMessageHooksApplyPatches(t *testing.T) {
 			},
 		}),
 		WithExecutorResolver(testExecutorResolver(map[string]Executor{
-			"turn-start": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, _ TurnStartPayload) (TurnStartPatch, error) {
-				turnCalled <- struct{}{}
-				return TurnStartPatch{}, nil
-			}),
-			"message-start": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, _ MessageStartPayload) (MessageStartPatch, error) {
-				role := "tool"
-				delta := "replacement"
-				text := "patched"
-				return MessageStartPatch{
-					Role:      &role,
-					DeltaType: &delta,
-					Text:      &text,
-				}, nil
-			}),
+			"turn-start": NewTypedNativeExecutor(
+				func(_ context.Context, _ RegisteredHook, _ TurnStartPayload) (TurnStartPatch, error) {
+					turnCalled <- struct{}{}
+					return TurnStartPatch{}, nil
+				},
+			),
+			"message-start": NewTypedNativeExecutor(
+				func(_ context.Context, _ RegisteredHook, _ MessageStartPayload) (MessageStartPatch, error) {
+					role := "tool"
+					delta := "replacement"
+					text := "patched"
+					return MessageStartPatch{
+						Role:      &role,
+						DeltaType: &delta,
+						Text:      &text,
+					}, nil
+				},
+			),
 		})),
 	)
 
@@ -1037,32 +1146,38 @@ func TestDispatchToolHooksApplyPatches(t *testing.T) {
 			},
 		}),
 		WithExecutorResolver(testExecutorResolver(map[string]Executor{
-			"tool-pre": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, _ ToolPreCallPayload) (ToolCallPatch, error) {
-				name := "write"
-				namespace := "fs"
-				readOnly := false
-				return ToolCallPatch{
-					ToolName:      &name,
-					ToolNamespace: &namespace,
-					ReadOnly:      &readOnly,
-					ToolInput:     []byte(`{"patched":true}`),
-				}, nil
-			}),
-			"tool-post": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, _ ToolPostCallPayload) (ToolResultPatch, error) {
-				title := "patched-result"
-				return ToolResultPatch{
-					Title:      &title,
-					ToolResult: []byte(`{"ok":true}`),
-				}, nil
-			}),
-			"tool-error": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, _ ToolPostErrorPayload) (ToolPostErrorPatch, error) {
-				title := "patched-error"
-				errText := "patched failure"
-				return ToolPostErrorPatch{
-					Title: &title,
-					Error: &errText,
-				}, nil
-			}),
+			"tool-pre": NewTypedNativeExecutor(
+				func(_ context.Context, _ RegisteredHook, _ ToolPreCallPayload) (ToolCallPatch, error) {
+					name := "write"
+					namespace := "fs"
+					readOnly := false
+					return ToolCallPatch{
+						ToolName:      &name,
+						ToolNamespace: &namespace,
+						ReadOnly:      &readOnly,
+						ToolInput:     []byte(`{"patched":true}`),
+					}, nil
+				},
+			),
+			"tool-post": NewTypedNativeExecutor(
+				func(_ context.Context, _ RegisteredHook, _ ToolPostCallPayload) (ToolResultPatch, error) {
+					title := "patched-result"
+					return ToolResultPatch{
+						Title:      &title,
+						ToolResult: []byte(`{"ok":true}`),
+					}, nil
+				},
+			),
+			"tool-error": NewTypedNativeExecutor(
+				func(_ context.Context, _ RegisteredHook, _ ToolPostErrorPayload) (ToolPostErrorPatch, error) {
+					title := "patched-error"
+					errText := "patched failure"
+					return ToolPostErrorPatch{
+						Title: &title,
+						Error: &errText,
+					}, nil
+				},
+			),
 		})),
 	)
 
@@ -1145,31 +1260,39 @@ func TestDispatchPermissionAndContextHooksApplyPatches(t *testing.T) {
 			},
 		}),
 		WithExecutorResolver(testExecutorResolver(map[string]Executor{
-			"permission-request": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, _ PermissionRequestPayload) (PermissionRequestPatch, error) {
-				decision := "allow-once"
-				decisionClass := "tool-patched"
-				return PermissionRequestPatch{
-					Decision:      &decision,
-					DecisionClass: &decisionClass,
-				}, nil
-			}),
-			"permission-resolved": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, _ PermissionResolvedPayload) (PermissionResolvedPatch, error) {
-				resolvedCalled <- struct{}{}
-				return PermissionResolvedPatch{}, nil
-			}),
-			"permission-denied": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, _ PermissionDeniedPayload) (PermissionDeniedPatch, error) {
-				deniedCalled <- struct{}{}
-				return PermissionDeniedPatch{}, nil
-			}),
-			"context-pre": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, _ ContextPreCompactPayload) (ContextPreCompactPatch, error) {
-				reason := "manual"
-				strategy := "summarize"
-				return ContextPreCompactPatch{
-					Reason:        &reason,
-					Strategy:      &strategy,
-					ContextBlocks: []ContextBlock{{Kind: "summary", Text: "patched"}},
-				}, nil
-			}),
+			"permission-request": NewTypedNativeExecutor(
+				func(_ context.Context, _ RegisteredHook, _ PermissionRequestPayload) (PermissionRequestPatch, error) {
+					decision := "allow-once"
+					decisionClass := "tool-patched"
+					return PermissionRequestPatch{
+						Decision:      &decision,
+						DecisionClass: &decisionClass,
+					}, nil
+				},
+			),
+			"permission-resolved": NewTypedNativeExecutor(
+				func(_ context.Context, _ RegisteredHook, _ PermissionResolvedPayload) (PermissionResolvedPatch, error) {
+					resolvedCalled <- struct{}{}
+					return PermissionResolvedPatch{}, nil
+				},
+			),
+			"permission-denied": NewTypedNativeExecutor(
+				func(_ context.Context, _ RegisteredHook, _ PermissionDeniedPayload) (PermissionDeniedPatch, error) {
+					deniedCalled <- struct{}{}
+					return PermissionDeniedPatch{}, nil
+				},
+			),
+			"context-pre": NewTypedNativeExecutor(
+				func(_ context.Context, _ RegisteredHook, _ ContextPreCompactPayload) (ContextPreCompactPatch, error) {
+					reason := "manual"
+					strategy := "summarize"
+					return ContextPreCompactPatch{
+						Reason:        &reason,
+						Strategy:      &strategy,
+						ContextBlocks: []ContextBlock{{Kind: "summary", Text: "patched"}},
+					}, nil
+				},
+			),
 		})),
 	)
 
@@ -1244,10 +1367,12 @@ func TestHooksDispatchSessionPostCreate(t *testing.T) {
 			},
 		}),
 		WithExecutorResolver(testExecutorResolver(map[string]Executor{
-			"observe-create": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, payload SessionLifecyclePayload) (SessionPostCreatePatch, error) {
-				called <- payload
-				return SessionPostCreatePatch{}, nil
-			}),
+			"observe-create": NewTypedNativeExecutor(
+				func(_ context.Context, _ RegisteredHook, payload SessionLifecyclePayload) (SessionPostCreatePatch, error) {
+					called <- payload
+					return SessionPostCreatePatch{}, nil
+				},
+			),
 		})),
 	)
 
@@ -1305,10 +1430,12 @@ func TestHooksDispatchSessionPostStop(t *testing.T) {
 			},
 		}),
 		WithExecutorResolver(testExecutorResolver(map[string]Executor{
-			"observe-stop": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, payload SessionLifecyclePayload) (SessionPostStopPatch, error) {
-				called <- payload
-				return SessionPostStopPatch{}, nil
-			}),
+			"observe-stop": NewTypedNativeExecutor(
+				func(_ context.Context, _ RegisteredHook, payload SessionLifecyclePayload) (SessionPostStopPatch, error) {
+					called <- payload
+					return SessionPostStopPatch{}, nil
+				},
+			),
 		})),
 	)
 
@@ -1361,12 +1488,14 @@ func TestHooksCloseDrainsAsyncPool(t *testing.T) {
 			},
 		}),
 		WithExecutorResolver(testExecutorResolver(map[string]Executor{
-			"async-input": NewTypedNativeExecutor(func(_ context.Context, _ RegisteredHook, _ InputPreSubmitPayload) (InputPreSubmitPatch, error) {
-				close(started)
-				<-release
-				close(done)
-				return InputPreSubmitPatch{}, nil
-			}),
+			"async-input": NewTypedNativeExecutor(
+				func(_ context.Context, _ RegisteredHook, _ InputPreSubmitPayload) (InputPreSubmitPatch, error) {
+					close(started)
+					<-release
+					close(done)
+					return InputPreSubmitPatch{}, nil
+				},
+			),
 		})),
 	)
 

@@ -62,10 +62,12 @@ func TestBridgeHandlersShouldHandleBridgeRoutes(t *testing.T) {
 				if response.Providers[0].ExtensionName != "telegram-reference" {
 					t.Fatalf("provider = %#v", response.Providers[0])
 				}
-				if len(response.Providers[0].SecretSlots) != 1 || response.Providers[0].SecretSlots[0].Name != "bot_token" {
+				if len(response.Providers[0].SecretSlots) != 1 ||
+					response.Providers[0].SecretSlots[0].Name != "bot_token" {
 					t.Fatalf("provider secret slots = %#v", response.Providers[0].SecretSlots)
 				}
-				if response.Providers[0].ConfigSchema == nil || response.Providers[0].ConfigSchema.Schema != "agh.bridge.telegram" {
+				if response.Providers[0].ConfigSchema == nil ||
+					response.Providers[0].ConfigSchema.Schema != "agh.bridge.telegram" {
 					t.Fatalf("provider config schema = %#v", response.Providers[0].ConfigSchema)
 				}
 			},
@@ -74,22 +76,33 @@ func TestBridgeHandlersShouldHandleBridgeRoutes(t *testing.T) {
 			name:   "ShouldCreateBridgeInstance",
 			method: http.MethodPost,
 			path:   "/api/bridges",
-			body:   []byte(`{"scope":"workspace","workspace_id":"ws-alpha","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":true,"status":"starting","dm_policy":"pairing","routing_policy":{"include_peer":true},"provider_config":{"mode":"bot","tenant":"acme"},"delivery_defaults":{"peer_id":"peer-default","mode":"reply"}}`),
+			body: []byte(
+				`{"scope":"workspace","workspace_id":"ws-alpha","platform":"telegram","extension_name":"ext-telegram","display_name":"Support","enabled":true,"status":"starting","dm_policy":"pairing","routing_policy":{"include_peer":true},"provider_config":{"mode":"bot","tenant":"acme"},"delivery_defaults":{"peer_id":"peer-default","mode":"reply"}}`,
+			),
 			bridges: stubBridgeService{
 				CreateInstanceFn: func(_ context.Context, req bridgepkg.CreateInstanceRequest) (*bridgepkg.BridgeInstance, error) {
-					if req.Scope != bridgepkg.ScopeWorkspace || req.WorkspaceID != "ws-alpha" || req.Platform != "telegram" || req.ExtensionName != "ext-telegram" || req.DisplayName != "Support" {
+					if req.Scope != bridgepkg.ScopeWorkspace || req.WorkspaceID != "ws-alpha" ||
+						req.Platform != "telegram" ||
+						req.ExtensionName != "ext-telegram" ||
+						req.DisplayName != "Support" {
 						t.Fatalf("CreateInstance() req = %#v", req)
 					}
 					if !req.Enabled || req.Status != bridgepkg.BridgeStatusStarting || !req.RoutingPolicy.IncludePeer {
 						t.Fatalf("CreateInstance() lifecycle = %#v", req)
 					}
 					if req.DMPolicy != bridgepkg.BridgeDMPolicyPairing {
-						t.Fatalf("CreateInstance().DMPolicy = %q, want %q", req.DMPolicy, bridgepkg.BridgeDMPolicyPairing)
+						t.Fatalf(
+							"CreateInstance().DMPolicy = %q, want %q",
+							req.DMPolicy,
+							bridgepkg.BridgeDMPolicyPairing,
+						)
 					}
 					if got, want := string(req.ProviderConfig), `{"mode":"bot","tenant":"acme"}`; got != want {
 						t.Fatalf("CreateInstance().ProviderConfig = %s, want %s", got, want)
 					}
-					if got, want := string(req.DeliveryDefaults), `{"peer_id":"peer-default","mode":"reply"}`; got != want {
+					if got, want := string(
+						req.DeliveryDefaults,
+					), `{"peer_id":"peer-default","mode":"reply"}`; got != want {
 						t.Fatalf("CreateInstance().DeliveryDefaults = %s, want %s", got, want)
 					}
 					return &bridgepkg.BridgeInstance{
@@ -119,7 +132,8 @@ func TestBridgeHandlersShouldHandleBridgeRoutes(t *testing.T) {
 
 				var response contract.BridgeResponse
 				decodeJSONResponse(t, recorder, &response)
-				if response.Bridge.ID != "brg-1" || response.Bridge.WorkspaceID != "ws-alpha" || response.Bridge.Status != bridgepkg.BridgeStatusStarting {
+				if response.Bridge.ID != "brg-1" || response.Bridge.WorkspaceID != "ws-alpha" ||
+					response.Bridge.Status != bridgepkg.BridgeStatusStarting {
 					t.Fatalf("response.Bridge = %#v", response.Bridge)
 				}
 				if got, want := string(response.Bridge.ProviderConfig), `{"mode":"bot","tenant":"acme"}`; got != want {
@@ -172,10 +186,14 @@ func TestBridgeHandlersShouldHandleBridgeRoutes(t *testing.T) {
 			name:   "ShouldResolveTypedDeliveryTarget",
 			method: http.MethodPost,
 			path:   "/api/bridges/brg-1/test-delivery",
-			body:   []byte(`{"message":"hello","target":{"peer_id":"peer-1","thread_id":"thread-1","group_id":"group-1","mode":"reply"}}`),
+			body: []byte(
+				`{"message":"hello","target":{"peer_id":"peer-1","thread_id":"thread-1","group_id":"group-1","mode":"reply"}}`,
+			),
 			bridges: stubBridgeService{
 				ResolveDeliveryTargetFn: func(_ context.Context, req bridgepkg.ResolveDeliveryTargetRequest) (*bridgepkg.DeliveryTarget, error) {
-					if req.BridgeInstanceID != "brg-1" || req.PeerID != "peer-1" || req.ThreadID != "thread-1" || req.GroupID != "group-1" || req.Mode != bridgepkg.DeliveryModeReply {
+					if req.BridgeInstanceID != "brg-1" || req.PeerID != "peer-1" || req.ThreadID != "thread-1" ||
+						req.GroupID != "group-1" ||
+						req.Mode != bridgepkg.DeliveryModeReply {
 						t.Fatalf("ResolveDeliveryTarget() req = %#v", req)
 					}
 					return &bridgepkg.DeliveryTarget{
@@ -195,7 +213,8 @@ func TestBridgeHandlersShouldHandleBridgeRoutes(t *testing.T) {
 
 				var response contract.BridgeTestDeliveryResponse
 				decodeJSONResponse(t, recorder, &response)
-				if response.Status != "resolved" || response.DeliveryTarget.BridgeInstanceID != "brg-1" || response.DeliveryTarget.Mode != bridgepkg.DeliveryModeReply {
+				if response.Status != "resolved" || response.DeliveryTarget.BridgeInstanceID != "brg-1" ||
+					response.DeliveryTarget.Mode != bridgepkg.DeliveryModeReply {
 					t.Fatalf("response = %#v", response)
 				}
 			},
@@ -203,12 +222,21 @@ func TestBridgeHandlersShouldHandleBridgeRoutes(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			homePaths := newTestHomePaths(t)
-			engine := newTestRouter(t, newTestHandlersWithBridges(t, stubSessionManager{}, stubObserver{}, tc.bridges, stubWorkspaceService{}, homePaths))
+			engine := newTestRouter(
+				t,
+				newTestHandlersWithBridges(
+					t,
+					stubSessionManager{},
+					stubObserver{},
+					tc.bridges,
+					stubWorkspaceService{},
+					homePaths,
+				),
+			)
 			recorder := performRequest(t, engine, tc.method, tc.path, tc.body)
 			tc.assert(t, recorder)
 		})

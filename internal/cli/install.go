@@ -42,6 +42,8 @@ const (
 	installWizardStepProvider installWizardStep = iota
 	installWizardStepModel
 	installWizardStepConfirm
+
+	installWizardEnterKey = "enter"
 )
 
 type installWizardModel struct {
@@ -73,7 +75,7 @@ func newInstallCommand(deps commandDeps) *cobra.Command {
 				return err
 			}
 
-			selection, err := deps.runInstallWizard(cmd.Context(), buildInstallWizardInput(cfg))
+			selection, err := deps.runInstallWizard(cmd.Context(), buildInstallWizardInput(&cfg))
 			if err != nil {
 				return err
 			}
@@ -101,7 +103,7 @@ func newInstallCommand(deps commandDeps) *cobra.Command {
 	}
 }
 
-func buildInstallWizardInput(cfg aghconfig.Config) installWizardInput {
+func buildInstallWizardInput(cfg *aghconfig.Config) installWizardInput {
 	seen := make(map[string]struct{})
 	providers := make([]string, 0, len(cfg.Providers)+8)
 	for name := range aghconfig.BuiltinProviders() {
@@ -235,21 +237,20 @@ func (m *installWizardModel) Init() tea.Cmd {
 }
 
 func (m *installWizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c":
+	keyMsg, ok := msg.(tea.KeyMsg)
+	if ok {
+		if keyMsg.String() == "ctrl+c" {
 			m.canceled = true
 			return m, tea.Quit
 		}
 
 		switch m.step {
 		case installWizardStepProvider:
-			return m.updateProviderStep(msg)
+			return m.updateProviderStep(keyMsg)
 		case installWizardStepModel:
-			return m.updateModelStep(msg)
+			return m.updateModelStep(keyMsg)
 		case installWizardStepConfirm:
-			return m.updateConfirmStep(msg)
+			return m.updateConfirmStep(keyMsg)
 		}
 	}
 
@@ -311,7 +312,7 @@ func (m *installWizardModel) updateProviderStep(msg tea.KeyMsg) (tea.Model, tea.
 		if m.selected < len(m.input.Providers)-1 {
 			m.selected++
 		}
-	case "enter":
+	case installWizardEnterKey:
 		if len(m.input.Providers) == 0 {
 			m.errText = "no providers available"
 			return m, nil
@@ -332,7 +333,7 @@ func (m *installWizardModel) updateModelStep(msg tea.KeyMsg) (tea.Model, tea.Cmd
 		m.errText = ""
 		m.step = installWizardStepProvider
 		return m, nil
-	case "enter":
+	case installWizardEnterKey:
 		if strings.TrimSpace(m.modelInput.Value()) == "" {
 			m.errText = "model is required"
 			return m, nil
@@ -354,7 +355,7 @@ func (m *installWizardModel) updateConfirmStep(msg tea.KeyMsg) (tea.Model, tea.C
 		m.step = installWizardStepModel
 		m.modelInput.Focus()
 		return m, textinput.Blink
-	case "enter":
+	case installWizardEnterKey:
 		m.done = true
 		return m, tea.Quit
 	}

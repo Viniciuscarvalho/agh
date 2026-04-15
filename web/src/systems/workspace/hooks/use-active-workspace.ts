@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 
-import { useActiveWorkspaceStore } from "../stores/active-workspace-store";
+import { useActiveWorkspaceStore } from "./use-active-workspace-store";
 import { useWorkspaces } from "./use-workspaces";
 
 export function useActiveWorkspace() {

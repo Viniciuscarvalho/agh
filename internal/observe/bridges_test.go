@@ -15,7 +15,11 @@ type blockingObserveTransport struct {
 	blockStart bool
 }
 
-func (t *blockingObserveTransport) DeliverBridge(ctx context.Context, _ string, req bridgepkg.DeliveryRequest) (bridgepkg.DeliveryAck, error) {
+func (t *blockingObserveTransport) DeliverBridge(
+	ctx context.Context,
+	_ string,
+	req bridgepkg.DeliveryRequest,
+) (bridgepkg.DeliveryAck, error) {
 	if t != nil && t.blockStart && req.Event.EventType == bridgepkg.DeliveryEventTypeStart {
 		select {
 		case <-t.releaseCh:
@@ -85,7 +89,7 @@ func TestHealthTracksDeliveryBacklogWithoutChangingActiveSessions(t *testing.T) 
 	t.Parallel()
 
 	h := newHarness(t)
-	h.source.sessions = []*session.SessionInfo{{
+	h.source.sessions = []*session.Info{{
 		ID:        "sess-live",
 		AgentName: "coder",
 		State:     session.StateActive,
@@ -99,10 +103,16 @@ func TestHealthTracksDeliveryBacklogWithoutChangingActiveSessions(t *testing.T) 
 	h.bridges.broker.SetTransport(transport)
 
 	registration := registerObserveDelivery(t, h, instance, "sess-live", "turn-live", "peer-backlog")
-	if err := h.bridges.broker.Deliver(testutil.Context(t), observeDeliveryEvent(registration, 1, bridgepkg.DeliveryEventTypeStart, "hello", false)); err != nil {
+	if err := h.bridges.broker.Deliver(
+		testutil.Context(t),
+		observeDeliveryEvent(registration, 1, bridgepkg.DeliveryEventTypeStart, "hello", false),
+	); err != nil {
 		t.Fatalf("Deliver(start) error = %v", err)
 	}
-	if err := h.bridges.broker.Deliver(testutil.Context(t), observeDeliveryEvent(registration, 2, bridgepkg.DeliveryEventTypeDelta, "hello again", false)); err != nil {
+	if err := h.bridges.broker.Deliver(
+		testutil.Context(t),
+		observeDeliveryEvent(registration, 2, bridgepkg.DeliveryEventTypeDelta, "hello again", false),
+	); err != nil {
 		t.Fatalf("Deliver(delta) error = %v", err)
 	}
 
@@ -145,7 +155,10 @@ func TestQueryBridgeHealthSurfacesAuthAndTerminalDeliveryFailuresPerInstance(t *
 	h.observer.RecordBridgeAuthFailure(authInstance.ID)
 
 	registration := registerObserveDelivery(t, h, deliveryInstance, "sess-delivery", "turn-delivery", "peer-delivery")
-	if err := h.bridges.broker.Deliver(testutil.Context(t), observeDeliveryEvent(registration, 1, bridgepkg.DeliveryEventTypeError, "boom", true)); err != nil {
+	if err := h.bridges.broker.Deliver(
+		testutil.Context(t),
+		observeDeliveryEvent(registration, 1, bridgepkg.DeliveryEventTypeError, "boom", true),
+	); err != nil {
 		t.Fatalf("Deliver(error) error = %v", err)
 	}
 
@@ -219,7 +232,12 @@ func TestBridgeRuntimeOverridesAffectStatusCountsAndCanBeCleared(t *testing.T) {
 	}
 }
 
-func createObserveBridgeInstance(t *testing.T, h *harness, id string, status bridgepkg.BridgeStatus) *bridgepkg.BridgeInstance {
+func createObserveBridgeInstance(
+	t *testing.T,
+	h *harness,
+	id string,
+	status bridgepkg.BridgeStatus,
+) *bridgepkg.BridgeInstance {
 	t.Helper()
 
 	instance, err := h.bridges.CreateInstance(testutil.Context(t), bridgepkg.CreateInstanceRequest{
@@ -255,7 +273,14 @@ func upsertObserveRoute(t *testing.T, h *harness, instance *bridgepkg.BridgeInst
 	}
 }
 
-func registerObserveDelivery(t *testing.T, h *harness, instance *bridgepkg.BridgeInstance, sessionID string, turnID string, peerID string) bridgepkg.DeliverySnapshot {
+func registerObserveDelivery(
+	t *testing.T,
+	h *harness,
+	instance *bridgepkg.BridgeInstance,
+	sessionID string,
+	turnID string,
+	peerID string,
+) bridgepkg.DeliverySnapshot {
 	t.Helper()
 
 	snapshot, err := h.bridges.broker.RegisterPromptDelivery(testutil.Context(t), bridgepkg.PromptDeliveryRegistration{
@@ -280,7 +305,13 @@ func registerObserveDelivery(t *testing.T, h *harness, instance *bridgepkg.Bridg
 	return *snapshot
 }
 
-func observeDeliveryEvent(snapshot bridgepkg.DeliverySnapshot, seq int64, eventType string, text string, final bool) bridgepkg.DeliveryEvent {
+func observeDeliveryEvent(
+	snapshot bridgepkg.DeliverySnapshot,
+	seq int64,
+	eventType string,
+	text string,
+	final bool,
+) bridgepkg.DeliveryEvent {
 	var errorDetail *bridgepkg.DeliveryErrorDetail
 	if eventType == bridgepkg.DeliveryEventTypeError {
 		errorDetail = &bridgepkg.DeliveryErrorDetail{Message: text}

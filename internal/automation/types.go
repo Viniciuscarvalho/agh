@@ -8,8 +8,8 @@ const DefaultTimezone = modelpkg.DefaultTimezone
 // DefaultMaxConcurrentJobs is the default global automation concurrency limit.
 const DefaultMaxConcurrentJobs = modelpkg.DefaultMaxConcurrentJobs
 
-// AutomationScope identifies the visibility boundary of an automation resource.
-type AutomationScope = modelpkg.AutomationScope
+// Scope identifies the visibility boundary of an automation resource.
+type Scope = modelpkg.Scope
 
 const (
 	// AutomationScopeGlobal targets daemon-wide automation without a workspace binding.
@@ -66,7 +66,7 @@ const (
 	RunCompleted = modelpkg.RunCompleted
 	// RunFailed reports a run that finished with an error.
 	RunFailed = modelpkg.RunFailed
-	// RunCancelled reports a run that was cancelled before completion.
+	// RunCancelled reports a run that was canceled before completion.
 	RunCancelled = modelpkg.RunCancelled
 )
 

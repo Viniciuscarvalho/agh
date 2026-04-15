@@ -7,14 +7,14 @@ import (
 )
 
 var (
-	// ErrAutomationFireCancelled reports that a sync automation pre-fire hook cancelled the dispatch.
-	ErrAutomationFireCancelled = errors.New("hooks: automation fire cancelled")
+	// ErrAutomationFireCancelled reports that a sync automation pre-fire hook canceled the dispatch.
+	ErrAutomationFireCancelled = errors.New("hooks: automation fire canceled")
 )
 
 // PayloadBase carries the common identifiers attached to every hook payload.
 type PayloadBase struct {
 	Event     HookEvent `json:"event"`
-	Timestamp time.Time `json:"timestamp,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
 }
 
 // SessionContext carries the common session-scoped hook attributes.
@@ -27,8 +27,8 @@ type SessionContext struct {
 	Workspace    string    `json:"workspace,omitempty"`
 	ACPSessionID string    `json:"acp_session_id,omitempty"`
 	State        string    `json:"state,omitempty"`
-	CreatedAt    time.Time `json:"created_at,omitempty"`
-	UpdatedAt    time.Time `json:"updated_at,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // TurnContext carries the current turn identifier.
@@ -462,7 +462,7 @@ type PermissionRequestPayload struct {
 	Decision      string             `json:"decision,omitempty"`
 	DecisionClass string             `json:"decision_class,omitempty"`
 	ToolInput     json.RawMessage    `json:"tool_input,omitempty"`
-	ToolCall      PermissionToolCall `json:"tool_call,omitempty"`
+	ToolCall      PermissionToolCall `json:"tool_call"`
 	Options       []PermissionOption `json:"options,omitempty"`
 }
 
@@ -477,7 +477,7 @@ type PermissionResolutionPayload struct {
 	Decision      string             `json:"decision,omitempty"`
 	DecisionClass string             `json:"decision_class,omitempty"`
 	ToolInput     json.RawMessage    `json:"tool_input,omitempty"`
-	ToolCall      PermissionToolCall `json:"tool_call,omitempty"`
+	ToolCall      PermissionToolCall `json:"tool_call"`
 }
 
 // PermissionResolvedPayload is delivered after a permission decision resolves.

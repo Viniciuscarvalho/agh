@@ -114,7 +114,12 @@ func (w *FileAuditWriter) RecordReceived(ctx context.Context, sessionID string, 
 }
 
 // RecordRejected stores a rejected network audit record.
-func (w *FileAuditWriter) RecordRejected(ctx context.Context, sessionID string, envelope Envelope, reason string) error {
+func (w *FileAuditWriter) RecordRejected(
+	ctx context.Context,
+	sessionID string,
+	envelope Envelope,
+	reason string,
+) error {
 	return w.record(ctx, sessionID, AuditDirectionRejected, envelope, reason)
 }
 
@@ -162,7 +167,14 @@ func (w *FileAuditWriter) RecordTaskIngress(ctx context.Context, audit TaskIngre
 
 	return recordErr
 }
-func (w *FileAuditWriter) record(ctx context.Context, sessionID string, direction string, envelope Envelope, reason string) error {
+
+func (w *FileAuditWriter) record(
+	ctx context.Context,
+	sessionID string,
+	direction string,
+	envelope Envelope,
+	reason string,
+) error {
 	if ctx == nil {
 		return errors.New("network: audit context is required")
 	}
@@ -201,7 +213,13 @@ func (w *FileAuditWriter) record(ctx context.Context, sessionID string, directio
 }
 
 // NormalizeAuditEntry derives a consistent audit row from envelope metadata.
-func NormalizeAuditEntry(sessionID string, direction string, envelope Envelope, reason string, at time.Time) (store.NetworkAuditEntry, error) {
+func NormalizeAuditEntry(
+	sessionID string,
+	direction string,
+	envelope Envelope,
+	reason string,
+	at time.Time,
+) (store.NetworkAuditEntry, error) {
 	canonicalEnvelope, err := json.Marshal(envelope)
 	if err != nil {
 		return store.NetworkAuditEntry{}, fmt.Errorf("network: marshal audit envelope: %w", err)
@@ -235,7 +253,12 @@ func NormalizeAuditEntry(sessionID string, direction string, envelope Envelope, 
 	return entry, nil
 }
 
-func normalizeTimelineMessageEntry(sessionID string, direction string, envelope Envelope, at time.Time) (store.NetworkMessageEntry, bool, error) {
+func normalizeTimelineMessageEntry(
+	sessionID string,
+	direction string,
+	envelope Envelope,
+	at time.Time,
+) (store.NetworkMessageEntry, bool, error) {
 	if envelope.Kind != KindSay {
 		return store.NetworkMessageEntry{}, false, nil
 	}
@@ -251,7 +274,10 @@ func normalizeTimelineMessageEntry(sessionID string, direction string, envelope 
 	}
 	sayBody, ok := body.(SayBody)
 	if !ok {
-		return store.NetworkMessageEntry{}, false, fmt.Errorf("network: unexpected timeline body type for %q", envelope.ID)
+		return store.NetworkMessageEntry{}, false, fmt.Errorf(
+			"network: unexpected timeline body type for %q",
+			envelope.ID,
+		)
 	}
 	if at.IsZero() {
 		at = time.Now().UTC()

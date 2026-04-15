@@ -25,7 +25,7 @@ type stubRegistrySource struct {
 	closeCalls    atomic.Int32
 }
 
-var _ RegistrySource = (*stubRegistrySource)(nil)
+var _ Source = (*stubRegistrySource)(nil)
 
 func (s *stubRegistrySource) Name() string { return s.name }
 
@@ -509,7 +509,10 @@ func TestMultiRegistryValidationAndFallbackErrors(t *testing.T) {
 	})
 
 	t.Run("info returns not found when no source resolves slug", func(t *testing.T) {
-		_, err := NewMultiRegistry(testLogger(), &stubRegistrySource{name: "source"}).Info(context.Background(), "missing")
+		_, err := NewMultiRegistry(
+			testLogger(),
+			&stubRegistrySource{name: "source"},
+		).Info(context.Background(), "missing")
 		if err == nil {
 			t.Fatal("Info(missing) error = nil, want non-nil")
 		}
@@ -548,7 +551,10 @@ func TestMultiRegistryHelperFunctions(t *testing.T) {
 	if got := firstNonEmpty(" ", "", "value"); got != "value" {
 		t.Fatalf("firstNonEmpty() = %q, want value", got)
 	}
-	if got := sourceIndex([]RegistrySource{&stubRegistrySource{name: "one"}}, &stubRegistrySource{name: "missing"}); got != -1 {
+	if got := sourceIndex(
+		[]Source{&stubRegistrySource{name: "one"}},
+		&stubRegistrySource{name: "missing"},
+	); got != -1 {
 		t.Fatalf("sourceIndex(missing) = %d, want -1", got)
 	}
 }
@@ -560,7 +566,7 @@ func testLogger() *slog.Logger {
 func waitForStarts(t *testing.T, started <-chan string, want int) {
 	t.Helper()
 
-	for received := 0; received < want; received++ {
+	for range want {
 		select {
 		case <-started:
 		case <-time.After(time.Second):

@@ -1,6 +1,7 @@
 package core_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -21,7 +22,7 @@ func TestSessionPayloadFromInfo(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
-	payload := core.SessionPayloadFromInfo(&session.SessionInfo{
+	payload := core.SessionPayloadFromInfo(&session.Info{
 		ID:           "sess-1",
 		Name:         "demo",
 		AgentName:    "coder",
@@ -34,14 +35,15 @@ func TestSessionPayloadFromInfo(t *testing.T) {
 		ACPSessionID: "acp-123",
 		CreatedAt:    now,
 		UpdatedAt:    now,
-		ACPCaps: acp.ACPCaps{
+		ACPCaps: acp.Caps{
 			SupportsLoadSession: true,
 			SupportedModes:      []string{"chat"},
 			SupportedModels:     []string{"gpt-test"},
 		},
 	})
 
-	if payload.ID != "sess-1" || payload.WorkspaceID != "ws_alpha" || payload.WorkspacePath != "/workspace" || payload.Channel != "builders" {
+	if payload.ID != "sess-1" || payload.WorkspaceID != "ws_alpha" || payload.WorkspacePath != "/workspace" ||
+		payload.Channel != "builders" {
 		t.Fatalf("payload = %#v", payload)
 	}
 	if payload.StopReason != store.StopTimeout || payload.StopDetail != "deadline exceeded" {
@@ -84,13 +86,20 @@ func TestParseSessionEventQueryAndHelpers(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
-	ginCtx.Request = httptest.NewRequest(http.MethodGet, "/events?type=agent_message&agent_name=coder&turn_id=turn-1&after_sequence=5&limit=10&since=2026-04-03T12:00:00Z", nil)
+	ginCtx.Request = httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"/events?type=agent_message&agent_name=coder&turn_id=turn-1&after_sequence=5&limit=10&since=2026-04-03T12:00:00Z",
+		http.NoBody,
+	)
 
 	query, err := core.ParseSessionEventQuery(ginCtx)
 	if err != nil {
 		t.Fatalf("ParseSessionEventQuery() error = %v", err)
 	}
-	if query.Type != "agent_message" || query.AgentName != "coder" || query.TurnID != "turn-1" || query.AfterSequence != 5 || query.Limit != 10 {
+	if query.Type != "agent_message" || query.AgentName != "coder" || query.TurnID != "turn-1" ||
+		query.AfterSequence != 5 ||
+		query.Limit != 10 {
 		t.Fatalf("query = %#v", query)
 	}
 
@@ -122,7 +131,12 @@ func TestParseSessionEventQueryAndHelpers(t *testing.T) {
 
 	invalidRecorder := httptest.NewRecorder()
 	invalidContext, _ := gin.CreateTestContext(invalidRecorder)
-	invalidContext.Request = httptest.NewRequest(http.MethodGet, "/events?since=bad", nil)
+	invalidContext.Request = httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"/events?since=bad",
+		http.NoBody,
+	)
 	if _, err := core.ParseSessionEventQuery(invalidContext); err == nil {
 		t.Fatal("ParseSessionEventQuery(invalid) error = nil, want non-nil")
 	}
@@ -162,7 +176,12 @@ func TestPrepareSSESetsHeaders(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
-	ginCtx.Request = httptest.NewRequest(http.MethodGet, "/stream", nil)
+	ginCtx.Request = httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"/stream",
+		http.NoBody,
+	)
 
 	writer, err := core.PrepareSSE(ginCtx)
 	if err != nil {

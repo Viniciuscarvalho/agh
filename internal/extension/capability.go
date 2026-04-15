@@ -1,5 +1,5 @@
 // Package extension enforces capability grants for extension security checks.
-package extension
+package extensionpkg
 
 import (
 	"fmt"

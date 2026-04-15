@@ -58,15 +58,52 @@ func TestBundlesRenderHumanAndToon(t *testing.T) {
 		name   string
 		bundle outputBundle
 	}{
-		{name: "agent", bundle: agentBundle(AgentRecord{Name: "coder", Provider: "fake", Prompt: "You are coder.", Tools: []string{"shell"}})},
+		{
+			name: "agent",
+			bundle: agentBundle(
+				AgentRecord{Name: "coder", Provider: "fake", Prompt: "You are coder.", Tools: []string{"shell"}},
+			),
+		},
 		{name: "session", bundle: sessionBundle(sessionInfo, func() time.Time { return fixedTestNow })},
 		{name: "sessionEvents", bundle: sessionEventsBundle(sessionEvents)},
 		{name: "sessionHistory", bundle: sessionHistoryBundle(history)},
 		{name: "agentEvents", bundle: agentEventsBundle(agentEvents)},
 		{name: "observeEvents", bundle: observeEventsBundle(observeEvents)},
-		{name: "observeHealth", bundle: observeHealthBundle(HealthStatus{Status: "ok", UptimeSeconds: 10, ActiveSessions: 1, ActiveAgents: 1, GlobalDBSizeBytes: 100, SessionDBSizeBytes: 200, Version: "dev"})},
-		{name: "daemonStatus", bundle: daemonStatusBundle(DaemonStatus{Status: "running", PID: 10, StartedAt: fixedTestNow.Add(-time.Minute), Socket: "/tmp/agh.sock", HTTPHost: "localhost", HTTPPort: 2123, ActiveSessions: 1, TotalSessions: 2, Version: "dev"}, func() time.Time { return fixedTestNow })},
-		{name: "whoami", bundle: whoamiBundle(IdentityRecord{SessionID: "sess-1", Agent: "agent-1", AgentName: "coder"})},
+		{
+			name: "observeHealth",
+			bundle: observeHealthBundle(
+				HealthStatus{
+					Status:             "ok",
+					UptimeSeconds:      10,
+					ActiveSessions:     1,
+					ActiveAgents:       1,
+					GlobalDBSizeBytes:  100,
+					SessionDBSizeBytes: 200,
+					Version:            "dev",
+				},
+			),
+		},
+		{
+			name: "daemonStatus",
+			bundle: daemonStatusBundle(
+				DaemonStatus{
+					Status:         "running",
+					PID:            10,
+					StartedAt:      fixedTestNow.Add(-time.Minute),
+					Socket:         "/tmp/agh.sock",
+					HTTPHost:       "localhost",
+					HTTPPort:       2123,
+					ActiveSessions: 1,
+					TotalSessions:  2,
+					Version:        "dev",
+				},
+				func() time.Time { return fixedTestNow },
+			),
+		},
+		{
+			name:   "whoami",
+			bundle: whoamiBundle(IdentityRecord{SessionID: "sess-1", Agent: "agent-1", AgentName: "coder"}),
+		},
 	}
 
 	for _, item := range bundles {
@@ -177,7 +214,7 @@ func TestListBundleRendersJSONHumanAndToon(t *testing.T) {
 func TestVersionCommandFormats(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{})
+	deps := newTestDeps(t, &stubClient{})
 
 	humanOut, _, err := executeRootCommand(t, deps, "version", "-o", "human")
 	if err != nil {

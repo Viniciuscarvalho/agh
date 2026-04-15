@@ -155,7 +155,13 @@ func TestBrokerProjectEventDeduplicatesAndFailsSession(t *testing.T) {
 
 	waitForCalls(t, transport, 2)
 	calls = transport.snapshotCalls()
-	assertDeliveryOrder(t, calls, reg.DeliveryID, []string{DeliveryEventTypeStart, DeliveryEventTypeDelta}, []int64{1, 2})
+	assertDeliveryOrder(
+		t,
+		calls,
+		reg.DeliveryID,
+		[]string{DeliveryEventTypeStart, DeliveryEventTypeDelta},
+		[]int64{1, 2},
+	)
 	if got, want := calls[1].request.Event.Content.Text, "hello world"; got != want {
 		t.Fatalf("delta content = %q, want %q", got, want)
 	}
@@ -232,14 +238,50 @@ func TestBrokerRejectedProjectedEventDoesNotAdvanceStateOrConsumeFingerprint(t *
 	})
 
 	ctx := testutil.Context(t)
-	if err := broker.Deliver(ctx, testDeliveryEvent(regA.DeliveryID, regA.BridgeInstanceID, regA.RoutingKey, regA.DeliveryTarget, 1, DeliveryEventTypeStart, "hello", false)); err != nil {
+	if err := broker.Deliver(
+		ctx,
+		testDeliveryEvent(
+			regA.DeliveryID,
+			regA.BridgeInstanceID,
+			regA.RoutingKey,
+			regA.DeliveryTarget,
+			1,
+			DeliveryEventTypeStart,
+			"hello",
+			false,
+		),
+	); err != nil {
 		t.Fatalf("Deliver(regA start) error = %v", err)
 	}
 	waitForCalls(t, transport, 1)
-	if err := broker.Deliver(ctx, testDeliveryEvent(regB.DeliveryID, regB.BridgeInstanceID, regB.RoutingKey, regB.DeliveryTarget, 1, DeliveryEventTypeStart, "other", false)); err != nil {
+	if err := broker.Deliver(
+		ctx,
+		testDeliveryEvent(
+			regB.DeliveryID,
+			regB.BridgeInstanceID,
+			regB.RoutingKey,
+			regB.DeliveryTarget,
+			1,
+			DeliveryEventTypeStart,
+			"other",
+			false,
+		),
+	); err != nil {
 		t.Fatalf("Deliver(regB start) error = %v", err)
 	}
-	if err := broker.Deliver(ctx, testDeliveryEvent(regB.DeliveryID, regB.BridgeInstanceID, regB.RoutingKey, regB.DeliveryTarget, 2, DeliveryEventTypeFinal, "other done", true)); err != nil {
+	if err := broker.Deliver(
+		ctx,
+		testDeliveryEvent(
+			regB.DeliveryID,
+			regB.BridgeInstanceID,
+			regB.RoutingKey,
+			regB.DeliveryTarget,
+			2,
+			DeliveryEventTypeFinal,
+			"other done",
+			true,
+		),
+	); err != nil {
 		t.Fatalf("Deliver(regB final) error = %v", err)
 	}
 
@@ -331,14 +373,50 @@ func TestBrokerRejectedFailSessionDoesNotFinalizeDelivery(t *testing.T) {
 	})
 
 	ctx := testutil.Context(t)
-	if err := broker.Deliver(ctx, testDeliveryEvent(regA.DeliveryID, regA.BridgeInstanceID, regA.RoutingKey, regA.DeliveryTarget, 1, DeliveryEventTypeStart, "hello", false)); err != nil {
+	if err := broker.Deliver(
+		ctx,
+		testDeliveryEvent(
+			regA.DeliveryID,
+			regA.BridgeInstanceID,
+			regA.RoutingKey,
+			regA.DeliveryTarget,
+			1,
+			DeliveryEventTypeStart,
+			"hello",
+			false,
+		),
+	); err != nil {
 		t.Fatalf("Deliver(regA start) error = %v", err)
 	}
 	waitForCalls(t, transport, 1)
-	if err := broker.Deliver(ctx, testDeliveryEvent(regB.DeliveryID, regB.BridgeInstanceID, regB.RoutingKey, regB.DeliveryTarget, 1, DeliveryEventTypeStart, "other", false)); err != nil {
+	if err := broker.Deliver(
+		ctx,
+		testDeliveryEvent(
+			regB.DeliveryID,
+			regB.BridgeInstanceID,
+			regB.RoutingKey,
+			regB.DeliveryTarget,
+			1,
+			DeliveryEventTypeStart,
+			"other",
+			false,
+		),
+	); err != nil {
 		t.Fatalf("Deliver(regB start) error = %v", err)
 	}
-	if err := broker.Deliver(ctx, testDeliveryEvent(regB.DeliveryID, regB.BridgeInstanceID, regB.RoutingKey, regB.DeliveryTarget, 2, DeliveryEventTypeFinal, "other done", true)); err != nil {
+	if err := broker.Deliver(
+		ctx,
+		testDeliveryEvent(
+			regB.DeliveryID,
+			regB.BridgeInstanceID,
+			regB.RoutingKey,
+			regB.DeliveryTarget,
+			2,
+			DeliveryEventTypeFinal,
+			"other done",
+			true,
+		),
+	); err != nil {
 		t.Fatalf("Deliver(regB final) error = %v", err)
 	}
 
@@ -546,7 +624,11 @@ func TestBrokerProjectEventLockedCoversTerminalAndIgnoredPaths(t *testing.T) {
 		},
 	}
 
-	if _, ok, err := broker.projectEventLocked(nil, DeliveryProjectionEvent{Type: "agent_message"}); !errors.Is(err, ErrDeliveryNotFound) || ok {
+	if _, ok, err := broker.projectEventLocked(
+		nil,
+		DeliveryProjectionEvent{Type: "agent_message"},
+	); !errors.Is(err, ErrDeliveryNotFound) ||
+		ok {
 		t.Fatalf("projectEventLocked(nil) = (%v, %v), want ErrDeliveryNotFound and ok=false", err, ok)
 	}
 
@@ -582,7 +664,10 @@ func TestBrokerProjectEventLockedCoversTerminalAndIgnoredPaths(t *testing.T) {
 		},
 		currentContent: MessageContent{Text: "partial"},
 	}
-	errorEvent, ok, err := broker.projectEventLocked(errorDelivery, DeliveryProjectionEvent{Type: "error", Error: "boom"})
+	errorEvent, ok, err := broker.projectEventLocked(
+		errorDelivery,
+		DeliveryProjectionEvent{Type: "error", Error: "boom"},
+	)
 	if err != nil || !ok {
 		t.Fatalf("projectEventLocked(error) = (%v, %v), want nil and ok=true", err, ok)
 	}
@@ -691,7 +776,14 @@ func TestBrokerEnqueueEventLockedCoversReplacementAndSaturation(t *testing.T) {
 			{deliveryID: "del-b", kind: deliveryQueueKindStart},
 		},
 	}
-	if err := broker.enqueueEventLocked(fullRoute, &activeDelivery{deliveryID: "del-c"}, start); !errors.Is(err, ErrDeliveryQueueSaturated) {
+	if err := broker.enqueueEventLocked(
+		fullRoute,
+		&activeDelivery{deliveryID: "del-c"},
+		start,
+	); !errors.Is(
+		err,
+		ErrDeliveryQueueSaturated,
+	) {
 		t.Fatalf("enqueueEventLocked(full route) error = %v, want ErrDeliveryQueueSaturated", err)
 	}
 

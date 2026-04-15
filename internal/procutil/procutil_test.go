@@ -21,7 +21,6 @@ func TestAliveRejectsNonPositivePIDs(t *testing.T) {
 
 	testCases := []int{0, -1}
 	for _, pid := range testCases {
-		pid := pid
 		t.Run(fmt.Sprintf("ShouldReturnFalseForPID_%d", pid), func(t *testing.T) {
 			t.Parallel()
 			if Alive(pid) {

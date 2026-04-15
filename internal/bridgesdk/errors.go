@@ -161,89 +161,106 @@ func ClassifyError(err error) ClassifiedError {
 	if err == nil {
 		return ClassifiedError{}
 	}
+	if classified, ok := classifyTypedProviderError(err); ok {
+		return classified
+	}
+	if classified, ok := classifyHTTPProviderError(err); ok {
+		return classified
+	}
+	if classified, ok := classifyRuntimeProviderError(err); ok {
+		return classified
+	}
+	return classifyProviderErrorText(err)
+}
 
+func classifyTypedProviderError(err error) (ClassifiedError, bool) {
 	var authErr *AuthError
 	if errors.As(err, &authErr) {
-		return ClassifiedError{
-			Class:   ErrorClassAuth,
-			Err:     err,
-			Message: errorMessage(err),
-		}
+		return classifiedProviderError(err, ErrorClassAuth, 0), true
 	}
 
 	var rateLimitErr *RateLimitError
 	if errors.As(err, &rateLimitErr) {
-		return ClassifiedError{
-			Class:      ErrorClassRateLimit,
-			Err:        err,
-			RetryAfter: rateLimitErr.RetryAfter,
-			Message:    errorMessage(err),
-		}
+		return classifiedProviderError(err, ErrorClassRateLimit, rateLimitErr.RetryAfter), true
 	}
 
 	var permanentErr *PermanentError
 	if errors.As(err, &permanentErr) {
-		return ClassifiedError{
-			Class:   ErrorClassPermanent,
-			Err:     err,
-			Message: errorMessage(err),
-		}
+		return classifiedProviderError(err, ErrorClassPermanent, 0), true
 	}
 
 	var transientErr *TransientError
 	if errors.As(err, &transientErr) {
-		return ClassifiedError{
-			Class:   ErrorClassTransient,
-			Err:     err,
-			Message: errorMessage(err),
-		}
+		return classifiedProviderError(err, ErrorClassTransient, 0), true
 	}
 
+	return ClassifiedError{}, false
+}
+
+func classifyHTTPProviderError(err error) (ClassifiedError, bool) {
 	var httpErr *HTTPError
-	if errors.As(err, &httpErr) {
-		switch httpErr.StatusCode {
-		case http.StatusUnauthorized, http.StatusForbidden:
-			return ClassifiedError{Class: ErrorClassAuth, Err: err, Message: errorMessage(err)}
-		case http.StatusTooManyRequests:
-			return ClassifiedError{
-				Class:      ErrorClassRateLimit,
-				Err:        err,
-				RetryAfter: httpErr.RetryAfter,
-				Message:    errorMessage(err),
-			}
-		case http.StatusRequestTimeout, http.StatusGatewayTimeout:
-			return ClassifiedError{Class: ErrorClassTimeout, Err: err, Message: errorMessage(err)}
-		case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusInternalServerError:
-			return ClassifiedError{Class: ErrorClassTransient, Err: err, Message: errorMessage(err)}
-		default:
-			return ClassifiedError{Class: ErrorClassPermanent, Err: err, Message: errorMessage(err)}
-		}
+	if !errors.As(err, &httpErr) {
+		return ClassifiedError{}, false
 	}
 
+	switch httpErr.StatusCode {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return classifiedProviderError(err, ErrorClassAuth, 0), true
+	case http.StatusTooManyRequests:
+		return classifiedProviderError(err, ErrorClassRateLimit, httpErr.RetryAfter), true
+	case http.StatusRequestTimeout, http.StatusGatewayTimeout:
+		return classifiedProviderError(err, ErrorClassTimeout, 0), true
+	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusInternalServerError:
+		return classifiedProviderError(err, ErrorClassTransient, 0), true
+	default:
+		return classifiedProviderError(err, ErrorClassPermanent, 0), true
+	}
+}
+
+func classifyRuntimeProviderError(err error) (ClassifiedError, bool) {
 	if errors.Is(err, context.DeadlineExceeded) {
-		return ClassifiedError{Class: ErrorClassTimeout, Err: err, Message: errorMessage(err)}
+		return classifiedProviderError(err, ErrorClassTimeout, 0), true
 	}
 
 	var netErr net.Error
-	if errors.As(err, &netErr) {
-		if netErr.Timeout() {
-			return ClassifiedError{Class: ErrorClassTimeout, Err: err, Message: errorMessage(err)}
-		}
-		return ClassifiedError{Class: ErrorClassTransient, Err: err, Message: errorMessage(err)}
+	if !errors.As(err, &netErr) {
+		return ClassifiedError{}, false
 	}
+	if netErr.Timeout() {
+		return classifiedProviderError(err, ErrorClassTimeout, 0), true
+	}
+	return classifiedProviderError(err, ErrorClassTransient, 0), true
+}
 
+func classifyProviderErrorText(err error) ClassifiedError {
 	text := strings.ToLower(strings.TrimSpace(err.Error()))
 	switch {
-	case strings.Contains(text, "auth"), strings.Contains(text, "forbidden"), strings.Contains(text, "unauthorized"), strings.Contains(text, "token"):
-		return ClassifiedError{Class: ErrorClassAuth, Err: err, Message: errorMessage(err)}
+	case strings.Contains(text, "auth"),
+		strings.Contains(text, "forbidden"),
+		strings.Contains(text, "unauthorized"),
+		strings.Contains(text, "token"):
+		return classifiedProviderError(err, ErrorClassAuth, 0)
 	case strings.Contains(text, "rate limit"), strings.Contains(text, "too many requests"):
-		return ClassifiedError{Class: ErrorClassRateLimit, Err: err, Message: errorMessage(err)}
+		return classifiedProviderError(err, ErrorClassRateLimit, 0)
 	case strings.Contains(text, "timeout"), strings.Contains(text, "deadline exceeded"):
-		return ClassifiedError{Class: ErrorClassTimeout, Err: err, Message: errorMessage(err)}
-	case strings.Contains(text, "temporary"), strings.Contains(text, "unavailable"), strings.Contains(text, "connection reset"), strings.Contains(text, "broken pipe"), strings.Contains(text, "eof"):
-		return ClassifiedError{Class: ErrorClassTransient, Err: err, Message: errorMessage(err)}
+		return classifiedProviderError(err, ErrorClassTimeout, 0)
+	case strings.Contains(text, "temporary"),
+		strings.Contains(text, "unavailable"),
+		strings.Contains(text, "connection reset"),
+		strings.Contains(text, "broken pipe"),
+		strings.Contains(text, "eof"):
+		return classifiedProviderError(err, ErrorClassTransient, 0)
 	default:
-		return ClassifiedError{Class: ErrorClassPermanent, Err: err, Message: errorMessage(err)}
+		return classifiedProviderError(err, ErrorClassPermanent, 0)
+	}
+}
+
+func classifiedProviderError(err error, class ErrorClass, retryAfter time.Duration) ClassifiedError {
+	return ClassifiedError{
+		Class:      class,
+		Err:        err,
+		RetryAfter: retryAfter,
+		Message:    errorMessage(err),
 	}
 }
 

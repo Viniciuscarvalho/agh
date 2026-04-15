@@ -150,10 +150,22 @@ max_queue_depth = 250
 	if got, want := cfg.Skills.DisabledSkills, []string{"code-review", "agh-session-guide"}; !slices.Equal(got, want) {
 		t.Fatalf("Load() Skills.DisabledSkills = %#v, want %#v", got, want)
 	}
-	if got, want := cfg.Skills.AllowedMarketplaceMCP, []string{"@registry/skill-a", "@registry/skill-b"}; !slices.Equal(got, want) {
+	if got, want := cfg.Skills.AllowedMarketplaceMCP, []string{
+		"@registry/skill-a",
+		"@registry/skill-b",
+	}; !slices.Equal(
+		got,
+		want,
+	) {
 		t.Fatalf("Load() Skills.AllowedMarketplaceMCP = %#v, want %#v", got, want)
 	}
-	if got, want := cfg.Skills.AllowedMarketplaceHooks, []string{"@registry/hook-a", "@registry/hook-b"}; !slices.Equal(got, want) {
+	if got, want := cfg.Skills.AllowedMarketplaceHooks, []string{
+		"@registry/hook-a",
+		"@registry/hook-b",
+	}; !slices.Equal(
+		got,
+		want,
+	) {
 		t.Fatalf("Load() Skills.AllowedMarketplaceHooks = %#v, want %#v", got, want)
 	}
 	if got, want := cfg.Skills.Marketplace.Registry, "clawhub"; got != want {
@@ -474,7 +486,8 @@ api_key_env = "WORKSPACE_KEY"
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	if cfg.Observability.Enabled != true || cfg.Observability.RetentionDays != 7 || cfg.Observability.MaxGlobalBytes != 1000 {
+	if cfg.Observability.Enabled != true || cfg.Observability.RetentionDays != 7 ||
+		cfg.Observability.MaxGlobalBytes != 1000 {
 		t.Fatalf("Load() Observability = %#v", cfg.Observability)
 	}
 	if cfg.Observability.Transcripts.SegmentBytes != 256 || cfg.Observability.Transcripts.MaxBytesPerSession != 2048 {
@@ -665,10 +678,16 @@ func TestDefaultWithHomeLeavesMarketplaceConfigEmpty(t *testing.T) {
 
 	cfg := DefaultWithHome(homePaths)
 	if cfg.Skills.AllowedMarketplaceMCP != nil {
-		t.Fatalf("DefaultWithHome() Skills.AllowedMarketplaceMCP = %#v, want nil/empty", cfg.Skills.AllowedMarketplaceMCP)
+		t.Fatalf(
+			"DefaultWithHome() Skills.AllowedMarketplaceMCP = %#v, want nil/empty",
+			cfg.Skills.AllowedMarketplaceMCP,
+		)
 	}
 	if cfg.Skills.AllowedMarketplaceHooks != nil {
-		t.Fatalf("DefaultWithHome() Skills.AllowedMarketplaceHooks = %#v, want nil/empty", cfg.Skills.AllowedMarketplaceHooks)
+		t.Fatalf(
+			"DefaultWithHome() Skills.AllowedMarketplaceHooks = %#v, want nil/empty",
+			cfg.Skills.AllowedMarketplaceHooks,
+		)
 	}
 	if cfg.Skills.Marketplace != (MarketplaceConfig{}) {
 		t.Fatalf("DefaultWithHome() Skills.Marketplace = %#v, want zero value", cfg.Skills.Marketplace)
@@ -772,7 +791,6 @@ func TestExtensionsConfigValidateMarketplaceConfig(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.cfg.Validate()
 			if tt.wantErrPath == "" {
@@ -812,7 +830,6 @@ func TestExtensionsConfigValidateMarketplaceConfig(t *testing.T) {
 			t.Fatalf("ExtensionsConfig.Validate(http) logs = %q, want insecure http scheme warning", logs.String())
 		}
 	})
-
 }
 
 func TestValidateRejectsInvalidPorts(t *testing.T) {
@@ -900,7 +917,6 @@ func TestDreamConfigValidateRejectsNonPositiveThresholds(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -1041,7 +1057,8 @@ func TestLoadMissingConfigReturnsDefaults(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	if cfg.HTTP != want.HTTP || cfg.Defaults != want.Defaults || cfg.Limits != want.Limits || cfg.Permissions != want.Permissions {
+	if cfg.HTTP != want.HTTP || cfg.Defaults != want.Defaults || cfg.Limits != want.Limits ||
+		cfg.Permissions != want.Permissions {
 		t.Fatalf("Load() = %#v, want defaults %#v", cfg, want)
 	}
 	if cfg.Daemon.Socket != want.Daemon.Socket {
@@ -1050,7 +1067,8 @@ func TestLoadMissingConfigReturnsDefaults(t *testing.T) {
 	if cfg.Memory != want.Memory {
 		t.Fatalf("Load() Memory = %#v, want %#v", cfg.Memory, want.Memory)
 	}
-	if cfg.Skills.Enabled != want.Skills.Enabled || cfg.Skills.PollInterval != want.Skills.PollInterval || !slices.Equal(cfg.Skills.DisabledSkills, want.Skills.DisabledSkills) {
+	if cfg.Skills.Enabled != want.Skills.Enabled || cfg.Skills.PollInterval != want.Skills.PollInterval ||
+		!slices.Equal(cfg.Skills.DisabledSkills, want.Skills.DisabledSkills) {
 		t.Fatalf("Load() Skills = %#v, want %#v", cfg.Skills, want.Skills)
 	}
 }
@@ -1153,7 +1171,6 @@ func TestNetworkConfigValidateRejectsInvalidValues(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

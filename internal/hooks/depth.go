@@ -36,7 +36,10 @@ func currentDispatchDepth(ctx context.Context) int {
 		return 0
 	}
 
-	depth, _ := ctx.Value(dispatchDepthContextKey{}).(int)
+	depth, ok := ctx.Value(dispatchDepthContextKey{}).(int)
+	if !ok {
+		return 0
+	}
 	return depth
 }
 
@@ -45,7 +48,10 @@ func currentDispatchChain(ctx context.Context) []HookEvent {
 		return nil
 	}
 
-	chain, _ := ctx.Value(dispatchChainContextKey{}).([]HookEvent)
+	chain, ok := ctx.Value(dispatchChainContextKey{}).([]HookEvent)
+	if !ok {
+		return nil
+	}
 	if len(chain) == 0 {
 		return nil
 	}

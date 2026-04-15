@@ -15,7 +15,7 @@ import (
 // sources override lower-priority search results when the same slug appears
 // more than once.
 type MultiRegistry struct {
-	sources []RegistrySource
+	sources []Source
 	logger  *slog.Logger
 }
 
@@ -31,8 +31,8 @@ type detailResult struct {
 }
 
 // NewMultiRegistry constructs a registry aggregator over one or more sources.
-func NewMultiRegistry(logger *slog.Logger, sources ...RegistrySource) *MultiRegistry {
-	cleaned := make([]RegistrySource, 0, len(sources))
+func NewMultiRegistry(logger *slog.Logger, sources ...Source) *MultiRegistry {
+	cleaned := make([]Source, 0, len(sources))
 	for _, source := range sources {
 		if source != nil {
 			cleaned = append(cleaned, source)
@@ -77,7 +77,7 @@ func (m *MultiRegistry) Search(ctx context.Context, query string, opts SearchOpt
 		searchableSources++
 		wg.Add(1)
 
-		go func(index int, source RegistrySource) {
+		go func(index int, source Source) {
 			defer wg.Done()
 
 			listings, err := source.Search(ctx, query, opts)
@@ -155,10 +155,18 @@ func (m *MultiRegistry) Download(ctx context.Context, slug string, opts Download
 		return nil, wrapSourceError(source, sourceIndex(m.sources, source), "download", err)
 	}
 	if result == nil {
-		return nil, fmt.Errorf("registry: source %q returned no download result for %q", sourceName(source, sourceIndex(m.sources, source)), strings.TrimSpace(slug))
+		return nil, fmt.Errorf(
+			"registry: source %q returned no download result for %q",
+			sourceName(source, sourceIndex(m.sources, source)),
+			strings.TrimSpace(slug),
+		)
 	}
 	if result.Reader == nil {
-		return nil, fmt.Errorf("registry: source %q returned no download stream for %q", sourceName(source, sourceIndex(m.sources, source)), strings.TrimSpace(slug))
+		return nil, fmt.Errorf(
+			"registry: source %q returned no download stream for %q",
+			sourceName(source, sourceIndex(m.sources, source)),
+			strings.TrimSpace(slug),
+		)
 	}
 	if strings.TrimSpace(result.Slug) == "" {
 		result.Slug = strings.TrimSpace(slug)
@@ -206,7 +214,7 @@ func (m *MultiRegistry) Close() error {
 }
 
 // SourceNamed returns the highest-priority source with the requested name.
-func (m *MultiRegistry) SourceNamed(name string) RegistrySource {
+func (m *MultiRegistry) SourceNamed(name string) Source {
 	trimmed := strings.TrimSpace(name)
 	if trimmed == "" {
 		return nil
@@ -225,7 +233,7 @@ func (m *MultiRegistry) SourceNamed(name string) RegistrySource {
 	return nil
 }
 
-func (m *MultiRegistry) resolveSource(ctx context.Context, slug string) (RegistrySource, *Detail, error) {
+func (m *MultiRegistry) resolveSource(ctx context.Context, slug string) (Source, *Detail, error) {
 	if err := checkMultiRegistryContext(ctx); err != nil {
 		return nil, nil, err
 	}
@@ -243,7 +251,7 @@ func (m *MultiRegistry) resolveSource(ctx context.Context, slug string) (Registr
 
 	for index, source := range m.sources {
 		wg.Add(1)
-		go func(index int, source RegistrySource) {
+		go func(index int, source Source) {
 			defer wg.Done()
 
 			detail, err := source.Info(ctx, trimmedSlug)
@@ -343,11 +351,11 @@ func checkMultiRegistryContext(ctx context.Context) error {
 	return ctx.Err()
 }
 
-func wrapSourceError(source RegistrySource, index int, operation string, err error) error {
+func wrapSourceError(source Source, index int, operation string, err error) error {
 	return fmt.Errorf("registry: %s via %s: %w", operation, sourceName(source, index), err)
 }
 
-func sourceName(source RegistrySource, index int) string {
+func sourceName(source Source, index int) string {
 	if source == nil {
 		return fmt.Sprintf("source-%d", index)
 	}
@@ -357,7 +365,7 @@ func sourceName(source RegistrySource, index int) string {
 	return fmt.Sprintf("source-%d", index)
 }
 
-func sourceIndex(sources []RegistrySource, target RegistrySource) int {
+func sourceIndex(sources []Source, target Source) int {
 	for index, source := range sources {
 		if source == target {
 			return index

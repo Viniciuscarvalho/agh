@@ -18,13 +18,13 @@ import (
 )
 
 type memoryListItem struct {
-	Filename    string            `json:"filename"`
-	Name        string            `json:"name"`
-	Type        memory.MemoryType `json:"type"`
-	Scope       memory.Scope      `json:"scope"`
-	Age         string            `json:"age"`
-	Description string            `json:"description,omitempty"`
-	ModTime     time.Time         `json:"mod_time"`
+	Filename    string       `json:"filename"`
+	Name        string       `json:"name"`
+	Type        memory.Type  `json:"type"`
+	Scope       memory.Scope `json:"scope"`
+	Age         string       `json:"age"`
+	Description string       `json:"description,omitempty"`
+	ModTime     time.Time    `json:"mod_time"`
 }
 
 type memoryReadView struct {
@@ -34,11 +34,11 @@ type memoryReadView struct {
 }
 
 type memoryMutationView struct {
-	Filename string            `json:"filename"`
-	Scope    memory.Scope      `json:"scope"`
-	Type     memory.MemoryType `json:"type,omitempty"`
-	Status   string            `json:"status"`
-	Reason   string            `json:"reason,omitempty"`
+	Filename string       `json:"filename"`
+	Scope    memory.Scope `json:"scope"`
+	Type     memory.Type  `json:"type,omitempty"`
+	Status   string       `json:"status"`
+	Reason   string       `json:"reason,omitempty"`
 }
 
 type memoryLocation struct {
@@ -69,7 +69,7 @@ func newMemoryListCommand(deps commandDeps) *cobra.Command {
 		Short: "List persistent memories",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -93,7 +93,7 @@ func newMemoryReadCommand(deps commandDeps) *cobra.Command {
 		Short: "Read a persistent memory file",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -132,7 +132,7 @@ func newMemoryWriteCommand(deps commandDeps) *cobra.Command {
 		Short: "Write or update a persistent memory file",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -202,7 +202,7 @@ func newMemoryDeleteCommand(deps commandDeps) *cobra.Command {
 		Short: "Delete a persistent memory file",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -238,7 +238,7 @@ func newMemoryConsolidateCommand(deps commandDeps) *cobra.Command {
 		Short: "Trigger manual memory consolidation",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -263,7 +263,12 @@ func newMemoryConsolidateCommand(deps commandDeps) *cobra.Command {
 	}
 }
 
-func listMemoryLocations(ctx context.Context, client DaemonClient, deps commandDeps, rawScope string) ([]memoryLocation, error) {
+func listMemoryLocations(
+	ctx context.Context,
+	client DaemonClient,
+	deps commandDeps,
+	rawScope string,
+) ([]memoryLocation, error) {
 	scope, err := parseOptionalCLIMemoryScope(rawScope)
 	if err != nil {
 		return nil, err
@@ -306,7 +311,13 @@ func listMemoryLocations(ctx context.Context, client DaemonClient, deps commandD
 	return locations, nil
 }
 
-func resolveMemoryLocation(ctx context.Context, client DaemonClient, deps commandDeps, rawScope string, filename string) (memoryLocation, error) {
+func resolveMemoryLocation(
+	ctx context.Context,
+	client DaemonClient,
+	deps commandDeps,
+	rawScope string,
+	filename string,
+) (memoryLocation, error) {
 	scope, err := parseOptionalCLIMemoryScope(rawScope)
 	if err != nil {
 		return memoryLocation{}, err
@@ -355,15 +366,15 @@ func resolveMemoryLocation(ctx context.Context, client DaemonClient, deps comman
 	}
 }
 
-func parseMemoryType(raw string) (memory.MemoryType, error) {
-	typ := memory.MemoryType(strings.TrimSpace(raw)).Normalize()
+func parseMemoryType(raw string) (memory.Type, error) {
+	typ := memory.Type(strings.TrimSpace(raw)).Normalize()
 	if err := typ.Validate(); err != nil {
 		return "", err
 	}
 	return typ, nil
 }
 
-func resolveCLIMemoryWriteScope(rawScope string, memoryType memory.MemoryType) (memory.Scope, error) {
+func resolveCLIMemoryWriteScope(rawScope string, memoryType memory.Type) (memory.Scope, error) {
 	scope, err := parseOptionalCLIMemoryScope(rawScope)
 	if err != nil {
 		return "", err
@@ -436,8 +447,13 @@ func parseOptionalCLIMemoryScope(raw string) (memory.Scope, error) {
 	}
 }
 
-func formatMemoryDocument(filename string, memoryType memory.MemoryType, description string, body string) (string, error) {
-	header := memory.MemoryHeader{
+func formatMemoryDocument(
+	filename string,
+	memoryType memory.Type,
+	description string,
+	body string,
+) (string, error) {
+	header := memory.Header{
 		Name:        memoryNameFromFilename(filename),
 		Description: strings.TrimSpace(description),
 		Type:        memoryType,

@@ -1,4 +1,4 @@
-package extension
+package extensionpkg
 
 import (
 	"context"
@@ -23,7 +23,8 @@ func TestRegistryBlocksDisableAndUninstallWithActiveBundles(t *testing.T) {
 		t.Fatalf("Install() error = %v", err)
 	}
 
-	if _, err := env.db.Exec(
+	if _, err := env.db.ExecContext(
+		testutil.Context(t),
 		`INSERT INTO bundle_activations (
 			id, extension_name, bundle_name, profile_name, scope, workspace_id, spec_content_hash, bind_primary_channel_default, created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -185,7 +186,6 @@ func TestBundleSpecValidateRejectsCaseInsensitiveDuplicateProfilesAndInvalidDeli
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -73,9 +74,11 @@ func WithHomePaths(homePaths aghconfig.HomePaths) Option {
 }
 
 // WithConfig overrides the runtime configuration used by the server.
-func WithConfig(cfg aghconfig.Config) Option {
+func WithConfig(cfg *aghconfig.Config) Option {
 	return func(server *Server) {
-		server.config = cfg
+		if cfg != nil {
+			server.config = *cfg
+		}
 	}
 }
 
@@ -226,7 +229,25 @@ func New(opts ...Option) (*Server, error) {
 		return nil, fmt.Errorf("httpapi: resolve home paths: %w", err)
 	}
 
-	server := &Server{
+	server := newDefaultServer(homePaths)
+	applyOptions(server, opts)
+	if err := server.finalize(); err != nil {
+		return nil, err
+	}
+
+	staticFS, err := newStaticFS()
+	if err != nil {
+		return nil, fmt.Errorf("httpapi: load embedded frontend bundle: %w", err)
+	}
+	server.ensureEngine()
+	server.handlers = newHandlers(server.handlerConfig(staticFS))
+	RegisterRoutes(server.engine, server.handlers)
+
+	return server, nil
+}
+
+func newDefaultServer(homePaths aghconfig.HomePaths) *Server {
+	return &Server{
 		homePaths: homePaths,
 		config:    aghconfig.DefaultWithHome(homePaths),
 		logger:    slog.Default(),
@@ -236,91 +257,111 @@ func New(opts ...Option) (*Server, error) {
 		pollInterval: defaultPollInterval,
 		agentLoader:  aghconfig.LoadAgentDef,
 	}
+}
+
+func applyOptions(server *Server, opts []Option) {
 	for _, opt := range opts {
 		if opt != nil {
 			opt(server)
 		}
 	}
+}
 
-	if server.logger == nil {
-		server.logger = slog.Default()
+func (s *Server) finalize() error {
+	s.applyDefaults()
+	if err := s.validateRequired(); err != nil {
+		return err
 	}
-	if server.now == nil {
-		server.now = func() time.Time {
+	s.configureAddress()
+	return nil
+}
+
+func (s *Server) applyDefaults() {
+	if s.logger == nil {
+		s.logger = slog.Default()
+	}
+	if s.now == nil {
+		s.now = func() time.Time {
 			return time.Now().UTC()
 		}
 	}
-	if server.pollInterval <= 0 {
-		server.pollInterval = defaultPollInterval
+	if s.pollInterval <= 0 {
+		s.pollInterval = defaultPollInterval
 	}
-	if server.startedAt.IsZero() {
-		server.startedAt = server.now()
+	if s.startedAt.IsZero() {
+		s.startedAt = s.now()
 	}
-	if server.agentLoader == nil {
-		server.agentLoader = aghconfig.LoadAgentDef
+	if s.agentLoader == nil {
+		s.agentLoader = aghconfig.LoadAgentDef
 	}
-	if server.sessions == nil {
-		return nil, errors.New("httpapi: session manager is required")
+	if strings.TrimSpace(s.config.HTTP.Host) == "" {
+		s.config.HTTP.Host = "localhost"
 	}
-	if server.tasks == nil {
-		return nil, errors.New("httpapi: task service is required")
+	if s.config.HTTP.Port <= 0 {
+		s.config.HTTP.Port = 2123
 	}
-	if server.observer == nil {
-		return nil, errors.New("httpapi: observer is required")
+}
+
+func (s *Server) validateRequired() error {
+	switch {
+	case s.sessions == nil:
+		return errors.New("httpapi: session manager is required")
+	case s.tasks == nil:
+		return errors.New("httpapi: task service is required")
+	case s.observer == nil:
+		return errors.New("httpapi: observer is required")
+	case s.workspaces == nil:
+		return errors.New("httpapi: workspace resolver is required")
+	default:
+		return nil
 	}
-	if server.workspaces == nil {
-		return nil, errors.New("httpapi: workspace resolver is required")
+}
+
+func (s *Server) configureAddress() {
+	if strings.TrimSpace(s.host) == "" {
+		s.host = strings.TrimSpace(s.config.HTTP.Host)
 	}
-	if strings.TrimSpace(server.config.HTTP.Host) == "" {
-		server.config.HTTP.Host = "localhost"
+	if s.port <= 0 {
+		s.port = s.config.HTTP.Port
 	}
-	if server.config.HTTP.Port <= 0 {
-		server.config.HTTP.Port = 2123
-	}
-	if strings.TrimSpace(server.host) == "" {
-		server.host = strings.TrimSpace(server.config.HTTP.Host)
-	}
-	if server.port <= 0 {
-		server.port = server.config.HTTP.Port
-	}
-	staticFS, err := newStaticFS()
-	if err != nil {
-		return nil, fmt.Errorf("httpapi: load embedded frontend bundle: %w", err)
-	}
-	if server.engine == nil {
-		server.engine = gin.New()
-		server.engine.Use(gin.Recovery())
-		server.engine.Use(requestLoggingMiddleware(server.logger))
-		server.engine.Use(corsMiddleware(server.host))
-		server.engine.Use(errorMiddleware())
+}
+
+func (s *Server) ensureEngine() {
+	if s.engine != nil {
+		return
 	}
 
-	server.handlers = newHandlers(handlerConfig{
-		sessions:       server.sessions,
-		tasks:          server.tasks,
-		network:        server.network,
-		networkStore:   server.networkStore,
-		observer:       server.observer,
-		automation:     server.automation,
-		bridges:        server.bridges,
-		bundles:        server.bundles,
-		workspaces:     server.workspaces,
-		skillsRegistry: server.skillsRegistry,
-		memoryStore:    server.memoryStore,
-		dreamTrigger:   server.dreamTrigger,
+	s.engine = gin.New()
+	s.engine.Use(gin.Recovery())
+	s.engine.Use(requestLoggingMiddleware(s.logger))
+	s.engine.Use(corsMiddleware(s.host))
+	s.engine.Use(errorMiddleware())
+}
+
+func (s *Server) handlerConfig(staticFS fs.FS) *handlerConfig {
+	return &handlerConfig{
+		sessions:       s.sessions,
+		tasks:          s.tasks,
+		network:        s.network,
+		networkStore:   s.networkStore,
+		observer:       s.observer,
+		automation:     s.automation,
+		bridges:        s.bridges,
+		bundles:        s.bundles,
+		workspaces:     s.workspaces,
+		skillsRegistry: s.skillsRegistry,
+		memoryStore:    s.memoryStore,
+		dreamTrigger:   s.dreamTrigger,
 		staticFS:       staticFS,
-		homePaths:      server.homePaths,
-		config:         server.config,
-		logger:         server.logger,
-		startedAt:      server.startedAt,
-		now:            server.now,
-		pollInterval:   server.pollInterval,
-		agentLoader:    server.agentLoader,
-		httpPort:       server.port,
-	})
-	RegisterRoutes(server.engine, server.handlers)
-
-	return server, nil
+		homePaths:      s.homePaths,
+		config:         s.config,
+		logger:         s.logger,
+		startedAt:      s.startedAt,
+		now:            s.now,
+		pollInterval:   s.pollInterval,
+		agentLoader:    s.agentLoader,
+		httpPort:       s.port,
+	}
 }
 
 // Port reports the effective HTTP port.
@@ -350,7 +391,8 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	address := net.JoinHostPort(strings.TrimSpace(s.host), strconv.Itoa(s.port))
-	ln, err := net.Listen("tcp", address)
+	var listenConfig net.ListenConfig
+	ln, err := listenConfig.Listen(ctx, "tcp", address)
 	if err != nil {
 		return fmt.Errorf("httpapi: listen on %q: %w", address, err)
 	}
@@ -388,7 +430,10 @@ func (s *Server) Start(ctx context.Context) error {
 
 	go func() {
 		defer close(serveDone)
-		if err := httpServer.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
+		if err := httpServer.Serve(
+			ln,
+		); err != nil && !errors.Is(err, http.ErrServerClosed) &&
+			!errors.Is(err, net.ErrClosed) {
 			s.mu.Lock()
 			s.serveErr = fmt.Errorf("httpapi: serve %q: %w", address, err)
 			s.mu.Unlock()

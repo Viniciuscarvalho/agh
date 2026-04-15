@@ -21,7 +21,7 @@ import (
 )
 
 // SessionPayloadFromInfo converts a session info snapshot into the shared session payload.
-func SessionPayloadFromInfo(info *session.SessionInfo) contract.SessionPayload {
+func SessionPayloadFromInfo(info *session.Info) contract.SessionPayload {
 	payload := contract.SessionPayload{}
 	if info == nil {
 		return payload
@@ -49,7 +49,7 @@ func SessionPayloadFromInfo(info *session.SessionInfo) contract.SessionPayload {
 }
 
 // SessionPayloadsFromInfos converts a session list into response payloads.
-func SessionPayloadsFromInfos(infos []*session.SessionInfo) []contract.SessionPayload {
+func SessionPayloadsFromInfos(infos []*session.Info) []contract.SessionPayload {
 	payload := make([]contract.SessionPayload, 0, len(infos))
 	for _, info := range infos {
 		if info == nil {
@@ -61,7 +61,7 @@ func SessionPayloadsFromInfos(infos []*session.SessionInfo) []contract.SessionPa
 }
 
 // ACPCapsPayloadFromInfo converts ACP capability info into the shared payload.
-func ACPCapsPayloadFromInfo(caps acp.ACPCaps) *contract.ACPCapsPayload {
+func ACPCapsPayloadFromInfo(caps acp.Caps) *contract.ACPCapsPayload {
 	if !caps.SupportsLoadSession && len(caps.SupportedModes) == 0 && len(caps.SupportedModels) == 0 {
 		return nil
 	}
@@ -74,7 +74,7 @@ func ACPCapsPayloadFromInfo(caps acp.ACPCaps) *contract.ACPCapsPayload {
 }
 
 // SessionEventPayloadFromEvent converts a session event into the shared payload.
-func SessionEventPayloadFromEvent(event store.SessionEvent, info *session.SessionInfo) contract.SessionEventPayload {
+func SessionEventPayloadFromEvent(event store.SessionEvent, info *session.Info) contract.SessionEventPayload {
 	ref := workref.NewPath(sessionWorkspaceFromInfo(info))
 	return contract.SessionEventPayload{
 		ID:            event.ID,
@@ -97,9 +97,7 @@ func AgentPayloadFromDef(agent aghconfig.AgentDef) contract.AgentPayload {
 		var env map[string]string
 		if len(server.Env) > 0 {
 			env = make(map[string]string, len(server.Env))
-			for key, value := range server.Env {
-				env[key] = value
-			}
+			maps.Copy(env, server.Env)
 		}
 
 		mcpServers = append(mcpServers, contract.AgentMCPServerJSON{
@@ -202,7 +200,10 @@ func ObserveHealthPayloadFromHealth(health observepkg.Health) contract.ObserveHe
 
 // AutomationHealthPayloadFromStatus converts manager status into the shared
 // additive automation health block.
-func AutomationHealthPayloadFromStatus(enabled bool, status automationpkg.ManagerStatus) contract.AutomationHealthPayload {
+func AutomationHealthPayloadFromStatus(
+	enabled bool,
+	status automationpkg.ManagerStatus,
+) contract.AutomationHealthPayload {
 	return contract.AutomationHealthPayload{
 		Enabled: enabled,
 		Jobs: contract.AutomationResourceStatusPayload{
@@ -330,7 +331,9 @@ func WebhookDeliveryPayloadFromResult(result automationpkg.TriggerResult) contra
 
 // BridgeAggregateHealthPayloadFromObserve converts the observer bridge
 // summary into the shared payload.
-func BridgeAggregateHealthPayloadFromObserve(summary observepkg.BridgeAggregateHealth) contract.BridgeAggregateHealthPayload {
+func BridgeAggregateHealthPayloadFromObserve(
+	summary observepkg.BridgeAggregateHealth,
+) contract.BridgeAggregateHealthPayload {
 	return contract.BridgeAggregateHealthPayload{
 		TotalInstances:        summary.TotalInstances,
 		RouteCount:            summary.RouteCount,
@@ -521,7 +524,7 @@ func SkillPayloadsFromSkills(skillList []*skills.Skill) []contract.SkillPayload 
 	return payload
 }
 
-func sessionWorkspaceFromInfo(info *session.SessionInfo) (string, string) {
+func sessionWorkspaceFromInfo(info *session.Info) (string, string) {
 	if info == nil {
 		return "", ""
 	}
@@ -545,8 +548,6 @@ func cloneFilter(source map[string]string) map[string]string {
 		return nil
 	}
 	cloned := make(map[string]string, len(source))
-	for key, value := range source {
-		cloned[key] = value
-	}
+	maps.Copy(cloned, source)
 	return cloned
 }

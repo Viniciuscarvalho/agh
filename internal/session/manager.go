@@ -41,7 +41,7 @@ type CreateOpts struct {
 	Workspace     string
 	WorkspacePath string
 	Channel       string
-	Type          SessionType
+	Type          Type
 }
 
 // StoreOpener opens the per-session events store for a session directory.
@@ -69,7 +69,7 @@ type Manager struct {
 	skillRegistry   SkillRegistry
 	mcpResolver     MCPResolver
 	homePaths       aghconfig.HomePaths
-	workspace       workspacepkg.WorkspaceResolver
+	workspace       workspacepkg.RuntimeResolver
 	openStore       StoreOpener
 	assembler       PromptAssembler
 	lifecycleCtx    context.Context
@@ -152,7 +152,7 @@ func WithHomePaths(homePaths aghconfig.HomePaths) Option {
 }
 
 // WithWorkspaceResolver injects workspace resolution for create/resume flows.
-func WithWorkspaceResolver(resolver workspacepkg.WorkspaceResolver) Option {
+func WithWorkspaceResolver(resolver workspacepkg.RuntimeResolver) Option {
 	return func(manager *Manager) {
 		manager.workspace = resolver
 	}
@@ -335,7 +335,7 @@ func (m *Manager) currentTurnEndNotifier() TurnEndNotifier {
 }
 
 // List returns active in-memory sessions in stable order.
-func (m *Manager) List() []*SessionInfo {
+func (m *Manager) List() []*Info {
 	m.mu.RLock()
 	sessions := make([]*Session, 0, len(m.sessions))
 	for _, session := range m.sessions {
@@ -343,7 +343,7 @@ func (m *Manager) List() []*SessionInfo {
 	}
 	m.mu.RUnlock()
 
-	infos := make([]*SessionInfo, 0, len(sessions))
+	infos := make([]*Info, 0, len(sessions))
 	for _, session := range sessions {
 		infos = append(infos, session.Info())
 	}
@@ -374,7 +374,7 @@ func (m *Manager) lookup(id string) (*Session, error) {
 	return session, nil
 }
 
-func (m *Manager) reserve(id string, max int) error {
+func (m *Manager) reserve(id string, maxSessions int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -386,8 +386,8 @@ func (m *Manager) reserve(id string, max int) error {
 	}
 
 	active := len(m.sessions) + len(m.pending)
-	if active >= max {
-		return maxSessionsReachedError{active: active, limit: max}
+	if active >= maxSessions {
+		return maxSessionsReachedError{active: active, limit: maxSessions}
 	}
 
 	m.pending[id] = struct{}{}

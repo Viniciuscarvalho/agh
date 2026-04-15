@@ -1,4 +1,4 @@
-package extension
+package extensionpkg
 
 import (
 	"encoding/json"

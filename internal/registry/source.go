@@ -9,8 +9,8 @@ import (
 // operation.
 var ErrNotSupported = errors.New("registry: operation not supported")
 
-// RegistrySource abstracts one registry backend.
-type RegistrySource interface {
+// Source abstracts one registry backend.
+type Source interface {
 	Name() string
 	Capabilities() SourceCaps
 	Search(ctx context.Context, query string, opts SearchOpts) ([]Listing, error)

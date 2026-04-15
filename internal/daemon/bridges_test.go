@@ -34,28 +34,51 @@ type bridgeRuntimeStoreStub struct {
 	deleteBridgeSecretBindingFn func(context.Context, string, string) error
 }
 
-func (s bridgeRuntimeStoreStub) ListBridgeSecretBindings(ctx context.Context, bridgeInstanceID string) ([]bridgepkg.BridgeSecretBinding, error) {
+func (s bridgeRuntimeStoreStub) ListBridgeSecretBindings(
+	ctx context.Context,
+	bridgeInstanceID string,
+) ([]bridgepkg.BridgeSecretBinding, error) {
 	if s.listBridgeSecretBindingsFn != nil {
 		return s.listBridgeSecretBindingsFn(ctx, bridgeInstanceID)
 	}
 	return nil, fmt.Errorf("%w: ListBridgeSecretBindings(%q)", errUnexpectedBridgeRuntimeStoreCall, bridgeInstanceID)
 }
 
-func (s bridgeRuntimeStoreStub) PutBridgeSecretBinding(ctx context.Context, binding bridgepkg.BridgeSecretBinding) error {
+func (s bridgeRuntimeStoreStub) PutBridgeSecretBinding(
+	ctx context.Context,
+	binding bridgepkg.BridgeSecretBinding,
+) error {
 	if s.putBridgeSecretBindingFn != nil {
 		return s.putBridgeSecretBindingFn(ctx, binding)
 	}
-	return fmt.Errorf("%w: PutBridgeSecretBinding(%q, %q)", errUnexpectedBridgeRuntimeStoreCall, binding.BridgeInstanceID, binding.BindingName)
+	return fmt.Errorf(
+		"%w: PutBridgeSecretBinding(%q, %q)",
+		errUnexpectedBridgeRuntimeStoreCall,
+		binding.BridgeInstanceID,
+		binding.BindingName,
+	)
 }
 
-func (s bridgeRuntimeStoreStub) DeleteBridgeSecretBinding(ctx context.Context, bridgeInstanceID string, bindingName string) error {
+func (s bridgeRuntimeStoreStub) DeleteBridgeSecretBinding(
+	ctx context.Context,
+	bridgeInstanceID string,
+	bindingName string,
+) error {
 	if s.deleteBridgeSecretBindingFn != nil {
 		return s.deleteBridgeSecretBindingFn(ctx, bridgeInstanceID, bindingName)
 	}
-	return fmt.Errorf("%w: DeleteBridgeSecretBinding(%q, %q)", errUnexpectedBridgeRuntimeStoreCall, bridgeInstanceID, bindingName)
+	return fmt.Errorf(
+		"%w: DeleteBridgeSecretBinding(%q, %q)",
+		errUnexpectedBridgeRuntimeStoreCall,
+		bridgeInstanceID,
+		bindingName,
+	)
 }
 
-func (r *recordingBridgeSecretResolver) ResolveBridgeSecret(_ context.Context, binding bridgepkg.BridgeSecretBinding) (string, error) {
+func (r *recordingBridgeSecretResolver) ResolveBridgeSecret(
+	_ context.Context,
+	binding bridgepkg.BridgeSecretBinding,
+) (string, error) {
 	r.calls = append(r.calls, binding)
 	if r.err != nil {
 		return "", r.err
@@ -72,7 +95,7 @@ func TestComposeBridgeRuntime(t *testing.T) {
 
 		homePaths := testHomePaths(t)
 		cfg := testConfig(t, homePaths)
-		d := newTestDaemon(t, homePaths, cfg)
+		d := newTestDaemon(t, homePaths, &cfg)
 		d.now = func() time.Time {
 			return time.Date(2026, 4, 11, 12, 0, 0, 0, time.UTC)
 		}
@@ -91,7 +114,7 @@ func TestComposeBridgeRuntime(t *testing.T) {
 
 		homePaths := testHomePaths(t)
 		cfg := testConfig(t, homePaths)
-		d := newTestDaemon(t, homePaths, cfg)
+		d := newTestDaemon(t, homePaths, &cfg)
 		d.now = func() time.Time {
 			return time.Date(2026, 4, 11, 12, 0, 0, 0, time.UTC)
 		}
@@ -146,9 +169,7 @@ func TestDaemonApplyDefaultsBridgeSecretResolver(t *testing.T) {
 			},
 		}
 
-		if err := d.applyDefaults(); err != nil {
-			t.Fatalf("applyDefaults() error = %v", err)
-		}
+		d.applyDefaults()
 		if d.bridgeSecretResolver == nil {
 			t.Fatal("applyDefaults() bridgeSecretResolver = nil, want default resolver")
 		}
@@ -176,9 +197,7 @@ func TestDaemonApplyDefaultsBridgeSecretResolver(t *testing.T) {
 			bridgeSecretResolver: resolver,
 		}
 
-		if err := d.applyDefaults(); err != nil {
-			t.Fatalf("applyDefaults() error = %v", err)
-		}
+		d.applyDefaults()
 		if d.bridgeSecretResolver != resolver {
 			t.Fatalf("applyDefaults() bridgeSecretResolver = %#v, want %#v", d.bridgeSecretResolver, resolver)
 		}
@@ -281,7 +300,7 @@ func TestBootExtensions(t *testing.T) {
 
 		homePaths := testHomePaths(t)
 		cfg := testConfig(t, homePaths)
-		d := newTestDaemon(t, homePaths, cfg)
+		d := newTestDaemon(t, homePaths, &cfg)
 		d.newExtensionManager = func(deps extensionManagerDeps) extensionRuntime {
 			captured = deps
 			return manager
@@ -689,8 +708,13 @@ func TestBridgeRuntimeResolveBridgeRuntime(t *testing.T) {
 		if got, want := managed.Instance.ID, instance.ID; got != want {
 			t.Fatalf("ResolveBridgeRuntime().ManagedInstance(%q).Instance.ID = %q, want %q", instance.ID, got, want)
 		}
-		if got := managed.BoundSecrets; len(got) != 1 || got[0].BindingName != "bot_token" || got[0].Value != "secret-value" {
-			t.Fatalf("ResolveBridgeRuntime().ManagedInstance(%q).BoundSecrets = %#v, want resolved bot_token binding", instance.ID, got)
+		if got := managed.BoundSecrets; len(got) != 1 || got[0].BindingName != "bot_token" ||
+			got[0].Value != "secret-value" {
+			t.Fatalf(
+				"ResolveBridgeRuntime().ManagedInstance(%q).BoundSecrets = %#v, want resolved bot_token binding",
+				instance.ID,
+				got,
+			)
 		}
 		if len(resolver.calls) != 1 || resolver.calls[0].BindingName != "bot_token" {
 			t.Fatalf("ResolveBridgeSecret() calls = %#v, want bot_token binding", resolver.calls)
@@ -749,7 +773,12 @@ func TestBridgeRuntimeResolveBridgeRuntime(t *testing.T) {
 			t.Fatalf("ResolveBridgeRuntime() missing managed instance %q", instance.ID)
 		}
 		if got, want := managed.BoundSecrets[0].Value, "secret-from-env"; got != want {
-			t.Fatalf("ResolveBridgeRuntime().ManagedInstance(%q).BoundSecrets[0].Value = %q, want %q", instance.ID, got, want)
+			t.Fatalf(
+				"ResolveBridgeRuntime().ManagedInstance(%q).BoundSecrets[0].Value = %q, want %q",
+				instance.ID,
+				got,
+				want,
+			)
 		}
 	})
 
@@ -861,7 +890,8 @@ func TestBridgeRuntimeResolveBridgeRuntime(t *testing.T) {
 		}
 
 		_, err := runtime.ResolveBridgeRuntime(testutil.Context(t), instance.ExtensionName)
-		if !errors.Is(err, bridgepkg.ErrInvalidBridgeSecretBinding) || !strings.Contains(err.Error(), `AGH_BRIDGE_MISSING_TOKEN`) {
+		if !errors.Is(err, bridgepkg.ErrInvalidBridgeSecretBinding) ||
+			!strings.Contains(err.Error(), `AGH_BRIDGE_MISSING_TOKEN`) {
 			t.Fatalf("ResolveBridgeRuntime() error = %v, want missing env error", err)
 		}
 		if strings.Contains(err.Error(), errBridgeSecretResolverRequired.Error()) {
@@ -937,7 +967,12 @@ func TestBridgeRuntimeSecretBindings(t *testing.T) {
 		t.Parallel()
 
 		db := openDaemonTestGlobalDB(t)
-		runtime := newBridgeRuntime(db, discardLogger(), nil, envBridgeSecretResolver{getenv: func(string) string { return "" }})
+		runtime := newBridgeRuntime(
+			db,
+			discardLogger(),
+			nil,
+			envBridgeSecretResolver{getenv: func(string) string { return "" }},
+		)
 		instance := mustCreateDaemonBridgeInstance(t, runtime, bridgepkg.CreateInstanceRequest{
 			ID:            "brg-secret-binding",
 			Scope:         bridgepkg.ScopeGlobal,
@@ -990,7 +1025,12 @@ func TestBridgeRuntimeSecretBindings(t *testing.T) {
 		t.Parallel()
 
 		db := openDaemonTestGlobalDB(t)
-		runtime := newBridgeRuntime(db, discardLogger(), nil, envBridgeSecretResolver{getenv: func(string) string { return "" }})
+		runtime := newBridgeRuntime(
+			db,
+			discardLogger(),
+			nil,
+			envBridgeSecretResolver{getenv: func(string) string { return "" }},
+		)
 		instance := mustCreateDaemonBridgeInstance(t, runtime, bridgepkg.CreateInstanceRequest{
 			ID:            "brg-secret-binding-invalid",
 			Scope:         bridgepkg.ScopeGlobal,
@@ -1098,7 +1138,13 @@ func TestBridgeRuntimeStopInstance(t *testing.T) {
 			t.Fatalf("ListRoutes() = %#v, want preserved route %#v", routes, route)
 		}
 
-		if _, err := runtime.ResolveRoute(testutil.Context(t), route.RoutingKey()); !errors.Is(err, bridgepkg.ErrBridgeInstanceUnavailable) {
+		if _, err := runtime.ResolveRoute(
+			testutil.Context(t),
+			route.RoutingKey(),
+		); !errors.Is(
+			err,
+			bridgepkg.ErrBridgeInstanceUnavailable,
+		) {
 			t.Fatalf("ResolveRoute(disabled) error = %v, want ErrBridgeInstanceUnavailable", err)
 		}
 	})
@@ -1236,7 +1282,6 @@ func TestBridgeRuntimeTransition(t *testing.T) {
 		}
 
 		for _, tt := range testCases {
-			tt := tt
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 
@@ -1538,17 +1583,32 @@ func mustInstallDaemonExtension(
 func daemonExtensionManifest(fixture daemonExtensionFixture) string {
 	var builder strings.Builder
 
-	fmt.Fprintf(&builder, "[extension]\nname = %q\nversion = \"0.1.0\"\ndescription = %q\nmin_agh_version = \"0.5.0\"\n\n", fixture.name, fixture.description)
+	fmt.Fprintf(
+		&builder,
+		"[extension]\nname = %q\nversion = \"0.1.0\"\ndescription = %q\nmin_agh_version = \"0.5.0\"\n\n",
+		fixture.name,
+		fixture.description,
+	)
 	if len(fixture.capabilities) > 0 {
 		fmt.Fprintf(&builder, "[capabilities]\nprovides = [%s]\n\n", quotedStringList(fixture.capabilities))
 	}
 	if fixture.bridgePlatform != "" || fixture.bridgeDisplayName != "" {
-		fmt.Fprintf(&builder, "[bridge]\nplatform = %q\ndisplay_name = %q\n", fixture.bridgePlatform, fixture.bridgeDisplayName)
+		fmt.Fprintf(
+			&builder,
+			"[bridge]\nplatform = %q\ndisplay_name = %q\n",
+			fixture.bridgePlatform,
+			fixture.bridgeDisplayName,
+		)
 		if fixture.bridgeSecretSlots != "" {
 			builder.WriteString(fixture.bridgeSecretSlots)
 		}
 		if fixture.bridgeConfigSchema != "" || fixture.bridgeConfigVersion != "" {
-			fmt.Fprintf(&builder, "\n[bridge.config_schema]\nschema = %q\nversion = %q\n", fixture.bridgeConfigSchema, fixture.bridgeConfigVersion)
+			fmt.Fprintf(
+				&builder,
+				"\n[bridge.config_schema]\nschema = %q\nversion = %q\n",
+				fixture.bridgeConfigSchema,
+				fixture.bridgeConfigVersion,
+			)
 		}
 	}
 	return builder.String()

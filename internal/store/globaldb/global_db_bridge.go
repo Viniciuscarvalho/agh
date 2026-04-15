@@ -20,7 +20,13 @@ func (g *GlobalDB) InsertBridgeInstance(ctx context.Context, instance bridges.Br
 		return err
 	}
 
-	normalized, routingPolicyJSON, providerConfig, deliveryDefaults, degradationReason, degradationMessage, err := normalizeBridgeInstanceRecord(instance)
+	normalized,
+		routingPolicyJSON,
+		providerConfig,
+		deliveryDefaults,
+		degradationReason,
+		degradationMessage,
+		err := normalizeBridgeInstanceRecord(instance)
 	if err != nil {
 		return err
 	}
@@ -34,7 +40,10 @@ func (g *GlobalDB) InsertBridgeInstance(ctx context.Context, instance bridges.Br
 	if _, err := g.db.ExecContext(
 		ctx,
 		`INSERT INTO bridge_instances (
-			id, scope, workspace_id, platform, extension_name, display_name, source, enabled, status, dm_policy, routing_policy, provider_config, delivery_defaults, degradation_reason, degradation_message, created_at, updated_at
+			id, scope, workspace_id, platform, extension_name, display_name,
+			source, enabled, status, dm_policy, routing_policy, provider_config,
+			delivery_defaults, degradation_reason, degradation_message,
+			created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		normalized.ID,
 		string(normalized.Scope),
@@ -66,7 +75,13 @@ func (g *GlobalDB) UpdateBridgeInstance(ctx context.Context, instance bridges.Br
 		return err
 	}
 
-	normalized, routingPolicyJSON, providerConfig, deliveryDefaults, degradationReason, degradationMessage, err := normalizeBridgeInstanceRecord(instance)
+	normalized,
+		routingPolicyJSON,
+		providerConfig,
+		deliveryDefaults,
+		degradationReason,
+		degradationMessage,
+		err := normalizeBridgeInstanceRecord(instance)
 	if err != nil {
 		return err
 	}
@@ -77,7 +92,11 @@ func (g *GlobalDB) UpdateBridgeInstance(ctx context.Context, instance bridges.Br
 	result, err := g.db.ExecContext(
 		ctx,
 		`UPDATE bridge_instances
-		 SET scope = ?, workspace_id = ?, platform = ?, extension_name = ?, display_name = ?, source = ?, enabled = ?, status = ?, dm_policy = ?, routing_policy = ?, provider_config = ?, delivery_defaults = ?, degradation_reason = ?, degradation_message = ?, updated_at = ?
+		 SET scope = ?, workspace_id = ?, platform = ?, extension_name = ?,
+		     display_name = ?, source = ?, enabled = ?, status = ?,
+		     dm_policy = ?, routing_policy = ?, provider_config = ?,
+		     delivery_defaults = ?, degradation_reason = ?,
+		     degradation_message = ?, updated_at = ?
 		 WHERE id = ?`,
 		string(normalized.Scope),
 		store.NullableString(normalized.WorkspaceID),
@@ -151,7 +170,11 @@ func (g *GlobalDB) GetBridgeInstance(ctx context.Context, id string) (bridges.Br
 
 	row := g.db.QueryRowContext(
 		ctx,
-		`SELECT id, scope, workspace_id, platform, extension_name, display_name, source, enabled, status, dm_policy, routing_policy, provider_config, delivery_defaults, degradation_reason, degradation_message, created_at, updated_at
+		`SELECT
+			id, scope, workspace_id, platform, extension_name, display_name,
+			source, enabled, status, dm_policy, routing_policy, provider_config,
+			delivery_defaults, degradation_reason, degradation_message,
+			created_at, updated_at
 		 FROM bridge_instances WHERE id = ?`,
 		trimmedID,
 	)
@@ -174,7 +197,11 @@ func (g *GlobalDB) ListBridgeInstances(ctx context.Context) ([]bridges.BridgeIns
 
 	rows, err := g.db.QueryContext(
 		ctx,
-		`SELECT id, scope, workspace_id, platform, extension_name, display_name, source, enabled, status, dm_policy, routing_policy, provider_config, delivery_defaults, degradation_reason, degradation_message, created_at, updated_at
+		`SELECT
+			id, scope, workspace_id, platform, extension_name, display_name,
+			source, enabled, status, dm_policy, routing_policy, provider_config,
+			delivery_defaults, degradation_reason, degradation_message,
+			created_at, updated_at
 		 FROM bridge_instances
 		 ORDER BY display_name ASC, created_at ASC, id ASC`,
 	)
@@ -233,14 +260,23 @@ func (g *GlobalDB) PutBridgeSecretBinding(ctx context.Context, binding bridges.B
 		store.FormatTimestamp(normalized.CreatedAt),
 		store.FormatTimestamp(normalized.UpdatedAt),
 	); err != nil {
-		return fmt.Errorf("store: put bridge secret binding %q/%q: %w", normalized.BridgeInstanceID, normalized.BindingName, mapBridgeChildConstraintError(err))
+		return fmt.Errorf(
+			"store: put bridge secret binding %q/%q: %w",
+			normalized.BridgeInstanceID,
+			normalized.BindingName,
+			mapBridgeChildConstraintError(err),
+		)
 	}
 
 	return nil
 }
 
 // GetBridgeSecretBinding loads one persisted secret binding by composite primary key.
-func (g *GlobalDB) GetBridgeSecretBinding(ctx context.Context, bridgeInstanceID string, bindingName string) (bridges.BridgeSecretBinding, error) {
+func (g *GlobalDB) GetBridgeSecretBinding(
+	ctx context.Context,
+	bridgeInstanceID string,
+	bindingName string,
+) (bridges.BridgeSecretBinding, error) {
 	if err := g.checkReady(ctx, "get bridge secret binding"); err != nil {
 		return bridges.BridgeSecretBinding{}, err
 	}
@@ -274,7 +310,10 @@ func (g *GlobalDB) GetBridgeSecretBinding(ctx context.Context, bridgeInstanceID 
 }
 
 // ListBridgeSecretBindings returns the persisted secret bindings for one bridge instance.
-func (g *GlobalDB) ListBridgeSecretBindings(ctx context.Context, bridgeInstanceID string) ([]bridges.BridgeSecretBinding, error) {
+func (g *GlobalDB) ListBridgeSecretBindings(
+	ctx context.Context,
+	bridgeInstanceID string,
+) ([]bridges.BridgeSecretBinding, error) {
 	if err := g.checkReady(ctx, "list bridge secret bindings"); err != nil {
 		return nil, err
 	}
@@ -341,10 +380,20 @@ func (g *GlobalDB) DeleteBridgeSecretBinding(ctx context.Context, bridgeInstance
 
 	affected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("store: rows affected for bridge secret binding %q/%q: %w", trimmedInstanceID, trimmedBindingName, err)
+		return fmt.Errorf(
+			"store: rows affected for bridge secret binding %q/%q: %w",
+			trimmedInstanceID,
+			trimmedBindingName,
+			err,
+		)
 	}
 	if affected == 0 {
-		return fmt.Errorf("store: bridge secret binding %q/%q: %w", trimmedInstanceID, trimmedBindingName, bridges.ErrBridgeSecretBindingNotFound)
+		return fmt.Errorf(
+			"store: bridge secret binding %q/%q: %w",
+			trimmedInstanceID,
+			trimmedBindingName,
+			bridges.ErrBridgeSecretBindingNotFound,
+		)
 	}
 
 	return nil
@@ -373,7 +422,9 @@ func (g *GlobalDB) PutBridgeRoute(ctx context.Context, route bridges.BridgeRoute
 	if _, err := g.db.ExecContext(
 		ctx,
 		`INSERT INTO bridge_routes (
-			routing_key_hash, scope, workspace_id, bridge_instance_id, peer_id, thread_id, group_id, session_id, agent_name, last_activity_at, created_at, updated_at
+			routing_key_hash, scope, workspace_id, bridge_instance_id, peer_id,
+			thread_id, group_id, session_id, agent_name, last_activity_at,
+			created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(routing_key_hash) DO UPDATE SET
 			scope = excluded.scope,
@@ -399,7 +450,11 @@ func (g *GlobalDB) PutBridgeRoute(ctx context.Context, route bridges.BridgeRoute
 		store.FormatTimestamp(normalized.CreatedAt),
 		store.FormatTimestamp(normalized.UpdatedAt),
 	); err != nil {
-		return fmt.Errorf("store: put bridge route %q: %w", normalized.RoutingKeyHash, mapBridgeChildConstraintError(err))
+		return fmt.Errorf(
+			"store: put bridge route %q: %w",
+			normalized.RoutingKeyHash,
+			mapBridgeChildConstraintError(err),
+		)
 	}
 
 	return nil
@@ -418,7 +473,10 @@ func (g *GlobalDB) GetBridgeRoute(ctx context.Context, routingKeyHash string) (b
 
 	row := g.db.QueryRowContext(
 		ctx,
-		`SELECT routing_key_hash, scope, workspace_id, bridge_instance_id, peer_id, thread_id, group_id, session_id, agent_name, last_activity_at, created_at, updated_at
+		`SELECT
+			routing_key_hash, scope, workspace_id, bridge_instance_id, peer_id,
+			thread_id, group_id, session_id, agent_name, last_activity_at,
+			created_at, updated_at
 		 FROM bridge_routes WHERE routing_key_hash = ?`,
 		trimmedHash,
 	)
@@ -459,7 +517,10 @@ func (g *GlobalDB) ListBridgeRoutes(ctx context.Context, bridgeInstanceID string
 
 	rows, err := g.db.QueryContext(
 		ctx,
-		`SELECT routing_key_hash, scope, workspace_id, bridge_instance_id, peer_id, thread_id, group_id, session_id, agent_name, last_activity_at, created_at, updated_at
+		`SELECT
+			routing_key_hash, scope, workspace_id, bridge_instance_id, peer_id,
+			thread_id, group_id, session_id, agent_name, last_activity_at,
+			created_at, updated_at
 		 FROM bridge_routes
 		 WHERE bridge_instance_id = ?
 		 ORDER BY updated_at DESC, created_at DESC, routing_key_hash ASC`,
@@ -539,14 +600,22 @@ func (g *GlobalDB) PutBridgeIngestDedup(ctx context.Context, record bridges.Inge
 		store.FormatTimestamp(normalized.ReceivedAt),
 		store.FormatTimestamp(normalized.ExpiresAt),
 	); err != nil {
-		return fmt.Errorf("store: put bridge ingest dedup %q: %w", normalized.IdempotencyKey, mapBridgeChildConstraintError(err))
+		return fmt.Errorf(
+			"store: put bridge ingest dedup %q: %w",
+			normalized.IdempotencyKey,
+			mapBridgeChildConstraintError(err),
+		)
 	}
 
 	return nil
 }
 
 // GetBridgeIngestDedup loads one active dedup record and excludes expired rows at the supplied lookup time.
-func (g *GlobalDB) GetBridgeIngestDedup(ctx context.Context, idempotencyKey string, lookupAt time.Time) (bridges.IngestDedupRecord, error) {
+func (g *GlobalDB) GetBridgeIngestDedup(
+	ctx context.Context,
+	idempotencyKey string,
+	lookupAt time.Time,
+) (bridges.IngestDedupRecord, error) {
 	if err := g.checkReady(ctx, "get bridge ingest dedup"); err != nil {
 		return bridges.IngestDedupRecord{}, err
 	}
@@ -603,7 +672,9 @@ func (g *GlobalDB) DeleteExpiredBridgeIngestDedup(ctx context.Context, now time.
 	return affected, nil
 }
 
-func normalizeBridgeInstanceRecord(instance bridges.BridgeInstance) (bridges.BridgeInstance, string, any, any, any, any, error) {
+func normalizeBridgeInstanceRecord(
+	instance bridges.BridgeInstance,
+) (bridges.BridgeInstance, string, any, any, any, any, error) {
 	normalized := instance.Normalized()
 	if err := normalized.Validate(); err != nil {
 		return bridges.BridgeInstance{}, "", nil, nil, nil, nil, err
@@ -611,17 +682,26 @@ func normalizeBridgeInstanceRecord(instance bridges.BridgeInstance) (bridges.Bri
 
 	routingPolicyJSON, err := json.Marshal(normalized.RoutingPolicy)
 	if err != nil {
-		return bridges.BridgeInstance{}, "", nil, nil, nil, nil, fmt.Errorf("store: encode bridge routing policy: %w", err)
+		return bridges.BridgeInstance{}, "", nil, nil, nil, nil, fmt.Errorf(
+			"store: encode bridge routing policy: %w",
+			err,
+		)
 	}
 
 	providerConfig, err := normalizeOptionalRawJSON(normalized.ProviderConfig)
 	if err != nil {
-		return bridges.BridgeInstance{}, "", nil, nil, nil, nil, fmt.Errorf("store: encode bridge provider config: %w", err)
+		return bridges.BridgeInstance{}, "", nil, nil, nil, nil, fmt.Errorf(
+			"store: encode bridge provider config: %w",
+			err,
+		)
 	}
 
 	deliveryDefaults, err := normalizeOptionalRawJSON(normalized.DeliveryDefaults)
 	if err != nil {
-		return bridges.BridgeInstance{}, "", nil, nil, nil, nil, fmt.Errorf("store: encode bridge delivery defaults: %w", err)
+		return bridges.BridgeInstance{}, "", nil, nil, nil, nil, fmt.Errorf(
+			"store: encode bridge delivery defaults: %w",
+			err,
+		)
 	}
 
 	var degradationReason any
@@ -631,7 +711,9 @@ func normalizeBridgeInstanceRecord(instance bridges.BridgeInstance) (bridges.Bri
 		degradationMessage = store.NullableString(normalized.Degradation.Message)
 	}
 
-	return normalized, string(routingPolicyJSON), providerConfig, deliveryDefaults, degradationReason, degradationMessage, nil
+	return normalized, string(
+		routingPolicyJSON,
+	), providerConfig, deliveryDefaults, degradationReason, degradationMessage, nil
 }
 
 func normalizeOptionalRawJSON(value json.RawMessage) (any, error) {

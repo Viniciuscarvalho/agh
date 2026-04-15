@@ -1,4 +1,4 @@
-package extension
+package extensionpkg
 
 import (
 	"encoding/json"
@@ -22,119 +22,119 @@ var (
 
 // BundleSpec declares one team/product package shipped by an extension.
 type BundleSpec struct {
-	Name        string          `toml:"name" json:"name"`
+	Name        string          `toml:"name"                  json:"name"`
 	Description string          `toml:"description,omitempty" json:"description,omitempty"`
-	Profiles    []BundleProfile `toml:"profiles" json:"profiles"`
+	Profiles    []BundleProfile `toml:"profiles"              json:"profiles"`
 }
 
 // BundleProfile declares one activatable resource profile for a bundle.
 type BundleProfile struct {
-	Name        string               `toml:"name" json:"name"`
+	Name        string               `toml:"name"                  json:"name"`
 	Description string               `toml:"description,omitempty" json:"description,omitempty"`
-	Channels    BundleChannelsConfig `toml:"channels" json:"channels"`
-	Jobs        []BundleJob          `toml:"jobs,omitempty" json:"jobs,omitempty"`
-	Triggers    []BundleTrigger      `toml:"triggers,omitempty" json:"triggers,omitempty"`
-	Bridges     []BundleBridgePreset `toml:"bridges,omitempty" json:"bridges,omitempty"`
+	Channels    BundleChannelsConfig `toml:"channels"              json:"channels"`
+	Jobs        []BundleJob          `toml:"jobs,omitempty"        json:"jobs,omitempty"`
+	Triggers    []BundleTrigger      `toml:"triggers,omitempty"    json:"triggers,omitempty"`
+	Bridges     []BundleBridgePreset `toml:"bridges,omitempty"     json:"bridges,omitempty"`
 }
 
 // BundleChannelsConfig declares the canonical channels packaged by a profile.
 type BundleChannelsConfig struct {
 	Primary string          `toml:"primary,omitempty" json:"primary,omitempty"`
-	Items   []BundleChannel `toml:"items,omitempty" json:"items,omitempty"`
+	Items   []BundleChannel `toml:"items,omitempty"   json:"items,omitempty"`
 }
 
 // BundleChannel describes one declared network channel bundled by a profile.
 type BundleChannel struct {
-	Name        string `toml:"name" json:"name"`
+	Name        string `toml:"name"                  json:"name"`
 	Description string `toml:"description,omitempty" json:"description,omitempty"`
 }
 
 // BundleJob declares one package-managed automation job template.
 type BundleJob struct {
-	Name      string                        `toml:"name" json:"name"`
-	AgentName string                        `toml:"agent" json:"agent"`
-	Prompt    string                        `toml:"prompt" json:"prompt"`
-	Schedule  automationpkg.ScheduleSpec    `toml:"schedule" json:"schedule"`
-	Task      *automationpkg.JobTaskConfig  `toml:"task,omitempty" json:"task,omitempty"`
-	Enabled   bool                          `toml:"enabled" json:"enabled"`
-	Retry     automationpkg.RetryConfig     `toml:"retry,omitempty" json:"retry,omitempty"`
-	FireLimit automationpkg.FireLimitConfig `toml:"fire_limit,omitempty" json:"fire_limit,omitempty"`
+	Name      string                        `toml:"name"                 json:"name"`
+	AgentName string                        `toml:"agent"                json:"agent"`
+	Prompt    string                        `toml:"prompt"               json:"prompt"`
+	Schedule  automationpkg.ScheduleSpec    `toml:"schedule"             json:"schedule"`
+	Task      *automationpkg.JobTaskConfig  `toml:"task,omitempty"       json:"task,omitempty"`
+	Enabled   bool                          `toml:"enabled"              json:"enabled"`
+	Retry     automationpkg.RetryConfig     `toml:"retry,omitempty"      json:"retry"`
+	FireLimit automationpkg.FireLimitConfig `toml:"fire_limit,omitempty" json:"fire_limit"`
 }
 
 // BundleTrigger declares one package-managed automation trigger template.
 type BundleTrigger struct {
-	Name         string                        `toml:"name" json:"name"`
-	AgentName    string                        `toml:"agent" json:"agent"`
-	Prompt       string                        `toml:"prompt" json:"prompt"`
-	Event        string                        `toml:"event" json:"event"`
-	Filter       map[string]string             `toml:"filter,omitempty" json:"filter,omitempty"`
-	Enabled      bool                          `toml:"enabled" json:"enabled"`
-	Retry        automationpkg.RetryConfig     `toml:"retry,omitempty" json:"retry,omitempty"`
-	FireLimit    automationpkg.FireLimitConfig `toml:"fire_limit,omitempty" json:"fire_limit,omitempty"`
+	Name         string                        `toml:"name"                    json:"name"`
+	AgentName    string                        `toml:"agent"                   json:"agent"`
+	Prompt       string                        `toml:"prompt"                  json:"prompt"`
+	Event        string                        `toml:"event"                   json:"event"`
+	Filter       map[string]string             `toml:"filter,omitempty"        json:"filter,omitempty"`
+	Enabled      bool                          `toml:"enabled"                 json:"enabled"`
+	Retry        automationpkg.RetryConfig     `toml:"retry,omitempty"         json:"retry"`
+	FireLimit    automationpkg.FireLimitConfig `toml:"fire_limit,omitempty"    json:"fire_limit"`
 	EndpointSlug string                        `toml:"endpoint_slug,omitempty" json:"endpoint_slug,omitempty"`
 }
 
 // BundleBridgePreset declares one package-managed bridge instance template.
 type BundleBridgePreset struct {
-	Name             string                   `toml:"name" json:"name"`
-	ExtensionName    string                   `toml:"extension_name,omitempty" json:"extension_name,omitempty"`
-	Platform         string                   `toml:"platform,omitempty" json:"platform,omitempty"`
-	DisplayName      string                   `toml:"display_name" json:"display_name"`
-	RoutingPolicy    bridgepkg.RoutingPolicy  `toml:"routing_policy" json:"routing_policy"`
+	Name             string                   `toml:"name"                        json:"name"`
+	ExtensionName    string                   `toml:"extension_name,omitempty"    json:"extension_name,omitempty"`
+	Platform         string                   `toml:"platform,omitempty"          json:"platform,omitempty"`
+	DisplayName      string                   `toml:"display_name"                json:"display_name"`
+	RoutingPolicy    bridgepkg.RoutingPolicy  `toml:"routing_policy"              json:"routing_policy"`
 	DeliveryDefaults json.RawMessage          `toml:"delivery_defaults,omitempty" json:"delivery_defaults,omitempty"`
-	SecretSlots      []BundleBridgeSecretSlot `toml:"secret_slots,omitempty" json:"secret_slots,omitempty"`
+	SecretSlots      []BundleBridgeSecretSlot `toml:"secret_slots,omitempty"      json:"secret_slots,omitempty"`
 }
 
 // BundleBridgeSecretSlot declares one required bridge secret binding.
 type BundleBridgeSecretSlot struct {
-	Name        string `toml:"name" json:"name"`
-	Kind        string `toml:"kind" json:"kind"`
+	Name        string `toml:"name"                  json:"name"`
+	Kind        string `toml:"kind"                  json:"kind"`
 	Description string `toml:"description,omitempty" json:"description,omitempty"`
 }
 
 type bundleDocument struct {
 	Bundle bundleRawSpec `toml:"bundle" json:"bundle"`
 
-	Name        string             `toml:"name" json:"name"`
+	Name        string             `toml:"name"                  json:"name"`
 	Description string             `toml:"description,omitempty" json:"description,omitempty"`
-	Profiles    []bundleRawProfile `toml:"profiles" json:"profiles"`
+	Profiles    []bundleRawProfile `toml:"profiles"              json:"profiles"`
 }
 
 type bundleRawSpec struct {
-	Name        string             `toml:"name" json:"name"`
+	Name        string             `toml:"name"                  json:"name"`
 	Description string             `toml:"description,omitempty" json:"description,omitempty"`
-	Profiles    []bundleRawProfile `toml:"profiles" json:"profiles"`
+	Profiles    []bundleRawProfile `toml:"profiles"              json:"profiles"`
 }
 
 type bundleRawProfile struct {
-	Name        string               `toml:"name" json:"name"`
+	Name        string               `toml:"name"                  json:"name"`
 	Description string               `toml:"description,omitempty" json:"description,omitempty"`
-	Channels    BundleChannelsConfig `toml:"channels" json:"channels"`
-	Jobs        []bundleRawJob       `toml:"jobs,omitempty" json:"jobs,omitempty"`
-	Triggers    []bundleRawTrigger   `toml:"triggers,omitempty" json:"triggers,omitempty"`
-	Bridges     []BundleBridgePreset `toml:"bridges,omitempty" json:"bridges,omitempty"`
+	Channels    BundleChannelsConfig `toml:"channels"              json:"channels"`
+	Jobs        []bundleRawJob       `toml:"jobs,omitempty"        json:"jobs,omitempty"`
+	Triggers    []bundleRawTrigger   `toml:"triggers,omitempty"    json:"triggers,omitempty"`
+	Bridges     []BundleBridgePreset `toml:"bridges,omitempty"     json:"bridges,omitempty"`
 }
 
 type bundleRawJob struct {
-	Name      string                        `toml:"name" json:"name"`
-	AgentName string                        `toml:"agent" json:"agent"`
-	Prompt    string                        `toml:"prompt" json:"prompt"`
-	Schedule  automationpkg.ScheduleSpec    `toml:"schedule" json:"schedule"`
-	Task      *automationpkg.JobTaskConfig  `toml:"task,omitempty" json:"task,omitempty"`
-	Enabled   *bool                         `toml:"enabled,omitempty" json:"enabled,omitempty"`
-	Retry     automationpkg.RetryConfig     `toml:"retry,omitempty" json:"retry,omitempty"`
-	FireLimit automationpkg.FireLimitConfig `toml:"fire_limit,omitempty" json:"fire_limit,omitempty"`
+	Name      string                        `toml:"name"                 json:"name"`
+	AgentName string                        `toml:"agent"                json:"agent"`
+	Prompt    string                        `toml:"prompt"               json:"prompt"`
+	Schedule  automationpkg.ScheduleSpec    `toml:"schedule"             json:"schedule"`
+	Task      *automationpkg.JobTaskConfig  `toml:"task,omitempty"       json:"task,omitempty"`
+	Enabled   *bool                         `toml:"enabled,omitempty"    json:"enabled,omitempty"`
+	Retry     automationpkg.RetryConfig     `toml:"retry,omitempty"      json:"retry"`
+	FireLimit automationpkg.FireLimitConfig `toml:"fire_limit,omitempty" json:"fire_limit"`
 }
 
 type bundleRawTrigger struct {
-	Name         string                        `toml:"name" json:"name"`
-	AgentName    string                        `toml:"agent" json:"agent"`
-	Prompt       string                        `toml:"prompt" json:"prompt"`
-	Event        string                        `toml:"event" json:"event"`
-	Filter       map[string]string             `toml:"filter,omitempty" json:"filter,omitempty"`
-	Enabled      *bool                         `toml:"enabled,omitempty" json:"enabled,omitempty"`
-	Retry        automationpkg.RetryConfig     `toml:"retry,omitempty" json:"retry,omitempty"`
-	FireLimit    automationpkg.FireLimitConfig `toml:"fire_limit,omitempty" json:"fire_limit,omitempty"`
+	Name         string                        `toml:"name"                    json:"name"`
+	AgentName    string                        `toml:"agent"                   json:"agent"`
+	Prompt       string                        `toml:"prompt"                  json:"prompt"`
+	Event        string                        `toml:"event"                   json:"event"`
+	Filter       map[string]string             `toml:"filter,omitempty"        json:"filter,omitempty"`
+	Enabled      *bool                         `toml:"enabled,omitempty"       json:"enabled,omitempty"`
+	Retry        automationpkg.RetryConfig     `toml:"retry,omitempty"         json:"retry"`
+	FireLimit    automationpkg.FireLimitConfig `toml:"fire_limit,omitempty"    json:"fire_limit"`
 	EndpointSlug string                        `toml:"endpoint_slug,omitempty" json:"endpoint_slug,omitempty"`
 }
 
@@ -207,14 +207,40 @@ func (b BundleSpec) Validate(manifest *Manifest) error {
 
 // Validate ensures one bundle profile is internally consistent.
 func (p BundleProfile) Validate(bundleName string, manifest *Manifest) error {
+	channelNames, err := p.validateChannels(bundleName)
+	if err != nil {
+		return err
+	}
+	if err := p.validateJobs(bundleName, channelNames); err != nil {
+		return err
+	}
+	if err := p.validateTriggers(bundleName); err != nil {
+		return err
+	}
+	return p.validateBridges(bundleName, manifest)
+}
+
+func (p BundleProfile) validateChannels(bundleName string) (map[string]struct{}, error) {
 	channelNames := make(map[string]struct{}, len(p.Channels.Items))
 	for idx, item := range p.Channels.Items {
 		name := strings.TrimSpace(item.Name)
 		if name == "" {
-			return fmt.Errorf("%w: bundle %q profile %q channels[%d].name is required", ErrBundleInvalid, bundleName, p.Name, idx)
+			return nil, fmt.Errorf(
+				"%w: bundle %q profile %q channels[%d].name is required",
+				ErrBundleInvalid,
+				bundleName,
+				p.Name,
+				idx,
+			)
 		}
 		if _, exists := channelNames[name]; exists {
-			return fmt.Errorf("%w: bundle %q profile %q channel %q is duplicated", ErrBundleInvalid, bundleName, p.Name, name)
+			return nil, fmt.Errorf(
+				"%w: bundle %q profile %q channel %q is duplicated",
+				ErrBundleInvalid,
+				bundleName,
+				p.Name,
+				name,
+			)
 		}
 		channelNames[name] = struct{}{}
 	}
@@ -222,13 +248,28 @@ func (p BundleProfile) Validate(bundleName string, manifest *Manifest) error {
 	primary := strings.TrimSpace(p.Channels.Primary)
 	switch {
 	case len(channelNames) > 0 && primary == "":
-		return fmt.Errorf("%w: bundle %q profile %q must declare channels.primary", ErrBundleInvalid, bundleName, p.Name)
+		return nil, fmt.Errorf(
+			"%w: bundle %q profile %q must declare channels.primary",
+			ErrBundleInvalid,
+			bundleName,
+			p.Name,
+		)
 	case primary != "":
 		if _, ok := channelNames[primary]; !ok {
-			return fmt.Errorf("%w: bundle %q profile %q primary channel %q is not declared", ErrBundleInvalid, bundleName, p.Name, primary)
+			return nil, fmt.Errorf(
+				"%w: bundle %q profile %q primary channel %q is not declared",
+				ErrBundleInvalid,
+				bundleName,
+				p.Name,
+				primary,
+			)
 		}
 	}
 
+	return channelNames, nil
+}
+
+func (p BundleProfile) validateJobs(bundleName string, channelNames map[string]struct{}) error {
 	seenJobs := make(map[string]struct{}, len(p.Jobs))
 	for _, job := range p.Jobs {
 		jobName := strings.TrimSpace(job.Name)
@@ -236,14 +277,23 @@ func (p BundleProfile) Validate(bundleName string, manifest *Manifest) error {
 			return fmt.Errorf("%w: bundle %q profile %q job.name is required", ErrBundleInvalid, bundleName, p.Name)
 		}
 		if _, exists := seenJobs[jobName]; exists {
-			return fmt.Errorf("%w: bundle %q profile %q job %q is duplicated", ErrBundleInvalid, bundleName, p.Name, jobName)
+			return fmt.Errorf(
+				"%w: bundle %q profile %q job %q is duplicated",
+				ErrBundleInvalid,
+				bundleName,
+				p.Name,
+				jobName,
+			)
 		}
 		seenJobs[jobName] = struct{}{}
 		if err := job.Validate(bundleName, p.Name, channelNames); err != nil {
 			return err
 		}
 	}
+	return nil
+}
 
+func (p BundleProfile) validateTriggers(bundleName string) error {
 	seenTriggers := make(map[string]struct{}, len(p.Triggers))
 	for _, trigger := range p.Triggers {
 		triggerName := strings.TrimSpace(trigger.Name)
@@ -251,14 +301,23 @@ func (p BundleProfile) Validate(bundleName string, manifest *Manifest) error {
 			return fmt.Errorf("%w: bundle %q profile %q trigger.name is required", ErrBundleInvalid, bundleName, p.Name)
 		}
 		if _, exists := seenTriggers[triggerName]; exists {
-			return fmt.Errorf("%w: bundle %q profile %q trigger %q is duplicated", ErrBundleInvalid, bundleName, p.Name, triggerName)
+			return fmt.Errorf(
+				"%w: bundle %q profile %q trigger %q is duplicated",
+				ErrBundleInvalid,
+				bundleName,
+				p.Name,
+				triggerName,
+			)
 		}
 		seenTriggers[triggerName] = struct{}{}
 		if err := trigger.Validate(bundleName, p.Name); err != nil {
 			return err
 		}
 	}
+	return nil
+}
 
+func (p BundleProfile) validateBridges(bundleName string, manifest *Manifest) error {
 	seenBridges := make(map[string]struct{}, len(p.Bridges))
 	for _, bridge := range p.Bridges {
 		bridgeName := strings.TrimSpace(bridge.Name)
@@ -266,7 +325,13 @@ func (p BundleProfile) Validate(bundleName string, manifest *Manifest) error {
 			return fmt.Errorf("%w: bundle %q profile %q bridge.name is required", ErrBundleInvalid, bundleName, p.Name)
 		}
 		if _, exists := seenBridges[bridgeName]; exists {
-			return fmt.Errorf("%w: bundle %q profile %q bridge %q is duplicated", ErrBundleInvalid, bundleName, p.Name, bridgeName)
+			return fmt.Errorf(
+				"%w: bundle %q profile %q bridge %q is duplicated",
+				ErrBundleInvalid,
+				bundleName,
+				p.Name,
+				bridgeName,
+			)
 		}
 		seenBridges[bridgeName] = struct{}{}
 		if err := bridge.Validate(bundleName, p.Name, manifest); err != nil {
@@ -298,7 +363,14 @@ func (j BundleJob) Validate(bundleName string, profileName string, channelNames 
 		channel := strings.TrimSpace(j.Task.NetworkChannel)
 		if channel != "" {
 			if _, ok := channelNames[channel]; !ok {
-				return fmt.Errorf("%w: bundle %q profile %q job %q references undeclared channel %q", ErrBundleInvalid, bundleName, profileName, j.Name, channel)
+				return fmt.Errorf(
+					"%w: bundle %q profile %q job %q references undeclared channel %q",
+					ErrBundleInvalid,
+					bundleName,
+					profileName,
+					j.Name,
+					channel,
+				)
 			}
 		}
 	}
@@ -322,7 +394,14 @@ func (t BundleTrigger) Validate(bundleName string, profileName string) error {
 		EndpointSlug: strings.TrimSpace(t.EndpointSlug),
 	}
 	if err := trigger.Validate("bundle.triggers"); err != nil {
-		return fmt.Errorf("%w: bundle %q profile %q trigger %q: %w", ErrBundleInvalid, bundleName, profileName, t.Name, err)
+		return fmt.Errorf(
+			"%w: bundle %q profile %q trigger %q: %w",
+			ErrBundleInvalid,
+			bundleName,
+			profileName,
+			t.Name,
+			err,
+		)
 	}
 	return nil
 }
@@ -331,27 +410,65 @@ func (t BundleTrigger) Validate(bundleName string, profileName string) error {
 func (b BundleBridgePreset) Validate(bundleName string, profileName string, manifest *Manifest) error {
 	displayName := strings.TrimSpace(b.DisplayName)
 	if displayName == "" {
-		return fmt.Errorf("%w: bundle %q profile %q bridge %q display_name is required", ErrBundleInvalid, bundleName, profileName, b.Name)
+		return fmt.Errorf(
+			"%w: bundle %q profile %q bridge %q display_name is required",
+			ErrBundleInvalid,
+			bundleName,
+			profileName,
+			b.Name,
+		)
 	}
 	if err := b.RoutingPolicy.Validate(); err != nil {
-		return fmt.Errorf("%w: bundle %q profile %q bridge %q routing_policy: %w", ErrBundleInvalid, bundleName, profileName, b.Name, err)
+		return fmt.Errorf(
+			"%w: bundle %q profile %q bridge %q routing_policy: %w",
+			ErrBundleInvalid,
+			bundleName,
+			profileName,
+			b.Name,
+			err,
+		)
 	}
 	trimmedDeliveryDefaults := strings.TrimSpace(string(b.DeliveryDefaults))
 	if trimmedDeliveryDefaults != "" && !json.Valid([]byte(trimmedDeliveryDefaults)) {
-		return fmt.Errorf("%w: bundle %q profile %q bridge %q delivery_defaults: invalid JSON", ErrBundleInvalid, bundleName, profileName, b.Name)
+		return fmt.Errorf(
+			"%w: bundle %q profile %q bridge %q delivery_defaults: invalid JSON",
+			ErrBundleInvalid,
+			bundleName,
+			profileName,
+			b.Name,
+		)
 	}
 	for _, slot := range b.SecretSlots {
 		if strings.TrimSpace(slot.Name) == "" {
-			return fmt.Errorf("%w: bundle %q profile %q bridge %q secret_slots.name is required", ErrBundleInvalid, bundleName, profileName, b.Name)
+			return fmt.Errorf(
+				"%w: bundle %q profile %q bridge %q secret_slots.name is required",
+				ErrBundleInvalid,
+				bundleName,
+				profileName,
+				b.Name,
+			)
 		}
 		if strings.TrimSpace(slot.Kind) == "" {
-			return fmt.Errorf("%w: bundle %q profile %q bridge %q secret slot %q kind is required", ErrBundleInvalid, bundleName, profileName, b.Name, slot.Name)
+			return fmt.Errorf(
+				"%w: bundle %q profile %q bridge %q secret slot %q kind is required",
+				ErrBundleInvalid,
+				bundleName,
+				profileName,
+				b.Name,
+				slot.Name,
+			)
 		}
 	}
 
 	if strings.TrimSpace(b.ExtensionName) == "" && manifest != nil && strings.TrimSpace(b.Platform) == "" {
 		if !providesCapability(manifest.Capabilities.Provides, "bridge.adapter") {
-			return fmt.Errorf("%w: bundle %q profile %q bridge %q must declare extension_name or platform", ErrBundleInvalid, bundleName, profileName, b.Name)
+			return fmt.Errorf(
+				"%w: bundle %q profile %q bridge %q must declare extension_name or platform",
+				ErrBundleInvalid,
+				bundleName,
+				profileName,
+				b.Name,
+			)
 		}
 	}
 	return nil

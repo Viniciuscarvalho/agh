@@ -64,7 +64,14 @@ func TestUpdateAutomationJobConfigBackedRejectsDefinitionEditsButAllowsEnabledTo
 		},
 	})
 
-	invalid := performAutomationCoreRequest(t, router, http.MethodPatch, "/automation/jobs/"+current.ID, []byte(`{"prompt":"changed"}`), nil)
+	invalid := performAutomationCoreRequest(
+		t,
+		router,
+		http.MethodPatch,
+		"/automation/jobs/"+current.ID,
+		[]byte(`{"prompt":"changed"}`),
+		nil,
+	)
 	if invalid.Code != http.StatusBadRequest {
 		t.Fatalf("invalid status = %d, want %d; body=%s", invalid.Code, http.StatusBadRequest, invalid.Body.String())
 	}
@@ -72,7 +79,14 @@ func TestUpdateAutomationJobConfigBackedRejectsDefinitionEditsButAllowsEnabledTo
 		t.Fatal("SetJobEnabled() called for rejected config-backed definition edit")
 	}
 
-	valid := performAutomationCoreRequest(t, router, http.MethodPatch, "/automation/jobs/"+current.ID, []byte(`{"enabled":false}`), nil)
+	valid := performAutomationCoreRequest(
+		t,
+		router,
+		http.MethodPatch,
+		"/automation/jobs/"+current.ID,
+		[]byte(`{"enabled":false}`),
+		nil,
+	)
 	if valid.Code != http.StatusOK {
 		t.Fatalf("valid status = %d, want %d; body=%s", valid.Code, http.StatusOK, valid.Body.String())
 	}
@@ -130,7 +144,14 @@ func TestUpdateAutomationTriggerConfigBackedRejectsDefinitionEditsButAllowsEnabl
 		},
 	})
 
-	invalid := performAutomationCoreRequest(t, router, http.MethodPatch, "/automation/triggers/"+current.ID, []byte(`{"prompt":"changed"}`), nil)
+	invalid := performAutomationCoreRequest(
+		t,
+		router,
+		http.MethodPatch,
+		"/automation/triggers/"+current.ID,
+		[]byte(`{"prompt":"changed"}`),
+		nil,
+	)
 	if invalid.Code != http.StatusBadRequest {
 		t.Fatalf("invalid status = %d, want %d; body=%s", invalid.Code, http.StatusBadRequest, invalid.Body.String())
 	}
@@ -138,7 +159,14 @@ func TestUpdateAutomationTriggerConfigBackedRejectsDefinitionEditsButAllowsEnabl
 		t.Fatal("SetTriggerEnabled() called for rejected config-backed definition edit")
 	}
 
-	valid := performAutomationCoreRequest(t, router, http.MethodPatch, "/automation/triggers/"+current.ID, []byte(`{"enabled":false}`), nil)
+	valid := performAutomationCoreRequest(
+		t,
+		router,
+		http.MethodPatch,
+		"/automation/triggers/"+current.ID,
+		[]byte(`{"enabled":false}`),
+		nil,
+	)
 	if valid.Code != http.StatusOK {
 		t.Fatalf("valid status = %d, want %d; body=%s", valid.Code, http.StatusOK, valid.Body.String())
 	}
@@ -162,7 +190,9 @@ func TestCreateAutomationTriggerRejectsInvalidWebhookID(t *testing.T) {
 		router,
 		http.MethodPost,
 		"/automation/triggers",
-		[]byte(`{"scope":"global","name":"deploy-review","agent_name":"coder","prompt":"review {{ .Kind }}","event":"webhook","endpoint_slug":"deploy-review","webhook_id":"qa-webhook-id","webhook_secret":"shared-secret"}`),
+		[]byte(
+			`{"scope":"global","name":"deploy-review","agent_name":"coder","prompt":"review {{ .Kind }}","event":"webhook","endpoint_slug":"deploy-review","webhook_id":"qa-webhook-id","webhook_secret":"shared-secret"}`,
+		),
 		nil,
 	)
 	if response.Code != http.StatusBadRequest {
@@ -196,7 +226,7 @@ func TestAutomationJobWriteHandlersIgnoreNextRunLookupFailures(t *testing.T) {
 		t.Parallel()
 
 		router := newAutomationCoreTestRouter(t, stubAutomationManager{
-			CreateJobFn: func(_ context.Context, created automationpkg.Job) (automationpkg.Job, error) {
+			CreateJobFn: func(_ context.Context, _ automationpkg.Job) (automationpkg.Job, error) {
 				return current, nil
 			},
 			StatusFn: func(context.Context) (automationpkg.ManagerStatus, error) {
@@ -204,7 +234,16 @@ func TestAutomationJobWriteHandlersIgnoreNextRunLookupFailures(t *testing.T) {
 			},
 		})
 
-		response := performAutomationCoreRequest(t, router, http.MethodPost, "/automation/jobs", []byte(`{"scope":"global","name":"nightly-review","agent_name":"coder","prompt":"review repo","schedule":{"mode":"every","interval":"1h"}}`), nil)
+		response := performAutomationCoreRequest(
+			t,
+			router,
+			http.MethodPost,
+			"/automation/jobs",
+			[]byte(
+				`{"scope":"global","name":"nightly-review","agent_name":"coder","prompt":"review repo","schedule":{"mode":"every","interval":"1h"}}`,
+			),
+			nil,
+		)
 		if response.Code != http.StatusCreated {
 			t.Fatalf("create status = %d, want %d; body=%s", response.Code, http.StatusCreated, response.Body.String())
 		}
@@ -248,7 +287,14 @@ func TestAutomationJobWriteHandlersIgnoreNextRunLookupFailures(t *testing.T) {
 			},
 		})
 
-		response := performAutomationCoreRequest(t, router, http.MethodPatch, "/automation/jobs/"+current.ID, []byte(`{"prompt":"updated prompt"}`), nil)
+		response := performAutomationCoreRequest(
+			t,
+			router,
+			http.MethodPatch,
+			"/automation/jobs/"+current.ID,
+			[]byte(`{"prompt":"updated prompt"}`),
+			nil,
+		)
 		if response.Code != http.StatusOK {
 			t.Fatalf("update status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
 		}
@@ -274,14 +320,25 @@ func TestWebhookRequestValidationRejectsInvalidScopeAndMalformedEndpointBeforeDi
 
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
-	req := httptest.NewRequest(http.MethodPost, "/api/webhooks/global/not-used", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/api/webhooks/global/not-used",
+		http.NoBody,
+	)
 	req.Header.Set(WebhookTimestampHeader, time.Date(2026, 4, 11, 12, 0, 0, 0, time.UTC).Format(time.RFC3339))
 	req.Header.Set(WebhookSignatureHeader, "sha256=deadbeef")
 	req.Header.Set(WebhookDeliveryIDHeader, "delivery-validation")
 	ctx.Request = req
 	ctx.Params = gin.Params{{Key: "endpoint", Value: "deploy-review--wbh_test"}}
 
-	if _, err := webhookRequestFromHTTP(ctx, automationpkg.AutomationScope("bogus")); !errors.Is(err, ErrAutomationValidation) {
+	if _, err := webhookRequestFromHTTP(
+		ctx,
+		automationpkg.Scope("bogus"),
+	); !errors.Is(
+		err,
+		ErrAutomationValidation,
+	) {
 		t.Fatalf("webhookRequestFromHTTP(invalid scope) error = %v, want ErrAutomationValidation", err)
 	}
 
@@ -293,13 +350,25 @@ func TestWebhookRequestValidationRejectsInvalidScopeAndMalformedEndpointBeforeDi
 		},
 	})
 
-	response := performAutomationCoreRequest(t, router, http.MethodPost, "/webhooks/global/not-an-endpoint", []byte(`{"payload":"deploy"}`), map[string]string{
-		WebhookTimestampHeader:  time.Date(2026, 4, 11, 12, 0, 0, 0, time.UTC).Format(time.RFC3339),
-		WebhookSignatureHeader:  "sha256=deadbeef",
-		WebhookDeliveryIDHeader: "delivery-malformed-endpoint",
-	})
+	response := performAutomationCoreRequest(
+		t,
+		router,
+		http.MethodPost,
+		"/webhooks/global/not-an-endpoint",
+		[]byte(`{"payload":"deploy"}`),
+		map[string]string{
+			WebhookTimestampHeader:  time.Date(2026, 4, 11, 12, 0, 0, 0, time.UTC).Format(time.RFC3339),
+			WebhookSignatureHeader:  "sha256=deadbeef",
+			WebhookDeliveryIDHeader: "delivery-malformed-endpoint",
+		},
+	)
 	if response.Code != http.StatusBadRequest {
-		t.Fatalf("malformed endpoint status = %d, want %d; body=%s", response.Code, http.StatusBadRequest, response.Body.String())
+		t.Fatalf(
+			"malformed endpoint status = %d, want %d; body=%s",
+			response.Code,
+			http.StatusBadRequest,
+			response.Body.String(),
+		)
 	}
 	if called {
 		t.Fatal("HandleWebhook() called for malformed endpoint path")
@@ -380,7 +449,8 @@ func TestAutomationDynamicHandlersRoundTripAndHelperCoverage(t *testing.T) {
 			return job, nil
 		},
 		CreateJobFn: func(_ context.Context, created automationpkg.Job) (automationpkg.Job, error) {
-			if created.Scope != automationpkg.AutomationScopeGlobal || created.Source != automationpkg.JobSourceDynamic {
+			if created.Scope != automationpkg.AutomationScopeGlobal ||
+				created.Source != automationpkg.JobSourceDynamic {
 				t.Fatalf("CreateJob() job = %#v", created)
 			}
 			if created.Name != "nightly-review" || created.AgentName != "coder" || created.Prompt != "review repo" {
@@ -424,7 +494,8 @@ func TestAutomationDynamicHandlersRoundTripAndHelperCoverage(t *testing.T) {
 			if created.Scope != automationpkg.AutomationScopeWorkspace || created.WorkspaceID != "ws-alpha" {
 				t.Fatalf("CreateTrigger() scope/workspace = %#v", created)
 			}
-			if created.Source != automationpkg.JobSourceDynamic || created.WebhookID != "wbh_123" || created.EndpointSlug != "deploy-review" {
+			if created.Source != automationpkg.JobSourceDynamic || created.WebhookID != "wbh_123" ||
+				created.EndpointSlug != "deploy-review" {
 				t.Fatalf("CreateTrigger() webhook fields = %#v", created)
 			}
 			if created.Filter["data.branch"] != "main" {
@@ -475,7 +546,14 @@ func TestAutomationDynamicHandlersRoundTripAndHelperCoverage(t *testing.T) {
 		},
 	})
 
-	jobList := performAutomationCoreRequest(t, router, http.MethodGet, "/automation/jobs?scope=global&source=dynamic&limit=3", nil, nil)
+	jobList := performAutomationCoreRequest(
+		t,
+		router,
+		http.MethodGet,
+		"/automation/jobs?scope=global&source=dynamic&limit=3",
+		nil,
+		nil,
+	)
 	if jobList.Code != http.StatusOK {
 		t.Fatalf("job list status = %d, want %d; body=%s", jobList.Code, http.StatusOK, jobList.Body.String())
 	}
@@ -484,13 +562,29 @@ func TestAutomationDynamicHandlersRoundTripAndHelperCoverage(t *testing.T) {
 	if len(jobsResponse.Jobs) != 1 || jobsResponse.Jobs[0].NextRun == nil {
 		t.Fatalf("jobs response = %#v", jobsResponse.Jobs)
 	}
-	if listJobsQuery.Scope != automationpkg.AutomationScopeGlobal || listJobsQuery.Source != automationpkg.JobSourceDynamic || listJobsQuery.Limit != 3 {
+	if listJobsQuery.Scope != automationpkg.AutomationScopeGlobal ||
+		listJobsQuery.Source != automationpkg.JobSourceDynamic ||
+		listJobsQuery.Limit != 3 {
 		t.Fatalf("ListJobs() query = %#v", listJobsQuery)
 	}
 
-	jobCreate := performAutomationCoreRequest(t, router, http.MethodPost, "/automation/jobs", []byte(`{"scope":"global","name":" nightly-review ","agent_name":" coder ","prompt":" review repo ","schedule":{"mode":"every","interval":"1h"}}`), nil)
+	jobCreate := performAutomationCoreRequest(
+		t,
+		router,
+		http.MethodPost,
+		"/automation/jobs",
+		[]byte(
+			`{"scope":"global","name":" nightly-review ","agent_name":" coder ","prompt":" review repo ","schedule":{"mode":"every","interval":"1h"}}`,
+		),
+		nil,
+	)
 	if jobCreate.Code != http.StatusCreated {
-		t.Fatalf("job create status = %d, want %d; body=%s", jobCreate.Code, http.StatusCreated, jobCreate.Body.String())
+		t.Fatalf(
+			"job create status = %d, want %d; body=%s",
+			jobCreate.Code,
+			http.StatusCreated,
+			jobCreate.Body.String(),
+		)
 	}
 
 	jobGet := performAutomationCoreRequest(t, router, http.MethodGet, "/automation/jobs/"+job.ID, nil, nil)
@@ -498,35 +592,84 @@ func TestAutomationDynamicHandlersRoundTripAndHelperCoverage(t *testing.T) {
 		t.Fatalf("job get status = %d, want %d; body=%s", jobGet.Code, http.StatusOK, jobGet.Body.String())
 	}
 
-	jobTrigger := performAutomationCoreRequest(t, router, http.MethodPost, "/automation/jobs/"+job.ID+"/trigger", nil, nil)
+	jobTrigger := performAutomationCoreRequest(
+		t,
+		router,
+		http.MethodPost,
+		"/automation/jobs/"+job.ID+"/trigger",
+		nil,
+		nil,
+	)
 	if jobTrigger.Code != http.StatusOK {
 		t.Fatalf("job trigger status = %d, want %d; body=%s", jobTrigger.Code, http.StatusOK, jobTrigger.Body.String())
 	}
 
-	jobRuns := performAutomationCoreRequest(t, router, http.MethodGet, "/automation/jobs/"+job.ID+"/runs?status=completed&limit=2", nil, nil)
+	jobRuns := performAutomationCoreRequest(
+		t,
+		router,
+		http.MethodGet,
+		"/automation/jobs/"+job.ID+"/runs?status=completed&limit=2",
+		nil,
+		nil,
+	)
 	if jobRuns.Code != http.StatusOK {
 		t.Fatalf("job runs status = %d, want %d; body=%s", jobRuns.Code, http.StatusOK, jobRuns.Body.String())
 	}
 
 	jobDelete := performAutomationCoreRequest(t, router, http.MethodDelete, "/automation/jobs/"+job.ID, nil, nil)
 	if jobDelete.Code != http.StatusNoContent {
-		t.Fatalf("job delete status = %d, want %d; body=%s", jobDelete.Code, http.StatusNoContent, jobDelete.Body.String())
+		t.Fatalf(
+			"job delete status = %d, want %d; body=%s",
+			jobDelete.Code,
+			http.StatusNoContent,
+			jobDelete.Body.String(),
+		)
 	}
 	if !jobDeleted {
 		t.Fatal("DeleteJob() not called")
 	}
 
-	triggerList := performAutomationCoreRequest(t, router, http.MethodGet, "/automation/triggers?scope=workspace&workspace_id=ws-alpha&source=dynamic&event=webhook&limit=2", nil, nil)
+	triggerList := performAutomationCoreRequest(
+		t,
+		router,
+		http.MethodGet,
+		"/automation/triggers?scope=workspace&workspace_id=ws-alpha&source=dynamic&event=webhook&limit=2",
+		nil,
+		nil,
+	)
 	if triggerList.Code != http.StatusOK {
-		t.Fatalf("trigger list status = %d, want %d; body=%s", triggerList.Code, http.StatusOK, triggerList.Body.String())
+		t.Fatalf(
+			"trigger list status = %d, want %d; body=%s",
+			triggerList.Code,
+			http.StatusOK,
+			triggerList.Body.String(),
+		)
 	}
-	if listTriggersQuery.Scope != automationpkg.AutomationScopeWorkspace || listTriggersQuery.WorkspaceID != "ws-alpha" || listTriggersQuery.Source != automationpkg.JobSourceDynamic || listTriggersQuery.Event != "webhook" || listTriggersQuery.Limit != 2 {
+	if listTriggersQuery.Scope != automationpkg.AutomationScopeWorkspace ||
+		listTriggersQuery.WorkspaceID != "ws-alpha" ||
+		listTriggersQuery.Source != automationpkg.JobSourceDynamic ||
+		listTriggersQuery.Event != "webhook" ||
+		listTriggersQuery.Limit != 2 {
 		t.Fatalf("ListTriggers() query = %#v", listTriggersQuery)
 	}
 
-	triggerCreate := performAutomationCoreRequest(t, router, http.MethodPost, "/automation/triggers", []byte(`{"scope":"workspace","workspace_id":" ws-alpha ","name":" deploy-review ","agent_name":" coder ","prompt":" review {{ index .Data \"payload\" }} ","event":"webhook","filter":{"data.branch":"main"},"webhook_id":" wbh_123 ","endpoint_slug":" deploy-review ","webhook_secret":"shared-secret"}`), nil)
+	triggerCreate := performAutomationCoreRequest(
+		t,
+		router,
+		http.MethodPost,
+		"/automation/triggers",
+		[]byte(
+			`{"scope":"workspace","workspace_id":" ws-alpha ","name":" deploy-review ","agent_name":" coder ","prompt":" review {{ index .Data \"payload\" }} ","event":"webhook","filter":{"data.branch":"main"},"webhook_id":" wbh_123 ","endpoint_slug":" deploy-review ","webhook_secret":"shared-secret"}`,
+		),
+		nil,
+	)
 	if triggerCreate.Code != http.StatusCreated {
-		t.Fatalf("trigger create status = %d, want %d; body=%s", triggerCreate.Code, http.StatusCreated, triggerCreate.Body.String())
+		t.Fatalf(
+			"trigger create status = %d, want %d; body=%s",
+			triggerCreate.Code,
+			http.StatusCreated,
+			triggerCreate.Body.String(),
+		)
 	}
 
 	triggerGet := performAutomationCoreRequest(t, router, http.MethodGet, "/automation/triggers/"+trigger.ID, nil, nil)
@@ -534,19 +677,41 @@ func TestAutomationDynamicHandlersRoundTripAndHelperCoverage(t *testing.T) {
 		t.Fatalf("trigger get status = %d, want %d; body=%s", triggerGet.Code, http.StatusOK, triggerGet.Body.String())
 	}
 
-	triggerRuns := performAutomationCoreRequest(t, router, http.MethodGet, "/automation/triggers/"+trigger.ID+"/runs?status=completed&limit=1", nil, nil)
+	triggerRuns := performAutomationCoreRequest(
+		t,
+		router,
+		http.MethodGet,
+		"/automation/triggers/"+trigger.ID+"/runs?status=completed&limit=1",
+		nil,
+		nil,
+	)
 	if triggerRuns.Code != http.StatusOK {
-		t.Fatalf("trigger runs status = %d, want %d; body=%s", triggerRuns.Code, http.StatusOK, triggerRuns.Body.String())
+		t.Fatalf(
+			"trigger runs status = %d, want %d; body=%s",
+			triggerRuns.Code,
+			http.StatusOK,
+			triggerRuns.Body.String(),
+		)
 	}
 
-	allRuns := performAutomationCoreRequest(t, router, http.MethodGet, "/automation/runs?status=completed&job_id="+job.ID+"&limit=5&since=2026-04-11T12:00:00Z&until=2026-04-11T13:00:00Z", nil, nil)
+	allRuns := performAutomationCoreRequest(
+		t,
+		router,
+		http.MethodGet,
+		"/automation/runs?status=completed&job_id="+job.ID+"&limit=5&since=2026-04-11T12:00:00Z&until=2026-04-11T13:00:00Z",
+		nil,
+		nil,
+	)
 	if allRuns.Code != http.StatusOK {
 		t.Fatalf("all runs status = %d, want %d; body=%s", allRuns.Code, http.StatusOK, allRuns.Body.String())
 	}
 	if len(runsQueries) != 3 {
 		t.Fatalf("ListRuns() calls = %d, want 3", len(runsQueries))
 	}
-	if runsQueries[2].Status != automationpkg.RunCompleted || runsQueries[2].Limit != 5 || runsQueries[2].JobID != job.ID || runsQueries[2].Since.IsZero() || runsQueries[2].Until.IsZero() {
+	if runsQueries[2].Status != automationpkg.RunCompleted || runsQueries[2].Limit != 5 ||
+		runsQueries[2].JobID != job.ID ||
+		runsQueries[2].Since.IsZero() ||
+		runsQueries[2].Until.IsZero() {
 		t.Fatalf("ListRuns() final query = %#v", runsQueries[2])
 	}
 
@@ -555,27 +720,52 @@ func TestAutomationDynamicHandlersRoundTripAndHelperCoverage(t *testing.T) {
 		t.Fatalf("run get status = %d, want %d; body=%s", runGet.Code, http.StatusOK, runGet.Body.String())
 	}
 
-	triggerDelete := performAutomationCoreRequest(t, router, http.MethodDelete, "/automation/triggers/"+trigger.ID, nil, nil)
+	triggerDelete := performAutomationCoreRequest(
+		t,
+		router,
+		http.MethodDelete,
+		"/automation/triggers/"+trigger.ID,
+		nil,
+		nil,
+	)
 	if triggerDelete.Code != http.StatusNoContent {
-		t.Fatalf("trigger delete status = %d, want %d; body=%s", triggerDelete.Code, http.StatusNoContent, triggerDelete.Body.String())
+		t.Fatalf(
+			"trigger delete status = %d, want %d; body=%s",
+			triggerDelete.Code,
+			http.StatusNoContent,
+			triggerDelete.Body.String(),
+		)
 	}
 	if !triggerDeleted {
 		t.Fatal("DeleteTrigger() not called")
 	}
 
 	webhookPayload := []byte(`{"payload":"deploy"}`)
-	webhookDelivery := performAutomationCoreRequest(t, router, http.MethodPost, "/webhooks/workspaces/ws-alpha/deploy-review--wbh_123", webhookPayload, map[string]string{
-		WebhookTimestampHeader:  strconv.FormatInt(time.Date(2026, 4, 11, 12, 0, 0, 0, time.UTC).Unix(), 10),
-		WebhookSignatureHeader:  "sha256=deadbeef",
-		WebhookDeliveryIDHeader: "delivery-roundtrip",
-	})
+	webhookDelivery := performAutomationCoreRequest(
+		t,
+		router,
+		http.MethodPost,
+		"/webhooks/workspaces/ws-alpha/deploy-review--wbh_123",
+		webhookPayload,
+		map[string]string{
+			WebhookTimestampHeader:  strconv.FormatInt(time.Date(2026, 4, 11, 12, 0, 0, 0, time.UTC).Unix(), 10),
+			WebhookSignatureHeader:  "sha256=deadbeef",
+			WebhookDeliveryIDHeader: "delivery-roundtrip",
+		},
+	)
 	if webhookDelivery.Code != http.StatusOK {
-		t.Fatalf("workspace webhook status = %d, want %d; body=%s", webhookDelivery.Code, http.StatusOK, webhookDelivery.Body.String())
+		t.Fatalf(
+			"workspace webhook status = %d, want %d; body=%s",
+			webhookDelivery.Code,
+			http.StatusOK,
+			webhookDelivery.Body.String(),
+		)
 	}
 	if webhookRequest.Scope != automationpkg.AutomationScopeWorkspace || webhookRequest.WorkspaceID != "ws-alpha" {
 		t.Fatalf("webhook request scope/workspace = %#v", webhookRequest)
 	}
-	if webhookRequest.Endpoint != "deploy-review--wbh_123" || webhookRequest.Signature != "sha256=deadbeef" || webhookRequest.DeliveryID != "delivery-roundtrip" {
+	if webhookRequest.Endpoint != "deploy-review--wbh_123" || webhookRequest.Signature != "sha256=deadbeef" ||
+		webhookRequest.DeliveryID != "delivery-roundtrip" {
 		t.Fatalf("webhook request routing = %#v", webhookRequest)
 	}
 	if payload := webhookRequest.Data["payload"]; payload != "deploy" {
@@ -648,7 +838,18 @@ func TestAutomationHelperFunctionsAndErrors(t *testing.T) {
 				},
 			},
 		})
-		if createdJob.Scope != automationpkg.AutomationScopeWorkspace || createdJob.Name != "build review" || createdJob.AgentName != "coder" || createdJob.WorkspaceID != "ws-alpha" || createdJob.Prompt != "inspect repo" || createdJob.Schedule == nil || createdJob.Schedule.Interval != "2h" || createdJob.Task == nil || createdJob.Task.Title != "Review repo" || createdJob.Task.NetworkChannel != "ops-automation" || createdJob.Task.Owner == nil || createdJob.Task.Owner.Kind != taskpkg.OwnerKindAutomation || createdJob.Task.Owner.Ref != "rule:build-review" {
+		if createdJob.Scope != automationpkg.AutomationScopeWorkspace || createdJob.Name != "build review" ||
+			createdJob.AgentName != "coder" ||
+			createdJob.WorkspaceID != "ws-alpha" ||
+			createdJob.Prompt != "inspect repo" ||
+			createdJob.Schedule == nil ||
+			createdJob.Schedule.Interval != "2h" ||
+			createdJob.Task == nil ||
+			createdJob.Task.Title != "Review repo" ||
+			createdJob.Task.NetworkChannel != "ops-automation" ||
+			createdJob.Task.Owner == nil ||
+			createdJob.Task.Owner.Kind != taskpkg.OwnerKindAutomation ||
+			createdJob.Task.Owner.Ref != "rule:build-review" {
 			t.Fatalf("jobFromCreateRequest() = %#v", createdJob)
 		}
 	})
@@ -668,7 +869,11 @@ func TestAutomationHelperFunctionsAndErrors(t *testing.T) {
 				Ref:  "ops-review",
 			},
 		}
-		jobRetry := automationpkg.RetryConfig{Strategy: automationpkg.RetryStrategyBackoff, MaxRetries: 3, BaseDelay: "2m"}
+		jobRetry := automationpkg.RetryConfig{
+			Strategy:   automationpkg.RetryStrategyBackoff,
+			MaxRetries: 3,
+			BaseDelay:  "2m",
+		}
 		jobFireLimit := automationpkg.FireLimitConfig{Max: 4, Window: "24h"}
 		updatedJob := applyJobPatch(automationpkg.Job{
 			ID:          "job-1",
@@ -693,14 +898,27 @@ func TestAutomationHelperFunctionsAndErrors(t *testing.T) {
 			Retry:       &jobRetry,
 			FireLimit:   &jobFireLimit,
 		})
-		if updatedJob.Name != "renamed" || updatedJob.AgentName != "reviewer" || updatedJob.WorkspaceID != "ws-beta" || updatedJob.Prompt != "next prompt" || updatedJob.Enabled || updatedJob.Schedule == nil || updatedJob.Schedule.Expr != "0 * * * *" || updatedJob.Task == nil || updatedJob.Task.Title != "Delegate review" || updatedJob.Task.NetworkChannel != "ops-queue" || updatedJob.Task.Owner == nil || updatedJob.Task.Owner.Kind != taskpkg.OwnerKindPool || updatedJob.Task.Owner.Ref != "ops-review" || updatedJob.Retry.MaxRetries != 3 || updatedJob.FireLimit.Max != 4 {
+		if updatedJob.Name != "renamed" || updatedJob.AgentName != "reviewer" || updatedJob.WorkspaceID != "ws-beta" ||
+			updatedJob.Prompt != "next prompt" ||
+			updatedJob.Enabled ||
+			updatedJob.Schedule == nil ||
+			updatedJob.Schedule.Expr != "0 * * * *" ||
+			updatedJob.Task == nil ||
+			updatedJob.Task.Title != "Delegate review" ||
+			updatedJob.Task.NetworkChannel != "ops-queue" ||
+			updatedJob.Task.Owner == nil ||
+			updatedJob.Task.Owner.Kind != taskpkg.OwnerKindPool ||
+			updatedJob.Task.Owner.Ref != "ops-review" ||
+			updatedJob.Retry.MaxRetries != 3 ||
+			updatedJob.FireLimit.Max != 4 {
 			t.Fatalf("applyJobPatch() = %#v", updatedJob)
 		}
 
 		jobTask.Title = "mutated"
 		jobTask.NetworkChannel = "mutated"
 		jobTask.Owner.Ref = "mutated"
-		if updatedJob.Task.Title != "Delegate review" || updatedJob.Task.NetworkChannel != "ops-queue" || updatedJob.Task.Owner.Ref != "ops-review" {
+		if updatedJob.Task.Title != "Delegate review" || updatedJob.Task.NetworkChannel != "ops-queue" ||
+			updatedJob.Task.Owner.Ref != "ops-review" {
 			t.Fatalf("applyJobPatch() task clone = %#v", updatedJob.Task)
 		}
 	})
@@ -717,7 +935,13 @@ func TestAutomationHelperFunctionsAndErrors(t *testing.T) {
 			WebhookID:    " wbh_456 ",
 			EndpointSlug: " deploy-review ",
 		})
-		if createdTrigger.Scope != automationpkg.AutomationScopeWorkspace || createdTrigger.Name != "deploy-review" || createdTrigger.AgentName != "coder" || createdTrigger.WorkspaceID != "ws-alpha" || createdTrigger.Event != "webhook" || createdTrigger.WebhookID != "wbh_456" || createdTrigger.EndpointSlug != "deploy-review" || createdTrigger.Filter["data.branch"] != "main" {
+		if createdTrigger.Scope != automationpkg.AutomationScopeWorkspace || createdTrigger.Name != "deploy-review" ||
+			createdTrigger.AgentName != "coder" ||
+			createdTrigger.WorkspaceID != "ws-alpha" ||
+			createdTrigger.Event != "webhook" ||
+			createdTrigger.WebhookID != "wbh_456" ||
+			createdTrigger.EndpointSlug != "deploy-review" ||
+			createdTrigger.Filter["data.branch"] != "main" {
 			t.Fatalf("triggerFromCreateRequest() = %#v", createdTrigger)
 		}
 
@@ -728,7 +952,11 @@ func TestAutomationHelperFunctionsAndErrors(t *testing.T) {
 		triggerEvent := "session.stopped"
 		triggerFilter := map[string]string{"kind": "session"}
 		triggerEnabled := false
-		triggerRetry := automationpkg.RetryConfig{Strategy: automationpkg.RetryStrategyBackoff, MaxRetries: 2, BaseDelay: "30s"}
+		triggerRetry := automationpkg.RetryConfig{
+			Strategy:   automationpkg.RetryStrategyBackoff,
+			MaxRetries: 2,
+			BaseDelay:  "30s",
+		}
 		triggerFireLimit := automationpkg.FireLimitConfig{Max: 2, Window: "1h"}
 		updatedTrigger := applyTriggerPatch(automationpkg.Trigger{
 			ID:           "trigger-1",
@@ -755,7 +983,15 @@ func TestAutomationHelperFunctionsAndErrors(t *testing.T) {
 			Retry:       &triggerRetry,
 			FireLimit:   &triggerFireLimit,
 		})
-		if updatedTrigger.Name != "renamed" || updatedTrigger.AgentName != "reviewer" || updatedTrigger.WorkspaceID != "ws-beta" || updatedTrigger.Prompt != "next prompt" || updatedTrigger.Event != "session.stopped" || updatedTrigger.WebhookID != "" || updatedTrigger.EndpointSlug != "" || updatedTrigger.Enabled || updatedTrigger.Retry.MaxRetries != 2 || updatedTrigger.FireLimit.Max != 2 {
+		if updatedTrigger.Name != "renamed" || updatedTrigger.AgentName != "reviewer" ||
+			updatedTrigger.WorkspaceID != "ws-beta" ||
+			updatedTrigger.Prompt != "next prompt" ||
+			updatedTrigger.Event != "session.stopped" ||
+			updatedTrigger.WebhookID != "" ||
+			updatedTrigger.EndpointSlug != "" ||
+			updatedTrigger.Enabled ||
+			updatedTrigger.Retry.MaxRetries != 2 ||
+			updatedTrigger.FireLimit.Max != 2 {
 			t.Fatalf("applyTriggerPatch() = %#v", updatedTrigger)
 		}
 		triggerFilter["kind"] = "mutated"
@@ -772,10 +1008,14 @@ func TestAutomationHelperFunctionsAndErrors(t *testing.T) {
 		if status := StatusForAutomationError(validationErr); status != http.StatusBadRequest {
 			t.Fatalf("StatusForAutomationError(validation) = %d, want %d", status, http.StatusBadRequest)
 		}
-		if status := StatusForAutomationError(&http.MaxBytesError{Limit: maxWebhookPayloadSize}); status != http.StatusRequestEntityTooLarge {
+		if status := StatusForAutomationError(
+			&http.MaxBytesError{Limit: maxWebhookPayloadSize},
+		); status != http.StatusRequestEntityTooLarge {
 			t.Fatalf("StatusForAutomationError(max bytes) = %d, want %d", status, http.StatusRequestEntityTooLarge)
 		}
-		if status := StatusForAutomationError(automationpkg.ErrWebhookSignatureInvalid); status != http.StatusUnauthorized {
+		if status := StatusForAutomationError(
+			automationpkg.ErrWebhookSignatureInvalid,
+		); status != http.StatusUnauthorized {
 			t.Fatalf("StatusForAutomationError(signature) = %d, want %d", status, http.StatusUnauthorized)
 		}
 		if status := StatusForAutomationError(automationpkg.ErrRunNotFound); status != http.StatusNotFound {
@@ -787,13 +1027,21 @@ func TestAutomationHelperFunctionsAndErrors(t *testing.T) {
 		if status := StatusForAutomationError(automationpkg.ErrFireLimitReached); status != http.StatusConflict {
 			t.Fatalf("StatusForAutomationError(conflict) = %d, want %d", status, http.StatusConflict)
 		}
-		if status := StatusForAutomationError(automationpkg.ErrOverlayRequiresConfigSource); status != http.StatusConflict {
-			t.Fatalf("StatusForAutomationError(overlay requires config source) = %d, want %d", status, http.StatusConflict)
+		if status := StatusForAutomationError(
+			automationpkg.ErrOverlayRequiresConfigSource,
+		); status != http.StatusConflict {
+			t.Fatalf(
+				"StatusForAutomationError(overlay requires config source) = %d, want %d",
+				status,
+				http.StatusConflict,
+			)
 		}
 		if status := StatusForAutomationError(automationpkg.ErrWebhookReplayDetected); status != http.StatusConflict {
 			t.Fatalf("StatusForAutomationError(webhook replay) = %d, want %d", status, http.StatusConflict)
 		}
-		if status := StatusForAutomationError(automationpkg.ErrManagerNotRunning); status != http.StatusServiceUnavailable {
+		if status := StatusForAutomationError(
+			automationpkg.ErrManagerNotRunning,
+		); status != http.StatusServiceUnavailable {
 			t.Fatalf("StatusForAutomationError(unavailable) = %d, want %d", status, http.StatusServiceUnavailable)
 		}
 	})
@@ -825,7 +1073,6 @@ func TestStatusForAutomationErrorMapsAdditionalSentinels(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -848,13 +1095,25 @@ func TestWebhookRequestValidationRejectsBodiesThatExceedTheConfiguredLimit(t *te
 	})
 
 	tooLargeBody := bytes.Repeat([]byte("a"), maxWebhookPayloadSize+1)
-	response := performAutomationCoreRequest(t, router, http.MethodPost, "/webhooks/global/deploy-review--wbh_123", tooLargeBody, map[string]string{
-		WebhookTimestampHeader:  time.Date(2026, 4, 11, 12, 0, 0, 0, time.UTC).Format(time.RFC3339),
-		WebhookSignatureHeader:  "sha256=deadbeef",
-		WebhookDeliveryIDHeader: "delivery-too-large",
-	})
+	response := performAutomationCoreRequest(
+		t,
+		router,
+		http.MethodPost,
+		"/webhooks/global/deploy-review--wbh_123",
+		tooLargeBody,
+		map[string]string{
+			WebhookTimestampHeader:  time.Date(2026, 4, 11, 12, 0, 0, 0, time.UTC).Format(time.RFC3339),
+			WebhookSignatureHeader:  "sha256=deadbeef",
+			WebhookDeliveryIDHeader: "delivery-too-large",
+		},
+	)
 	if response.Code != http.StatusRequestEntityTooLarge {
-		t.Fatalf("oversized webhook status = %d, want %d; body=%s", response.Code, http.StatusRequestEntityTooLarge, response.Body.String())
+		t.Fatalf(
+			"oversized webhook status = %d, want %d; body=%s",
+			response.Code,
+			http.StatusRequestEntityTooLarge,
+			response.Body.String(),
+		)
 	}
 	if called {
 		t.Fatal("HandleWebhook() called for oversized webhook body")
@@ -871,7 +1130,7 @@ func TestAutomationHandlersRequireConfiguredManager(t *testing.T) {
 	}
 	cfg := aghconfig.DefaultWithHome(homePaths)
 
-	handlers := NewBaseHandlers(BaseHandlerConfig{
+	handlers := NewBaseHandlers(&BaseHandlerConfig{
 		TransportName: "core-automation-test",
 		HomePaths:     homePaths,
 		Config:        cfg,
@@ -897,7 +1156,7 @@ func newAutomationCoreTestRouter(t *testing.T, automation stubAutomationManager)
 	}
 	cfg := aghconfig.DefaultWithHome(homePaths)
 
-	handlers := NewBaseHandlers(BaseHandlerConfig{
+	handlers := NewBaseHandlers(&BaseHandlerConfig{
 		TransportName: "core-automation-test",
 		Automation:    automation,
 		HomePaths:     homePaths,
@@ -930,10 +1189,21 @@ func newAutomationCoreTestRouter(t *testing.T, automation stubAutomationManager)
 	return engine
 }
 
-func performAutomationCoreRequest(t *testing.T, engine http.Handler, method, path string, body []byte, headers map[string]string) *httptest.ResponseRecorder {
+func performAutomationCoreRequest(
+	t *testing.T,
+	engine http.Handler,
+	method, path string,
+	body []byte,
+	headers map[string]string,
+) *httptest.ResponseRecorder {
 	t.Helper()
 
-	request := httptest.NewRequest(method, path, bytes.NewReader(body))
+	request := httptest.NewRequestWithContext(
+		context.Background(),
+		method,
+		path,
+		bytes.NewReader(body),
+	)
 	if len(body) > 0 {
 		request.Header.Set("Content-Type", "application/json")
 	}
@@ -973,7 +1243,10 @@ type stubAutomationManager struct {
 	HandleWebhookFn     func(context.Context, automationpkg.WebhookRequest) (automationpkg.TriggerResult, error)
 }
 
-func (s stubAutomationManager) ListJobs(ctx context.Context, query automationpkg.JobListQuery) ([]automationpkg.Job, error) {
+func (s stubAutomationManager) ListJobs(
+	ctx context.Context,
+	query automationpkg.JobListQuery,
+) ([]automationpkg.Job, error) {
 	if s.ListJobsFn == nil {
 		return nil, nil
 	}
@@ -1019,7 +1292,10 @@ func (s stubAutomationManager) Jobs(ctx context.Context) ([]automationpkg.Job, e
 	return s.ListJobs(ctx, automationpkg.JobListQuery{})
 }
 
-func (s stubAutomationManager) ListTriggers(ctx context.Context, query automationpkg.TriggerListQuery) ([]automationpkg.Trigger, error) {
+func (s stubAutomationManager) ListTriggers(
+	ctx context.Context,
+	query automationpkg.TriggerListQuery,
+) ([]automationpkg.Trigger, error) {
 	if s.ListTriggersFn == nil {
 		return nil, nil
 	}
@@ -1033,14 +1309,22 @@ func (s stubAutomationManager) GetTrigger(ctx context.Context, id string) (autom
 	return s.GetTriggerFn(ctx, id)
 }
 
-func (s stubAutomationManager) CreateTrigger(ctx context.Context, trigger automationpkg.Trigger, secret string) (automationpkg.Trigger, error) {
+func (s stubAutomationManager) CreateTrigger(
+	ctx context.Context,
+	trigger automationpkg.Trigger,
+	secret string,
+) (automationpkg.Trigger, error) {
 	if s.CreateTriggerFn == nil {
 		return automationpkg.Trigger{}, nil
 	}
 	return s.CreateTriggerFn(ctx, trigger, secret)
 }
 
-func (s stubAutomationManager) UpdateTrigger(ctx context.Context, trigger automationpkg.Trigger, secret *string) (automationpkg.Trigger, error) {
+func (s stubAutomationManager) UpdateTrigger(
+	ctx context.Context,
+	trigger automationpkg.Trigger,
+	secret *string,
+) (automationpkg.Trigger, error) {
 	if s.UpdateTriggerFn == nil {
 		return automationpkg.Trigger{}, nil
 	}
@@ -1058,7 +1342,10 @@ func (s stubAutomationManager) Triggers(ctx context.Context) ([]automationpkg.Tr
 	return s.ListTriggers(ctx, automationpkg.TriggerListQuery{})
 }
 
-func (s stubAutomationManager) ListRuns(ctx context.Context, query automationpkg.RunQuery) ([]automationpkg.Run, error) {
+func (s stubAutomationManager) ListRuns(
+	ctx context.Context,
+	query automationpkg.RunQuery,
+) ([]automationpkg.Run, error) {
 	if s.ListRunsFn == nil {
 		return nil, nil
 	}
@@ -1090,14 +1377,21 @@ func (s stubAutomationManager) SetJobEnabled(ctx context.Context, id string, ena
 	return s.SetJobEnabledFn(ctx, id, enabled)
 }
 
-func (s stubAutomationManager) SetTriggerEnabled(ctx context.Context, id string, enabled bool) (automationpkg.Trigger, error) {
+func (s stubAutomationManager) SetTriggerEnabled(
+	ctx context.Context,
+	id string,
+	enabled bool,
+) (automationpkg.Trigger, error) {
 	if s.SetTriggerEnabledFn == nil {
 		return automationpkg.Trigger{}, nil
 	}
 	return s.SetTriggerEnabledFn(ctx, id, enabled)
 }
 
-func (s stubAutomationManager) HandleWebhook(ctx context.Context, request automationpkg.WebhookRequest) (automationpkg.TriggerResult, error) {
+func (s stubAutomationManager) HandleWebhook(
+	ctx context.Context,
+	request automationpkg.WebhookRequest,
+) (automationpkg.TriggerResult, error) {
 	if s.HandleWebhookFn == nil {
 		return automationpkg.TriggerResult{}, nil
 	}

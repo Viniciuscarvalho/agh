@@ -28,7 +28,7 @@ func TestBaseHandlersRejectInvalidRequestsAndMapErrors(t *testing.T) {
 		CreateFn: func(context.Context, session.CreateOpts) (*session.Session, error) {
 			return nil, os.ErrNotExist
 		},
-		StatusFn: func(context.Context, string) (*session.SessionInfo, error) {
+		StatusFn: func(context.Context, string) (*session.Info, error) {
 			return nil, session.ErrSessionNotFound
 		},
 		ResumeFn: func(context.Context, string) (*session.Session, error) {
@@ -37,7 +37,7 @@ func TestBaseHandlersRejectInvalidRequestsAndMapErrors(t *testing.T) {
 		StopFn: func(context.Context, string) error {
 			return session.ErrSessionNotFound
 		},
-		ListAllFn: func(context.Context) ([]*session.SessionInfo, error) {
+		ListAllFn: func(context.Context) ([]*session.Info, error) {
 			return nil, errors.New("list failed")
 		},
 	}
@@ -72,8 +72,18 @@ func TestBaseHandlersRejectInvalidRequestsAndMapErrors(t *testing.T) {
 		body   []byte
 		want   int
 	}{
-		{method: http.MethodPost, path: "/sessions", body: []byte(`{"agent_name":"coder"}`), want: http.StatusBadRequest},
-		{method: http.MethodPost, path: "/sessions", body: []byte(`{"agent_name":"coder","workspace":"alpha"}`), want: http.StatusNotFound},
+		{
+			method: http.MethodPost,
+			path:   "/sessions",
+			body:   []byte(`{"agent_name":"coder"}`),
+			want:   http.StatusBadRequest,
+		},
+		{
+			method: http.MethodPost,
+			path:   "/sessions",
+			body:   []byte(`{"agent_name":"coder","workspace":"alpha"}`),
+			want:   http.StatusNotFound,
+		},
 		{method: http.MethodGet, path: "/sessions/missing", want: http.StatusNotFound},
 		{method: http.MethodPost, path: "/sessions/missing/resume", want: http.StatusNotFound},
 		{method: http.MethodDelete, path: "/sessions/missing", want: http.StatusNotFound},
@@ -81,17 +91,33 @@ func TestBaseHandlersRejectInvalidRequestsAndMapErrors(t *testing.T) {
 		{method: http.MethodGet, path: "/observe/events", want: http.StatusInternalServerError},
 		{method: http.MethodGet, path: "/observe/health", want: http.StatusInternalServerError},
 		{method: http.MethodGet, path: "/daemon/status", want: http.StatusInternalServerError},
-		{method: http.MethodPost, path: "/workspaces", body: []byte(`{"root_dir":"relative"}`), want: http.StatusBadRequest},
+		{
+			method: http.MethodPost,
+			path:   "/workspaces",
+			body:   []byte(`{"root_dir":"relative"}`),
+			want:   http.StatusBadRequest,
+		},
 		{method: http.MethodGet, path: "/workspaces/ws-missing", want: http.StatusGone},
-		{method: http.MethodPost, path: "/workspaces/resolve", body: []byte(`{"path":"/workspace"}`), want: http.StatusGone},
+		{
+			method: http.MethodPost,
+			path:   "/workspaces/resolve",
+			body:   []byte(`{"path":"/workspace"}`),
+			want:   http.StatusGone,
+		},
 	}
 
 	for _, request := range requests {
-		request := request
 		t.Run(request.method+" "+request.path, func(t *testing.T) {
 			resp := performRequest(t, fixture.Engine, request.method, request.path, request.body)
 			if resp.Code != request.want {
-				t.Fatalf("%s %s status = %d, want %d; body=%s", request.method, request.path, resp.Code, request.want, resp.Body.String())
+				t.Fatalf(
+					"%s %s status = %d, want %d; body=%s",
+					request.method,
+					request.path,
+					resp.Code,
+					request.want,
+					resp.Body.String(),
+				)
 			}
 		})
 	}
@@ -101,7 +127,7 @@ func TestSessionHistoryEventsAndTranscriptErrorBranches(t *testing.T) {
 	t.Parallel()
 
 	manager := testutil.StubSessionManager{
-		StatusFn: func(context.Context, string) (*session.SessionInfo, error) {
+		StatusFn: func(context.Context, string) (*session.Info, error) {
 			return testutil.NewSessionInfo("sess-a"), nil
 		},
 		EventsFn: func(context.Context, string, store.EventQuery) ([]store.SessionEvent, error) {
@@ -132,7 +158,7 @@ func TestStreamSessionAndObserveErrorBranches(t *testing.T) {
 	t.Parallel()
 
 	manager := testutil.StubSessionManager{
-		StatusFn: func(context.Context, string) (*session.SessionInfo, error) {
+		StatusFn: func(context.Context, string) (*session.Info, error) {
 			info := testutil.NewSessionInfo("sess-a")
 			info.State = session.StateStopped
 			info.UpdatedAt = time.Date(2026, 4, 3, 12, 0, 2, 0, time.UTC)
@@ -149,13 +175,34 @@ func TestStreamSessionAndObserveErrorBranches(t *testing.T) {
 		t.Fatalf("stream stopped status = %d, want %d", badStream.Code, http.StatusOK)
 	}
 
-	badHeader := testutil.PerformRequestWithHeaders(t, fixture.Engine, http.MethodGet, "/sessions/sess-a/stream", nil, map[string]string{"Last-Event-ID": "bad"})
+	badHeader := testutil.PerformRequestWithHeaders(
+		t,
+		fixture.Engine,
+		http.MethodGet,
+		"/sessions/sess-a/stream",
+		nil,
+		map[string]string{"Last-Event-ID": "bad"},
+	)
 	if badHeader.Code != http.StatusBadRequest {
 		t.Fatalf("stream bad header status = %d, want %d", badHeader.Code, http.StatusBadRequest)
 	}
 
-	observeFixture := newHandlerFixture(t, testutil.StubSessionManager{}, testutil.StubObserver{}, testutil.StubWorkspaceService{}, nil, nil)
-	observeBadHeader := testutil.PerformRequestWithHeaders(t, observeFixture.Engine, http.MethodGet, "/observe/events/stream", nil, map[string]string{"Last-Event-ID": "bad"})
+	observeFixture := newHandlerFixture(
+		t,
+		testutil.StubSessionManager{},
+		testutil.StubObserver{},
+		testutil.StubWorkspaceService{},
+		nil,
+		nil,
+	)
+	observeBadHeader := testutil.PerformRequestWithHeaders(
+		t,
+		observeFixture.Engine,
+		http.MethodGet,
+		"/observe/events/stream",
+		nil,
+		map[string]string{"Last-Event-ID": "bad"},
+	)
 	if observeBadHeader.Code != http.StatusBadRequest {
 		t.Fatalf("observe bad header status = %d, want %d", observeBadHeader.Code, http.StatusBadRequest)
 	}
@@ -164,7 +211,14 @@ func TestStreamSessionAndObserveErrorBranches(t *testing.T) {
 func TestListAgentsHandlesMissingDirectory(t *testing.T) {
 	t.Parallel()
 
-	fixture := newHandlerFixture(t, testutil.StubSessionManager{}, testutil.StubObserver{}, testutil.StubWorkspaceService{}, nil, nil)
+	fixture := newHandlerFixture(
+		t,
+		testutil.StubSessionManager{},
+		testutil.StubObserver{},
+		testutil.StubWorkspaceService{},
+		nil,
+		nil,
+	)
 	if err := os.RemoveAll(fixture.HomePaths.AgentsDir); err != nil {
 		t.Fatalf("RemoveAll(AgentsDir) error = %v", err)
 	}
@@ -178,7 +232,14 @@ func TestListAgentsHandlesMissingDirectory(t *testing.T) {
 func TestListAgentsSkipsUnreadableDefinitions(t *testing.T) {
 	t.Parallel()
 
-	fixture := newHandlerFixture(t, testutil.StubSessionManager{}, testutil.StubObserver{}, testutil.StubWorkspaceService{}, nil, nil)
+	fixture := newHandlerFixture(
+		t,
+		testutil.StubSessionManager{},
+		testutil.StubObserver{},
+		testutil.StubWorkspaceService{},
+		nil,
+		nil,
+	)
 	testutil.WriteAgentDef(t, fixture.HomePaths, "coder")
 	testutil.WriteAgentDef(t, fixture.HomePaths, "broken")
 	fixture.Handlers.AgentLoader = func(name string, homePaths aghconfig.HomePaths) (aghconfig.AgentDef, error) {
@@ -210,22 +271,44 @@ func TestMemoryHelpersAndMissingStoreBranches(t *testing.T) {
 	if err := store.ForWorkspace(workspace).Write(memory.ScopeWorkspace, "shared.md", workspaceDoc); err != nil {
 		t.Fatalf("Write(workspace) error = %v", err)
 	}
-	if err := store.ForWorkspace(workspace).Write(memory.ScopeWorkspace, "workspace-only.md", workspaceDoc); err != nil {
+	if err := store.ForWorkspace(workspace).
+		Write(memory.ScopeWorkspace, "workspace-only.md", workspaceDoc); err != nil {
 		t.Fatalf("Write(workspace-only) error = %v", err)
 	}
 
-	fixture := newHandlerFixture(t, testutil.StubSessionManager{}, testutil.StubObserver{}, testutil.StubWorkspaceService{}, store, nil)
+	fixture := newHandlerFixture(
+		t,
+		testutil.StubSessionManager{},
+		testutil.StubObserver{},
+		testutil.StubWorkspaceService{},
+		store,
+		nil,
+	)
 	if _, err := fixture.Handlers.ResolveMemoryLocation("workspace-only.md", "", workspace); err != nil {
 		t.Fatalf("ResolveMemoryLocation(workspace-only) error = %v", err)
 	}
-	if _, err := fixture.Handlers.ResolveMemoryLocation("shared.md", "", workspace); !errors.Is(err, memory.ErrValidation) {
+	if _, err := fixture.Handlers.ResolveMemoryLocation(
+		"shared.md",
+		"",
+		workspace,
+	); !errors.Is(
+		err,
+		memory.ErrValidation,
+	) {
 		t.Fatalf("ResolveMemoryLocation(shared) error = %v, want validation", err)
 	}
 	if _, _, err := core.ResolveMemoryWriteScope(contract.MemoryWriteRequest{}); !errors.Is(err, memory.ErrValidation) {
 		t.Fatalf("ResolveMemoryWriteScope(empty) error = %v, want validation", err)
 	}
 
-	noStoreFixture := newHandlerFixture(t, testutil.StubSessionManager{}, testutil.StubObserver{}, testutil.StubWorkspaceService{}, nil, nil)
+	noStoreFixture := newHandlerFixture(
+		t,
+		testutil.StubSessionManager{},
+		testutil.StubObserver{},
+		testutil.StubWorkspaceService{},
+		nil,
+		nil,
+	)
 	requests := []struct {
 		method string
 		path   string
@@ -233,15 +316,28 @@ func TestMemoryHelpersAndMissingStoreBranches(t *testing.T) {
 	}{
 		{method: http.MethodGet, path: "/memory"},
 		{method: http.MethodGet, path: "/memory/valid.md?scope=global"},
-		{method: http.MethodPut, path: "/memory/valid.md", body: []byte(`{"scope":"global","content":"` + escapeJSON(memoryDocument(t, "Valid", memory.MemoryTypeUser, "hello")) + `"}`)},
+		{
+			method: http.MethodPut,
+			path:   "/memory/valid.md",
+			body: []byte(
+				`{"scope":"global","content":"` + escapeJSON(
+					memoryDocument(t, "Valid", memory.MemoryTypeUser, "hello"),
+				) + `"}`,
+			),
+		},
 		{method: http.MethodDelete, path: "/memory/valid.md?scope=global"},
 	}
 	for _, request := range requests {
-		request := request
 		t.Run(request.method+" "+request.path, func(t *testing.T) {
 			resp := performRequest(t, noStoreFixture.Engine, request.method, request.path, request.body)
 			if resp.Code != http.StatusInternalServerError {
-				t.Fatalf("%s %s status = %d, want %d", request.method, request.path, resp.Code, http.StatusInternalServerError)
+				t.Fatalf(
+					"%s %s status = %d, want %d",
+					request.method,
+					request.path,
+					resp.Code,
+					http.StatusInternalServerError,
+				)
 			}
 		})
 	}
@@ -286,17 +382,35 @@ func TestWorkspaceValidationBranches(t *testing.T) {
 	}
 	fixture := newHandlerFixture(t, testutil.StubSessionManager{}, testutil.StubObserver{}, workspaces, nil, nil)
 
-	createResp := performRequest(t, fixture.Engine, http.MethodPost, "/workspaces", []byte(`{"root_dir":"`+workspace.RootDir+`","add_dirs":["relative"]}`))
+	createResp := performRequest(
+		t,
+		fixture.Engine,
+		http.MethodPost,
+		"/workspaces",
+		[]byte(`{"root_dir":"`+workspace.RootDir+`","add_dirs":["relative"]}`),
+	)
 	if createResp.Code != http.StatusBadRequest {
 		t.Fatalf("create invalid add_dirs status = %d, want %d", createResp.Code, http.StatusBadRequest)
 	}
 
-	updateResp := performRequest(t, fixture.Engine, http.MethodPatch, "/workspaces/ws_alpha", []byte(`{"add_dirs":["relative"]}`))
+	updateResp := performRequest(
+		t,
+		fixture.Engine,
+		http.MethodPatch,
+		"/workspaces/ws_alpha",
+		[]byte(`{"add_dirs":["relative"]}`),
+	)
 	if updateResp.Code != http.StatusBadRequest {
 		t.Fatalf("update invalid add_dirs status = %d, want %d", updateResp.Code, http.StatusBadRequest)
 	}
 
-	resolveResp := performRequest(t, fixture.Engine, http.MethodPost, "/workspaces/resolve", []byte(`{"path":"relative"}`))
+	resolveResp := performRequest(
+		t,
+		fixture.Engine,
+		http.MethodPost,
+		"/workspaces/resolve",
+		[]byte(`{"path":"relative"}`),
+	)
 	if resolveResp.Code != http.StatusBadRequest {
 		t.Fatalf("resolve invalid path status = %d, want %d", resolveResp.Code, http.StatusBadRequest)
 	}
@@ -309,7 +423,14 @@ func TestMemoryErrorAndDisabledBranches(t *testing.T) {
 	if err := store.EnsureDirs(); err != nil {
 		t.Fatalf("EnsureDirs() error = %v", err)
 	}
-	fixture := newHandlerFixture(t, testutil.StubSessionManager{}, testutil.StubObserver{}, testutil.StubWorkspaceService{}, store, nil)
+	fixture := newHandlerFixture(
+		t,
+		testutil.StubSessionManager{},
+		testutil.StubObserver{},
+		testutil.StubWorkspaceService{},
+		store,
+		nil,
+	)
 
 	readMissing := performRequest(t, fixture.Engine, http.MethodGet, "/memory/missing.md?scope=global", nil)
 	if readMissing.Code != http.StatusNotFound {
@@ -321,7 +442,13 @@ func TestMemoryErrorAndDisabledBranches(t *testing.T) {
 		t.Fatalf("delete missing status = %d, want %d", deleteMissing.Code, http.StatusNotFound)
 	}
 
-	badWrite := performRequest(t, fixture.Engine, http.MethodPut, "/memory/bad.md", []byte(`{"scope":"global","content":"not frontmatter"}`))
+	badWrite := performRequest(
+		t,
+		fixture.Engine,
+		http.MethodPut,
+		"/memory/bad.md",
+		[]byte(`{"scope":"global","content":"not frontmatter"}`),
+	)
 	if badWrite.Code != http.StatusBadRequest {
 		t.Fatalf("bad write status = %d, want %d", badWrite.Code, http.StatusBadRequest)
 	}

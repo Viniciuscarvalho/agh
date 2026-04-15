@@ -1,4 +1,4 @@
-package extension
+package extensionpkg
 
 import (
 	"errors"
@@ -24,7 +24,12 @@ func (s managedInstallRegistryStub) Get(name string) (*ExtensionInfo, error) {
 	return nil, ErrExtensionNotFound
 }
 
-func (s managedInstallRegistryStub) Install(manifest *Manifest, path string, checksum string, opts ...InstallOption) error {
+func (s managedInstallRegistryStub) Install(
+	manifest *Manifest,
+	path string,
+	checksum string,
+	opts ...InstallOption,
+) error {
 	if s.installFn != nil {
 		return s.installFn(manifest, path, checksum, opts...)
 	}
@@ -41,7 +46,14 @@ func TestManagedInstallHelpers(t *testing.T) {
 	if got := ManagedInstallRoot(homePaths); got == "" {
 		t.Fatal("ManagedInstallRoot() returned empty path")
 	}
-	if got, want := ManagedInstallPath(homePaths, " test-ext "), filepath.Join(homePaths.HomeDir, managedInstallDirName, "test-ext"); got != want {
+	if got, want := ManagedInstallPath(
+		homePaths,
+		" test-ext ",
+	), filepath.Join(
+		homePaths.HomeDir,
+		managedInstallDirName,
+		"test-ext",
+	); got != want {
 		t.Fatalf("ManagedInstallPath() = %q, want %q", got, want)
 	}
 
@@ -69,10 +81,18 @@ func TestCopyInstallTreeMaterializesSymlinkTargets(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(internalDir, "bin"), 0o755); err != nil {
 		t.Fatalf("os.MkdirAll(internal) error = %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(internalDir, "package.json"), []byte("{\"name\":\"@agh/extension-sdk\"}\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(internalDir, "package.json"),
+		[]byte("{\"name\":\"@agh/extension-sdk\"}\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("os.WriteFile(package.json) error = %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(internalDir, "bin", "tsc"), []byte("#!/usr/bin/env node\n"), 0o755); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(internalDir, "bin", "tsc"),
+		[]byte("#!/usr/bin/env node\n"),
+		0o755,
+	); err != nil {
 		t.Fatalf("os.WriteFile(tsc) error = %v", err)
 	}
 
@@ -82,10 +102,16 @@ func TestCopyInstallTreeMaterializesSymlinkTargets(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(sourceDir, "node_modules", ".bin"), 0o755); err != nil {
 		t.Fatalf("os.MkdirAll(node_modules/.bin) error = %v", err)
 	}
-	if err := os.Symlink(filepath.Join(sourceDir, "vendor", "extension-sdk"), filepath.Join(sourceDir, "node_modules", "@agh", "extension-sdk")); err != nil {
+	if err := os.Symlink(
+		filepath.Join(sourceDir, "vendor", "extension-sdk"),
+		filepath.Join(sourceDir, "node_modules", "@agh", "extension-sdk"),
+	); err != nil {
 		t.Skipf("os.Symlink(directory) unavailable: %v", err)
 	}
-	if err := os.Symlink(filepath.Join(sourceDir, "vendor", "extension-sdk", "bin", "tsc"), filepath.Join(sourceDir, "node_modules", ".bin", "tsc")); err != nil {
+	if err := os.Symlink(
+		filepath.Join(sourceDir, "vendor", "extension-sdk", "bin", "tsc"),
+		filepath.Join(sourceDir, "node_modules", ".bin", "tsc"),
+	); err != nil {
 		t.Skipf("os.Symlink(file) unavailable: %v", err)
 	}
 
@@ -142,7 +168,13 @@ func TestCopyInstallTreeCopiesDeclaredRuntimeNodeModulesOnly(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(sourceDir, "node_modules", ".bin"), 0o755); err != nil {
 		t.Fatalf("os.MkdirAll(source .bin) error = %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(sourceDir, "package.json"), []byte("{\"dependencies\":{\"@agh/extension-sdk\":\"workspace:*\"},\"devDependencies\":{\"@types/node\":\"^25.5.2\",\"typescript\":\"^6.0.2\"}}\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(sourceDir, "package.json"),
+		[]byte(
+			"{\"dependencies\":{\"@agh/extension-sdk\":\"workspace:*\"},\"devDependencies\":{\"@types/node\":\"^25.5.2\",\"typescript\":\"^6.0.2\"}}\n",
+		),
+		0o644,
+	); err != nil {
 		t.Fatalf("os.WriteFile(source package.json) error = %v", err)
 	}
 
@@ -150,10 +182,18 @@ func TestCopyInstallTreeCopiesDeclaredRuntimeNodeModulesOnly(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(runtimePackageDir, "dist"), 0o755); err != nil {
 		t.Fatalf("os.MkdirAll(runtime package) error = %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(runtimePackageDir, "package.json"), []byte("{\"name\":\"@agh/extension-sdk\",\"main\":\"./dist/index.js\"}\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(runtimePackageDir, "package.json"),
+		[]byte("{\"name\":\"@agh/extension-sdk\",\"main\":\"./dist/index.js\"}\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("os.WriteFile(runtime package.json) error = %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(runtimePackageDir, "dist", "index.js"), []byte("export const runtime = true;\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(runtimePackageDir, "dist", "index.js"),
+		[]byte("export const runtime = true;\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("os.WriteFile(runtime dist) error = %v", err)
 	}
 
@@ -161,7 +201,11 @@ func TestCopyInstallTreeCopiesDeclaredRuntimeNodeModulesOnly(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(typescriptDir, "bin"), 0o755); err != nil {
 		t.Fatalf("os.MkdirAll(typescript) error = %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(typescriptDir, "bin", "tsc"), []byte("#!/usr/bin/env node\n"), 0o755); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(typescriptDir, "bin", "tsc"),
+		[]byte("#!/usr/bin/env node\n"),
+		0o755,
+	); err != nil {
 		t.Fatalf("os.WriteFile(tsc) error = %v", err)
 	}
 
@@ -173,7 +217,10 @@ func TestCopyInstallTreeCopiesDeclaredRuntimeNodeModulesOnly(t *testing.T) {
 		t.Fatalf("os.WriteFile(node types) error = %v", err)
 	}
 
-	if err := os.Symlink(runtimePackageDir, filepath.Join(sourceDir, "node_modules", "@agh", "extension-sdk")); err != nil {
+	if err := os.Symlink(
+		runtimePackageDir,
+		filepath.Join(sourceDir, "node_modules", "@agh", "extension-sdk"),
+	); err != nil {
 		t.Skipf("os.Symlink(runtime dependency) unavailable: %v", err)
 	}
 	if err := os.Symlink(typescriptDir, filepath.Join(sourceDir, "node_modules", "typescript")); err != nil {
@@ -182,7 +229,10 @@ func TestCopyInstallTreeCopiesDeclaredRuntimeNodeModulesOnly(t *testing.T) {
 	if err := os.Symlink(nodeTypesDir, filepath.Join(sourceDir, "node_modules", "@types", "node")); err != nil {
 		t.Skipf("os.Symlink(dev dependency) unavailable: %v", err)
 	}
-	if err := os.Symlink(filepath.Join(typescriptDir, "bin", "tsc"), filepath.Join(sourceDir, "node_modules", ".bin", "tsc")); err != nil {
+	if err := os.Symlink(
+		filepath.Join(typescriptDir, "bin", "tsc"),
+		filepath.Join(sourceDir, "node_modules", ".bin", "tsc"),
+	); err != nil {
 		t.Skipf("os.Symlink(dev binary) unavailable: %v", err)
 	}
 
@@ -261,7 +311,11 @@ func TestInstallLocalManagedUsesInstalledChecksumForMaterializedSymlinks(t *test
 		t.Fatalf("registry installed checksum = %q, want %q", got, finalChecksum)
 	}
 	if finalChecksum == sourceChecksum {
-		t.Fatalf("final checksum = %q, want checksum different from source symlink tree %q", finalChecksum, sourceChecksum)
+		t.Fatalf(
+			"final checksum = %q, want checksum different from source symlink tree %q",
+			finalChecksum,
+			sourceChecksum,
+		)
 	}
 }
 
@@ -272,7 +326,11 @@ func TestInstallLocalManagedNormalizesProvidedChecksum(t *testing.T) {
 	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
 		t.Fatalf("os.MkdirAll(source) error = %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(sourceDir, "extension.toml"), []byte("name = \"checksum-ext\"\nversion = \"1.0.0\"\nmin_agh_version = \"0.1.0\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(sourceDir, "extension.toml"),
+		[]byte("name = \"checksum-ext\"\nversion = \"1.0.0\"\nmin_agh_version = \"0.1.0\"\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("os.WriteFile(extension.toml) error = %v", err)
 	}
 
@@ -288,7 +346,13 @@ func TestInstallLocalManagedNormalizesProvidedChecksum(t *testing.T) {
 	registry := &recordingManagedInstallRegistry{}
 	manifest := &Manifest{Name: "checksum-ext"}
 
-	if err := InstallLocalManaged(homePaths, registry, manifest, sourceDir, "  "+strings.ToUpper(sourceChecksum)+"  "); err != nil {
+	if err := InstallLocalManaged(
+		homePaths,
+		registry,
+		manifest,
+		sourceDir,
+		"  "+strings.ToUpper(sourceChecksum)+"  ",
+	); err != nil {
 		t.Fatalf("InstallLocalManaged(normalized checksum) error = %v", err)
 	}
 }
@@ -305,7 +369,11 @@ func TestInstallLocalManagedRejectsExistingOrFailedInstall(t *testing.T) {
 	if err := os.MkdirAll(existingSourceDir, 0o755); err != nil {
 		t.Fatalf("os.MkdirAll(existing source) error = %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(existingSourceDir, "extension.toml"), []byte("name = \"existing-ext\"\nversion = \"1.0.0\"\nmin_agh_version = \"0.1.0\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(existingSourceDir, "extension.toml"),
+		[]byte("name = \"existing-ext\"\nversion = \"1.0.0\"\nmin_agh_version = \"0.1.0\"\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("os.WriteFile(existing extension.toml) error = %v", err)
 	}
 
@@ -322,7 +390,11 @@ func TestInstallLocalManagedRejectsExistingOrFailedInstall(t *testing.T) {
 	if err := os.MkdirAll(failingSourceDir, 0o755); err != nil {
 		t.Fatalf("os.MkdirAll(failing source) error = %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(failingSourceDir, "extension.toml"), []byte("name = \"failing-ext\"\nversion = \"1.0.0\"\nmin_agh_version = \"0.1.0\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(failingSourceDir, "extension.toml"),
+		[]byte("name = \"failing-ext\"\nversion = \"1.0.0\"\nmin_agh_version = \"0.1.0\"\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("os.WriteFile(failing extension.toml) error = %v", err)
 	}
 	sourceChecksum, err := ComputeDirectoryChecksum(failingSourceDir)
@@ -452,7 +524,11 @@ func TestInstallLocalManagedWrapsPhaseErrors(t *testing.T) {
 		if err := os.MkdirAll(sourceDir, 0o755); err != nil {
 			t.Fatalf("os.MkdirAll(source) error = %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(sourceDir, "extension.toml"), []byte("name = \"wrapped-ext\"\nversion = \"1.0.0\"\nmin_agh_version = \"0.1.0\"\n"), 0o644); err != nil {
+		if err := os.WriteFile(
+			filepath.Join(sourceDir, "extension.toml"),
+			[]byte("name = \"wrapped-ext\"\nversion = \"1.0.0\"\nmin_agh_version = \"0.1.0\"\n"),
+			0o644,
+		); err != nil {
 			t.Fatalf("os.WriteFile(extension.toml) error = %v", err)
 		}
 

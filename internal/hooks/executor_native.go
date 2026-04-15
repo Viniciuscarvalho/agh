@@ -70,7 +70,11 @@ func (e *TypedNativeExecutor[P, R]) Execute(_ context.Context, hook RegisteredHo
 }
 
 // ExecuteTyped invokes the configured typed Go callback directly.
-func (e *TypedNativeExecutor[P, R]) ExecuteTyped(ctx context.Context, hook RegisteredHook, payload P) (result R, err error) {
+func (e *TypedNativeExecutor[P, R]) ExecuteTyped(
+	ctx context.Context,
+	hook RegisteredHook,
+	payload P,
+) (result R, err error) {
 	if e == nil || e.callback == nil {
 		return result, fmt.Errorf("hooks: hook %q: %w", hook.Name, ErrNativeCallbackRequired)
 	}

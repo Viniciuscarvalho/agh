@@ -57,7 +57,7 @@ func TestMapWhatsAppInboundMessageAndDMPolicy(t *testing.T) {
 			MIMEType: "image/jpeg",
 			Caption:  "Need a summary",
 		},
-	}, contact, managed, time.Time{}, "123456789")
+	}, contact, &managed, time.Time{}, "123456789")
 	if err != nil {
 		t.Fatalf("mapWhatsAppInboundMessage() error = %v", err)
 	}
@@ -81,7 +81,10 @@ func TestMapWhatsAppInboundMessageAndDMPolicy(t *testing.T) {
 	}
 
 	sender := envelope.Sender
-	if !allowWhatsAppDirectMessage(resolvedInstanceConfig{dmPolicy: bridgepkg.BridgeDMPolicyOpen}, sender) {
+	if !allowWhatsAppDirectMessage(
+		resolvedInstanceConfig{dmPolicy: bridgepkg.BridgeDMPolicyOpen},
+		sender,
+	) {
 		t.Fatal("allowWhatsAppDirectMessage(open) = false, want true")
 	}
 	if !allowWhatsAppDirectMessage(resolvedInstanceConfig{
@@ -108,7 +111,12 @@ func TestVerifyChallengeAndSignature(t *testing.T) {
 	t.Parallel()
 
 	body := []byte(whatsappWebhookPayloadForPhone("123456789", "hello"))
-	req := httptest.NewRequest(http.MethodPost, "http://example.test/whatsapp/brg-1", strings.NewReader(string(body)))
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"http://example.test/whatsapp/brg-1",
+		strings.NewReader(string(body)),
+	)
 	req.Header.Set(whatsappSignatureHeader, signWhatsAppBody(body, "top-secret"))
 	if err := verifyWhatsAppSignature(context.Background(), req, body, "top-secret"); err != nil {
 		t.Fatalf("verifyWhatsAppSignature(valid) error = %v", err)
@@ -123,7 +131,12 @@ func TestVerifyChallengeAndSignature(t *testing.T) {
 	}
 	cfg := resolvedInstanceConfig{verifyToken: "verify-me"}
 
-	okReq := httptest.NewRequest(http.MethodGet, "http://example.test/whatsapp/brg-1?hub.mode=subscribe&hub.verify_token=verify-me&hub.challenge=12345", nil)
+	okReq := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://example.test/whatsapp/brg-1?hub.mode=subscribe&hub.verify_token=verify-me&hub.challenge=12345",
+		http.NoBody,
+	)
 	okResp := httptest.NewRecorder()
 	provider.handleVerifyChallenge(okResp, okReq, cfg)
 	if got, want := okResp.Code, http.StatusOK; got != want {
@@ -133,7 +146,12 @@ func TestVerifyChallengeAndSignature(t *testing.T) {
 		t.Fatalf("verify challenge body = %q, want %q", got, want)
 	}
 
-	badReq := httptest.NewRequest(http.MethodGet, "http://example.test/whatsapp/brg-1?hub.mode=subscribe&hub.verify_token=wrong&hub.challenge=12345", nil)
+	badReq := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://example.test/whatsapp/brg-1?hub.mode=subscribe&hub.verify_token=wrong&hub.challenge=12345",
+		http.NoBody,
+	)
 	badResp := httptest.NewRecorder()
 	provider.handleVerifyChallenge(badResp, badReq, cfg)
 	if got, want := badResp.Code, http.StatusForbidden; got != want {
@@ -158,7 +176,11 @@ func TestSplitMessage(t *testing.T) {
 		t.Fatalf("len(chunks[0]) = %d, want %d", got, want)
 	}
 	if strings.Join(chunks, "") != long {
-		t.Fatalf("splitMessage() lost content: got len %d want len %d", len(strings.Join(chunks, "")), len(long))
+		t.Fatalf(
+			"splitMessage() lost content: got len %d want len %d",
+			len(strings.Join(chunks, "")),
+			len(long),
+		)
 	}
 }
 
@@ -171,8 +193,21 @@ func TestExecuteWhatsAppDeliveryPostResumeDeleteAndSplit(t *testing.T) {
 		phoneNumberID: "123456789",
 	}
 
-	startReq := testDeliveryRequest("brg-1", "delivery-1", 1, bridgepkg.DeliveryEventTypeStart, false, "hello")
-	startAck, state, err := executeWhatsAppDelivery(context.Background(), api, cfg, startReq, deliveryState{})
+	startReq := testDeliveryRequest(
+		"brg-1",
+		"delivery-1",
+		1,
+		bridgepkg.DeliveryEventTypeStart,
+		false,
+		"hello",
+	)
+	startAck, state, err := executeWhatsAppDelivery(
+		context.Background(),
+		api,
+		cfg,
+		startReq,
+		deliveryState{},
+	)
 	if err != nil {
 		t.Fatalf("executeWhatsAppDelivery(start) error = %v", err)
 	}
@@ -180,7 +215,14 @@ func TestExecuteWhatsAppDeliveryPostResumeDeleteAndSplit(t *testing.T) {
 		t.Fatalf("startAck.RemoteMessageID = %q, want %q", got, want)
 	}
 
-	finalReq := testDeliveryRequest("brg-1", "delivery-1", 2, bridgepkg.DeliveryEventTypeFinal, true, "hello world")
+	finalReq := testDeliveryRequest(
+		"brg-1",
+		"delivery-1",
+		2,
+		bridgepkg.DeliveryEventTypeFinal,
+		true,
+		"hello world",
+	)
 	finalAck, state, err := executeWhatsAppDelivery(context.Background(), api, cfg, finalReq, state)
 	if err != nil {
 		t.Fatalf("executeWhatsAppDelivery(final) error = %v", err)
@@ -194,8 +236,17 @@ func TestExecuteWhatsAppDeliveryPostResumeDeleteAndSplit(t *testing.T) {
 		t.Fatal("executeWhatsAppDelivery(delete) error = nil, want non-nil")
 	}
 
-	resumeSnapshotReq := testDeliveryRequest("brg-1", "delivery-2", 1, bridgepkg.DeliveryEventTypeResume, true, "hello")
-	resumeSnapshotReq.Event.Resume = &bridgepkg.DeliveryResumeState{LatestEventType: bridgepkg.DeliveryEventTypeFinal}
+	resumeSnapshotReq := testDeliveryRequest(
+		"brg-1",
+		"delivery-2",
+		1,
+		bridgepkg.DeliveryEventTypeResume,
+		true,
+		"hello",
+	)
+	resumeSnapshotReq.Event.Resume = &bridgepkg.DeliveryResumeState{
+		LatestEventType: bridgepkg.DeliveryEventTypeFinal,
+	}
 	resumeSnapshotReq.Snapshot = &bridgepkg.DeliverySnapshot{
 		DeliveryID:       "delivery-2",
 		SessionID:        "sess-1",
@@ -212,7 +263,13 @@ func TestExecuteWhatsAppDeliveryPostResumeDeleteAndSplit(t *testing.T) {
 		Final:            true,
 		UpdatedAt:        time.Date(2026, 4, 15, 12, 5, 0, 0, time.UTC),
 	}
-	resumeAck, _, err := executeWhatsAppDelivery(context.Background(), api, cfg, resumeSnapshotReq, deliveryState{})
+	resumeAck, _, err := executeWhatsAppDelivery(
+		context.Background(),
+		api,
+		cfg,
+		resumeSnapshotReq,
+		deliveryState{},
+	)
 	if err != nil {
 		t.Fatalf("executeWhatsAppDelivery(resume with snapshot remote) error = %v", err)
 	}
@@ -221,8 +278,21 @@ func TestExecuteWhatsAppDeliveryPostResumeDeleteAndSplit(t *testing.T) {
 	}
 
 	splitAPI := &fakeWhatsAppAPI{nextMessageID: 900}
-	splitReq := testDeliveryRequest("brg-1", "delivery-3", 1, bridgepkg.DeliveryEventTypeStart, false, strings.Repeat("a", whatsappMessageLimit+20))
-	splitAck, _, err := executeWhatsAppDelivery(context.Background(), splitAPI, cfg, splitReq, deliveryState{})
+	splitReq := testDeliveryRequest(
+		"brg-1",
+		"delivery-3",
+		1,
+		bridgepkg.DeliveryEventTypeStart,
+		false,
+		strings.Repeat("a", whatsappMessageLimit+20),
+	)
+	splitAck, _, err := executeWhatsAppDelivery(
+		context.Background(),
+		splitAPI,
+		cfg,
+		splitReq,
+		deliveryState{},
+	)
 	if err != nil {
 		t.Fatalf("executeWhatsAppDelivery(split) error = %v", err)
 	}
@@ -237,7 +307,11 @@ func TestExecuteWhatsAppDeliveryPostResumeDeleteAndSplit(t *testing.T) {
 func TestClassifyWhatsAppHTTPError(t *testing.T) {
 	t.Parallel()
 
-	rate := classifyWhatsAppHTTPError(http.StatusTooManyRequests, "5", []byte(`{"error":{"message":"slow down","code":130429}}`))
+	rate := classifyWhatsAppHTTPError(
+		http.StatusTooManyRequests,
+		"5",
+		[]byte(`{"error":{"message":"slow down","code":130429}}`),
+	)
 	var rateErr *bridgesdk.RateLimitError
 	if !errors.As(rate, &rateErr) {
 		t.Fatalf("classifyWhatsAppHTTPError(rate) = %T, want *RateLimitError", rate)
@@ -246,19 +320,31 @@ func TestClassifyWhatsAppHTTPError(t *testing.T) {
 		t.Fatalf("rateErr.RetryAfter = %s, want %s", got, want)
 	}
 
-	auth := classifyWhatsAppHTTPError(http.StatusUnauthorized, "", []byte(`{"error":{"message":"invalid token","code":190}}`))
+	auth := classifyWhatsAppHTTPError(
+		http.StatusUnauthorized,
+		"",
+		[]byte(`{"error":{"message":"invalid token","code":190}}`),
+	)
 	var authErr *bridgesdk.AuthError
 	if !errors.As(auth, &authErr) {
 		t.Fatalf("classifyWhatsAppHTTPError(auth) = %T, want *AuthError", auth)
 	}
 
-	transient := classifyWhatsAppHTTPError(http.StatusBadGateway, "", []byte(`{"error":{"message":"upstream failed","code":2}}`))
+	transient := classifyWhatsAppHTTPError(
+		http.StatusBadGateway,
+		"",
+		[]byte(`{"error":{"message":"upstream failed","code":2}}`),
+	)
 	var transientErr *bridgesdk.TransientError
 	if !errors.As(transient, &transientErr) {
 		t.Fatalf("classifyWhatsAppHTTPError(transient) = %T, want *TransientError", transient)
 	}
 
-	permanent := classifyWhatsAppHTTPError(http.StatusBadRequest, "", []byte(`{"error":{"message":"bad request","code":100}}`))
+	permanent := classifyWhatsAppHTTPError(
+		http.StatusBadRequest,
+		"",
+		[]byte(`{"error":{"message":"bad request","code":100}}`),
+	)
 	var httpErr *bridgesdk.HTTPError
 	if !errors.As(permanent, &httpErr) {
 		t.Fatalf("classifyWhatsAppHTTPError(http) = %T, want *HTTPError", permanent)
@@ -279,14 +365,14 @@ func TestResolveInstanceConfigAndDetermineInitialState(t *testing.T) {
 	now := time.Date(2026, 4, 15, 14, 0, 0, 0, time.UTC)
 	managed := testBridgeRuntime(now, "brg-1")
 	managed.Instance.DMPolicy = bridgepkg.BridgeDMPolicyPairing
-	managed.Instance.ProviderConfig = []byte(fmt.Sprintf(`{
+	managed.Instance.ProviderConfig = fmt.Appendf(nil, `{
 		"api_base_url":"http://api.example/",
 		"api_version":"v99.0",
 		"phone_number_id":"123456789",
 		"webhook":{"listen_addr":%q,"path":"whatsapp"},
 		"batching":{"delay_ms":5,"split_delay_ms":7,"split_threshold":2},
 		"dm":{"allow_user_ids":["15551234567"],"allow_usernames":["Alice Example"],"paired_usernames":["Bob"]}
-	}`, listenAddr))
+	}`, listenAddr)
 	managed.BoundSecrets = []subprocess.InitializeBridgeBoundSecret{
 		{BindingName: "access_token", Kind: "token", Value: "access-token"},
 		{BindingName: "app_secret", Kind: "token", Value: "app-secret"},
@@ -347,26 +433,33 @@ func TestResolveInstanceConfigAndDetermineInitialState(t *testing.T) {
 		t.Fatalf("cfg.allowUsernames = %#v, want normalized username", cfg.allowUsernames)
 	}
 
-	status, degradation, err := runtime.determineInitialState(context.Background(), resolvedInstanceConfig{
-		instanceID:  "bad-config",
-		configError: errors.New("bad config"),
-	})
+	status, degradation, err := runtime.determineInitialState(
+		context.Background(),
+		resolvedInstanceConfig{
+			instanceID:  "bad-config",
+			configError: errors.New("bad config"),
+		},
+	)
 	if err == nil {
 		t.Fatal("determineInitialState(configError) error = nil, want non-nil")
 	}
 	if got, want := status, bridgepkg.BridgeStatusDegraded; got != want {
 		t.Fatalf("status = %q, want %q", got, want)
 	}
-	if degradation == nil || degradation.Reason != bridgepkg.BridgeDegradationReasonTenantConfigInvalid {
+	if degradation == nil ||
+		degradation.Reason != bridgepkg.BridgeDegradationReasonTenantConfigInvalid {
 		t.Fatalf("degradation = %#v, want tenant config invalid", degradation)
 	}
 
-	status, degradation, err = runtime.determineInitialState(context.Background(), resolvedInstanceConfig{
-		instanceID:    "missing-auth",
-		phoneNumberID: "123456789",
-		verifyToken:   "verify-token",
-		appSecret:     "app-secret",
-	})
+	status, degradation, err = runtime.determineInitialState(
+		context.Background(),
+		resolvedInstanceConfig{
+			instanceID:    "missing-auth",
+			phoneNumberID: "123456789",
+			verifyToken:   "verify-token",
+			appSecret:     "app-secret",
+		},
+	)
 	if err == nil {
 		t.Fatal("determineInitialState(missing auth) error = nil, want non-nil")
 	}
@@ -382,19 +475,27 @@ func TestResolveInstanceConfigAndDetermineInitialState(t *testing.T) {
 		case "auth":
 			return fakeWhatsAppAPIError{err: &bridgesdk.AuthError{Err: errors.New("invalid token")}}
 		case "rate":
-			return fakeWhatsAppAPIError{err: &bridgesdk.RateLimitError{Err: errors.New("slow down"), RetryAfter: time.Second}}
+			return fakeWhatsAppAPIError{
+				err: &bridgesdk.RateLimitError{
+					Err:        errors.New("slow down"),
+					RetryAfter: time.Second,
+				},
+			}
 		default:
 			return &fakeWhatsAppAPI{}
 		}
 	}
 
-	status, degradation, err = runtime.determineInitialState(context.Background(), resolvedInstanceConfig{
-		instanceID:    "auth",
-		phoneNumberID: "123456789",
-		accessToken:   "access-token",
-		appSecret:     "app-secret",
-		verifyToken:   "verify-token",
-	})
+	status, degradation, err = runtime.determineInitialState(
+		context.Background(),
+		resolvedInstanceConfig{
+			instanceID:    "auth",
+			phoneNumberID: "123456789",
+			accessToken:   "access-token",
+			appSecret:     "app-secret",
+			verifyToken:   "verify-token",
+		},
+	)
 	if err == nil {
 		t.Fatal("determineInitialState(auth) error = nil, want non-nil")
 	}
@@ -405,13 +506,16 @@ func TestResolveInstanceConfigAndDetermineInitialState(t *testing.T) {
 		t.Fatalf("degradation = %#v, want auth failed", degradation)
 	}
 
-	status, degradation, err = runtime.determineInitialState(context.Background(), resolvedInstanceConfig{
-		instanceID:    "rate",
-		phoneNumberID: "123456789",
-		accessToken:   "access-token",
-		appSecret:     "app-secret",
-		verifyToken:   "verify-token",
-	})
+	status, degradation, err = runtime.determineInitialState(
+		context.Background(),
+		resolvedInstanceConfig{
+			instanceID:    "rate",
+			phoneNumberID: "123456789",
+			accessToken:   "access-token",
+			appSecret:     "app-secret",
+			verifyToken:   "verify-token",
+		},
+	)
 	if err == nil {
 		t.Fatal("determineInitialState(rate) error = nil, want non-nil")
 	}
@@ -440,7 +544,12 @@ func TestRuntimeInitializeStartsServerAndWritesMarkers(t *testing.T) {
 	}
 	mustHandleLifecycle(t, hostPeer, managed...)
 
-	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed...), nil); err != nil {
+	if err := hostPeer.Call(
+		context.Background(),
+		"initialize",
+		testInitializeRequest(now, managed...),
+		nil,
+	); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
 	}
 
@@ -452,7 +561,11 @@ func TestRuntimeInitializeStartsServerAndWritesMarkers(t *testing.T) {
 	if got, want := len(ownership.Fetched), 2; got != want {
 		t.Fatalf("len(ownership.Fetched) = %d, want %d", got, want)
 	}
-	states := waitForJSONLinesFile[stateMarker](t, env.statePath, func(items []stateMarker) bool { return len(items) >= 2 })
+	states := waitForJSONLinesFile[stateMarker](
+		t,
+		env.statePath,
+		func(items []stateMarker) bool { return len(items) >= 2 },
+	)
 	if got, want := states[0].Status.Normalize(), bridgepkg.BridgeStatusReady; got != want {
 		t.Fatalf("states[0].Status = %q, want %q", got, want)
 	}
@@ -479,25 +592,30 @@ func TestWebhookIngressRejectsInvalidSignatureAndIngestsMessage(t *testing.T) {
 
 	var ingested []bridgepkg.InboundMessageEnvelope
 	var mu sync.Mutex
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesMessagesIngest), func(_ context.Context, params json.RawMessage) (any, error) {
-		var envelope bridgepkg.InboundMessageEnvelope
-		if err := json.Unmarshal(params, &envelope); err != nil {
-			return nil, err
-		}
-		mu.Lock()
-		ingested = append(ingested, envelope)
-		mu.Unlock()
-		return extensioncontract.BridgesMessagesIngestResult{
-			SessionID:    "sess-1",
-			RouteCreated: true,
-			RoutingKey: bridgepkg.RoutingKey{
-				Scope:            envelope.Scope,
-				WorkspaceID:      envelope.WorkspaceID,
-				BridgeInstanceID: envelope.BridgeInstanceID,
-				PeerID:           envelope.PeerID,
-			},
-		}, nil
-	})
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesMessagesIngest),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var envelope bridgepkg.InboundMessageEnvelope
+			if err := json.Unmarshal(params, &envelope); err != nil {
+				return nil, err
+			}
+			mu.Lock()
+			ingested = append(ingested, envelope)
+			mu.Unlock()
+			return extensioncontract.BridgesMessagesIngestResult{
+				SessionID:    "sess-1",
+				RouteCreated: true,
+				RoutingKey: bridgepkg.RoutingKey{
+					Scope:            envelope.Scope,
+					WorkspaceID:      envelope.WorkspaceID,
+					BridgeInstanceID: envelope.BridgeInstanceID,
+					PeerID:           envelope.PeerID,
+				},
+			}, nil
+		},
+	)
 
 	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed), nil); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
@@ -514,7 +632,12 @@ func TestWebhookIngressRejectsInvalidSignatureAndIngestsMessage(t *testing.T) {
 	webhookURL := "http://" + serverAddr + "/whatsapp/brg-1"
 	body := whatsappWebhookPayloadForPhone("123456789", "Need a summary")
 
-	invalidReq, err := http.NewRequest(http.MethodPost, webhookURL, strings.NewReader(body))
+	invalidReq, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		webhookURL,
+		strings.NewReader(body),
+	)
 	if err != nil {
 		t.Fatalf("http.NewRequest(invalid) error = %v", err)
 	}
@@ -533,7 +656,12 @@ func TestWebhookIngressRejectsInvalidSignatureAndIngestsMessage(t *testing.T) {
 		t.Fatalf("invalid webhook status = %d, want %d", got, want)
 	}
 
-	validReq, err := http.NewRequest(http.MethodPost, webhookURL, strings.NewReader(body))
+	validReq, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		webhookURL,
+		strings.NewReader(body),
+	)
 	if err != nil {
 		t.Fatalf("http.NewRequest(valid) error = %v", err)
 	}
@@ -552,9 +680,13 @@ func TestWebhookIngressRejectsInvalidSignatureAndIngestsMessage(t *testing.T) {
 		t.Fatalf("valid webhook status = %d, want %d", got, want)
 	}
 
-	ingests := waitForJSONLinesFile[ingestMarker](t, env.ingestPath, func(items []ingestMarker) bool {
-		return len(items) == 1 && strings.TrimSpace(items[0].Result.SessionID) != ""
-	})
+	ingests := waitForJSONLinesFile[ingestMarker](
+		t,
+		env.ingestPath,
+		func(items []ingestMarker) bool {
+			return len(items) == 1 && strings.TrimSpace(items[0].Result.SessionID) != ""
+		},
+	)
 	if got, want := ingests[0].Envelope.PeerID, "15551234567"; got != want {
 		t.Fatalf("ingests[0].Envelope.PeerID = %q, want %q", got, want)
 	}
@@ -567,9 +699,18 @@ func TestWebhookIngressRejectsInvalidSignatureAndIngestsMessage(t *testing.T) {
 	}
 	mu.Unlock()
 
-	verifyResp, err := http.Get("http://" + serverAddr + "/whatsapp/brg-1?hub.mode=subscribe&hub.verify_token=verify-token&hub.challenge=42")
+	verifyReq, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://"+serverAddr+"/whatsapp/brg-1?hub.mode=subscribe&hub.verify_token=verify-token&hub.challenge=42",
+		http.NoBody,
+	)
 	if err != nil {
-		t.Fatalf("http.Get(verify challenge) error = %v", err)
+		t.Fatalf("http.NewRequestWithContext(verify challenge) error = %v", err)
+	}
+	verifyResp, err := http.DefaultClient.Do(verifyReq)
+	if err != nil {
+		t.Fatalf("http.DefaultClient.Do(verify challenge) error = %v", err)
 	}
 	defer func() {
 		if closeErr := verifyResp.Body.Close(); closeErr != nil {
@@ -604,15 +745,29 @@ func TestRuntimeDeliveriesCallWhatsAppGraphAPI(t *testing.T) {
 	}
 
 	var startAck bridgepkg.DeliveryAck
-	if err := hostPeer.Call(context.Background(), "bridges/deliver", testDeliveryRequest("brg-1", "delivery-1", 1, bridgepkg.DeliveryEventTypeStart, false, "hello"), &startAck); err != nil {
+	if err := hostPeer.Call(
+		context.Background(),
+		"bridges/deliver",
+		testDeliveryRequest("brg-1", "delivery-1", 1, bridgepkg.DeliveryEventTypeStart, false, "hello"),
+		&startAck,
+	); err != nil {
 		t.Fatalf("hostPeer.Call(start delivery) error = %v", err)
 	}
 	var finalAck bridgepkg.DeliveryAck
-	if err := hostPeer.Call(context.Background(), "bridges/deliver", testDeliveryRequest("brg-1", "delivery-1", 2, bridgepkg.DeliveryEventTypeFinal, true, "hello world"), &finalAck); err != nil {
+	if err := hostPeer.Call(
+		context.Background(),
+		"bridges/deliver",
+		testDeliveryRequest("brg-1", "delivery-1", 2, bridgepkg.DeliveryEventTypeFinal, true, "hello world"),
+		&finalAck,
+	); err != nil {
 		t.Fatalf("hostPeer.Call(final delivery) error = %v", err)
 	}
 
-	records := waitForJSONLinesFile[deliveryMarker](t, env.deliveryPath, func(items []deliveryMarker) bool { return len(items) >= 2 })
+	records := waitForJSONLinesFile[deliveryMarker](
+		t,
+		env.deliveryPath,
+		func(items []deliveryMarker) bool { return len(items) >= 2 },
+	)
 	if records[0].Ack == nil || records[1].Ack == nil {
 		t.Fatalf("delivery markers = %#v, want recorded acks", records)
 	}
@@ -651,27 +806,32 @@ func TestDispatchInboundBatchAndShutdown(t *testing.T) {
 
 	var ingested []bridgepkg.InboundMessageEnvelope
 	var mu sync.Mutex
-	mustHandle(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesMessagesIngest), func(_ context.Context, params json.RawMessage) (any, error) {
-		var envelope bridgepkg.InboundMessageEnvelope
-		if err := json.Unmarshal(params, &envelope); err != nil {
-			return nil, err
-		}
-		mu.Lock()
-		ingested = append(ingested, envelope)
-		mu.Unlock()
-		return extensioncontract.BridgesMessagesIngestResult{
-			SessionID:    "sess-1",
-			RouteCreated: true,
-			RoutingKey: bridgepkg.RoutingKey{
-				Scope:            envelope.Scope,
-				WorkspaceID:      envelope.WorkspaceID,
-				BridgeInstanceID: envelope.BridgeInstanceID,
-				PeerID:           envelope.PeerID,
-				ThreadID:         envelope.ThreadID,
-				GroupID:          envelope.GroupID,
-			},
-		}, nil
-	})
+	mustHandle(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesMessagesIngest),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var envelope bridgepkg.InboundMessageEnvelope
+			if err := json.Unmarshal(params, &envelope); err != nil {
+				return nil, err
+			}
+			mu.Lock()
+			ingested = append(ingested, envelope)
+			mu.Unlock()
+			return extensioncontract.BridgesMessagesIngestResult{
+				SessionID:    "sess-1",
+				RouteCreated: true,
+				RoutingKey: bridgepkg.RoutingKey{
+					Scope:            envelope.Scope,
+					WorkspaceID:      envelope.WorkspaceID,
+					BridgeInstanceID: envelope.BridgeInstanceID,
+					PeerID:           envelope.PeerID,
+					ThreadID:         envelope.ThreadID,
+					GroupID:          envelope.GroupID,
+				},
+			}, nil
+		},
+	)
 
 	if err := hostPeer.Call(context.Background(), "initialize", testInitializeRequest(now, managed), nil); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
@@ -737,7 +897,11 @@ func TestDispatchInboundBatchAndShutdown(t *testing.T) {
 		t.Fatalf("merged.IdempotencyKey = %q, want %q", got, want)
 	}
 
-	if err := runtime.handleShutdown(context.Background(), nil, subprocess.ShutdownRequest{DeadlineMS: 50}); err != nil {
+	if err := runtime.handleShutdown(
+		context.Background(),
+		nil,
+		subprocess.ShutdownRequest{DeadlineMS: 50},
+	); err != nil {
 		t.Fatalf("handleShutdown() error = %v", err)
 	}
 	lines := waitForNonEmptyLines(t, env.shutdownPath)
@@ -754,8 +918,9 @@ func TestHandleWebhookRequestValidationAndBatching(t *testing.T) {
 		t.Fatalf("newWhatsAppProvider() error = %v", err)
 	}
 
+	managed := testBridgeRuntime(time.Date(2026, 4, 15, 13, 20, 0, 0, time.UTC), "brg-1")
 	cfg := resolvedInstanceConfig{
-		managed:       testBridgeRuntime(time.Date(2026, 4, 15, 13, 20, 0, 0, time.UTC), "brg-1"),
+		managed:       &managed,
 		instanceID:    "brg-1",
 		phoneNumberID: "123456789",
 		dmPolicy:      bridgepkg.BridgeDMPolicyAllowlist,
@@ -780,8 +945,13 @@ func TestHandleWebhookRequestValidationAndBatching(t *testing.T) {
 		t.Fatal("handleWebhookRequest(invalid payload) error = nil, want non-nil")
 	}
 
-	body := []byte(`{"object":"whatsapp_business_account","entry":[{"changes":[{"field":"statuses","value":{}},{"field":"messages","value":{"metadata":{"phone_number_id":"123456789"},"contacts":[{"profile":{"name":"Alice Example"},"wa_id":"15551234567"},{"profile":{"name":"Blocked User"},"wa_id":"16667778888"}],"messages":[{"from":"15551234567","id":"wamid.allowed","timestamp":"1775866800","type":"text","text":{"body":"hello"}},{"from":"16667778888","id":"wamid.blocked","timestamp":"1775866801","type":"text","text":{"body":"blocked"}}]}},{"field":"messages","value":{"metadata":{"phone_number_id":"999999999"},"messages":[{"from":"15551234567","id":"wamid.other","timestamp":"1775866802","type":"text","text":{"body":"wrong phone"}}]}}]}]}`)
-	req := bridgesdk.WebhookRequest{Body: body, ReceivedAt: time.Date(2026, 4, 15, 13, 20, 0, 0, time.UTC)}
+	body := []byte(
+		`{"object":"whatsapp_business_account","entry":[{"changes":[{"field":"statuses","value":{}},{"field":"messages","value":{"metadata":{"phone_number_id":"123456789"},"contacts":[{"profile":{"name":"Alice Example"},"wa_id":"15551234567"},{"profile":{"name":"Blocked User"},"wa_id":"16667778888"}],"messages":[{"from":"15551234567","id":"wamid.allowed","timestamp":"1775866800","type":"text","text":{"body":"hello"}},{"from":"16667778888","id":"wamid.blocked","timestamp":"1775866801","type":"text","text":{"body":"blocked"}}]}},{"field":"messages","value":{"metadata":{"phone_number_id":"999999999"},"messages":[{"from":"15551234567","id":"wamid.other","timestamp":"1775866802","type":"text","text":{"body":"wrong phone"}}]}}]}]}`,
+	)
+	req := bridgesdk.WebhookRequest{
+		Body:       body,
+		ReceivedAt: time.Date(2026, 4, 15, 13, 20, 0, 0, time.UTC),
+	}
 	rec = httptest.NewRecorder()
 	if err := provider.handleWebhookRequest(rec, nil, cfg, req); err != nil {
 		t.Fatalf("handleWebhookRequest(valid) error = %v", err)
@@ -848,7 +1018,13 @@ func TestRetryWaitAndHealthHelpers(t *testing.T) {
 	}
 	stopped.stop()
 	stopErr := subprocess.NewRPCError(rpcCodeNotInitialized, "Not initialized", nil)
-	if err := stopped.retryHostCall(context.Background(), func(context.Context) error { return stopErr }); !errors.Is(err, stopErr) {
+	if err := stopped.retryHostCall(
+		context.Background(),
+		func(context.Context) error { return stopErr },
+	); !errors.Is(
+		err,
+		stopErr,
+	) {
 		t.Fatalf("retryHostCall(stopped) error = %v, want %v", err, stopErr)
 	}
 
@@ -859,7 +1035,10 @@ func TestRetryWaitAndHealthHelpers(t *testing.T) {
 	go func() {
 		time.Sleep(20 * time.Millisecond)
 		waitProvider.mu.Lock()
-		waitProvider.routes["brg-1"] = resolvedInstanceConfig{instanceID: "brg-1", webhookPath: "/whatsapp/brg-1"}
+		waitProvider.routes["brg-1"] = resolvedInstanceConfig{
+			instanceID:  "brg-1",
+			webhookPath: "/whatsapp/brg-1",
+		}
 		waitProvider.mu.Unlock()
 	}()
 	cfg, err := waitProvider.waitForInstanceConfig("brg-1", 200*time.Millisecond)
@@ -879,7 +1058,9 @@ func TestRetryWaitAndHealthHelpers(t *testing.T) {
 		t.Fatalf("healthCheck(clear) error = %v", err)
 	}
 
-	if !isNotInitializedRPCError(subprocess.NewRPCError(rpcCodeNotInitialized, "Not initialized", nil)) {
+	if !isNotInitializedRPCError(
+		subprocess.NewRPCError(rpcCodeNotInitialized, "Not initialized", nil),
+	) {
 		t.Fatal("isNotInitializedRPCError() = false, want true")
 	}
 	if isNotInitializedRPCError(errors.New("boom")) {
@@ -1015,7 +1196,6 @@ func TestExtractWhatsAppTextContentAndAttachments(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			if got, want := extractWhatsAppTextContent(tc.message), tc.wantText; got != want {
@@ -1075,19 +1255,23 @@ func TestWhatsAppGraphClientMethods(t *testing.T) {
 		t.Fatalf("phone.ID = %q, want %q", got, want)
 	}
 
-	resp, err := client.SendTextMessage(context.Background(), "123456789", whatsappSendMessageRequest{
-		MessagingProduct: "whatsapp",
-		RecipientType:    "individual",
-		To:               "15551234567",
-		Type:             "text",
-		Text: struct {
-			Body       string `json:"body"`
-			PreviewURL bool   `json:"preview_url"`
-		}{
-			Body:       "hello",
-			PreviewURL: false,
+	resp, err := client.SendTextMessage(
+		context.Background(),
+		"123456789",
+		whatsappSendMessageRequest{
+			MessagingProduct: "whatsapp",
+			RecipientType:    "individual",
+			To:               "15551234567",
+			Type:             "text",
+			Text: struct {
+				Body       string `json:"body"`
+				PreviewURL bool   `json:"preview_url"`
+			}{
+				Body:       "hello",
+				PreviewURL: false,
+			},
 		},
-	})
+	)
 	if err != nil {
 		t.Fatalf("SendTextMessage() error = %v", err)
 	}
@@ -1157,7 +1341,11 @@ func (f *fakeWhatsAppAPI) GetPhoneNumber(context.Context, string) (*whatsappPhon
 	return &whatsappPhoneNumber{ID: "123456789"}, nil
 }
 
-func (f *fakeWhatsAppAPI) SendTextMessage(_ context.Context, _ string, req whatsappSendMessageRequest) (*whatsappSendMessageResponse, error) {
+func (f *fakeWhatsAppAPI) SendTextMessage(
+	_ context.Context,
+	_ string,
+	req whatsappSendMessageRequest,
+) (*whatsappSendMessageResponse, error) {
 	f.requests = append(f.requests, req)
 	messageID := fmt.Sprintf("wamid.%d", f.nextMessageID)
 	f.nextMessageID++
@@ -1174,11 +1362,18 @@ type fakeWhatsAppAPIError struct {
 	err error
 }
 
-func (f fakeWhatsAppAPIError) GetPhoneNumber(context.Context, string) (*whatsappPhoneNumber, error) {
+func (f fakeWhatsAppAPIError) GetPhoneNumber(
+	context.Context,
+	string,
+) (*whatsappPhoneNumber, error) {
 	return nil, f.err
 }
 
-func (f fakeWhatsAppAPIError) SendTextMessage(context.Context, string, whatsappSendMessageRequest) (*whatsappSendMessageResponse, error) {
+func (f fakeWhatsAppAPIError) SendTextMessage(
+	context.Context,
+	string,
+	whatsappSendMessageRequest,
+) (*whatsappSendMessageResponse, error) {
 	return nil, f.err
 }
 
@@ -1270,13 +1465,16 @@ func newRuntimePeerPair(t *testing.T) (*whatsappProvider, *bridgesdk.Peer, func(
 			server := runtime.server
 			runtime.mu.RUnlock()
 			if server != nil {
-				shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
+				shutdownCtx, shutdownCancel := context.WithTimeout(
+					context.Background(),
+					2*time.Second,
+				)
 				_ = server.Shutdown(shutdownCtx)
 				shutdownCancel()
 			}
 			_ = hostConn.Close()
 			_ = runtimeConn.Close()
-			for i := 0; i < 2; i++ {
+			for range 2 {
 				err := <-errCh
 				if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, net.ErrClosed) {
 					continue
@@ -1300,46 +1498,68 @@ func mustHandle(t *testing.T, peer *bridgesdk.Peer, method string, handler bridg
 	}
 }
 
-func mustHandleLifecycle(t *testing.T, peer *bridgesdk.Peer, managed ...subprocess.InitializeBridgeManagedInstance) {
+func mustHandleLifecycle(
+	t *testing.T,
+	peer *bridgesdk.Peer,
+	managed ...subprocess.InitializeBridgeManagedInstance,
+) {
 	t.Helper()
 
-	mustHandle(t, peer, string(extensionprotocol.HostAPIMethodBridgesInstancesList), func(context.Context, json.RawMessage) (any, error) {
-		instances := make([]bridgepkg.BridgeInstance, 0, len(managed))
-		for _, item := range managed {
-			instances = append(instances, item.Instance)
-		}
-		return instances, nil
-	})
-	mustHandle(t, peer, string(extensionprotocol.HostAPIMethodBridgesInstancesGet), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgeInstanceTargetParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		for _, item := range managed {
-			if item.Instance.ID == payload.BridgeInstanceID {
-				return item.Instance, nil
+	mustHandle(
+		t,
+		peer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesList),
+		func(context.Context, json.RawMessage) (any, error) {
+			instances := make([]bridgepkg.BridgeInstance, 0, len(managed))
+			for _, item := range managed {
+				instances = append(instances, item.Instance)
 			}
-		}
-		return nil, errors.New("unexpected instance")
-	})
-	mustHandle(t, peer, string(extensionprotocol.HostAPIMethodBridgesInstancesReportState), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgesInstancesReportStateParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		for _, item := range managed {
-			if item.Instance.ID == payload.BridgeInstanceID {
-				instance := item.Instance
-				instance.Status = payload.Status
-				instance.Degradation = payload.Degradation
-				return instance, nil
+			return instances, nil
+		},
+	)
+	mustHandle(
+		t,
+		peer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesGet),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgeInstanceTargetParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
 			}
-		}
-		return nil, errors.New("unexpected state instance")
-	})
+			for _, item := range managed {
+				if item.Instance.ID == payload.BridgeInstanceID {
+					return item.Instance, nil
+				}
+			}
+			return nil, errors.New("unexpected instance")
+		},
+	)
+	mustHandle(
+		t,
+		peer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesReportState),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgesInstancesReportStateParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
+			for _, item := range managed {
+				if item.Instance.ID == payload.BridgeInstanceID {
+					instance := item.Instance
+					instance.Status = payload.Status
+					instance.Degradation = payload.Degradation
+					return instance, nil
+				}
+			}
+			return nil, errors.New("unexpected state instance")
+		},
+	)
 }
 
-func testBridgeRuntime(now time.Time, instanceID string) subprocess.InitializeBridgeManagedInstance {
+func testBridgeRuntime(
+	now time.Time,
+	instanceID string,
+) subprocess.InitializeBridgeManagedInstance {
 	return subprocess.InitializeBridgeManagedInstance{
 		Instance: bridgepkg.BridgeInstance{
 			ID:            instanceID,
@@ -1365,7 +1585,10 @@ func testBridgeRuntime(now time.Time, instanceID string) subprocess.InitializeBr
 	}
 }
 
-func testInitializeRequest(now time.Time, managed ...subprocess.InitializeBridgeManagedInstance) subprocess.InitializeRequest {
+func testInitializeRequest(
+	_ time.Time,
+	managed ...subprocess.InitializeBridgeManagedInstance,
+) subprocess.InitializeRequest {
 	return subprocess.InitializeRequest{
 		ProtocolVersion:          "1",
 		SupportedProtocolVersion: []string{"1"},
@@ -1403,7 +1626,14 @@ func testInitializeRequest(now time.Time, managed ...subprocess.InitializeBridge
 	}
 }
 
-func testDeliveryRequest(instanceID string, deliveryID string, seq int64, eventType string, final bool, text string) bridgepkg.DeliveryRequest {
+func testDeliveryRequest(
+	instanceID string,
+	deliveryID string,
+	seq int64,
+	eventType string,
+	final bool,
+	text string,
+) bridgepkg.DeliveryRequest {
 	return bridgepkg.DeliveryRequest{
 		Event: bridgepkg.DeliveryEvent{
 			DeliveryID:       deliveryID,
@@ -1427,15 +1657,31 @@ func testDeliveryRequest(instanceID string, deliveryID string, seq int64, eventT
 	}
 }
 
-func testDeleteRequest(instanceID string, deliveryID string, seq int64, remoteMessageID string) bridgepkg.DeliveryRequest {
-	req := testDeliveryRequest(instanceID, deliveryID, seq, bridgepkg.DeliveryEventTypeDelete, true, "")
+func testDeleteRequest(
+	instanceID string,
+	deliveryID string,
+	seq int64,
+	remoteMessageID string,
+) bridgepkg.DeliveryRequest {
+	req := testDeliveryRequest(
+		instanceID,
+		deliveryID,
+		seq,
+		bridgepkg.DeliveryEventTypeDelete,
+		true,
+		"",
+	)
 	req.Event.Operation = bridgepkg.DeliveryOperationDelete
 	req.Event.Reference = &bridgepkg.DeliveryMessageReference{RemoteMessageID: remoteMessageID}
 	return req
 }
 
 func whatsappWebhookPayloadForPhone(phoneNumberID string, text string) string {
-	return fmt.Sprintf(`{"object":"whatsapp_business_account","entry":[{"id":"waba-1","changes":[{"field":"messages","value":{"messaging_product":"whatsapp","metadata":{"display_phone_number":"+15551234567","phone_number_id":"%s"},"contacts":[{"profile":{"name":"Alice Example"},"wa_id":"15551234567"}],"messages":[{"from":"15551234567","id":"wamid.abc123","timestamp":"1775866800","type":"text","text":{"body":%q}}]}}]}]}`, phoneNumberID, text)
+	return fmt.Sprintf(
+		`{"object":"whatsapp_business_account","entry":[{"id":"waba-1","changes":[{"field":"messages","value":{"messaging_product":"whatsapp","metadata":{"display_phone_number":"+15551234567","phone_number_id":%q},"contacts":[{"profile":{"name":"Alice Example"},"wa_id":"15551234567"}],"messages":[{"from":"15551234567","id":"wamid.abc123","timestamp":"1775866800","type":"text","text":{"body":%q}}]}}]}]}`,
+		phoneNumberID,
+		text,
+	)
 }
 
 func signWhatsAppBody(body []byte, secret string) string {
@@ -1478,9 +1724,10 @@ func setProviderTestEnv(t *testing.T) markerEnv {
 func reserveListenAddr(t *testing.T) string {
 	t.Helper()
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	var listenConfig net.ListenConfig
+	ln, err := listenConfig.Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("net.Listen() error = %v", err)
+		t.Fatalf("listenConfig.Listen() error = %v", err)
 	}
 	addr := ln.Addr().String()
 	if err := ln.Close(); err != nil {

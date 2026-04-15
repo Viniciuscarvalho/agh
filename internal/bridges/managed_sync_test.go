@@ -63,25 +63,29 @@ func TestManagedSyncerReconcilesCreateUpdateDelete(t *testing.T) {
 	syncer := bridgepkg.NewManagedSyncer(store, bridgepkg.WithManagedSyncNow(func() time.Time {
 		return time.Date(2026, 4, 14, 19, 0, 0, 0, time.UTC)
 	}))
-	stats, err := syncer.SyncManagedInstances(testutil.Context(t), bridgepkg.BridgeInstanceSourcePackage, []bridgepkg.BridgeInstance{{
-		ID:            "brg-existing",
-		Scope:         bridgepkg.ScopeGlobal,
-		Platform:      "telegram",
-		ExtensionName: "telegram-adapter",
-		DisplayName:   "New Name",
-		Enabled:       false,
-		Status:        bridgepkg.BridgeStatusDisabled,
-		RoutingPolicy: bridgepkg.RoutingPolicy{IncludePeer: true},
-	}, {
-		ID:            "brg-new",
-		Scope:         bridgepkg.ScopeGlobal,
-		Platform:      "telegram",
-		ExtensionName: "telegram-adapter",
-		DisplayName:   "New Bridge",
-		Enabled:       false,
-		Status:        bridgepkg.BridgeStatusDisabled,
-		RoutingPolicy: bridgepkg.RoutingPolicy{IncludePeer: true},
-	}})
+	stats, err := syncer.SyncManagedInstances(
+		testutil.Context(t),
+		bridgepkg.BridgeInstanceSourcePackage,
+		[]bridgepkg.BridgeInstance{{
+			ID:            "brg-existing",
+			Scope:         bridgepkg.ScopeGlobal,
+			Platform:      "telegram",
+			ExtensionName: "telegram-adapter",
+			DisplayName:   "New Name",
+			Enabled:       false,
+			Status:        bridgepkg.BridgeStatusDisabled,
+			RoutingPolicy: bridgepkg.RoutingPolicy{IncludePeer: true},
+		}, {
+			ID:            "brg-new",
+			Scope:         bridgepkg.ScopeGlobal,
+			Platform:      "telegram",
+			ExtensionName: "telegram-adapter",
+			DisplayName:   "New Bridge",
+			Enabled:       false,
+			Status:        bridgepkg.BridgeStatusDisabled,
+			RoutingPolicy: bridgepkg.RoutingPolicy{IncludePeer: true},
+		}},
+	)
 	if err != nil {
 		t.Fatalf("SyncManagedInstances() error = %v", err)
 	}
@@ -184,12 +188,15 @@ func TestManagedSyncerWrapsStoreErrors(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			syncer := bridgepkg.NewManagedSyncer(tc.store)
-			_, err := syncer.SyncManagedInstances(testutil.Context(t), bridgepkg.BridgeInstanceSourcePackage, tc.desired)
+			_, err := syncer.SyncManagedInstances(
+				testutil.Context(t),
+				bridgepkg.BridgeInstanceSourcePackage,
+				tc.desired,
+			)
 			if err == nil || !containsText(err, tc.wantError) {
 				t.Fatalf("SyncManagedInstances() error = %v, want substring %q", err, tc.wantError)
 			}
@@ -201,26 +208,30 @@ func TestManagedSyncerRejectsDuplicateDesiredIDs(t *testing.T) {
 	t.Parallel()
 
 	syncer := bridgepkg.NewManagedSyncer(stubRegistryStore{})
-	_, err := syncer.SyncManagedInstances(testutil.Context(t), bridgepkg.BridgeInstanceSourcePackage, []bridgepkg.BridgeInstance{
-		{
-			ID:            "brg-dup",
-			Scope:         bridgepkg.ScopeGlobal,
-			Platform:      "telegram",
-			ExtensionName: "telegram-adapter",
-			DisplayName:   "First",
-			Status:        bridgepkg.BridgeStatusDisabled,
-			RoutingPolicy: bridgepkg.RoutingPolicy{IncludePeer: true},
+	_, err := syncer.SyncManagedInstances(
+		testutil.Context(t),
+		bridgepkg.BridgeInstanceSourcePackage,
+		[]bridgepkg.BridgeInstance{
+			{
+				ID:            "brg-dup",
+				Scope:         bridgepkg.ScopeGlobal,
+				Platform:      "telegram",
+				ExtensionName: "telegram-adapter",
+				DisplayName:   "First",
+				Status:        bridgepkg.BridgeStatusDisabled,
+				RoutingPolicy: bridgepkg.RoutingPolicy{IncludePeer: true},
+			},
+			{
+				ID:            "brg-dup",
+				Scope:         bridgepkg.ScopeGlobal,
+				Platform:      "telegram",
+				ExtensionName: "telegram-adapter",
+				DisplayName:   "Second",
+				Status:        bridgepkg.BridgeStatusDisabled,
+				RoutingPolicy: bridgepkg.RoutingPolicy{IncludePeer: true},
+			},
 		},
-		{
-			ID:            "brg-dup",
-			Scope:         bridgepkg.ScopeGlobal,
-			Platform:      "telegram",
-			ExtensionName: "telegram-adapter",
-			DisplayName:   "Second",
-			Status:        bridgepkg.BridgeStatusDisabled,
-			RoutingPolicy: bridgepkg.RoutingPolicy{IncludePeer: true},
-		},
-	})
+	)
 	if err == nil || !containsText(err, "duplicate desired managed instance") {
 		t.Fatalf("SyncManagedInstances() error = %v, want duplicate-id failure", err)
 	}

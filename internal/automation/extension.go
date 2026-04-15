@@ -7,10 +7,10 @@ import (
 
 // ExtensionTriggerRequest describes one extension-originated trigger fire.
 type ExtensionTriggerRequest struct {
-	Event       string          `json:"event"`
-	Scope       AutomationScope `json:"scope"`
-	WorkspaceID string          `json:"workspace_id,omitempty"`
-	Payload     map[string]any  `json:"payload,omitempty"`
+	Event       string         `json:"event"`
+	Scope       Scope          `json:"scope"`
+	WorkspaceID string         `json:"workspace_id,omitempty"`
+	Payload     map[string]any `json:"payload,omitempty"`
 }
 
 // Validate ensures the extension trigger request matches the ext.* ingress contract.

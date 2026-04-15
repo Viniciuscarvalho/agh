@@ -1,6 +1,7 @@
-package extension
+package extensionpkg
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -31,6 +32,38 @@ var (
 	// ErrExtensionHasActiveBundles reports that the extension lifecycle is
 	// blocked by one or more active bundle activations.
 	ErrExtensionHasActiveBundles = errors.New("extension: extension has active bundle activations")
+)
+
+const (
+	registrySelectColumns = `
+		SELECT
+			name,
+			version,
+			source,
+			enabled,
+			manifest_path,
+			installed_at,
+			capabilities,
+			actions,
+			checksum,
+			registry_slug,
+			registry_name,
+			remote_version
+	`
+	registryInsertColumns = `
+			name,
+			version,
+			source,
+			enabled,
+			manifest_path,
+			installed_at,
+			capabilities,
+			actions,
+			checksum,
+			registry_slug,
+			registry_name,
+			remote_version
+	`
 )
 
 // Registry persists installed extension metadata in the global SQLite database.
@@ -140,7 +173,7 @@ func (r *Registry) Uninstall(name string) error {
 		return err
 	}
 
-	result, err := r.db.Exec(`DELETE FROM extensions WHERE name = ?`, trimmedName)
+	result, err := r.db.ExecContext(registryContext(), `DELETE FROM extensions WHERE name = ?`, trimmedName)
 	if err != nil {
 		return fmt.Errorf("extension: uninstall %q: %w", trimmedName, err)
 	}
@@ -164,8 +197,8 @@ func (r *Registry) List() ([]ExtensionInfo, error) {
 		return nil, err
 	}
 
-	rows, err := r.db.Query(`
-		SELECT name, version, source, enabled, manifest_path, installed_at, capabilities, actions, checksum, registry_slug, registry_name, remote_version
+	rows, err := r.db.QueryContext(registryContext(), `
+`+registrySelectColumns+`
 		FROM extensions
 		ORDER BY name ASC
 	`)
@@ -202,8 +235,8 @@ func (r *Registry) Get(name string) (*ExtensionInfo, error) {
 		return nil, err
 	}
 
-	row := r.db.QueryRow(`
-		SELECT name, version, source, enabled, manifest_path, installed_at, capabilities, actions, checksum, registry_slug, registry_name, remote_version
+	row := r.db.QueryRowContext(registryContext(), `
+`+registrySelectColumns+`
 		FROM extensions
 		WHERE name = ?
 	`, trimmedName)
@@ -278,41 +311,75 @@ func (r *Registry) installWithConfig(manifest *Manifest, path string, checksum s
 	if err := r.checkReady("install extension"); err != nil {
 		return err
 	}
-	if manifest == nil {
-		return errors.New("extension: manifest is required")
-	}
-	if err := manifest.Validate(); err != nil {
+	sourceText, err := validateInstallConfig(manifest, checksum, &config)
+	if err != nil {
 		return err
 	}
 
-	trimmedChecksum := strings.ToLower(strings.TrimSpace(checksum))
-	if trimmedChecksum == "" {
-		return errors.New("extension: checksum is required")
+	resolvedManifest, manifestPath, actualChecksum, err := loadVerifiedInstallManifest(manifest, path, checksum)
+	if err != nil {
+		return err
 	}
 
-	source := config.source
-	sourceText := source.String()
+	info := registryInstallInfo(r, resolvedManifest, manifestPath, actualChecksum, config)
+	return r.persistInstalledInfo(info, sourceText, config.replaceExisting)
+}
+
+func applyInstallOptions(config *installConfig, opts ...InstallOption) {
+	if config == nil {
+		return
+	}
+
+	for _, opt := range opts {
+		if opt != nil {
+			opt(config)
+		}
+	}
+}
+
+func validateInstallConfig(manifest *Manifest, checksum string, config *installConfig) (string, error) {
+	if manifest == nil {
+		return "", errors.New("extension: manifest is required")
+	}
+	if err := manifest.Validate(); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(checksum) == "" {
+		return "", errors.New("extension: checksum is required")
+	}
+	if config == nil {
+		return "", errors.New("extension: install config is required")
+	}
+
+	sourceText := config.source.String()
 	if sourceText == "" {
-		return fmt.Errorf("extension: invalid source %d", source)
+		return "", fmt.Errorf("extension: invalid source %d", config.source)
 	}
-
-	if source != SourceMarketplace {
+	if config.source != SourceMarketplace {
 		config.registrySlug = nil
 		config.registryName = nil
 		config.remoteVersion = nil
 	}
+	return sourceText, nil
+}
 
+func loadVerifiedInstallManifest(
+	manifest *Manifest,
+	path string,
+	checksum string,
+) (*Manifest, string, string, error) {
 	artifactRoot, manifestPath, err := resolveInstallArtifact(path)
 	if err != nil {
-		return err
+		return nil, "", "", err
 	}
 
+	trimmedChecksum := strings.ToLower(strings.TrimSpace(checksum))
 	actualChecksum, err := ComputeDirectoryChecksum(artifactRoot)
 	if err != nil {
-		return err
+		return nil, "", "", err
 	}
 	if actualChecksum != trimmedChecksum {
-		return &ExtensionChecksumMismatchError{
+		return nil, "", "", &ExtensionChecksumMismatchError{
 			ExpectedChecksum: trimmedChecksum,
 			ActualChecksum:   actualChecksum,
 		}
@@ -320,10 +387,11 @@ func (r *Registry) installWithConfig(manifest *Manifest, path string, checksum s
 
 	resolvedManifest, err := loadManifestAtPath(manifestPath)
 	if err != nil {
-		return err
+		return nil, "", "", err
 	}
-	if strings.TrimSpace(manifest.Name) != strings.TrimSpace(resolvedManifest.Name) || strings.TrimSpace(manifest.Version) != strings.TrimSpace(resolvedManifest.Version) {
-		return fmt.Errorf(
+	if strings.TrimSpace(manifest.Name) != strings.TrimSpace(resolvedManifest.Name) ||
+		strings.TrimSpace(manifest.Version) != strings.TrimSpace(resolvedManifest.Version) {
+		return nil, "", "", fmt.Errorf(
 			"extension: manifest %q does not match provided identity %q@%q",
 			manifestPath,
 			strings.TrimSpace(manifest.Name),
@@ -331,39 +399,49 @@ func (r *Registry) installWithConfig(manifest *Manifest, path string, checksum s
 		)
 	}
 
-	capabilities := normalizeCapabilitiesConfig(resolvedManifest.Capabilities)
-	actions := normalizeActionsConfig(resolvedManifest.Actions)
-	capabilitiesJSON, err := json.Marshal(capabilities)
-	if err != nil {
-		return fmt.Errorf("extension: marshal capabilities for %q: %w", resolvedManifest.Name, err)
-	}
-	actionsJSON, err := json.Marshal(actions)
-	if err != nil {
-		return fmt.Errorf("extension: marshal actions for %q: %w", resolvedManifest.Name, err)
-	}
+	return resolvedManifest, manifestPath, actualChecksum, nil
+}
 
-	info := ExtensionInfo{
+func registryInstallInfo(
+	r *Registry,
+	resolvedManifest *Manifest,
+	manifestPath string,
+	actualChecksum string,
+	config installConfig,
+) ExtensionInfo {
+	return ExtensionInfo{
 		Name:          strings.TrimSpace(resolvedManifest.Name),
 		Version:       strings.TrimSpace(resolvedManifest.Version),
-		Source:        source,
+		Source:        config.source,
 		Enabled:       true,
 		ManifestPath:  manifestPath,
 		InstalledAt:   r.now().UTC(),
-		Capabilities:  capabilities,
-		Actions:       actions,
+		Capabilities:  normalizeCapabilitiesConfig(resolvedManifest.Capabilities),
+		Actions:       normalizeActionsConfig(resolvedManifest.Actions),
 		Checksum:      actualChecksum,
 		RegistrySlug:  config.registrySlug,
 		RegistryName:  config.registryName,
 		RemoteVersion: config.remoteVersion,
 	}
+}
+
+func (r *Registry) persistInstalledInfo(info ExtensionInfo, sourceText string, replaceExisting bool) error {
+	capabilitiesJSON, err := json.Marshal(info.Capabilities)
+	if err != nil {
+		return fmt.Errorf("extension: marshal capabilities for %q: %w", info.Name, err)
+	}
+	actionsJSON, err := json.Marshal(info.Actions)
+	if err != nil {
+		return fmt.Errorf("extension: marshal actions for %q: %w", info.Name, err)
+	}
 
 	query := `
 		INSERT INTO extensions (
-			name, version, source, enabled, manifest_path, installed_at, capabilities, actions, checksum, registry_slug, registry_name, remote_version
+` + registryInsertColumns + `
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	if config.replaceExisting {
+	if replaceExisting {
 		query += `
 		ON CONFLICT(name) DO UPDATE SET
 			version = excluded.version,
@@ -379,7 +457,9 @@ func (r *Registry) installWithConfig(manifest *Manifest, path string, checksum s
 		`
 	}
 
-	_, err = r.db.Exec(query,
+	_, err = r.db.ExecContext(
+		registryContext(),
+		query,
 		info.Name,
 		info.Version,
 		sourceText,
@@ -394,25 +474,12 @@ func (r *Registry) installWithConfig(manifest *Manifest, path string, checksum s
 		nullableStringValue(info.RemoteVersion),
 	)
 	if err != nil {
-		if config.replaceExisting {
+		if replaceExisting {
 			return fmt.Errorf("extension: persist %q: %w", info.Name, err)
 		}
 		return mapRegistryConstraintError(err, info.Name)
 	}
-
 	return nil
-}
-
-func applyInstallOptions(config *installConfig, opts ...InstallOption) {
-	if config == nil {
-		return
-	}
-
-	for _, opt := range opts {
-		if opt != nil {
-			opt(config)
-		}
-	}
 }
 
 func (r *Registry) updateEnabled(name string, enabled bool) error {
@@ -430,7 +497,12 @@ func (r *Registry) updateEnabled(name string, enabled bool) error {
 		}
 	}
 
-	result, err := r.db.Exec(`UPDATE extensions SET enabled = ? WHERE name = ?`, enabled, trimmedName)
+	result, err := r.db.ExecContext(
+		registryContext(),
+		`UPDATE extensions SET enabled = ? WHERE name = ?`,
+		enabled,
+		trimmedName,
+	)
 	if err != nil {
 		return fmt.Errorf("extension: update enabled state for %q: %w", trimmedName, err)
 	}
@@ -450,7 +522,11 @@ func (r *Registry) checkReady(action string) error {
 
 func (r *Registry) ensureNoActiveBundles(extensionName string) error {
 	var count int
-	row := r.db.QueryRow(`SELECT COUNT(*) FROM bundle_activations WHERE extension_name = ?`, strings.TrimSpace(extensionName))
+	row := r.db.QueryRowContext(
+		registryContext(),
+		`SELECT COUNT(*) FROM bundle_activations WHERE extension_name = ?`,
+		strings.TrimSpace(extensionName),
+	)
 	if err := row.Scan(&count); err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "no such table") {
 			return nil
@@ -517,6 +593,10 @@ func scanExtensionInfo(scanner interface{ Scan(dest ...any) error }) (*Extension
 	info.RemoteVersion = nullableStringPointer(remoteVersion)
 
 	return &info, nil
+}
+
+func registryContext() context.Context {
+	return context.Background()
 }
 
 func nullableStringPointer(value sql.NullString) *string {
@@ -661,7 +741,10 @@ func writeChecksumEntry(hasher hash.Hash, root string, relPath string) error {
 			return fmt.Errorf("extension: read checksum path %q: %w", absPath, err)
 		}
 
-		if err := writeChecksumString(hasher, fmt.Sprintf("file:%s\nmode:%#o\n", normalizedPath, info.Mode().Perm())); err != nil {
+		if err := writeChecksumString(
+			hasher,
+			fmt.Sprintf("file:%s\nmode:%#o\n", normalizedPath, info.Mode().Perm()),
+		); err != nil {
 			return err
 		}
 		if _, err := hasher.Write(content); err != nil {

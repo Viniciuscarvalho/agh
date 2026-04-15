@@ -26,7 +26,7 @@ type extensionFixtureOptions struct {
 func TestExtensionInstallOfflinePersistsExtension(t *testing.T) {
 	t.Parallel()
 
-	deps, homePaths := newExtensionLocalDeps(t, stubClient{})
+	deps, homePaths := newExtensionLocalDeps(t, &stubClient{})
 	dir := writeExtensionFixture(t, "alpha-ext", extensionFixtureOptions{})
 
 	stdout, _, err := executeRootCommand(t, deps, "extension", "install", dir, "-o", "json")
@@ -60,7 +60,7 @@ func TestPrepareExtensionInstallMissingDirectory(t *testing.T) {
 func TestExtensionInstallOfflineInvalidManifest(t *testing.T) {
 	t.Parallel()
 
-	deps, _ := newExtensionLocalDeps(t, stubClient{})
+	deps, _ := newExtensionLocalDeps(t, &stubClient{})
 	dir := t.TempDir()
 	writeExtensionManifest(t, filepath.Join(dir, "extension.toml"), `[extension]
 version = "0.1.0"
@@ -79,7 +79,7 @@ min_agh_version = "0.5.0"
 func TestInstallPreparedExtensionDetectsChecksumMismatch(t *testing.T) {
 	t.Parallel()
 
-	_, homePaths := newExtensionLocalDeps(t, stubClient{})
+	_, homePaths := newExtensionLocalDeps(t, &stubClient{})
 	dir := writeExtensionFixture(t, "checksum-ext", extensionFixtureOptions{})
 	prepared, err := prepareExtensionInstall(dir)
 	if err != nil {
@@ -93,7 +93,12 @@ func TestInstallPreparedExtensionDetectsChecksumMismatch(t *testing.T) {
 	registry, cleanup := openExtensionRegistry(t, homePaths)
 	defer cleanup()
 
-	if err := installPreparedExtension(homePaths, registry, prepared); err == nil || !errors.Is(err, extensionpkg.ErrExtensionChecksumMismatch) {
+	if err := installPreparedExtension(
+		homePaths,
+		registry,
+		prepared,
+	); err == nil ||
+		!errors.Is(err, extensionpkg.ErrExtensionChecksumMismatch) {
 		t.Fatalf("installPreparedExtension(checksum mismatch) error = %v, want ErrExtensionChecksumMismatch", err)
 	}
 }
@@ -101,7 +106,7 @@ func TestInstallPreparedExtensionDetectsChecksumMismatch(t *testing.T) {
 func TestExtensionInstallAndRemoveOfflinePreservesSourceDirectory(t *testing.T) {
 	t.Parallel()
 
-	deps, homePaths := newExtensionLocalDeps(t, stubClient{})
+	deps, homePaths := newExtensionLocalDeps(t, &stubClient{})
 	sourceDir := writeExtensionFixture(t, "local-remove-ext", extensionFixtureOptions{})
 
 	if _, _, err := executeRootCommand(t, deps, "extension", "install", sourceDir, "-o", "json"); err != nil {
@@ -124,7 +129,12 @@ func TestExtensionInstallAndRemoveOfflinePreservesSourceDirectory(t *testing.T) 
 	if _, err := os.Stat(filepath.Join(sourceDir, "extension.toml")); err != nil {
 		t.Fatalf("source manifest stat after remove error = %v", err)
 	}
-	if _, err := os.Stat(extensionpkg.ManagedInstallPath(homePaths, "local-remove-ext")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(
+		extensionpkg.ManagedInstallPath(homePaths, "local-remove-ext"),
+	); !errors.Is(
+		err,
+		os.ErrNotExist,
+	) {
 		t.Fatalf("managed install dir stat error = %v, want not exist", err)
 	}
 }
@@ -132,7 +142,7 @@ func TestExtensionInstallAndRemoveOfflinePreservesSourceDirectory(t *testing.T) 
 func TestExtensionListFormatsOffline(t *testing.T) {
 	t.Parallel()
 
-	deps, homePaths := newExtensionLocalDeps(t, stubClient{})
+	deps, homePaths := newExtensionLocalDeps(t, &stubClient{})
 	dir := writeExtensionFixture(t, "list-ext", extensionFixtureOptions{
 		capabilities: []string{"memory.backend"},
 	})
@@ -178,7 +188,7 @@ func TestExtensionListFormatsOffline(t *testing.T) {
 func TestExtensionEnableDisableOffline(t *testing.T) {
 	t.Parallel()
 
-	deps, homePaths := newExtensionLocalDeps(t, stubClient{})
+	deps, homePaths := newExtensionLocalDeps(t, &stubClient{})
 	dir := writeExtensionFixture(t, "toggle-ext", extensionFixtureOptions{})
 	installExtensionFixture(t, homePaths, dir)
 
@@ -206,7 +216,7 @@ func TestExtensionEnableDisableOffline(t *testing.T) {
 func TestExtensionEnableUnknownReturnsNotFound(t *testing.T) {
 	t.Parallel()
 
-	deps, _ := newExtensionLocalDeps(t, stubClient{})
+	deps, _ := newExtensionLocalDeps(t, &stubClient{})
 
 	_, _, err := executeRootCommand(t, deps, "extension", "enable", "missing-ext", "-o", "json")
 	if err == nil || !errors.Is(err, extensionpkg.ErrExtensionNotFound) {
@@ -231,7 +241,7 @@ func TestExtensionStatusOnlineUsesDaemonClient(t *testing.T) {
 		Health:        "healthy",
 		DaemonRunning: true,
 	}
-	deps, _ := newExtensionLocalDeps(t, stubClient{
+	deps, _ := newExtensionLocalDeps(t, &stubClient{
 		extensionStatusFn: func(_ context.Context, name string) (ExtensionRecord, error) {
 			if name != "runtime-ext" {
 				t.Fatalf("ExtensionStatus() name = %q, want %q", name, "runtime-ext")
@@ -261,7 +271,7 @@ func TestExtensionStatusOnlineUsesDaemonClient(t *testing.T) {
 func TestExtensionStatusOfflineUsesRegistryState(t *testing.T) {
 	t.Parallel()
 
-	deps, homePaths := newExtensionLocalDeps(t, stubClient{})
+	deps, homePaths := newExtensionLocalDeps(t, &stubClient{})
 	dir := writeExtensionFixture(t, "offline-ext", extensionFixtureOptions{
 		capabilities: []string{"memory.backend"},
 	})
@@ -286,10 +296,18 @@ func TestExtensionInstallUsesDaemonClientWhenRunning(t *testing.T) {
 
 	dir := writeExtensionFixture(t, "online-install-ext", extensionFixtureOptions{})
 	var captured InstallExtensionRequest
-	deps, _ := newExtensionLocalDeps(t, stubClient{
+	deps, _ := newExtensionLocalDeps(t, &stubClient{
 		installExtensionFn: func(_ context.Context, request InstallExtensionRequest) (ExtensionRecord, error) {
 			captured = request
-			return ExtensionRecord{Name: "online-install-ext", Version: "0.1.0", Type: "resource", Source: "user", Enabled: true, State: "active", DaemonRunning: true}, nil
+			return ExtensionRecord{
+				Name:          "online-install-ext",
+				Version:       "0.1.0",
+				Type:          "resource",
+				Source:        "user",
+				Enabled:       true,
+				State:         "active",
+				DaemonRunning: true,
+			}, nil
 		},
 	})
 	deps.readDaemonInfo = func(string) (aghdaemon.Info, error) {
@@ -338,7 +356,10 @@ func TestExtensionBundleAndHelpers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bundle.toon() error = %v", err)
 	}
-	if !strings.Contains(toon, "extension{name,version,type,source,enabled,state,daemon_running,pid,uptime_seconds,health,last_error,capabilities,actions}:") {
+	if !strings.Contains(
+		toon,
+		"extension{name,version,type,source,enabled,state,daemon_running,pid,uptime_seconds,health,last_error,capabilities,actions}:",
+	) {
 		t.Fatalf("toon output = %q, want extension TOON object", toon)
 	}
 

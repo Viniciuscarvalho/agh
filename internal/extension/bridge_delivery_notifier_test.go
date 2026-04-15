@@ -1,4 +1,4 @@
-package extension
+package extensionpkg
 
 import (
 	"context"
@@ -158,7 +158,12 @@ func TestBridgeDeliveryNotifierProjectsEventsAndForwardsLifecycle(t *testing.T) 
 	notifier.OnAgentEvent(testutil.Context(t), registration.SessionID, "ignored")
 	createdCount, stoppedCount, forwarded := downstream.snapshot()
 	if createdCount != 1 || stoppedCount != 0 || len(forwarded) != 2 {
-		t.Fatalf("downstream lifecycle/events = created:%d stopped:%d events:%d, want 1/0/2", createdCount, stoppedCount, len(forwarded))
+		t.Fatalf(
+			"downstream lifecycle/events = created:%d stopped:%d events:%d, want 1/0/2",
+			createdCount,
+			stoppedCount,
+			len(forwarded),
+		)
 	}
 
 	notifier.OnSessionStopped(testutil.Context(t), sess)
@@ -175,7 +180,12 @@ func TestBridgeDeliveryNotifierProjectsEventsAndForwardsLifecycle(t *testing.T) 
 
 	createdCount, stoppedCount, forwarded = downstream.snapshot()
 	if createdCount != 1 || stoppedCount != 1 || len(forwarded) != 2 {
-		t.Fatalf("downstream lifecycle/events after stop = created:%d stopped:%d events:%d, want 1/1/2", createdCount, stoppedCount, len(forwarded))
+		t.Fatalf(
+			"downstream lifecycle/events after stop = created:%d stopped:%d events:%d, want 1/1/2",
+			createdCount,
+			stoppedCount,
+			len(forwarded),
+		)
 	}
 }
 
@@ -408,7 +418,11 @@ func waitForExtensionDeliveryCalls(t *testing.T, transport *recordingDeliveryTra
 		select {
 		case <-notify:
 		case <-timer.C:
-			t.Fatalf("delivery call count did not reach %d before timeout; got %d", want, len(transport.snapshotCalls()))
+			t.Fatalf(
+				"delivery call count did not reach %d before timeout; got %d",
+				want,
+				len(transport.snapshotCalls()),
+			)
 		}
 	}
 }

@@ -36,7 +36,7 @@ env = { PHASE = "pre" }
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	decls, err := HookDeclarations(cfg, nil)
+	decls, err := HookDeclarations(cfg.Hooks, nil)
 	if err != nil {
 		t.Fatalf("HookDeclarations() error = %v", err)
 	}
@@ -100,7 +100,7 @@ command = "/bin/echo"
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	decls, err := HookDeclarations(cfg, nil)
+	decls, err := HookDeclarations(cfg.Hooks, nil)
 	if err != nil {
 		t.Fatalf("HookDeclarations() error = %v", err)
 	}
@@ -191,7 +191,7 @@ command = "/bin/workspace-shared"
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	decls, err := HookDeclarations(cfg, nil)
+	decls, err := HookDeclarations(cfg.Hooks, nil)
 	if err != nil {
 		t.Fatalf("HookDeclarations() error = %v", err)
 	}
@@ -335,7 +335,7 @@ Prompt.
 		t.Fatalf("ParseAgentDef() error = %v", err)
 	}
 
-	decls, err := HookDeclarations(cfg, []AgentDef{agent})
+	decls, err := HookDeclarations(cfg.Hooks, []AgentDef{agent})
 	if err != nil {
 		t.Fatalf("HookDeclarations() error = %v", err)
 	}
@@ -369,7 +369,7 @@ func TestHookDeclarationsReturnsEmptySliceForEmptyHooksSection(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	decls, err := HookDeclarations(cfg, nil)
+	decls, err := HookDeclarations(cfg.Hooks, nil)
 	if err != nil {
 		t.Fatalf("HookDeclarations() error = %v", err)
 	}

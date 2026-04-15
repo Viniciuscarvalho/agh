@@ -24,13 +24,13 @@ type taskStore interface {
 }
 
 type taskRuntime struct {
-	manager *taskpkg.TaskManager
+	manager *taskpkg.Service
 	store   taskStore
 }
 
 type taskBridgeSessionManager interface {
 	Create(ctx context.Context, opts session.CreateOpts) (*session.Session, error)
-	Status(ctx context.Context, id string) (*session.SessionInfo, error)
+	Status(ctx context.Context, id string) (*session.Info, error)
 	StopWithCause(ctx context.Context, id string, cause session.StopCause, detail string) error
 }
 
@@ -52,7 +52,11 @@ type taskRecoveryStats struct {
 
 var _ taskpkg.SessionExecutor = (*taskSessionBridge)(nil)
 
-func newTaskSessionBridge(sessions taskBridgeSessionManager, globalWorkspacePath string, logger *slog.Logger) (*taskSessionBridge, error) {
+func newTaskSessionBridge(
+	sessions taskBridgeSessionManager,
+	globalWorkspacePath string,
+	logger *slog.Logger,
+) (*taskSessionBridge, error) {
 	if sessions == nil {
 		return nil, errors.New("daemon: task session bridge requires a session manager")
 	}
@@ -66,9 +70,15 @@ func newTaskSessionBridge(sessions taskBridgeSessionManager, globalWorkspacePath
 	}, nil
 }
 
-func (b *taskSessionBridge) StartTaskSession(ctx context.Context, spec taskpkg.StartTaskSession) (*taskpkg.SessionRef, error) {
+func (b *taskSessionBridge) StartTaskSession(
+	ctx context.Context,
+	spec *taskpkg.StartTaskSession,
+) (*taskpkg.SessionRef, error) {
 	if ctx == nil {
 		return nil, errors.New("daemon: start task session context is required")
+	}
+	if spec == nil {
+		return nil, errors.New("daemon: start task session spec is required")
 	}
 
 	opts := session.CreateOpts{
@@ -85,7 +95,11 @@ func (b *taskSessionBridge) StartTaskSession(ctx context.Context, spec taskpkg.S
 		}
 		opts.WorkspacePath = b.globalWorkspacePath
 	default:
-		return nil, fmt.Errorf("%w: unsupported task scope %q for task session start", taskpkg.ErrValidation, spec.Task.Scope)
+		return nil, fmt.Errorf(
+			"%w: unsupported task scope %q for task session start",
+			taskpkg.ErrValidation,
+			spec.Task.Scope,
+		)
 	}
 
 	created, err := b.sessions.Create(ctx, opts)
@@ -106,7 +120,11 @@ func (b *taskSessionBridge) StartTaskSession(ctx context.Context, spec taskpkg.S
 	}, nil
 }
 
-func (b *taskSessionBridge) AttachTaskSession(ctx context.Context, _ string, sessionID string) (*taskpkg.SessionRef, error) {
+func (b *taskSessionBridge) AttachTaskSession(
+	ctx context.Context,
+	_ string,
+	sessionID string,
+) (*taskpkg.SessionRef, error) {
 	if ctx == nil {
 		return nil, errors.New("daemon: attach task session context is required")
 	}
@@ -116,10 +134,19 @@ func (b *taskSessionBridge) AttachTaskSession(ctx context.Context, _ string, ses
 		return nil, err
 	}
 	if info == nil {
-		return nil, fmt.Errorf("%w: session %q is unavailable", taskpkg.ErrSessionAttachNotAllowed, strings.TrimSpace(sessionID))
+		return nil, fmt.Errorf(
+			"%w: session %q is unavailable",
+			taskpkg.ErrSessionAttachNotAllowed,
+			strings.TrimSpace(sessionID),
+		)
 	}
 	if !isTaskSessionStateLive(info.State) {
-		return nil, fmt.Errorf("%w: session %q is %q", taskpkg.ErrSessionAttachNotAllowed, strings.TrimSpace(sessionID), info.State)
+		return nil, fmt.Errorf(
+			"%w: session %q is %q",
+			taskpkg.ErrSessionAttachNotAllowed,
+			strings.TrimSpace(sessionID),
+			info.State,
+		)
 	}
 
 	return &taskpkg.SessionRef{
@@ -140,7 +167,12 @@ func (b *taskSessionBridge) RequestTaskStop(ctx context.Context, sessionID strin
 	}
 
 	if requester, ok := b.sessions.(taskBridgeSessionRequestStopper); ok {
-		if err := requester.RequestStopWithCause(ctx, trimmedID, taskStopCause(reason), taskStopDetail(reason)); err != nil {
+		if err := requester.RequestStopWithCause(
+			ctx,
+			trimmedID,
+			taskStopCause(reason),
+			taskStopDetail(reason),
+		); err != nil {
 			if errors.Is(err, session.ErrSessionNotFound) {
 				return nil
 			}
@@ -224,12 +256,12 @@ func (d *Daemon) bootTasks(ctx context.Context, state *bootState) error {
 
 func recoverTaskRunsOnBoot(
 	ctx context.Context,
-	manager *taskpkg.TaskManager,
+	manager *taskpkg.Service,
 	store taskStore,
 	sessions taskBridgeSessionManager,
 	actor taskpkg.ActorContext,
 ) (taskRecoveryStats, error) {
-	runs, err := store.ListTaskRunsByStatus(ctx, []taskpkg.TaskRunStatus{
+	runs, err := store.ListTaskRunsByStatus(ctx, []taskpkg.RunStatus{
 		taskpkg.TaskRunStatusClaimed,
 		taskpkg.TaskRunStatusStarting,
 		taskpkg.TaskRunStatusRunning,
@@ -263,7 +295,11 @@ func recoverTaskRunsOnBoot(
 	return stats, nil
 }
 
-func planTaskRunRecovery(ctx context.Context, sessions taskBridgeSessionManager, run taskpkg.TaskRun) (*taskpkg.RunBootRecovery, error) {
+func planTaskRunRecovery(
+	ctx context.Context,
+	sessions taskBridgeSessionManager,
+	run taskpkg.Run,
+) (*taskpkg.RunBootRecovery, error) {
 	if sessions == nil {
 		return nil, errors.New("daemon: task recovery requires a session manager")
 	}
@@ -317,7 +353,11 @@ func planTaskRunRecovery(ctx context.Context, sessions taskBridgeSessionManager,
 	}
 }
 
-func taskSessionRuntimeState(ctx context.Context, sessions taskBridgeSessionManager, sessionID string) (bool, string, error) {
+func taskSessionRuntimeState(
+	ctx context.Context,
+	sessions taskBridgeSessionManager,
+	sessionID string,
+) (bool, string, error) {
 	trimmedID := strings.TrimSpace(sessionID)
 	if trimmedID == "" {
 		return false, taskRecoverySessionMissing, nil
@@ -336,7 +376,7 @@ func taskSessionRuntimeState(ctx context.Context, sessions taskBridgeSessionMana
 	return isTaskSessionStateLive(info.State), string(info.State), nil
 }
 
-func isTaskSessionStateLive(state session.SessionState) bool {
+func isTaskSessionStateLive(state session.State) bool {
 	switch state {
 	case session.StateStarting, session.StateActive, session.StateStopping:
 		return true
@@ -345,7 +385,11 @@ func isTaskSessionStateLive(state session.SessionState) bool {
 	}
 }
 
-func taskSessionName(spec taskpkg.StartTaskSession) string {
+func taskSessionName(spec *taskpkg.StartTaskSession) string {
+	if spec == nil {
+		return "task:#0"
+	}
+
 	base := strings.TrimSpace(spec.Task.Title)
 	if base == "" {
 		base = strings.TrimSpace(spec.Task.Identifier)

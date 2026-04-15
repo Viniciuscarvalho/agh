@@ -30,7 +30,7 @@ func TestWaitForDaemonStartReturnsStatusWhenDaemonBecomesReady(t *testing.T) {
 	t.Parallel()
 
 	child := &stubDaemonProcess{waitCh: make(chan error, 1)}
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		daemonStatusFn: func(context.Context) (DaemonStatus, error) {
 			return DaemonStatus{Status: "ready", PID: 42}, nil
 		},
@@ -51,7 +51,7 @@ func TestWaitForDaemonStartReturnsStatusWhenDaemonBecomesReady(t *testing.T) {
 func TestWaitForDaemonStopReturnsStoppedStatusWhenProcessExits(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		daemonStatusFn: func(context.Context) (DaemonStatus, error) {
 			return DaemonStatus{}, errors.New("daemon unavailable")
 		},
@@ -95,7 +95,7 @@ func TestWaitForDaemonStopClearsStaleNetworkSnapshot(t *testing.T) {
 	t.Run("Should clear stale network snapshot when daemon stops", func(t *testing.T) {
 		t.Parallel()
 
-		deps := newTestDeps(t, stubClient{
+		deps := newTestDeps(t, &stubClient{
 			daemonStatusFn: func(context.Context) (DaemonStatus, error) {
 				return DaemonStatus{}, errors.New("daemon unavailable")
 			},
@@ -157,7 +157,7 @@ func TestDaemonStopCommandSignalsAndWaitsForShutdown(t *testing.T) {
 		signalSent bool
 	)
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		daemonStatusFn: func(context.Context) (DaemonStatus, error) {
 			return DaemonStatus{}, errors.New("daemon unavailable")
 		},
@@ -201,7 +201,7 @@ func TestDaemonStopCommandSignalsAndWaitsForShutdown(t *testing.T) {
 func TestDaemonStatusCommandReturnsDaemonStatus(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		daemonStatusFn: func(context.Context) (DaemonStatus, error) {
 			return DaemonStatus{
 				Status:    "ready",
@@ -229,7 +229,7 @@ func TestRunDaemonForegroundRunsDaemonWhenNotAlreadyRunning(t *testing.T) {
 	t.Parallel()
 
 	runner := &stubRunner{}
-	deps := newTestDeps(t, stubClient{})
+	deps := newTestDeps(t, &stubClient{})
 	deps.readDaemonInfo = func(string) (aghdaemon.Info, error) {
 		return aghdaemon.Info{}, os.ErrNotExist
 	}
@@ -249,7 +249,7 @@ func TestRunDaemonDetachedReturnsReadyStatus(t *testing.T) {
 	t.Parallel()
 
 	child := &stubDaemonProcess{waitCh: make(chan error, 1)}
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		daemonStatusFn: func(context.Context) (DaemonStatus, error) {
 			return DaemonStatus{Status: "ready", PID: 42}, nil
 		},
@@ -259,7 +259,7 @@ func TestRunDaemonDetachedReturnsReadyStatus(t *testing.T) {
 	deps.readDaemonInfo = func(string) (aghdaemon.Info, error) {
 		return aghdaemon.Info{}, os.ErrNotExist
 	}
-	deps.spawnDetached = func(aghconfig.HomePaths) (daemonProcess, error) {
+	deps.spawnDetached = func(context.Context, aghconfig.HomePaths) (daemonProcess, error) {
 		return child, nil
 	}
 

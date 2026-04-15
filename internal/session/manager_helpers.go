@@ -16,7 +16,12 @@ import (
 	workspacepkg "github.com/pedronauck/agh/internal/workspace"
 )
 
-func (m *Manager) startupPrompt(ctx context.Context, sessionCtx hookspkg.SessionContext, agent aghconfig.AgentDef, workspace workspacepkg.ResolvedWorkspace) (string, error) {
+func (m *Manager) startupPrompt(
+	ctx context.Context,
+	sessionCtx hookspkg.SessionContext,
+	agent aghconfig.AgentDef,
+	workspace *workspacepkg.ResolvedWorkspace,
+) (string, error) {
 	prompt := strings.TrimSpace(agent.Prompt)
 	if m.assembler == nil {
 		return m.dispatchPromptPostAssemble(ctx, sessionCtx, prompt)
@@ -33,7 +38,7 @@ func (m *Manager) startupPrompt(ctx context.Context, sessionCtx hookspkg.Session
 	return m.dispatchPromptPostAssemble(ctx, sessionCtx, strings.TrimSpace(assembledPrompt))
 }
 
-func (m *Manager) startPermissions(sessionType SessionType, configured string) aghconfig.PermissionMode {
+func (m *Manager) startPermissions(sessionType Type, configured string) aghconfig.PermissionMode {
 	if normalizeSessionType(sessionType) == SessionTypeDream {
 		return aghconfig.PermissionModeApproveAll
 	}
@@ -45,11 +50,11 @@ func (m *Manager) startPermissions(sessionType SessionType, configured string) a
 	return mode
 }
 
-func (m *Manager) effectiveMaxSessions(cfg aghconfig.Config) int {
+func (m *Manager) effectiveMaxSessions(cfg *aghconfig.Config) int {
 	if m.maxSessions > 0 {
 		return m.maxSessions
 	}
-	if cfg.Limits.MaxSessions > 0 {
+	if cfg != nil && cfg.Limits.MaxSessions > 0 {
 		return cfg.Limits.MaxSessions
 	}
 	return aghconfig.DefaultWithHome(m.homePaths).Limits.MaxSessions

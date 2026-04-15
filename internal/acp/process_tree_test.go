@@ -57,15 +57,19 @@ func TestTerminalKillTerminatesWrappedProcessTree(t *testing.T) {
 	proc := newDirectProcess(t, aghconfig.PermissionModeApproveAll)
 	pidFile := filepath.Join(t.TempDir(), "terminal-child.pid")
 
-	createResult, reqErr := proc.handleInbound(context.Background(), acpsdk.ClientMethodTerminalCreate, mustMarshalJSON(acpsdk.CreateTerminalRequest{
-		SessionId: "sess-direct",
-		Command:   "sh",
-		Args:      wrappedCommandArgs("sleep", "30"),
-		Cwd:       acpsdk.Ptr(proc.Cwd),
-		Env: []acpsdk.EnvVariable{
-			{Name: testWrapperPIDFileEnvKey, Value: pidFile},
-		},
-	}))
+	createResult, reqErr := proc.handleInbound(
+		context.Background(),
+		acpsdk.ClientMethodTerminalCreate,
+		mustMarshalJSON(acpsdk.CreateTerminalRequest{
+			SessionId: "sess-direct",
+			Command:   "sh",
+			Args:      wrappedCommandArgs("sleep", "30"),
+			Cwd:       acpsdk.Ptr(proc.Cwd),
+			Env: []acpsdk.EnvVariable{
+				{Name: testWrapperPIDFileEnvKey, Value: pidFile},
+			},
+		}),
+	)
 	if reqErr != nil {
 		t.Fatalf("handleInbound(create wrapped terminal) error = %v", reqErr)
 	}
@@ -76,10 +80,14 @@ func TestTerminalKillTerminatesWrappedProcessTree(t *testing.T) {
 
 	childPID := waitForWrapperChildPID(t, pidFile)
 
-	if _, reqErr := proc.handleInbound(context.Background(), acpsdk.ClientMethodTerminalKill, mustMarshalJSON(acpsdk.KillTerminalCommandRequest{
-		SessionId:  "sess-direct",
-		TerminalId: createResponse.TerminalId,
-	})); reqErr != nil {
+	if _, reqErr := proc.handleInbound(
+		context.Background(),
+		acpsdk.ClientMethodTerminalKill,
+		mustMarshalJSON(acpsdk.KillTerminalCommandRequest{
+			SessionId:  "sess-direct",
+			TerminalId: createResponse.TerminalId,
+		}),
+	); reqErr != nil {
 		t.Fatalf("handleInbound(kill wrapped terminal) error = %v", reqErr)
 	}
 

@@ -24,11 +24,13 @@ const (
 	StatusRunning = "running"
 	// StatusDisconnected reports a network runtime whose transport lost its connection.
 	StatusDisconnected = "disconnected"
+
+	defaultListenerHost = "127.0.0.1"
 )
 
-// NetworkStatus is the manager-facing diagnostics snapshot consumed by daemon
-// status and later transport surfaces.
-type NetworkStatus struct {
+// Status is the manager-facing diagnostics snapshot consumed by daemon status
+// and later transport surfaces.
+type Status struct {
 	Enabled              bool
 	Status               string
 	ListenerHost         string
@@ -129,19 +131,37 @@ func NewManager(
 	auditStore AuditStore,
 	opts ...ManagerOption,
 ) (*Manager, error) {
-	if ctx == nil {
-		return nil, errors.New("network: manager context is required")
-	}
-	if prompter == nil {
-		return nil, errors.New("network: session prompter is required")
-	}
-	if !cfg.Enabled {
-		return nil, errors.New("network: enabled network config is required")
-	}
-	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("network: validate manager config: %w", err)
+	if err := validateManagerInputs(ctx, cfg, prompter); err != nil {
+		return nil, err
 	}
 
+	options := resolveManagerOptions(opts...)
+	lifecycleCtx, cancel := context.WithCancel(ctx)
+	manager := newManagerRuntime(lifecycleCtx, cfg, options, cancel)
+	if err := manager.initialize(ctx, cfg, prompter, auditPath, auditStore); err != nil {
+		return nil, err
+	}
+	manager.logStarted()
+	return manager, nil
+}
+
+func validateManagerInputs(ctx context.Context, cfg aghconfig.NetworkConfig, prompter deliveryPrompter) error {
+	if ctx == nil {
+		return errors.New("network: manager context is required")
+	}
+	if prompter == nil {
+		return errors.New("network: session prompter is required")
+	}
+	if !cfg.Enabled {
+		return errors.New("network: enabled network config is required")
+	}
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("network: validate manager config: %w", err)
+	}
+	return nil
+}
+
+func resolveManagerOptions(opts ...ManagerOption) managerOptions {
 	options := managerOptions{
 		logger: slog.Default(),
 		now: func() time.Time {
@@ -161,81 +181,135 @@ func NewManager(
 			return time.Now().UTC()
 		}
 	}
+	return options
+}
 
-	lifecycleCtx, cancel := context.WithCancel(ctx)
-	manager := &Manager{
+func newManagerRuntime(
+	lifecycleCtx context.Context,
+	cfg aghconfig.NetworkConfig,
+	options managerOptions,
+	cancel context.CancelFunc,
+) *Manager {
+	return &Manager{
 		config:       cfg,
 		logger:       options.logger,
 		now:          options.now,
 		lifecycleCtx: lifecycleCtx,
 		cancel:       cancel,
+		auditor:      options.auditor,
 		sessions:     make(map[string]*managedSession),
 		channels:     make(map[string]*managedChannel),
 		connected:    true,
 		stats:        newRuntimeStats(),
 		tasks:        options.tasks,
 	}
+}
 
+func (m *Manager) initialize(
+	ctx context.Context,
+	cfg aghconfig.NetworkConfig,
+	prompter deliveryPrompter,
+	auditPath string,
+	auditStore AuditStore,
+) error {
+	if err := m.initTransport(cfg); err != nil {
+		m.cancel()
+		return err
+	}
+	if err := m.initPeers(cfg); err != nil {
+		return m.rollbackInit(ctx, err)
+	}
+	if err := m.initRouter(cfg); err != nil {
+		return m.rollbackInit(ctx, err)
+	}
+	if err := m.initAuditor(auditPath, auditStore); err != nil {
+		return m.rollbackInit(ctx, err)
+	}
+	if err := m.initDeliveries(cfg, prompter); err != nil {
+		return m.rollbackInit(ctx, err)
+	}
+	return nil
+}
+
+func (m *Manager) initTransport(cfg aghconfig.NetworkConfig) error {
 	transport, err := NewTransport(
-		lifecycleCtx,
+		m.lifecycleCtx,
 		cfg,
-		WithTransportLogger(manager.logger),
-		WithTransportReconnectHandler(manager.handleReconnect),
-		WithTransportDisconnectHandler(manager.handleDisconnect),
+		WithTransportLogger(m.logger),
+		WithTransportReconnectHandler(m.handleReconnect),
+		WithTransportDisconnectHandler(m.handleDisconnect),
 	)
 	if err != nil {
-		cancel()
-		return nil, err
+		return err
 	}
-	manager.transport = transport
+	m.transport = transport
+	return nil
+}
 
-	peers, err := NewPeerRegistry(cfg.GreetIntervalDuration(), WithPeerRegistryClock(manager.now))
+func (m *Manager) initPeers(cfg aghconfig.NetworkConfig) error {
+	peers, err := NewPeerRegistry(cfg.GreetIntervalDuration(), WithPeerRegistryClock(m.now))
 	if err != nil {
-		return nil, rollbackManagerInit(ctx, cancel, transport, err)
+		return err
 	}
-	manager.peers = peers
+	m.peers = peers
+	return nil
+}
 
+func (m *Manager) initRouter(cfg aghconfig.NetworkConfig) error {
 	router, err := NewRouter(
-		peers,
-		transport,
+		m.peers,
+		m.transport,
 		cfg.MaxReplayAgeDuration(),
-		WithRouterClock(manager.now),
+		WithRouterClock(m.now),
 	)
 	if err != nil {
-		return nil, rollbackManagerInit(ctx, cancel, transport, err)
+		return err
 	}
-	manager.router = router
+	m.router = router
+	return nil
+}
 
-	auditor := options.auditor
-	if auditor == nil {
-		auditor, err = NewAuditWriter(auditPath, auditStore)
-		if err != nil {
-			return nil, rollbackManagerInit(ctx, cancel, transport, err)
-		}
+func (m *Manager) initAuditor(auditPath string, auditStore AuditStore) error {
+	if m.auditor != nil {
+		return nil
 	}
-	manager.auditor = auditor
 
+	auditor, err := NewAuditWriter(auditPath, auditStore)
+	if err != nil {
+		return err
+	}
+	m.auditor = auditor
+	return nil
+}
+
+func (m *Manager) initDeliveries(cfg aghconfig.NetworkConfig, prompter deliveryPrompter) error {
 	deliveries, err := newDeliveryCoordinator(
-		lifecycleCtx,
+		m.lifecycleCtx,
 		cfg.MaxQueueDepth,
 		prompter,
-		withDeliveryLogger(manager.logger),
-		withDeliveryClock(manager.now),
-		withDeliveryDeliveredHook(manager.recordDelivered),
+		withDeliveryLogger(m.logger),
+		withDeliveryClock(m.now),
+		withDeliveryDeliveredHook(m.recordDelivered),
 	)
 	if err != nil {
-		return nil, rollbackManagerInit(ctx, cancel, transport, err)
+		return err
 	}
-	manager.deliveries = deliveries
-	host, port := transportListener(manager.transport)
-	manager.logger.Info(
+	m.deliveries = deliveries
+	return nil
+}
+
+func (m *Manager) rollbackInit(ctx context.Context, initErr error) error {
+	return rollbackManagerInit(ctx, m.cancel, m.transport, initErr)
+}
+
+func (m *Manager) logStarted() {
+	host, port := transportListener(m.transport)
+	m.logger.Info(
 		"network.started",
 		"listener_host", host,
 		"listener_port", port,
 		"connected", true,
 	)
-
-	return manager, nil
 }
 
 func rollbackManagerInit(ctx context.Context, cancel context.CancelFunc, transport *Transport, initErr error) error {
@@ -257,89 +331,22 @@ func rollbackManagerInit(ctx context.Context, cancel context.CancelFunc, transpo
 
 // JoinChannel registers one daemon-local session as a visible network peer.
 func (m *Manager) JoinChannel(ctx context.Context, sessionID string, peerID string, channel string) error {
-	if ctx == nil {
-		return errors.New("network: join context is required")
-	}
-	if m == nil {
-		return errors.New("network: manager is required")
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if err := m.lifecycleCtx.Err(); err != nil {
-		return err
-	}
-
-	targetSession := strings.TrimSpace(sessionID)
-	targetPeer := strings.TrimSpace(peerID)
-	targetChannel := strings.TrimSpace(channel)
-	if targetSession == "" {
-		return fmt.Errorf("%w: session id is required", ErrMissingField)
-	}
-	if targetPeer == "" {
-		return fmt.Errorf("%w: peer id is required", ErrMissingField)
-	}
-	if err := ValidateChannel(targetChannel); err != nil {
-		return err
-	}
-
-	if current, ok := m.sessionSnapshot(targetSession); ok {
-		if current.peerID == targetPeer && current.channel == targetChannel {
-			return nil
-		}
-		if err := m.LeaveChannel(ctx, targetSession); err != nil {
-			return err
-		}
-	}
-
-	card, err := DefaultPeerCard(targetPeer)
+	request, err := normalizeJoinChannelRequest(ctx, m, sessionID, peerID, channel)
 	if err != nil {
 		return err
 	}
-	local, err := m.peers.RegisterLocal(targetSession, targetChannel, card, m.now())
+	local, alreadyJoined, err := m.prepareJoinLocalPeer(ctx, request)
 	if err != nil {
 		return err
 	}
-
-	if err := m.acquireBroadcastSubscription(local.Channel); err != nil {
-		m.router.Leave(local.SessionID)
-		return err
+	if alreadyJoined {
+		return nil
 	}
-
-	directSub, err := m.subscribeDirect(local.Channel, local.PeerID)
+	runtime, err := m.newManagedSession(local)
 	if err != nil {
-		if releaseErr := m.releaseBroadcastSubscription(local.Channel); releaseErr != nil {
-			err = errors.Join(err, releaseErr)
-		}
-		m.router.Leave(local.SessionID)
 		return err
 	}
-
-	heartbeat, err := m.startAuditedHeartbeat(local.SessionID, "")
-	if err != nil {
-		if unsubscribeErr := cleanupSubscription(
-			directSub.Unsubscribe,
-			"network: unsubscribe direct subject for %q: %w",
-			local.SessionID,
-		); unsubscribeErr != nil {
-			err = errors.Join(err, unsubscribeErr)
-		}
-		if releaseErr := m.releaseBroadcastSubscription(local.Channel); releaseErr != nil {
-			err = errors.Join(err, releaseErr)
-		}
-		m.router.Leave(local.SessionID)
-		return err
-	}
-
-	m.mu.Lock()
-	m.sessions[local.SessionID] = &managedSession{
-		sessionID: local.SessionID,
-		peerID:    local.PeerID,
-		channel:   local.Channel,
-		directSub: directSub,
-		heartbeat: heartbeat,
-	}
-	m.mu.Unlock()
+	m.storeManagedSession(runtime)
 
 	m.logger.Info(
 		"network.peer.joined",
@@ -348,6 +355,124 @@ func (m *Manager) JoinChannel(ctx context.Context, sessionID string, peerID stri
 		"channel", local.Channel,
 	)
 	return nil
+}
+
+type joinChannelRequest struct {
+	sessionID string
+	peerID    string
+	channel   string
+}
+
+func normalizeJoinChannelRequest(
+	ctx context.Context,
+	manager *Manager,
+	sessionID string,
+	peerID string,
+	channel string,
+) (joinChannelRequest, error) {
+	if ctx == nil {
+		return joinChannelRequest{}, errors.New("network: join context is required")
+	}
+	if manager == nil {
+		return joinChannelRequest{}, errors.New("network: manager is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return joinChannelRequest{}, err
+	}
+	if err := manager.lifecycleCtx.Err(); err != nil {
+		return joinChannelRequest{}, err
+	}
+
+	request := joinChannelRequest{
+		sessionID: strings.TrimSpace(sessionID),
+		peerID:    strings.TrimSpace(peerID),
+		channel:   strings.TrimSpace(channel),
+	}
+	if request.sessionID == "" {
+		return joinChannelRequest{}, fmt.Errorf("%w: session id is required", ErrMissingField)
+	}
+	if request.peerID == "" {
+		return joinChannelRequest{}, fmt.Errorf("%w: peer id is required", ErrMissingField)
+	}
+	if err := ValidateChannel(request.channel); err != nil {
+		return joinChannelRequest{}, err
+	}
+	return request, nil
+}
+
+func (m *Manager) prepareJoinLocalPeer(
+	ctx context.Context,
+	request joinChannelRequest,
+) (LocalPeer, bool, error) {
+	if current, ok := m.sessionSnapshot(request.sessionID); ok {
+		if current.peerID == request.peerID && current.channel == request.channel {
+			return LocalPeer{}, true, nil
+		}
+		if err := m.LeaveChannel(ctx, request.sessionID); err != nil {
+			return LocalPeer{}, false, err
+		}
+	}
+
+	card, err := DefaultPeerCard(request.peerID)
+	if err != nil {
+		return LocalPeer{}, false, err
+	}
+	local, err := m.peers.RegisterLocal(request.sessionID, request.channel, card, m.now())
+	if err != nil {
+		return LocalPeer{}, false, err
+	}
+	return local, false, nil
+}
+
+func (m *Manager) newManagedSession(local LocalPeer) (*managedSession, error) {
+	if err := m.acquireBroadcastSubscription(local.Channel); err != nil {
+		m.router.Leave(local.SessionID)
+		return nil, err
+	}
+
+	directSub, err := m.subscribeDirect(local.Channel, local.PeerID)
+	if err != nil {
+		return nil, m.rollbackManagedSessionJoin(local, nil, err)
+	}
+	heartbeat, err := m.startAuditedHeartbeat(local.SessionID, "")
+	if err != nil {
+		return nil, m.rollbackManagedSessionJoin(local, directSub, err)
+	}
+
+	return &managedSession{
+		sessionID: local.SessionID,
+		peerID:    local.PeerID,
+		channel:   local.Channel,
+		directSub: directSub,
+		heartbeat: heartbeat,
+	}, nil
+}
+
+func (m *Manager) rollbackManagedSessionJoin(
+	local LocalPeer,
+	directSub *nats.Subscription,
+	joinErr error,
+) error {
+	if directSub != nil {
+		if unsubscribeErr := cleanupSubscription(
+			directSub.Unsubscribe,
+			"network: unsubscribe direct subject for %q: %w",
+			local.SessionID,
+		); unsubscribeErr != nil {
+			joinErr = errors.Join(joinErr, unsubscribeErr)
+		}
+	}
+	if releaseErr := m.releaseBroadcastSubscription(local.Channel); releaseErr != nil {
+		joinErr = errors.Join(joinErr, releaseErr)
+	}
+	m.router.Leave(local.SessionID)
+	return joinErr
+}
+
+func (m *Manager) storeManagedSession(runtime *managedSession) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sessions[runtime.sessionID] = runtime
 }
 
 // LeaveChannel removes one daemon-local session from the active network runtime.
@@ -437,10 +562,9 @@ func (m *Manager) startAuditedHeartbeat(sessionID string, summary string) (*Hear
 		return nil, err
 	}
 
-	heartbeatCtx, cancel := context.WithCancel(m.lifecycleCtx)
 	heartbeat := &Heartbeat{
-		cancel: cancel,
-		done:   make(chan struct{}),
+		stop: make(chan struct{}),
+		done: make(chan struct{}),
 	}
 
 	go func() {
@@ -451,10 +575,12 @@ func (m *Manager) startAuditedHeartbeat(sessionID string, summary string) (*Hear
 
 		for {
 			select {
-			case <-heartbeatCtx.Done():
+			case <-heartbeat.stop:
+				return
+			case <-m.lifecycleCtx.Done():
 				return
 			case <-ticker.C:
-				if err := m.publishGreetWithAudit(heartbeatCtx, sessionID, summary); err != nil {
+				if err := m.publishGreetWithAudit(m.lifecycleCtx, sessionID, summary); err != nil {
 					switch {
 					case errors.Is(err, context.Canceled), errors.Is(err, ErrLocalPeerNotFound):
 						return
@@ -511,7 +637,7 @@ func (m *Manager) ListChannels(ctx context.Context) ([]ChannelInfo, error) {
 }
 
 // Status returns a safe diagnostics snapshot without exposing transport credentials.
-func (m *Manager) Status(ctx context.Context) (*NetworkStatus, error) {
+func (m *Manager) Status(ctx context.Context) (*Status, error) {
 	if ctx == nil {
 		return nil, errors.New("network: status context is required")
 	}
@@ -539,7 +665,7 @@ func (m *Manager) Status(ctx context.Context) (*NetworkStatus, error) {
 	deliveryStats := m.deliveries.stats()
 	stats := m.stats.snapshot()
 
-	return &NetworkStatus{
+	return &Status{
 		Enabled:              true,
 		Status:               status,
 		ListenerHost:         host,
@@ -617,7 +743,10 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 		}
 		if runtime.directSub != nil {
 			if err := runtime.directSub.Unsubscribe(); err != nil && !errors.Is(err, nats.ErrConnectionClosed) {
-				errs = append(errs, fmt.Errorf("network: unsubscribe direct subject for %q: %w", runtime.sessionID, err))
+				errs = append(
+					errs,
+					fmt.Errorf("network: unsubscribe direct subject for %q: %w", runtime.sessionID, err),
+				)
 			}
 		}
 		m.router.Leave(runtime.sessionID)
@@ -933,7 +1062,15 @@ func (m *Manager) recordAuditSent(ctx context.Context, sessionID string, envelop
 		return
 	}
 	if err := m.auditor.RecordSent(ctx, sessionID, envelope); err != nil {
-		m.logger.Warn("network.audit.record_sent_failed", "session_id", sessionID, "envelope_id", envelope.ID, "error", err)
+		m.logger.Warn(
+			"network.audit.record_sent_failed",
+			"session_id",
+			sessionID,
+			"envelope_id",
+			envelope.ID,
+			"error",
+			err,
+		)
 		return
 	}
 	if m.stats != nil {
@@ -947,7 +1084,15 @@ func (m *Manager) recordAuditReceived(ctx context.Context, sessionID string, env
 		return
 	}
 	if err := m.auditor.RecordReceived(ctx, sessionID, envelope); err != nil {
-		m.logger.Warn("network.audit.record_received_failed", "session_id", sessionID, "envelope_id", envelope.ID, "error", err)
+		m.logger.Warn(
+			"network.audit.record_received_failed",
+			"session_id",
+			sessionID,
+			"envelope_id",
+			envelope.ID,
+			"error",
+			err,
+		)
 		return
 	}
 	if m.stats != nil {
@@ -961,7 +1106,15 @@ func (m *Manager) recordAuditRejected(ctx context.Context, sessionID string, env
 		return
 	}
 	if err := m.auditor.RecordRejected(ctx, sessionID, envelope, reason); err != nil {
-		m.logger.Warn("network.audit.record_rejected_failed", "session_id", sessionID, "envelope_id", envelope.ID, "error", err)
+		m.logger.Warn(
+			"network.audit.record_rejected_failed",
+			"session_id",
+			sessionID,
+			"envelope_id",
+			envelope.ID,
+			"error",
+			err,
+		)
 		return
 	}
 	if m.stats != nil {
@@ -978,7 +1131,15 @@ func (m *Manager) recordDelivered(sessionID string, envelope Envelope, _ string,
 	}
 	if m.auditor != nil {
 		if err := m.auditor.RecordDelivered(m.lifecycleCtx, sessionID, envelope); err != nil {
-			m.logger.Warn("network.audit.record_delivered_failed", "session_id", sessionID, "envelope_id", envelope.ID, "error", err)
+			m.logger.Warn(
+				"network.audit.record_delivered_failed",
+				"session_id",
+				sessionID,
+				"envelope_id",
+				envelope.ID,
+				"error",
+				err,
+			)
 		}
 	}
 	if m.stats == nil {
@@ -995,16 +1156,16 @@ func transportListener(transport *Transport) (string, int) {
 	port := transport.Port()
 	clientURL := strings.TrimSpace(transport.ClientURL())
 	if clientURL == "" {
-		return "127.0.0.1", port
+		return defaultListenerHost, port
 	}
 
 	parsed, err := url.Parse(clientURL)
 	if err != nil {
-		return "127.0.0.1", port
+		return defaultListenerHost, port
 	}
 	host := strings.TrimSpace(parsed.Hostname())
 	if host == "" {
-		host = "127.0.0.1"
+		host = defaultListenerHost
 	}
 	if parsedPort := strings.TrimSpace(parsed.Port()); parsedPort != "" {
 		if value, convErr := strconv.Atoi(parsedPort); convErr == nil {

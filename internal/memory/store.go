@@ -110,7 +110,7 @@ func (s *Store) Exists(scope Scope, filename string) (bool, error) {
 
 // Write validates the memory frontmatter and persists the raw file contents atomically.
 func (s *Store) Write(scope Scope, filename string, content []byte) error {
-	var header MemoryHeader
+	var header Header
 	if _, err := parseFrontmatter(content, &header); err != nil {
 		return fmt.Errorf("memory: parse frontmatter %q: %w", filename, fmt.Errorf("%w: %v", ErrValidation, err))
 	}
@@ -152,7 +152,7 @@ func (s *Store) Delete(scope Scope, filename string) error {
 }
 
 // Scan lists memory headers for a scope, sorted newest-first and capped at 200 files.
-func (s *Store) Scan(scope Scope) ([]MemoryHeader, error) {
+func (s *Store) Scan(scope Scope) ([]Header, error) {
 	dir, err := s.dirForScope(scope)
 	if err != nil {
 		return nil, err
@@ -161,12 +161,12 @@ func (s *Store) Scan(scope Scope) ([]MemoryHeader, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return []MemoryHeader{}, nil
+			return []Header{}, nil
 		}
 		return nil, fmt.Errorf("memory: scan %q: %w", dir, err)
 	}
 
-	headers := make([]MemoryHeader, 0, len(entries))
+	headers := make([]Header, 0, len(entries))
 	for _, entry := range entries {
 		if entry.IsDir() || shouldSkipFile(entry.Name()) {
 			continue
@@ -174,7 +174,15 @@ func (s *Store) Scan(scope Scope) ([]MemoryHeader, error) {
 
 		info, err := entry.Info()
 		if err != nil {
-			s.warn("memory: skip memory file with unreadable metadata", "scope", scope, "filename", entry.Name(), "error", err)
+			s.warn(
+				"memory: skip memory file with unreadable metadata",
+				"scope",
+				scope,
+				"filename",
+				entry.Name(),
+				"error",
+				err,
+			)
 			continue
 		}
 
@@ -185,7 +193,7 @@ func (s *Store) Scan(scope Scope) ([]MemoryHeader, error) {
 			continue
 		}
 
-		var header MemoryHeader
+		var header Header
 		if _, err := parseFrontmatter(content, &header); err != nil {
 			s.warn("memory: skip malformed memory file", "scope", scope, "path", path, "error", err)
 			continue
@@ -259,7 +267,11 @@ func (s *Store) dirForScope(scope Scope) (string, error) {
 		return s.globalDir, nil
 	case ScopeWorkspace:
 		if s.workspaceDir == "" {
-			return "", wrapValidationError("resolve scope", string(scope), errors.New("workspace directory is required"))
+			return "", wrapValidationError(
+				"resolve scope",
+				string(scope),
+				errors.New("workspace directory is required"),
+			)
 		}
 		return s.workspaceDir, nil
 	default:
@@ -366,7 +378,7 @@ func truncateToUTF8Boundary(value string, maxBytes int) string {
 	}
 
 	truncated := value[:maxBytes]
-	for len(truncated) > 0 && !utf8.ValidString(truncated) {
+	for truncated != "" && !utf8.ValidString(truncated) {
 		truncated = truncated[:len(truncated)-1]
 	}
 

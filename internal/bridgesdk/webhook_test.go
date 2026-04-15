@@ -1,6 +1,7 @@
 package bridgesdk
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -23,7 +24,7 @@ func TestWebhookHandlerRejectsUnsupportedMethodBeforeHandler(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/webhook", strings.NewReader("{}"))
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/webhook", strings.NewReader("{}"))
 	handler.ServeHTTP(recorder, request)
 
 	if got, want := recorder.Code, http.StatusMethodNotAllowed; got != want {
@@ -51,7 +52,12 @@ func TestWebhookHandlerRejectsOversizedBodyBeforeHandler(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(`{"too_big":true}`))
+	request := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/webhook",
+		strings.NewReader(`{"too_big":true}`),
+	)
 	request.Header.Set("Content-Type", "application/json")
 	handler.ServeHTTP(recorder, request)
 
@@ -79,7 +85,12 @@ func TestWebhookHandlerRejectsInvalidContentTypeBeforeHandler(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader("{}"))
+	request := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/webhook",
+		strings.NewReader("{}"),
+	)
 	request.Header.Set("Content-Type", "text/plain")
 	handler.ServeHTTP(recorder, request)
 
@@ -112,12 +123,22 @@ func TestWebhookHandlerRejectsRateLimitedRequestsBeforeHandler(t *testing.T) {
 	}
 
 	first := httptest.NewRecorder()
-	firstReq := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader("{}"))
+	firstReq := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/webhook",
+		strings.NewReader("{}"),
+	)
 	firstReq.Header.Set("Content-Type", "application/json")
 	handler.ServeHTTP(first, firstReq)
 
 	second := httptest.NewRecorder()
-	secondReq := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader("{}"))
+	secondReq := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/webhook",
+		strings.NewReader("{}"),
+	)
 	secondReq.Header.Set("Content-Type", "application/json")
 	handler.ServeHTTP(second, secondReq)
 
@@ -169,7 +190,12 @@ func TestWebhookHandlerWritesHTTPErrorFromProviderMapping(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader("{}"))
+	request := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/webhook",
+		strings.NewReader("{}"),
+	)
 	request.Header.Set("Content-Type", "application/json")
 	handler.ServeHTTP(recorder, request)
 

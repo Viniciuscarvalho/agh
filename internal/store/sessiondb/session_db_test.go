@@ -42,10 +42,16 @@ func TestSessionDBRecordAutoIncrementSequence(t *testing.T) {
 	}
 
 	ctx := testutil.Context(t)
-	if err := sessionDB.Record(ctx, SessionEvent{TurnID: "turn-1", Type: "agent_message", AgentName: "coder", Content: `{"text":"one"}`}); err != nil {
+	if err := sessionDB.Record(
+		ctx,
+		SessionEvent{TurnID: "turn-1", Type: "agent_message", AgentName: "coder", Content: `{"text":"one"}`},
+	); err != nil {
 		t.Fatalf("Record() error = %v", err)
 	}
-	if err := sessionDB.Record(ctx, SessionEvent{TurnID: "turn-1", Type: "tool_call", AgentName: "coder", Content: `{"tool":"ls"}`}); err != nil {
+	if err := sessionDB.Record(
+		ctx,
+		SessionEvent{TurnID: "turn-1", Type: "tool_call", AgentName: "coder", Content: `{"tool":"ls"}`},
+	); err != nil {
 		t.Fatalf("Record() error = %v", err)
 	}
 
@@ -288,7 +294,10 @@ func TestSessionDBWriteFailureReturnsError(t *testing.T) {
 	if err := sessionDB.db.QueryRowContext(testutil.Context(t), "PRAGMA page_count").Scan(&pageCount); err != nil {
 		t.Fatalf("QueryRowContext(page_count) error = %v", err)
 	}
-	if _, err := sessionDB.db.ExecContext(testutil.Context(t), fmt.Sprintf("PRAGMA max_page_count = %d", pageCount)); err != nil {
+	if _, err := sessionDB.db.ExecContext(
+		testutil.Context(t),
+		fmt.Sprintf("PRAGMA max_page_count = %d", pageCount),
+	); err != nil {
 		t.Fatalf("ExecContext(max_page_count) error = %v", err)
 	}
 

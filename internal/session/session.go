@@ -17,23 +17,23 @@ var (
 	ErrInvalidStateTransition = errors.New("session: invalid state transition")
 )
 
-// SessionState is the lifecycle state of a managed runtime session.
-type SessionState string
+// State is the lifecycle state of a managed runtime session.
+type State string
 
 const (
-	StateStarting SessionState = "starting"
-	StateActive   SessionState = "active"
-	StateStopping SessionState = "stopping"
-	StateStopped  SessionState = "stopped"
+	StateStarting State = "starting"
+	StateActive   State = "active"
+	StateStopping State = "stopping"
+	StateStopped  State = "stopped"
 )
 
-// SessionType identifies why a session was created.
-type SessionType string
+// Type identifies why a session was created.
+type Type string
 
 const (
-	SessionTypeUser   SessionType = "user"
-	SessionTypeDream  SessionType = "dream"
-	SessionTypeSystem SessionType = "system"
+	SessionTypeUser   Type = "user"
+	SessionTypeDream  Type = "dream"
+	SessionTypeSystem Type = "system"
 )
 
 const (
@@ -41,20 +41,20 @@ const (
 	EventTypeSessionStopped = "session_stopped"
 )
 
-// SessionInfo is the external read model returned by session list/get operations.
-type SessionInfo struct {
+// Info is the external read model returned by session list/get operations.
+type Info struct {
 	ID           string
 	Name         string
 	AgentName    string
 	WorkspaceID  string
 	Workspace    string
 	Channel      string
-	Type         SessionType
-	State        SessionState
+	Type         Type
+	State        State
 	StopReason   store.StopReason
 	StopDetail   string
 	ACPSessionID string
-	ACPCaps      acp.ACPCaps
+	ACPCaps      acp.Caps
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -69,13 +69,13 @@ type Session struct {
 	WorkspaceID  string
 	Workspace    string
 	Channel      string
-	Type         SessionType
-	State        SessionState
+	Type         Type
+	State        State
 	stopCause    StopCause
 	stopReason   store.StopReason
 	stopDetail   string
 	ACPSessionID string
-	ACPCaps      acp.ACPCaps
+	ACPCaps      acp.Caps
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 
@@ -91,7 +91,7 @@ type Session struct {
 }
 
 // Info returns a consistent snapshot of the current session state.
-func (s *Session) Info() *SessionInfo {
+func (s *Session) Info() *Info {
 	if s == nil {
 		return nil
 	}
@@ -99,7 +99,7 @@ func (s *Session) Info() *SessionInfo {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return &SessionInfo{
+	return &Info{
 		ID:           s.ID,
 		Name:         s.Name,
 		AgentName:    s.AgentName,
@@ -278,7 +278,7 @@ func (s *Session) rollbackActivation(now time.Time) {
 
 	s.process = nil
 	s.ACPSessionID = ""
-	s.ACPCaps = acp.ACPCaps{}
+	s.ACPCaps = acp.Caps{}
 	s.State = StateStarting
 	if !now.IsZero() {
 		s.UpdatedAt = now
@@ -450,7 +450,7 @@ func (s *Session) clearStopClassification() {
 	s.stopDetail = ""
 }
 
-func (s *Session) transition(next SessionState, now time.Time) error {
+func (s *Session) transition(next State, now time.Time) error {
 	if s == nil {
 		return errors.New("session: session is required")
 	}
@@ -521,8 +521,8 @@ func (s *Session) meta() store.SessionMeta {
 	return s.Meta()
 }
 
-func normalizeSessionType(sessionType SessionType) SessionType {
-	switch SessionType(strings.TrimSpace(string(sessionType))) {
+func normalizeSessionType(sessionType Type) Type {
+	switch Type(strings.TrimSpace(string(sessionType))) {
 	case SessionTypeDream:
 		return SessionTypeDream
 	case SessionTypeSystem:
@@ -532,7 +532,7 @@ func normalizeSessionType(sessionType SessionType) SessionType {
 	}
 }
 
-func canTransition(current SessionState, next SessionState) bool {
+func canTransition(current State, next State) bool {
 	switch current {
 	case StateStarting:
 		return next == StateActive
@@ -545,8 +545,8 @@ func canTransition(current SessionState, next SessionState) bool {
 	}
 }
 
-func cloneCaps(caps acp.ACPCaps) acp.ACPCaps {
-	return acp.ACPCaps{
+func cloneCaps(caps acp.Caps) acp.Caps {
+	return acp.Caps{
 		SupportsLoadSession: caps.SupportsLoadSession,
 		SupportedModes:      append([]string(nil), caps.SupportedModes...),
 		SupportedModels:     append([]string(nil), caps.SupportedModels...),

@@ -106,7 +106,6 @@ func TestParseSkillContentValidCases(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -143,11 +142,8 @@ func TestParseSkillContentErrors(t *testing.T) {
 			wantErr: frontmatter.ErrUnterminated,
 		},
 		{
-			name: "missing opening delimiter",
-			content: strings.Join([]string{
-				"name: invalid",
-				"description: missing delimiters",
-			}, "\n"),
+			name:    "missing opening delimiter",
+			content: "name: invalid" + "\n" + "description: missing delimiters",
 			wantErr: frontmatter.ErrMissing,
 		},
 		{
@@ -172,7 +168,6 @@ func TestParseSkillContentErrors(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -442,7 +437,6 @@ func TestParseSkillFileParsesAGHMetadataFixtures(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -452,10 +446,20 @@ func TestParseSkillFileParsesAGHMetadataFixtures(t *testing.T) {
 			}
 
 			if !reflect.DeepEqual(skill.MCPServers, tt.wantMCP) {
-				t.Fatalf("ParseSkillFile(%q) MCPServers mismatch\nwant: %#v\ngot:  %#v", tt.fixture, tt.wantMCP, skill.MCPServers)
+				t.Fatalf(
+					"ParseSkillFile(%q) MCPServers mismatch\nwant: %#v\ngot:  %#v",
+					tt.fixture,
+					tt.wantMCP,
+					skill.MCPServers,
+				)
 			}
 			if !reflect.DeepEqual(skill.Hooks, tt.wantHook) {
-				t.Fatalf("ParseSkillFile(%q) Hooks mismatch\nwant: %#v\ngot:  %#v", tt.fixture, tt.wantHook, skill.Hooks)
+				t.Fatalf(
+					"ParseSkillFile(%q) Hooks mismatch\nwant: %#v\ngot:  %#v",
+					tt.fixture,
+					tt.wantHook,
+					skill.Hooks,
+				)
 			}
 		})
 	}
@@ -493,7 +497,12 @@ func TestParseBundledSkillParsesMCPSidecar(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	writeSkillFile(t, root, filepath.Join("bundled-sidecar", skillFileName), skillWithDescription("bundled-sidecar", "Bundled sidecar"))
+	writeSkillFile(
+		t,
+		root,
+		filepath.Join("bundled-sidecar", skillFileName),
+		skillWithDescription("bundled-sidecar", "Bundled sidecar"),
+	)
 	writeSkillMCPSidecar(t, filepath.Join(root, "bundled-sidecar"), `{
   "mcp_servers": {
     "bundled-json": {
@@ -714,8 +723,8 @@ func TestParseSkillFileDefaultsMinimalHookFields(t *testing.T) {
 func TestSkillHooksFieldUsesInternalHooksDeclarations(t *testing.T) {
 	t.Parallel()
 
-	got := reflect.TypeOf(Skill{}.Hooks)
-	want := reflect.TypeOf([]hookspkg.HookDecl(nil))
+	got := reflect.TypeFor[[]hookspkg.HookDecl]()
+	want := reflect.TypeFor[[]hookspkg.HookDecl]()
 	if got != want {
 		t.Fatalf("reflect.TypeOf(Skill{}.Hooks) = %v, want %v", got, want)
 	}
@@ -754,7 +763,12 @@ func TestScanDirectoryCandidateLimit(t *testing.T) {
 
 	root := t.TempDir()
 	for i := range maxScanCandidates + 5 {
-		writeSkillFile(t, root, filepath.Join(fmt.Sprintf("skill-%03d", i), skillFileName), defaultSkillContent(fmt.Sprintf("skill-%03d", i)))
+		writeSkillFile(
+			t,
+			root,
+			filepath.Join(fmt.Sprintf("skill-%03d", i), skillFileName),
+			defaultSkillContent(fmt.Sprintf("skill-%03d", i)),
+		)
 	}
 
 	got, err := scanDirectory(root)

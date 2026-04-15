@@ -32,8 +32,12 @@ func TestClassifyErrorMapsRepresentativeProviderFailures(t *testing.T) {
 			wantReason: bridgepkg.BridgeDegradationReasonAuthFailed,
 		},
 		{
-			name:       "rate_limit",
-			err:        &HTTPError{StatusCode: http.StatusTooManyRequests, Message: "too many requests", RetryAfter: time.Second},
+			name: "rate_limit",
+			err: &HTTPError{
+				StatusCode: http.StatusTooManyRequests,
+				Message:    "too many requests",
+				RetryAfter: time.Second,
+			},
 			wantClass:  ErrorClassRateLimit,
 			wantRetry:  true,
 			wantStatus: bridgepkg.BridgeStatusDegraded,
@@ -64,7 +68,6 @@ func TestClassifyErrorMapsRepresentativeProviderFailures(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -157,10 +160,26 @@ func TestClassifyErrorCoversHTTPNetAndStringFallbacks(t *testing.T) {
 		err  error
 		want ErrorClass
 	}{
-		{name: "http auth", err: &HTTPError{StatusCode: http.StatusForbidden, Message: "forbidden"}, want: ErrorClassAuth},
-		{name: "http timeout", err: &HTTPError{StatusCode: http.StatusGatewayTimeout, Message: "timed out"}, want: ErrorClassTimeout},
-		{name: "http transient", err: &HTTPError{StatusCode: http.StatusServiceUnavailable, Message: "unavailable"}, want: ErrorClassTransient},
-		{name: "http permanent", err: &HTTPError{StatusCode: http.StatusBadRequest, Message: "bad request"}, want: ErrorClassPermanent},
+		{
+			name: "http auth",
+			err:  &HTTPError{StatusCode: http.StatusForbidden, Message: "forbidden"},
+			want: ErrorClassAuth,
+		},
+		{
+			name: "http timeout",
+			err:  &HTTPError{StatusCode: http.StatusGatewayTimeout, Message: "timed out"},
+			want: ErrorClassTimeout,
+		},
+		{
+			name: "http transient",
+			err:  &HTTPError{StatusCode: http.StatusServiceUnavailable, Message: "unavailable"},
+			want: ErrorClassTransient,
+		},
+		{
+			name: "http permanent",
+			err:  &HTTPError{StatusCode: http.StatusBadRequest, Message: "bad request"},
+			want: ErrorClassPermanent,
+		},
 		{name: "net timeout", err: timeoutNetErr, want: ErrorClassTimeout},
 		{name: "net transient", err: otherNetErr, want: ErrorClassTransient},
 		{name: "string auth", err: errors.New("authentication failed"), want: ErrorClassAuth},
@@ -170,7 +189,6 @@ func TestClassifyErrorCoversHTTPNetAndStringFallbacks(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			if got := ClassifyError(tt.err).Class; got != tt.want {
@@ -194,9 +212,9 @@ func TestRetryDoStopsOnPermanentErrorAndHonorsContextCancellation(t *testing.T) 
 		t.Fatal("RetryDo(permanent) error = nil, want non-nil")
 	}
 
-	cancelled, cancel := context.WithCancel(context.Background())
+	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err = RetryDo(cancelled, RetryConfig{
+	_, err = RetryDo(canceled, RetryConfig{
 		Attempts: 3,
 		MinDelay: time.Millisecond,
 		MaxDelay: time.Millisecond,
@@ -204,7 +222,7 @@ func TestRetryDoStopsOnPermanentErrorAndHonorsContextCancellation(t *testing.T) 
 		return "", &RateLimitError{Err: errors.New("slow down"), RetryAfter: time.Millisecond}
 	})
 	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("RetryDo(cancelled) error = %v, want context.Canceled", err)
+		t.Fatalf("RetryDo(canceled) error = %v, want context.Canceled", err)
 	}
 }
 
@@ -221,7 +239,11 @@ func TestRetryDelayPrefersRetryAfterAndAppliesBackoff(t *testing.T) {
 		},
 	}
 
-	if got, want := retryDelay(config, 1, RecoveryDecision{RetryAfter: 25 * time.Millisecond}), 25*time.Millisecond; got != want {
+	if got, want := retryDelay(
+		config,
+		1,
+		RecoveryDecision{RetryAfter: 25 * time.Millisecond},
+	), 25*time.Millisecond; got != want {
 		t.Fatalf("retryDelay(retry_after) = %s, want %s", got, want)
 	}
 	if got, want := retryDelay(config, 3, RecoveryDecision{}), 40*time.Millisecond; got != want {

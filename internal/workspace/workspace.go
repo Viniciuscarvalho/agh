@@ -51,8 +51,8 @@ type SkillPath struct {
 	Source string
 }
 
-// WorkspaceResolver resolves persisted workspaces into computed runtime snapshots.
-type WorkspaceResolver interface {
+// RuntimeResolver resolves persisted workspaces into computed runtime snapshots.
+type RuntimeResolver interface {
 	Resolve(ctx context.Context, idOrPath string) (ResolvedWorkspace, error)
 	ResolveOrRegister(ctx context.Context, path string) (ResolvedWorkspace, error)
 }

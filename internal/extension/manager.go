@@ -1,4 +1,4 @@
-package extension
+package extensionpkg
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -35,6 +36,8 @@ const (
 	defaultHealthPollCeiling       = time.Second
 	defaultSubprocessSignalGrace   = 10 * time.Second
 	extensionHookSource            = hookspkg.HookSourceConfig
+	manifestFileExtTOML            = ".toml"
+	manifestFileExtJSON            = ".json"
 )
 
 var (
@@ -320,9 +323,9 @@ func withProcessLauncher(launcher processLauncher) Option {
 	}
 }
 
-func withRestartBackoffMax(max time.Duration) Option {
+func withRestartBackoffMax(maximum time.Duration) Option {
 	return func(manager *Manager) {
-		manager.restartBackoffMax = max
+		manager.restartBackoffMax = maximum
 	}
 }
 
@@ -341,6 +344,19 @@ func withHealthPollBounds(floor, ceiling time.Duration) Option {
 
 // NewManager constructs an extension manager with sensible defaults.
 func NewManager(registry *Registry, opts ...Option) *Manager {
+	manager := newManagerDefaults(registry)
+
+	for _, opt := range opts {
+		if opt != nil {
+			opt(manager)
+		}
+	}
+
+	normalizeManagerDefaults(manager)
+	return manager
+}
+
+func newManagerDefaults(registry *Registry) *Manager {
 	manager := &Manager{
 		registry:                  registry,
 		capChecker:                &CapabilityChecker{},
@@ -364,13 +380,13 @@ func NewManager(registry *Registry, opts ...Option) *Manager {
 	manager.launch = func(ctx context.Context, cfg subprocess.LaunchConfig) (processHandle, error) {
 		return subprocess.Launch(ctx, cfg)
 	}
+	return manager
+}
 
-	for _, opt := range opts {
-		if opt != nil {
-			opt(manager)
-		}
+func normalizeManagerDefaults(manager *Manager) {
+	if manager == nil {
+		return
 	}
-
 	if manager.capChecker == nil {
 		manager.capChecker = &CapabilityChecker{}
 	}
@@ -421,8 +437,6 @@ func NewManager(registry *Registry, opts ...Option) *Manager {
 	if manager.subprocessSignalGrace <= 0 {
 		manager.subprocessSignalGrace = defaultSubprocessSignalGrace
 	}
-
-	return manager
 }
 
 // Start loads every enabled extension through the six-phase pipeline.
@@ -445,7 +459,9 @@ func (m *Manager) Start(ctx context.Context) error {
 		m.mu.Unlock()
 		return errors.New("extension: manager already started")
 	}
-	m.lifecycleCtx, m.cancel = context.WithCancel(context.Background())
+	lifecycleCtx, cancel := context.WithCancel(context.Background())
+	m.lifecycleCtx = lifecycleCtx
+	m.cancel = cancel
 	m.started = true
 	m.stopping = false
 	m.extensions = make(map[string]*managedExtension)
@@ -453,6 +469,13 @@ func (m *Manager) Start(ctx context.Context) error {
 
 	infos, err := m.registry.List()
 	if err != nil {
+		cancel()
+		m.mu.Lock()
+		m.started = false
+		m.lifecycleCtx = nil
+		m.cancel = nil
+		m.extensions = make(map[string]*managedExtension)
+		m.mu.Unlock()
 		return fmt.Errorf("extension: list registry entries: %w", err)
 	}
 
@@ -676,7 +699,11 @@ func (m *Manager) DeliverBridge(
 	initialize := cloneInitializeResponse(ext.initialize)
 	m.mu.RUnlock()
 
-	if initialize == nil || !slices.Contains(initialize.ImplementedMethods, string(extensionprotocol.ExtensionServiceMethodBridgesDeliver)) {
+	if initialize == nil ||
+		!slices.Contains(
+			initialize.ImplementedMethods,
+			string(extensionprotocol.ExtensionServiceMethodBridgesDeliver),
+		) {
 		return bridgepkg.DeliveryAck{}, fmt.Errorf(
 			"extension: extension %q does not implement %q: %w",
 			name,
@@ -844,7 +871,11 @@ func (m *Manager) validateExtension(ext *managedExtension) error {
 		return phaseError(ext.info.Name, ExtensionPhaseValidate, err)
 	}
 	if ext.info.Version != "" && ext.info.Version != ext.manifest.Version {
-		err := fmt.Errorf("registry version %q does not match manifest version %q", ext.info.Version, ext.manifest.Version)
+		err := fmt.Errorf(
+			"registry version %q does not match manifest version %q",
+			ext.info.Version,
+			ext.manifest.Version,
+		)
 		m.setFailure(ext, ExtensionPhaseValidate, err)
 		return phaseError(ext.info.Name, ExtensionPhaseValidate, err)
 	}
@@ -1004,7 +1035,7 @@ func (m *Manager) superviseExtension(name string, generation int64) {
 			return
 		}
 
-		reason, shouldRecover := m.monitorProcess(name, generation, proc, interval)
+		shouldRecover, reason := m.monitorProcess(name, generation, proc, interval)
 		if !shouldRecover {
 			return
 		}
@@ -1017,7 +1048,12 @@ func (m *Manager) superviseExtension(name string, generation int64) {
 	}
 }
 
-func (m *Manager) monitorProcess(name string, generation int64, proc processHandle, healthInterval time.Duration) (error, bool) {
+func (m *Manager) monitorProcess(
+	name string,
+	generation int64,
+	proc processHandle,
+	healthInterval time.Duration,
+) (bool, error) {
 	ticker := time.NewTicker(m.healthPollInterval(healthInterval))
 	defer ticker.Stop()
 
@@ -1025,7 +1061,7 @@ func (m *Manager) monitorProcess(name string, generation int64, proc processHand
 		select {
 		case <-ticker.C:
 			if m.shouldStopSupervision(name, generation, proc) {
-				return nil, false
+				return false, nil
 			}
 
 			health := proc.HealthState()
@@ -1035,29 +1071,29 @@ func (m *Manager) monitorProcess(name string, generation int64, proc processHand
 					reason = fmt.Errorf("%w: %s", reason, health.LastError)
 				}
 
-				shutdownCtx, cancel := context.WithTimeout(context.Background(), m.shutdownDeadlineForProcess(name, generation))
-				err := proc.Shutdown(shutdownCtx)
-				cancel()
-				if err != nil {
-					reason = errors.Join(reason, err)
+				if shutdownErr := shutdownProcessWithTimeout(
+					proc,
+					m.shutdownDeadlineForProcess(name, generation),
+				); shutdownErr != nil {
+					reason = errors.Join(reason, shutdownErr)
 				}
-				return reason, true
+				return true, reason
 			}
 			if !health.LastCheckedAt.IsZero() {
 				m.markStable(name, generation)
 			}
 		case <-proc.Done():
 			if m.shouldStopSupervision(name, generation, proc) {
-				return nil, false
+				return false, nil
 			}
 
 			err := proc.Wait()
 			if err == nil {
 				err = errors.New("process exited unexpectedly")
 			}
-			return err, true
+			return true, err
 		case <-m.lifecycleDone():
-			return nil, false
+			return false, nil
 		}
 	}
 }
@@ -1089,9 +1125,14 @@ func (m *Manager) recoverExtension(name string, reason error) (int64, bool) {
 		m.mu.Lock()
 		if m.stopping || ext.generation == 0 && !ext.info.Enabled {
 			m.mu.Unlock()
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), m.defaultShutdownTimeout)
-			_ = process.Shutdown(shutdownCtx)
-			cancel()
+			if shutdownErr := shutdownProcessWithTimeout(process, m.defaultShutdownTimeout); shutdownErr != nil {
+				m.logger.Warn(
+					"extension.lifecycle.shutdown_failed",
+					"extension", name,
+					"recovered", false,
+					"error", shutdownErr,
+				)
+			}
 			return 0, false
 		}
 
@@ -1116,7 +1157,10 @@ func (m *Manager) recoverExtension(name string, reason error) (int64, bool) {
 	}
 }
 
-func (m *Manager) launchRuntime(ctx context.Context, ext *managedExtension) (processHandle, subprocess.InitializeResponse, subprocess.InitializeRuntime, time.Duration, error) {
+func (m *Manager) launchRuntime(
+	ctx context.Context,
+	ext *managedExtension,
+) (processHandle, subprocess.InitializeResponse, subprocess.InitializeRuntime, time.Duration, error) {
 	launchCfg, runtime, healthInterval, err := m.launchConfigFor(ctx, ext)
 	if err != nil {
 		return nil, subprocess.InitializeResponse{}, subprocess.InitializeRuntime{}, 0, err
@@ -1124,15 +1168,25 @@ func (m *Manager) launchRuntime(ctx context.Context, ext *managedExtension) (pro
 
 	process, err := m.launch(ctx, launchCfg)
 	if err != nil {
-		return nil, subprocess.InitializeResponse{}, subprocess.InitializeRuntime{}, 0, fmt.Errorf("launch subprocess: %w", err)
+		return nil, subprocess.InitializeResponse{}, subprocess.InitializeRuntime{}, 0, fmt.Errorf(
+			"launch subprocess: %w",
+			err,
+		)
 	}
 
 	for method, handler := range m.hostMethods {
-		if err := process.HandleMethod(method, m.wrapHostHandler(ext.info.Name, method, runtime.Bridge, handler)); err != nil {
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), m.defaultShutdownTimeout)
-			_ = process.Shutdown(shutdownCtx)
-			cancel()
-			return nil, subprocess.InitializeResponse{}, subprocess.InitializeRuntime{}, 0, fmt.Errorf("register host method %q: %w", method, err)
+		if err := process.HandleMethod(
+			method,
+			m.wrapHostHandler(ext.info.Name, method, runtime.Bridge, handler),
+		); err != nil {
+			if shutdownErr := shutdownProcessWithTimeout(process, m.defaultShutdownTimeout); shutdownErr != nil {
+				err = errors.Join(err, shutdownErr)
+			}
+			return nil, subprocess.InitializeResponse{}, subprocess.InitializeRuntime{}, 0, fmt.Errorf(
+				"register host method %q: %w",
+				method,
+				err,
+			)
 		}
 	}
 
@@ -1162,22 +1216,28 @@ func (m *Manager) launchRuntime(ctx context.Context, ext *managedExtension) (pro
 
 	response, err := process.Initialize(initCtx, request)
 	if err != nil {
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), m.defaultShutdownTimeout)
-		_ = process.Shutdown(shutdownCtx)
-		shutdownCancel()
-		return nil, subprocess.InitializeResponse{}, subprocess.InitializeRuntime{}, 0, fmt.Errorf("initialize subprocess: %w", err)
+		if shutdownErr := shutdownProcessWithTimeout(process, m.defaultShutdownTimeout); shutdownErr != nil {
+			err = errors.Join(err, shutdownErr)
+		}
+		return nil, subprocess.InitializeResponse{}, subprocess.InitializeRuntime{}, 0, fmt.Errorf(
+			"initialize subprocess: %w",
+			err,
+		)
 	}
 	if err := validateSupportedHookEvents(response.SupportedHookEvents); err != nil {
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), m.defaultShutdownTimeout)
-		_ = process.Shutdown(shutdownCtx)
-		shutdownCancel()
+		if shutdownErr := shutdownProcessWithTimeout(process, m.defaultShutdownTimeout); shutdownErr != nil {
+			err = errors.Join(err, shutdownErr)
+		}
 		return nil, subprocess.InitializeResponse{}, subprocess.InitializeRuntime{}, 0, err
 	}
 
 	return process, response, runtime, healthInterval, nil
 }
 
-func (m *Manager) launchConfigFor(ctx context.Context, ext *managedExtension) (subprocess.LaunchConfig, subprocess.InitializeRuntime, time.Duration, error) {
+func (m *Manager) launchConfigFor(
+	ctx context.Context,
+	ext *managedExtension,
+) (subprocess.LaunchConfig, subprocess.InitializeRuntime, time.Duration, error) {
 	if ext.manifest == nil {
 		return subprocess.LaunchConfig{}, subprocess.InitializeRuntime{}, 0, errors.New("manifest is required")
 	}
@@ -1373,9 +1433,12 @@ func (m *Manager) hookConfigToDecl(ext *managedExtension, cfg HookConfig) (hooks
 	kind := hookspkg.HookExecutorKind(strings.TrimSpace(cfg.Executor.Kind))
 
 	rootSpecified := command != "" || len(args) > 0 || len(env) > 0
-	nestedSpecified := strings.TrimSpace(cfg.Executor.Command) != "" || len(cfg.Executor.Args) > 0 || len(cfg.Executor.Env) > 0
+	nestedSpecified := strings.TrimSpace(cfg.Executor.Command) != "" || len(cfg.Executor.Args) > 0 ||
+		len(cfg.Executor.Env) > 0
 	if rootSpecified && nestedSpecified {
-		return hookspkg.HookDecl{}, errors.New("hook executor fields must be declared either at the top level or under executor, not both")
+		return hookspkg.HookDecl{}, errors.New(
+			"hook executor fields must be declared either at the top level or under executor, not both",
+		)
 	}
 	if nestedSpecified {
 		command = strings.TrimSpace(cfg.Executor.Command)
@@ -1618,7 +1681,17 @@ func (m *Manager) recordFailure(name string, reason error) (time.Duration, bool,
 	if ext.consecutiveFailures >= m.restartFailureThreshold {
 		m.mu.Unlock()
 		m.reportBridgeRuntimeIssues(instanceIDs, bridgepkg.BridgeStatusError, reason)
-		m.logger.Error("extension.lifecycle.failed", "extension", name, "phase", ExtensionPhaseRecover, "error", reason, "consecutive_failures", failures)
+		m.logger.Error(
+			"extension.lifecycle.failed",
+			"extension",
+			name,
+			"phase",
+			ExtensionPhaseRecover,
+			"error",
+			reason,
+			"consecutive_failures",
+			failures,
+		)
 		return 0, true, true
 	}
 
@@ -1878,13 +1951,7 @@ func (m *Manager) healthPollInterval(healthInterval time.Duration) time.Duration
 	if healthInterval <= 0 {
 		return m.healthPollCeiling
 	}
-	interval := healthInterval / 4
-	if interval < m.healthPollFloor {
-		interval = m.healthPollFloor
-	}
-	if interval > m.healthPollCeiling {
-		interval = m.healthPollCeiling
-	}
+	interval := min(max(healthInterval/4, m.healthPollFloor), m.healthPollCeiling)
 	return interval
 }
 
@@ -1899,26 +1966,36 @@ func (m *Manager) shutdownDeadlineForProcess(name string, generation int64) time
 	return time.Duration(ext.runtime.ShutdownTimeoutMS) * time.Millisecond
 }
 
-func restartBackoff(failures int, max time.Duration) time.Duration {
+func restartBackoff(failures int, maximum time.Duration) time.Duration {
 	if failures <= 0 {
 		return 0
 	}
 	delay := time.Second << (failures - 1)
-	if delay > max {
-		return max
+	if delay > maximum {
+		return maximum
 	}
 	return delay
 }
 
 func loadManifestAtPath(path string) (*Manifest, error) {
 	switch strings.ToLower(filepath.Ext(strings.TrimSpace(path))) {
-	case ".toml":
+	case manifestFileExtTOML:
 		return loadManifestTOML(path)
-	case ".json":
+	case manifestFileExtJSON:
 		return loadManifestJSON(path)
 	default:
 		return nil, fmt.Errorf("extension: unsupported manifest path %q", path)
 	}
+}
+
+func shutdownProcessWithTimeout(proc processHandle, timeout time.Duration) error {
+	if proc == nil {
+		return nil
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return proc.Shutdown(shutdownCtx)
 }
 
 func phaseError(name string, phase ExtensionPhase, err error) error {
@@ -1951,7 +2028,10 @@ func validateSupportedHookEvents(values []string) error {
 	return nil
 }
 
-func (m *Manager) resolveBridgeRuntime(ctx context.Context, ext *managedExtension) (*subprocess.InitializeBridgeRuntime, error) {
+func (m *Manager) resolveBridgeRuntime(
+	ctx context.Context,
+	ext *managedExtension,
+) (*subprocess.InitializeBridgeRuntime, error) {
 	if ext == nil || ext.manifest == nil {
 		return nil, nil
 	}
@@ -2058,7 +2138,12 @@ func resolvePathWithinRoot(rootDir string, value string) (string, error) {
 		return "", fmt.Errorf("extension: resolve path %q: %w", resolved, err)
 	}
 	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("%w: path %q escapes extension root %q", ErrPathEscapesExtensionRoot, resolved, trimmedRoot)
+		return "", fmt.Errorf(
+			"%w: path %q escapes extension root %q",
+			ErrPathEscapesExtensionRoot,
+			resolved,
+			trimmedRoot,
+		)
 	}
 
 	return candidate, nil
@@ -2143,9 +2228,7 @@ func cloneStringMap(src map[string]string) map[string]string {
 		return nil
 	}
 	dst := make(map[string]string, len(src))
-	for key, value := range src {
-		dst[key] = value
-	}
+	maps.Copy(dst, src)
 	return dst
 }
 

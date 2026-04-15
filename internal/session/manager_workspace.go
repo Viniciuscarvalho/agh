@@ -23,11 +23,17 @@ func (m *Manager) resolveCreateWorkspace(ctx context.Context, opts CreateOpts) (
 	case workspaceRef == "" && workspacePath == "":
 		return workspacepkg.ResolvedWorkspace{}, errors.New("session: workspace or workspace path is required")
 	case workspaceRef != "" && workspacePath != "":
-		return workspacepkg.ResolvedWorkspace{}, errors.New("session: workspace and workspace path are mutually exclusive")
+		return workspacepkg.ResolvedWorkspace{}, errors.New(
+			"session: workspace and workspace path are mutually exclusive",
+		)
 	case workspacePath != "":
 		resolved, err := resolver.ResolveOrRegister(ctx, workspacePath)
 		if err != nil {
-			return workspacepkg.ResolvedWorkspace{}, fmt.Errorf("session: resolve workspace path %q: %w", workspacePath, err)
+			return workspacepkg.ResolvedWorkspace{}, fmt.Errorf(
+				"session: resolve workspace path %q: %w",
+				workspacePath,
+				err,
+			)
 		}
 		return resolved, nil
 	default:
@@ -39,7 +45,10 @@ func (m *Manager) resolveCreateWorkspace(ctx context.Context, opts CreateOpts) (
 	}
 }
 
-func (m *Manager) resolveResumeWorkspace(ctx context.Context, meta store.SessionMeta) (workspacepkg.ResolvedWorkspace, error) {
+func (m *Manager) resolveResumeWorkspace(
+	ctx context.Context,
+	meta store.SessionMeta,
+) (workspacepkg.ResolvedWorkspace, error) {
 	resolver, err := m.requireWorkspaceResolver()
 	if err != nil {
 		return workspacepkg.ResolvedWorkspace{}, err
@@ -52,22 +61,33 @@ func (m *Manager) resolveResumeWorkspace(ctx context.Context, meta store.Session
 
 	resolved, err := resolver.Resolve(ctx, workspaceID)
 	if err != nil {
-		return workspacepkg.ResolvedWorkspace{}, fmt.Errorf("session: resolve workspace %q for session %q: %w", workspaceID, meta.ID, err)
+		return workspacepkg.ResolvedWorkspace{}, fmt.Errorf(
+			"session: resolve workspace %q for session %q: %w",
+			workspaceID,
+			meta.ID,
+			err,
+		)
 	}
 	return resolved, nil
 }
 
-func (m *Manager) requireWorkspaceResolver() (workspacepkg.WorkspaceResolver, error) {
+func (m *Manager) requireWorkspaceResolver() (workspacepkg.RuntimeResolver, error) {
 	if m.workspace == nil {
 		return nil, errors.New("session: workspace resolver is required")
 	}
 	return m.workspace, nil
 }
 
-func resolveWorkspaceAgent(agentName string, resolvedWorkspace workspacepkg.ResolvedWorkspace) (aghconfig.AgentDef, error) {
+func resolveWorkspaceAgent(
+	agentName string,
+	resolvedWorkspace *workspacepkg.ResolvedWorkspace,
+) (aghconfig.AgentDef, error) {
 	target := strings.TrimSpace(agentName)
 	if target == "" {
 		return aghconfig.AgentDef{}, errors.New("session: agent name is required")
+	}
+	if resolvedWorkspace == nil {
+		return aghconfig.AgentDef{}, errors.New("session: resolved workspace is required")
 	}
 
 	for _, agent := range resolvedWorkspace.Agents {

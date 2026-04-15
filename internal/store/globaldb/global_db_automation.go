@@ -51,7 +51,9 @@ func (g *GlobalDB) UpdateJob(ctx context.Context, job automation.Job) (automatio
 	result, err := g.db.ExecContext(
 		ctx,
 		`UPDATE automation_jobs
-		 SET scope = ?, name = ?, agent_name = ?, workspace_id = ?, prompt = ?, schedule = ?, task = ?, enabled = ?, retry = ?, fire_limit = ?, source = ?, updated_at = ?
+		 SET scope = ?, name = ?, agent_name = ?, workspace_id = ?, prompt = ?,
+		     schedule = ?, task = ?, enabled = ?, retry = ?, fire_limit = ?,
+		     source = ?, updated_at = ?
 		 WHERE id = ?`,
 		normalized.Scope,
 		normalized.Name,
@@ -68,7 +70,11 @@ func (g *GlobalDB) UpdateJob(ctx context.Context, job automation.Job) (automatio
 		normalized.ID,
 	)
 	if err != nil {
-		return automation.Job{}, fmt.Errorf("store: update automation job %q: %w", normalized.ID, mapAutomationJobConstraintError(err))
+		return automation.Job{}, fmt.Errorf(
+			"store: update automation job %q: %w",
+			normalized.ID,
+			mapAutomationJobConstraintError(err),
+		)
 	}
 
 	if err := requireRowsAffected(result, automation.ErrJobNotFound, normalized.ID, "automation job"); err != nil {
@@ -110,7 +116,9 @@ func (g *GlobalDB) GetJob(ctx context.Context, id string) (automation.Job, error
 
 	return g.getJobByQuery(
 		ctx,
-		`SELECT id, scope, name, agent_name, workspace_id, prompt, schedule, task, enabled, retry, fire_limit, source, created_at, updated_at
+		`SELECT
+			id, scope, name, agent_name, workspace_id, prompt, schedule, task,
+			enabled, retry, fire_limit, source, created_at, updated_at
 		 FROM automation_jobs
 		 WHERE id = ?`,
 		trimmedID,
@@ -126,7 +134,10 @@ func (g *GlobalDB) ListJobs(ctx context.Context, query automation.JobListQuery) 
 		return nil, err
 	}
 
-	sqlQuery := `SELECT id, scope, name, agent_name, workspace_id, prompt, schedule, task, enabled, retry, fire_limit, source, created_at, updated_at FROM automation_jobs`
+	sqlQuery := `SELECT
+		id, scope, name, agent_name, workspace_id, prompt, schedule, task,
+		enabled, retry, fire_limit, source, created_at, updated_at
+		FROM automation_jobs`
 	where, args := store.BuildClauses(
 		store.StringClause("scope", string(query.Scope)),
 		store.StringClause("workspace_id", query.WorkspaceID),
@@ -195,7 +206,9 @@ func (g *GlobalDB) UpdateTrigger(ctx context.Context, trigger automation.Trigger
 	result, err := g.db.ExecContext(
 		ctx,
 		`UPDATE automation_triggers
-		 SET scope = ?, name = ?, agent_name = ?, workspace_id = ?, prompt = ?, event = ?, filter = ?, enabled = ?, retry = ?, fire_limit = ?, source = ?, webhook_id = ?, endpoint_slug = ?, updated_at = ?
+		 SET scope = ?, name = ?, agent_name = ?, workspace_id = ?, prompt = ?,
+		     event = ?, filter = ?, enabled = ?, retry = ?, fire_limit = ?,
+		     source = ?, webhook_id = ?, endpoint_slug = ?, updated_at = ?
 		 WHERE id = ?`,
 		normalized.Scope,
 		normalized.Name,
@@ -214,10 +227,19 @@ func (g *GlobalDB) UpdateTrigger(ctx context.Context, trigger automation.Trigger
 		normalized.ID,
 	)
 	if err != nil {
-		return automation.Trigger{}, fmt.Errorf("store: update automation trigger %q: %w", normalized.ID, mapAutomationTriggerConstraintError(err))
+		return automation.Trigger{}, fmt.Errorf(
+			"store: update automation trigger %q: %w",
+			normalized.ID,
+			mapAutomationTriggerConstraintError(err),
+		)
 	}
 
-	if err := requireRowsAffected(result, automation.ErrTriggerNotFound, normalized.ID, "automation trigger"); err != nil {
+	if err := requireRowsAffected(
+		result,
+		automation.ErrTriggerNotFound,
+		normalized.ID,
+		"automation trigger",
+	); err != nil {
 		return automation.Trigger{}, err
 	}
 
@@ -237,7 +259,11 @@ func (g *GlobalDB) DeleteTrigger(ctx context.Context, id string) error {
 
 	result, err := g.db.ExecContext(ctx, `DELETE FROM automation_triggers WHERE id = ?`, trimmedID)
 	if err != nil {
-		return fmt.Errorf("store: delete automation trigger %q: %w", trimmedID, mapAutomationTriggerConstraintError(err))
+		return fmt.Errorf(
+			"store: delete automation trigger %q: %w",
+			trimmedID,
+			mapAutomationTriggerConstraintError(err),
+		)
 	}
 
 	return requireRowsAffected(result, automation.ErrTriggerNotFound, trimmedID, "automation trigger")
@@ -256,7 +282,10 @@ func (g *GlobalDB) GetTrigger(ctx context.Context, id string) (automation.Trigge
 
 	return g.getTriggerByQuery(
 		ctx,
-		`SELECT id, scope, name, agent_name, workspace_id, prompt, event, filter, enabled, retry, fire_limit, source, webhook_id, endpoint_slug, created_at, updated_at
+		`SELECT
+			id, scope, name, agent_name, workspace_id, prompt, event, filter,
+			enabled, retry, fire_limit, source, webhook_id, endpoint_slug,
+			created_at, updated_at
 		 FROM automation_triggers
 		 WHERE id = ?`,
 		trimmedID,
@@ -276,7 +305,10 @@ func (g *GlobalDB) GetTriggerByWebhookID(ctx context.Context, webhookID string) 
 
 	return g.getTriggerByQuery(
 		ctx,
-		`SELECT id, scope, name, agent_name, workspace_id, prompt, event, filter, enabled, retry, fire_limit, source, webhook_id, endpoint_slug, created_at, updated_at
+		`SELECT
+			id, scope, name, agent_name, workspace_id, prompt, event, filter,
+			enabled, retry, fire_limit, source, webhook_id, endpoint_slug,
+			created_at, updated_at
 		 FROM automation_triggers
 		 WHERE webhook_id = ?`,
 		trimmedWebhookID,
@@ -339,7 +371,10 @@ func (g *GlobalDB) CreateRun(ctx context.Context, run automation.Run) (automatio
 
 	if _, err := g.db.ExecContext(
 		ctx,
-		`INSERT INTO automation_runs (id, job_id, trigger_id, session_id, task_id, task_run_id, status, attempt, started_at, ended_at, error)
+		`INSERT INTO automation_runs (
+			id, job_id, trigger_id, session_id, task_id, task_run_id, status,
+			attempt, started_at, ended_at, error
+		)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		normalized.ID,
 		store.NullableString(normalized.JobID),
@@ -373,7 +408,9 @@ func (g *GlobalDB) UpdateRun(ctx context.Context, run automation.Run) (automatio
 	result, err := g.db.ExecContext(
 		ctx,
 		`UPDATE automation_runs
-		 SET job_id = ?, trigger_id = ?, session_id = ?, task_id = ?, task_run_id = ?, status = ?, attempt = ?, started_at = ?, ended_at = ?, error = ?
+		 SET job_id = ?, trigger_id = ?, session_id = ?, task_id = ?,
+		     task_run_id = ?, status = ?, attempt = ?, started_at = ?,
+		     ended_at = ?, error = ?
 		 WHERE id = ?`,
 		store.NullableString(normalized.JobID),
 		store.NullableString(normalized.TriggerID),
@@ -506,7 +543,10 @@ func (g *GlobalDB) CountRuns(ctx context.Context, query automation.RunQuery) (in
 }
 
 // SetJobEnabledOverlay upserts the runtime enabled override for a config-backed job.
-func (g *GlobalDB) SetJobEnabledOverlay(ctx context.Context, overlay automation.JobEnabledOverlay) (automation.JobEnabledOverlay, error) {
+func (g *GlobalDB) SetJobEnabledOverlay(
+	ctx context.Context,
+	overlay automation.JobEnabledOverlay,
+) (automation.JobEnabledOverlay, error) {
 	if err := g.checkReady(ctx, "set automation job overlay"); err != nil {
 		return automation.JobEnabledOverlay{}, err
 	}
@@ -530,7 +570,11 @@ func (g *GlobalDB) SetJobEnabledOverlay(ctx context.Context, overlay automation.
 		normalized.EnabledOverride,
 		store.FormatTimestamp(normalized.UpdatedAt),
 	); err != nil {
-		return automation.JobEnabledOverlay{}, fmt.Errorf("store: set automation job overlay %q: %w", normalized.JobID, err)
+		return automation.JobEnabledOverlay{}, fmt.Errorf(
+			"store: set automation job overlay %q: %w",
+			normalized.JobID,
+			err,
+		)
 	}
 
 	return normalized, nil
@@ -618,7 +662,10 @@ func (g *GlobalDB) DeleteJobEnabledOverlay(ctx context.Context, jobID string) er
 }
 
 // SetTriggerEnabledOverlay upserts the runtime enabled override for a config-backed trigger.
-func (g *GlobalDB) SetTriggerEnabledOverlay(ctx context.Context, overlay automation.TriggerEnabledOverlay) (automation.TriggerEnabledOverlay, error) {
+func (g *GlobalDB) SetTriggerEnabledOverlay(
+	ctx context.Context,
+	overlay automation.TriggerEnabledOverlay,
+) (automation.TriggerEnabledOverlay, error) {
 	if err := g.checkReady(ctx, "set automation trigger overlay"); err != nil {
 		return automation.TriggerEnabledOverlay{}, err
 	}
@@ -642,14 +689,21 @@ func (g *GlobalDB) SetTriggerEnabledOverlay(ctx context.Context, overlay automat
 		normalized.EnabledOverride,
 		store.FormatTimestamp(normalized.UpdatedAt),
 	); err != nil {
-		return automation.TriggerEnabledOverlay{}, fmt.Errorf("store: set automation trigger overlay %q: %w", normalized.TriggerID, err)
+		return automation.TriggerEnabledOverlay{}, fmt.Errorf(
+			"store: set automation trigger overlay %q: %w",
+			normalized.TriggerID,
+			err,
+		)
 	}
 
 	return normalized, nil
 }
 
 // GetTriggerEnabledOverlay loads one persisted trigger enabled overlay by trigger id.
-func (g *GlobalDB) GetTriggerEnabledOverlay(ctx context.Context, triggerID string) (automation.TriggerEnabledOverlay, error) {
+func (g *GlobalDB) GetTriggerEnabledOverlay(
+	ctx context.Context,
+	triggerID string,
+) (automation.TriggerEnabledOverlay, error) {
 	if err := g.checkReady(ctx, "get automation trigger overlay"); err != nil {
 		return automation.TriggerEnabledOverlay{}, err
 	}
@@ -722,7 +776,11 @@ func (g *GlobalDB) DeleteTriggerEnabledOverlay(ctx context.Context, triggerID st
 		return err
 	}
 
-	if _, err := g.db.ExecContext(ctx, `DELETE FROM automation_trigger_overlays WHERE trigger_id = ?`, trimmedID); err != nil {
+	if _, err := g.db.ExecContext(
+		ctx,
+		`DELETE FROM automation_trigger_overlays WHERE trigger_id = ?`,
+		trimmedID,
+	); err != nil {
 		return fmt.Errorf("store: delete automation trigger overlay %q: %w", trimmedID, err)
 	}
 
@@ -808,7 +866,11 @@ func (g *GlobalDB) DeleteTriggerWebhookSecret(ctx context.Context, triggerID str
 		return err
 	}
 
-	if _, err := g.db.ExecContext(ctx, `DELETE FROM automation_trigger_webhook_secrets WHERE trigger_id = ?`, trimmedID); err != nil {
+	if _, err := g.db.ExecContext(
+		ctx,
+		`DELETE FROM automation_trigger_webhook_secrets WHERE trigger_id = ?`,
+		trimmedID,
+	); err != nil {
 		return fmt.Errorf("store: delete automation trigger webhook secret %q: %w", trimmedID, err)
 	}
 
@@ -824,7 +886,8 @@ func (g *GlobalDB) insertJob(ctx context.Context, exec sqlExecutor, job automati
 	if _, err := exec.ExecContext(
 		ctx,
 		`INSERT INTO automation_jobs (
-			id, scope, name, agent_name, workspace_id, prompt, schedule, task, enabled, retry, fire_limit, source, created_at, updated_at
+			id, scope, name, agent_name, workspace_id, prompt, schedule, task,
+			enabled, retry, fire_limit, source, created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		job.ID,
 		job.Scope,
@@ -856,7 +919,9 @@ func (g *GlobalDB) insertTrigger(ctx context.Context, exec sqlExecutor, trigger 
 	if _, err := exec.ExecContext(
 		ctx,
 		`INSERT INTO automation_triggers (
-			id, scope, name, agent_name, workspace_id, prompt, event, filter, enabled, retry, fire_limit, source, webhook_id, endpoint_slug, created_at, updated_at
+			id, scope, name, agent_name, workspace_id, prompt, event, filter,
+			enabled, retry, fire_limit, source, webhook_id, endpoint_slug,
+			created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		trigger.ID,
 		trigger.Scope,
@@ -1025,7 +1090,8 @@ func (g *GlobalDB) ensureConfigTrigger(ctx context.Context, triggerID string) er
 
 func (g *GlobalDB) lookupJobSource(ctx context.Context, jobID string) (automation.JobSource, error) {
 	var raw string
-	if err := g.db.QueryRowContext(ctx, `SELECT source FROM automation_jobs WHERE id = ?`, jobID).Scan(&raw); err != nil {
+	if err := g.db.QueryRowContext(ctx, `SELECT source FROM automation_jobs WHERE id = ?`, jobID).
+		Scan(&raw); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", automation.ErrJobNotFound
 		}
@@ -1041,7 +1107,8 @@ func (g *GlobalDB) lookupJobSource(ctx context.Context, jobID string) (automatio
 
 func (g *GlobalDB) lookupTriggerSource(ctx context.Context, triggerID string) (automation.JobSource, error) {
 	var raw string
-	if err := g.db.QueryRowContext(ctx, `SELECT source FROM automation_triggers WHERE id = ?`, triggerID).Scan(&raw); err != nil {
+	if err := g.db.QueryRowContext(ctx, `SELECT source FROM automation_triggers WHERE id = ?`, triggerID).
+		Scan(&raw); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", automation.ErrTriggerNotFound
 		}
@@ -1087,7 +1154,7 @@ func scanAutomationJob(scanner rowScanner) (automation.Job, error) {
 		return automation.Job{}, fmt.Errorf("store: scan automation job: %w", err)
 	}
 
-	job.Scope = automation.AutomationScope(strings.TrimSpace(scope))
+	job.Scope = automation.Scope(strings.TrimSpace(scope))
 	job.WorkspaceID = automationNullStringValue(workspaceID)
 	job.Source = automation.JobSource(strings.TrimSpace(source))
 
@@ -1153,7 +1220,7 @@ func scanAutomationTrigger(scanner rowScanner) (automation.Trigger, error) {
 		return automation.Trigger{}, fmt.Errorf("store: scan automation trigger: %w", err)
 	}
 
-	trigger.Scope = automation.AutomationScope(strings.TrimSpace(scope))
+	trigger.Scope = automation.Scope(strings.TrimSpace(scope))
 	trigger.WorkspaceID = automationNullStringValue(workspaceID)
 	trigger.Source = automation.JobSource(strings.TrimSpace(source))
 	trigger.WebhookID = automationNullStringValue(webhookID)
@@ -1456,7 +1523,7 @@ func mapAutomationTriggerConstraintError(err error) error {
 
 func normalizeAutomationJob(job automation.Job) automation.Job {
 	job.ID = strings.TrimSpace(job.ID)
-	job.Scope = automation.AutomationScope(strings.TrimSpace(string(job.Scope)))
+	job.Scope = automation.Scope(strings.TrimSpace(string(job.Scope)))
 	job.Name = strings.TrimSpace(job.Name)
 	job.AgentName = strings.TrimSpace(job.AgentName)
 	job.WorkspaceID = strings.TrimSpace(job.WorkspaceID)
@@ -1490,7 +1557,7 @@ func normalizeAutomationJob(job automation.Job) automation.Job {
 
 func normalizeAutomationTrigger(trigger automation.Trigger) automation.Trigger {
 	trigger.ID = strings.TrimSpace(trigger.ID)
-	trigger.Scope = automation.AutomationScope(strings.TrimSpace(string(trigger.Scope)))
+	trigger.Scope = automation.Scope(strings.TrimSpace(string(trigger.Scope)))
 	trigger.Name = strings.TrimSpace(trigger.Name)
 	trigger.AgentName = strings.TrimSpace(trigger.AgentName)
 	trigger.WorkspaceID = strings.TrimSpace(trigger.WorkspaceID)
@@ -1533,7 +1600,10 @@ func normalizeJobOverlay(overlay automation.JobEnabledOverlay, now time.Time) (a
 	return overlay, nil
 }
 
-func normalizeTriggerOverlay(overlay automation.TriggerEnabledOverlay, now time.Time) (automation.TriggerEnabledOverlay, error) {
+func normalizeTriggerOverlay(
+	overlay automation.TriggerEnabledOverlay,
+	now time.Time,
+) (automation.TriggerEnabledOverlay, error) {
 	overlay.TriggerID = strings.TrimSpace(overlay.TriggerID)
 	if overlay.TriggerID == "" {
 		return automation.TriggerEnabledOverlay{}, errors.New("store: automation trigger overlay id is required")

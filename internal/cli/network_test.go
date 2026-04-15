@@ -15,7 +15,7 @@ func TestNetworkCommandsAndFormatting(t *testing.T) {
 	var seenPeersQuery NetworkPeersQuery
 	var seenSendRequest NetworkSendRequest
 
-	client := stubClient{
+	client := &stubClient{
 		networkStatusFn: func(context.Context) (NetworkStatusRecord, error) {
 			return NetworkStatusRecord{
 				Enabled:              true,
@@ -85,7 +85,7 @@ func TestNetworkCommandsAndFormatting(t *testing.T) {
 				Ext:           request.Ext,
 			}, nil
 		},
-		networkInboxFn: func(_ context.Context, sessionID string) ([]NetworkEnvelopeRecord, error) {
+		networkInboxFn: func(_ context.Context, _ string) ([]NetworkEnvelopeRecord, error) {
 			replyTo := "msg-root"
 			traceID := "trace-1"
 			causationID := "cause-1"
@@ -113,7 +113,8 @@ func TestNetworkCommandsAndFormatting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("network status error = %v", err)
 	}
-	if !strings.Contains(statusOut, "Network") || !strings.Contains(statusOut, "Queued Messages") || !strings.Contains(statusOut, "Kind Metrics") {
+	if !strings.Contains(statusOut, "Network") || !strings.Contains(statusOut, "Queued Messages") ||
+		!strings.Contains(statusOut, "Kind Metrics") {
 		t.Fatalf("network status output = %q, want summary and metrics", statusOut)
 	}
 
@@ -163,7 +164,8 @@ func TestNetworkCommandsAndFormatting(t *testing.T) {
 	if seenSendRequest.ExpiresAt == nil || *seenSendRequest.ExpiresAt != expiresAt {
 		t.Fatalf("seenSendRequest.ExpiresAt = %#v, want %d", seenSendRequest.ExpiresAt, expiresAt)
 	}
-	if string(seenSendRequest.Ext["agh.workflow_id"]) != `"wf-1"` || string(seenSendRequest.Ext["agh.handoff_version"]) != `3` {
+	if string(seenSendRequest.Ext["agh.workflow_id"]) != `"wf-1"` ||
+		string(seenSendRequest.Ext["agh.handoff_version"]) != `3` {
 		t.Fatalf("seenSendRequest.Ext = %#v, want workflow metadata", seenSendRequest.Ext)
 	}
 	var sent NetworkSendRecord
@@ -178,7 +180,9 @@ func TestNetworkCommandsAndFormatting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("network inbox error = %v", err)
 	}
-	if !strings.Contains(inboxOut, "Channel") || !strings.Contains(inboxOut, "builders") || !strings.Contains(inboxOut, "wf-1") || !strings.Contains(inboxOut, "3") {
+	if !strings.Contains(inboxOut, "Channel") || !strings.Contains(inboxOut, "builders") ||
+		!strings.Contains(inboxOut, "wf-1") ||
+		!strings.Contains(inboxOut, "3") {
 		t.Fatalf("network inbox output = %q, want channel and workflow/handoff metadata", inboxOut)
 	}
 }
@@ -229,17 +233,20 @@ func TestNetworkSendParsersRejectInvalidFlags(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			deps := newTestDeps(t, stubClient{
+			deps := newTestDeps(t, &stubClient{
 				networkSendFn: func(context.Context, NetworkSendRequest) (NetworkSendRecord, error) {
 					return NetworkSendRecord{}, nil
 				},
 			})
 
-			if _, _, err := executeRootCommand(t, deps, tc.args...); err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+			if _, _, err := executeRootCommand(
+				t,
+				deps,
+				tc.args...); err == nil ||
+				!strings.Contains(err.Error(), tc.wantErr) {
 				t.Fatalf("executeRootCommand(%v) error = %v, want substring %q", tc.args, err, tc.wantErr)
 			}
 		})

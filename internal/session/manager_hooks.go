@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -46,7 +47,12 @@ type promptMessageDispatchState struct {
 	lastRaw json.RawMessage
 }
 
-func newPromptTurnDispatchState(session *Session, turnID string, turnSource TurnSource, userMessage string) *promptTurnDispatchState {
+func newPromptTurnDispatchState(
+	session *Session,
+	turnID string,
+	turnSource TurnSource,
+	userMessage string,
+) *promptTurnDispatchState {
 	normalizedTurnSource := normalizeTurnSource(turnSource)
 	if normalizedTurnSource == "" {
 		normalizedTurnSource = TurnSourceUser
@@ -93,7 +99,7 @@ func (m *Manager) dispatchSessionPreCreate(ctx context.Context, opts CreateOpts)
 
 	next := opts
 	next.Name = strings.TrimSpace(payload.SessionName)
-	next.Type = normalizeSessionType(SessionType(strings.TrimSpace(payload.SessionType)))
+	next.Type = normalizeSessionType(Type(strings.TrimSpace(payload.SessionType)))
 	next.AgentName = strings.TrimSpace(payload.AgentName)
 
 	workspaceID := strings.TrimSpace(payload.WorkspaceID)
@@ -128,7 +134,7 @@ func (m *Manager) dispatchSessionPreResume(ctx context.Context, meta store.Sessi
 		SessionContext: hookspkg.SessionContext{
 			SessionID:    strings.TrimSpace(meta.ID),
 			SessionName:  strings.TrimSpace(meta.Name),
-			SessionType:  string(normalizeSessionType(SessionType(meta.SessionType))),
+			SessionType:  string(normalizeSessionType(Type(meta.SessionType))),
 			AgentName:    strings.TrimSpace(meta.AgentName),
 			WorkspaceID:  strings.TrimSpace(meta.WorkspaceID),
 			ACPSessionID: strings.TrimSpace(derefString(meta.ACPSessionID)),
@@ -145,7 +151,7 @@ func (m *Manager) dispatchSessionPreResume(ctx context.Context, meta store.Sessi
 	next.Name = strings.TrimSpace(payload.SessionName)
 	next.AgentName = strings.TrimSpace(payload.AgentName)
 	next.WorkspaceID = strings.TrimSpace(payload.WorkspaceID)
-	next.SessionType = string(normalizeSessionType(SessionType(strings.TrimSpace(payload.SessionType))))
+	next.SessionType = string(normalizeSessionType(Type(strings.TrimSpace(payload.SessionType))))
 	return next, nil
 }
 
@@ -163,7 +169,8 @@ func (m *Manager) dispatchSessionPreStop(ctx context.Context, session *Session) 
 	}
 	ctx = hookDispatchContext(ctx, session)
 
-	payload, err := m.hooks.session().DispatchSessionPreStop(ctx, hookSessionLifecyclePayload(session, hookspkg.HookSessionPreStop, m.now()))
+	payload, err := m.hooks.session().
+		DispatchSessionPreStop(ctx, hookSessionLifecyclePayload(session, hookspkg.HookSessionPreStop, m.now()))
 	if err != nil {
 		return fmt.Errorf("session: dispatch session.pre_stop: %w", err)
 	}
@@ -187,11 +194,11 @@ func (m *Manager) dispatchSessionLifecycleObservation(ctx context.Context, sessi
 	lifecycleHooks := m.hooks.session()
 	switch event {
 	case hookspkg.HookSessionPostCreate:
-		_, err = lifecycleHooks.DispatchSessionPostCreate(ctx, hookspkg.SessionPostCreatePayload(payload))
+		_, err = lifecycleHooks.DispatchSessionPostCreate(ctx, payload)
 	case hookspkg.HookSessionPostResume:
-		_, err = lifecycleHooks.DispatchSessionPostResume(ctx, hookspkg.SessionPostResumePayload(payload))
+		_, err = lifecycleHooks.DispatchSessionPostResume(ctx, payload)
 	case hookspkg.HookSessionPostStop:
-		_, err = lifecycleHooks.DispatchSessionPostStop(ctx, hookspkg.SessionPostStopPayload(payload))
+		_, err = lifecycleHooks.DispatchSessionPostStop(ctx, payload)
 	default:
 		return
 	}
@@ -200,7 +207,13 @@ func (m *Manager) dispatchSessionLifecycleObservation(ctx context.Context, sessi
 	}
 }
 
-func (m *Manager) dispatchInputPreSubmit(ctx context.Context, session *Session, turnID string, turnSource TurnSource, message string) (string, error) {
+func (m *Manager) dispatchInputPreSubmit(
+	ctx context.Context,
+	session *Session,
+	turnID string,
+	turnSource TurnSource,
+	message string,
+) (string, error) {
 	if m == nil {
 		return message, nil
 	}
@@ -223,7 +236,11 @@ func (m *Manager) dispatchInputPreSubmit(ctx context.Context, session *Session, 
 	return payload.Message, nil
 }
 
-func (m *Manager) dispatchPromptPostAssemble(ctx context.Context, sessionCtx hookspkg.SessionContext, prompt string) (string, error) {
+func (m *Manager) dispatchPromptPostAssemble(
+	ctx context.Context,
+	sessionCtx hookspkg.SessionContext,
+	prompt string,
+) (string, error) {
 	if m == nil {
 		return prompt, nil
 	}
@@ -292,7 +309,11 @@ func (m *Manager) dispatchTurnEnd(ctx context.Context, state *promptTurnDispatch
 	}
 }
 
-func (m *Manager) preparePromptEvent(ctx context.Context, state *promptTurnDispatchState, event acp.AgentEvent) acp.AgentEvent {
+func (m *Manager) preparePromptEvent(
+	ctx context.Context,
+	state *promptTurnDispatchState,
+	event acp.AgentEvent,
+) acp.AgentEvent {
 	if state == nil {
 		return event
 	}
@@ -317,7 +338,12 @@ func (m *Manager) preparePromptEvent(ctx context.Context, state *promptTurnDispa
 	return event
 }
 
-func (m *Manager) dispatchMessageStart(ctx context.Context, state *promptTurnDispatchState, event acp.AgentEvent, role string) acp.AgentEvent {
+func (m *Manager) dispatchMessageStart(
+	ctx context.Context,
+	state *promptTurnDispatchState,
+	event acp.AgentEvent,
+	role string,
+) acp.AgentEvent {
 	if state == nil {
 		return event
 	}
@@ -356,7 +382,12 @@ func (m *Manager) dispatchMessageStart(ctx context.Context, state *promptTurnDis
 	return event
 }
 
-func (m *Manager) dispatchMessageDelta(ctx context.Context, state *promptTurnDispatchState, event acp.AgentEvent, deltaType string) {
+func (m *Manager) dispatchMessageDelta(
+	ctx context.Context,
+	state *promptTurnDispatchState,
+	event acp.AgentEvent,
+	deltaType string,
+) {
 	if m == nil || state == nil || state.openMessage == nil {
 		return
 	}
@@ -527,7 +558,12 @@ func (m *Manager) dispatchEventPostRecord(ctx context.Context, session *Session,
 	}
 }
 
-func (m *Manager) dispatchAgentPreStart(ctx context.Context, session *Session, resolved aghconfig.ResolvedAgent, opts acp.StartOpts) (acp.StartOpts, error) {
+func (m *Manager) dispatchAgentPreStart(
+	ctx context.Context,
+	session *Session,
+	resolved aghconfig.ResolvedAgent,
+	opts acp.StartOpts,
+) (acp.StartOpts, error) {
 	if m == nil {
 		return opts, nil
 	}
@@ -556,7 +592,12 @@ func (m *Manager) dispatchAgentPreStart(ctx context.Context, session *Session, r
 	return next, nil
 }
 
-func (m *Manager) dispatchAgentSpawned(ctx context.Context, session *Session, proc *AgentProcess, resolved aghconfig.ResolvedAgent) {
+func (m *Manager) dispatchAgentSpawned(
+	ctx context.Context,
+	session *Session,
+	proc *AgentProcess,
+	resolved aghconfig.ResolvedAgent,
+) {
 	m.dispatchAgentObservation(ctx, session, proc, resolved, nil, hookspkg.HookAgentSpawned)
 }
 
@@ -568,7 +609,14 @@ func (m *Manager) dispatchAgentStopped(ctx context.Context, session *Session, pr
 	m.dispatchAgentObservation(ctx, session, proc, aghconfig.ResolvedAgent{}, waitErr, hookspkg.HookAgentStopped)
 }
 
-func (m *Manager) dispatchAgentObservation(ctx context.Context, session *Session, proc *AgentProcess, resolved aghconfig.ResolvedAgent, waitErr error, event hookspkg.HookEvent) {
+func (m *Manager) dispatchAgentObservation(
+	ctx context.Context,
+	session *Session,
+	proc *AgentProcess,
+	resolved aghconfig.ResolvedAgent,
+	waitErr error,
+	event hookspkg.HookEvent,
+) {
 	if m == nil {
 		return
 	}
@@ -596,11 +644,11 @@ func (m *Manager) dispatchAgentObservation(ctx context.Context, session *Session
 	agentHooks := m.hooks.agent()
 	switch event {
 	case hookspkg.HookAgentSpawned:
-		_, err = agentHooks.DispatchAgentSpawned(ctx, hookspkg.AgentSpawnedPayload(payload))
+		_, err = agentHooks.DispatchAgentSpawned(ctx, payload)
 	case hookspkg.HookAgentCrashed:
-		_, err = agentHooks.DispatchAgentCrashed(ctx, hookspkg.AgentCrashedPayload(payload))
+		_, err = agentHooks.DispatchAgentCrashed(ctx, payload)
 	case hookspkg.HookAgentStopped:
-		_, err = agentHooks.DispatchAgentStopped(ctx, hookspkg.AgentStoppedPayload(payload))
+		_, err = agentHooks.DispatchAgentStopped(ctx, payload)
 	default:
 		return
 	}
@@ -609,7 +657,11 @@ func (m *Manager) dispatchAgentObservation(ctx context.Context, session *Session
 	}
 }
 
-func hookSessionLifecyclePayload(session *Session, event hookspkg.HookEvent, timestamp time.Time) hookspkg.SessionLifecyclePayload {
+func hookSessionLifecyclePayload(
+	session *Session,
+	event hookspkg.HookEvent,
+	timestamp time.Time,
+) hookspkg.SessionLifecyclePayload {
 	return hookspkg.SessionLifecyclePayload{
 		PayloadBase: hookspkg.PayloadBase{
 			Event:     event,
@@ -656,7 +708,7 @@ func (s *Session) applyHookSessionContext(payload hookspkg.SessionContext, now t
 	s.AgentName = strings.TrimSpace(payload.AgentName)
 	s.WorkspaceID = strings.TrimSpace(payload.WorkspaceID)
 	s.Workspace = strings.TrimSpace(payload.Workspace)
-	s.Type = normalizeSessionType(SessionType(strings.TrimSpace(payload.SessionType)))
+	s.Type = normalizeSessionType(Type(strings.TrimSpace(payload.SessionType)))
 	if !now.IsZero() {
 		s.UpdatedAt = now
 	}
@@ -793,9 +845,7 @@ func cloneStringMap(src map[string]string) map[string]string {
 	}
 
 	cloned := make(map[string]string, len(src))
-	for key, value := range src {
-		cloned[key] = value
-	}
+	maps.Copy(cloned, src)
 	return cloned
 }
 

@@ -43,7 +43,7 @@ func DefaultFireLimitConfig() FireLimitConfig {
 }
 
 // Validate ensures the scope is one of the supported automation scope values.
-func (s AutomationScope) Validate(path string) error {
+func (s Scope) Validate(path string) error {
 	switch s {
 	case AutomationScopeGlobal, AutomationScopeWorkspace:
 		return nil
@@ -58,7 +58,14 @@ func (s JobSource) Validate(path string) error {
 	case JobSourceConfig, JobSourcePackage, JobSourceDynamic:
 		return nil
 	default:
-		return fmt.Errorf("%s must be one of %q, %q, or %q: %q", path, JobSourceConfig, JobSourcePackage, JobSourceDynamic, s)
+		return fmt.Errorf(
+			"%s must be one of %q, %q, or %q: %q",
+			path,
+			JobSourceConfig,
+			JobSourcePackage,
+			JobSourceDynamic,
+			s,
+		)
 	}
 }
 
@@ -68,7 +75,17 @@ func (s RunStatus) Validate(path string) error {
 	case RunScheduled, RunRunning, RunDelegated, RunCompleted, RunFailed, RunCancelled:
 		return nil
 	default:
-		return fmt.Errorf("%s must be one of %q, %q, %q, %q, %q, or %q: %q", path, RunScheduled, RunRunning, RunDelegated, RunCompleted, RunFailed, RunCancelled, s)
+		return fmt.Errorf(
+			"%s must be one of %q, %q, %q, %q, %q, or %q: %q",
+			path,
+			RunScheduled,
+			RunRunning,
+			RunDelegated,
+			RunCompleted,
+			RunFailed,
+			RunCancelled,
+			s,
+		)
 	}
 }
 
@@ -78,7 +95,15 @@ func (s ActivationSource) Validate(path string) error {
 	case ActivationSourceObserver, ActivationSourceHook, ActivationSourceWebhook, ActivationSourceExtension:
 		return nil
 	default:
-		return fmt.Errorf("%s must be one of %q, %q, %q, or %q: %q", path, ActivationSourceObserver, ActivationSourceHook, ActivationSourceWebhook, ActivationSourceExtension, s)
+		return fmt.Errorf(
+			"%s must be one of %q, %q, %q, or %q: %q",
+			path,
+			ActivationSourceObserver,
+			ActivationSourceHook,
+			ActivationSourceWebhook,
+			ActivationSourceExtension,
+			s,
+		)
 	}
 }
 
@@ -88,7 +113,14 @@ func (m ScheduleMode) Validate(path string) error {
 	case ScheduleModeCron, ScheduleModeEvery, ScheduleModeAt:
 		return nil
 	default:
-		return fmt.Errorf("%s must be one of %q, %q, or %q: %q", path, ScheduleModeCron, ScheduleModeEvery, ScheduleModeAt, m)
+		return fmt.Errorf(
+			"%s must be one of %q, %q, or %q: %q",
+			path,
+			ScheduleModeCron,
+			ScheduleModeEvery,
+			ScheduleModeAt,
+			m,
+		)
 	}
 }
 
@@ -103,7 +135,7 @@ func (s RetryStrategy) Validate(path string) error {
 }
 
 // ValidateScopeBinding enforces the global/workspace binding invariants shared by jobs, triggers, and envelopes.
-func ValidateScopeBinding(scope AutomationScope, workspaceBinding string, path string, workspaceField string) error {
+func ValidateScopeBinding(scope Scope, workspaceBinding string, path string, workspaceField string) error {
 	scopePath := nestedPath(path, "scope")
 	if err := scope.Validate(scopePath); err != nil {
 		return err
@@ -188,14 +220,29 @@ func (c RetryConfig) Validate(path string) error {
 	switch c.Strategy {
 	case RetryStrategyNone:
 		if c.MaxRetries != 0 {
-			return fmt.Errorf("%s must be zero when retry.strategy is %q: %d", nestedPath(path, "max_retries"), RetryStrategyNone, c.MaxRetries)
+			return fmt.Errorf(
+				"%s must be zero when retry.strategy is %q: %d",
+				nestedPath(path, "max_retries"),
+				RetryStrategyNone,
+				c.MaxRetries,
+			)
 		}
 		if strings.TrimSpace(c.BaseDelay) != "" {
-			return fmt.Errorf("%s must be empty when retry.strategy is %q: %q", nestedPath(path, "base_delay"), RetryStrategyNone, c.BaseDelay)
+			return fmt.Errorf(
+				"%s must be empty when retry.strategy is %q: %q",
+				nestedPath(path, "base_delay"),
+				RetryStrategyNone,
+				c.BaseDelay,
+			)
 		}
 	case RetryStrategyBackoff:
 		if c.MaxRetries <= 0 {
-			return fmt.Errorf("%s must be positive when retry.strategy is %q: %d", nestedPath(path, "max_retries"), RetryStrategyBackoff, c.MaxRetries)
+			return fmt.Errorf(
+				"%s must be positive when retry.strategy is %q: %d",
+				nestedPath(path, "max_retries"),
+				RetryStrategyBackoff,
+				c.MaxRetries,
+			)
 		}
 		if strings.TrimSpace(c.BaseDelay) == "" {
 			return errors.New(nestedPath(path, "base_delay") + " is required when retry.strategy is \"backoff\"")
@@ -266,7 +313,12 @@ func (j Job) Validate(path string) error {
 			return err
 		}
 		if j.Retry.Strategy != RetryStrategyNone {
-			return fmt.Errorf("%s.strategy must be %q when %s is configured", nestedPath(path, "retry"), RetryStrategyNone, nestedPath(path, "task"))
+			return fmt.Errorf(
+				"%s.strategy must be %q when %s is configured",
+				nestedPath(path, "retry"),
+				RetryStrategyNone,
+				nestedPath(path, "task"),
+			)
 		}
 	}
 
@@ -307,18 +359,37 @@ func (t Trigger) Validate(path string) error {
 	}
 	if strings.TrimSpace(t.Event) == "webhook" {
 		if strings.TrimSpace(t.EndpointSlug) == "" && strings.TrimSpace(t.WebhookID) == "" {
-			return errors.New(nestedPath(path, "endpoint_slug") + " or " + nestedPath(path, "webhook_id") + " is required when event is \"webhook\"")
+			return errors.New(
+				nestedPath(
+					path,
+					"endpoint_slug",
+				) + " or " + nestedPath(
+					path,
+					"webhook_id",
+				) + " is required when event is \"webhook\"",
+			)
 		}
-		if webhookID := strings.TrimSpace(t.WebhookID); webhookID != "" && !strings.HasPrefix(webhookID, webhookIDPrefix) {
+		if webhookID := strings.TrimSpace(
+			t.WebhookID,
+		); webhookID != "" &&
+			!strings.HasPrefix(webhookID, webhookIDPrefix) {
 			return fmt.Errorf("%s must start with %q: %q", nestedPath(path, "webhook_id"), webhookIDPrefix, webhookID)
 		}
 		return nil
 	}
 	if strings.TrimSpace(t.EndpointSlug) != "" {
-		return fmt.Errorf("%s must be empty when event is %q", nestedPath(path, "endpoint_slug"), strings.TrimSpace(t.Event))
+		return fmt.Errorf(
+			"%s must be empty when event is %q",
+			nestedPath(path, "endpoint_slug"),
+			strings.TrimSpace(t.Event),
+		)
 	}
 	if strings.TrimSpace(t.WebhookID) != "" {
-		return fmt.Errorf("%s must be empty when event is %q", nestedPath(path, "webhook_id"), strings.TrimSpace(t.Event))
+		return fmt.Errorf(
+			"%s must be empty when event is %q",
+			nestedPath(path, "webhook_id"),
+			strings.TrimSpace(t.Event),
+		)
 	}
 
 	return nil
@@ -337,10 +408,20 @@ func (r Run) Validate(path string) error {
 	}
 	if r.Status == RunDelegated {
 		if strings.TrimSpace(r.TaskID) == "" {
-			return fmt.Errorf("%s is required when %s is %q", nestedPath(path, "task_id"), nestedPath(path, "status"), RunDelegated)
+			return fmt.Errorf(
+				"%s is required when %s is %q",
+				nestedPath(path, "task_id"),
+				nestedPath(path, "status"),
+				RunDelegated,
+			)
 		}
 		if strings.TrimSpace(r.TaskRunID) == "" {
-			return fmt.Errorf("%s is required when %s is %q", nestedPath(path, "task_run_id"), nestedPath(path, "status"), RunDelegated)
+			return fmt.Errorf(
+				"%s is required when %s is %q",
+				nestedPath(path, "task_run_id"),
+				nestedPath(path, "status"),
+				RunDelegated,
+			)
 		}
 	}
 	return nil

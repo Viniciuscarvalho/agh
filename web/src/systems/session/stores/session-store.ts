@@ -1,4 +1,4 @@
-import { create } from "zustand";
+import type { StateCreator } from "zustand";
 import type { PermissionRequest, UIMessage } from "../types";
 
 export interface SessionState {
@@ -18,11 +18,15 @@ export interface SessionActions {
 
 export type SessionStore = SessionState & SessionActions;
 
-export const useSessionStore = create<SessionStore>(set => ({
+export const initialSessionState: SessionState = {
   activeSessionId: null,
   messages: [],
   isStreaming: false,
   pendingPermission: null,
+};
+
+export const createSessionStore: StateCreator<SessionStore> = set => ({
+  ...initialSessionState,
 
   setActiveSession: (id, messages) =>
     set({
@@ -36,21 +40,17 @@ export const useSessionStore = create<SessionStore>(set => ({
 
   updateLastMessage: partial =>
     set(state => {
-      const msgs = state.messages;
-      if (msgs.length === 0) return state;
-      const last = msgs[msgs.length - 1];
+      const lastMessage = state.messages.at(-1);
+      if (!lastMessage) {
+        return state;
+      }
+
       return {
-        messages: [...msgs.slice(0, -1), { ...last, ...partial }],
+        messages: [...state.messages.slice(0, -1), { ...lastMessage, ...partial }],
       };
     }),
 
-  setPendingPermission: req => set({ pendingPermission: req }),
+  setPendingPermission: pendingPermission => set({ pendingPermission }),
 
-  clearSession: () =>
-    set({
-      activeSessionId: null,
-      messages: [],
-      isStreaming: false,
-      pendingPermission: null,
-    }),
-}));
+  clearSession: () => set(initialSessionState),
+});

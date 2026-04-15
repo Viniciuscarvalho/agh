@@ -211,7 +211,10 @@ Prompt.
 		t.Fatalf("LoadAgentDefFile() shared.Command = %q, want %q", got, want)
 	}
 	if got := len(agent.MCPServers[1].Args); got != 0 {
-		t.Fatalf("LoadAgentDefFile() shared.Args = %#v, want sidecar whole-object replacement", agent.MCPServers[1].Args)
+		t.Fatalf(
+			"LoadAgentDefFile() shared.Args = %#v, want sidecar whole-object replacement",
+			agent.MCPServers[1].Args,
+		)
 	}
 	if got, want := agent.MCPServers[2].Name, "sidecar-only"; got != want {
 		t.Fatalf("LoadAgentDefFile() MCPServers[2].Name = %q, want %q", got, want)
@@ -312,11 +315,41 @@ func TestLoadWorkspaceAgentDefsAppliesDocumentedPrecedence(t *testing.T) {
 	additionalTwo := t.TempDir()
 
 	writeAgentDefinition(t, filepath.Join(homePaths.AgentsDir, "coder", agentDefName), "coder", "claude", "global")
-	writeAgentDefinition(t, filepath.Join(homePaths.AgentsDir, "reviewer", agentDefName), "reviewer", "claude", "global-review")
-	writeAgentDefinition(t, filepath.Join(additionalOne, DirName, AgentsDirName, "coder", agentDefName), "coder", "claude", "additional")
-	writeAgentDefinition(t, filepath.Join(additionalOne, DirName, AgentsDirName, "pairer", agentDefName), "pairer", "claude", "additional-pair")
-	writeAgentDefinition(t, filepath.Join(additionalTwo, DirName, AgentsDirName, "reviewer", agentDefName), "reviewer", "claude", "additional-review")
-	writeAgentDefinition(t, filepath.Join(root, DirName, AgentsDirName, "coder", agentDefName), "coder", "claude", "workspace")
+	writeAgentDefinition(
+		t,
+		filepath.Join(homePaths.AgentsDir, "reviewer", agentDefName),
+		"reviewer",
+		"claude",
+		"global-review",
+	)
+	writeAgentDefinition(
+		t,
+		filepath.Join(additionalOne, DirName, AgentsDirName, "coder", agentDefName),
+		"coder",
+		"claude",
+		"additional",
+	)
+	writeAgentDefinition(
+		t,
+		filepath.Join(additionalOne, DirName, AgentsDirName, "pairer", agentDefName),
+		"pairer",
+		"claude",
+		"additional-pair",
+	)
+	writeAgentDefinition(
+		t,
+		filepath.Join(additionalTwo, DirName, AgentsDirName, "reviewer", agentDefName),
+		"reviewer",
+		"claude",
+		"additional-review",
+	)
+	writeAgentDefinition(
+		t,
+		filepath.Join(root, DirName, AgentsDirName, "coder", agentDefName),
+		"coder",
+		"claude",
+		"workspace",
+	)
 
 	agents, err := LoadWorkspaceAgentDefs(root, []string{additionalOne, additionalTwo}, homePaths)
 	if err != nil {

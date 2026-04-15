@@ -1,6 +1,4 @@
 import { FolderPlus, Home, Loader2, Sparkles } from "lucide-react";
-import { useMemo, useState } from "react";
-import { toast } from "sonner";
 
 import { PillButton } from "@/components/design-system/pill-button";
 import { Button } from "@/components/ui/button";
@@ -13,9 +11,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { useDaemonStatus } from "@/systems/daemon";
 
-import { useResolveWorkspace } from "../hooks/use-workspaces";
+import {
+  useWorkspaceSetupContent,
+  type WorkspaceSetupVariant,
+} from "../hooks/use-workspace-setup-content";
 
 interface WorkspaceSetupSharedProps {
   onWorkspaceResolved: (workspaceId: string) => void;
@@ -28,20 +28,6 @@ interface WorkspaceSetupDialogProps extends WorkspaceSetupSharedProps {
 
 interface WorkspaceOnboardingProps extends WorkspaceSetupSharedProps {}
 
-type SubmissionMode = "global" | "manual" | null;
-type WorkspaceSetupVariant = "dialog" | "onboarding";
-
-function getErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.trim() !== "") {
-    return error.message;
-  }
-  return fallback;
-}
-
-function isAbsoluteWorkspacePath(path: string): boolean {
-  return path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path) || path.startsWith("\\\\");
-}
-
 function WorkspaceSetupContent({
   variant,
   onWorkspaceResolved,
@@ -50,64 +36,10 @@ function WorkspaceSetupContent({
   variant: WorkspaceSetupVariant;
   onSuccessClose?: () => void;
 }) {
-  const resolveWorkspace = useResolveWorkspace();
-  const daemonStatusQuery = useDaemonStatus();
-  const [manualPath, setManualPath] = useState("");
-  const [submissionMode, setSubmissionMode] = useState<SubmissionMode>(null);
-  const [manualError, setManualError] = useState<string | null>(null);
-
-  const userHomeDir = daemonStatusQuery.data?.user_home_dir ?? "";
-  const globalUnavailableReason = useMemo(() => {
-    if (daemonStatusQuery.isLoading) {
-      return "Loading daemon status...";
-    }
-
-    if (!userHomeDir) {
-      return "Daemon status unavailable. Connect AGH to use your global workspace.";
-    }
-
-    return null;
-  }, [daemonStatusQuery.isLoading, userHomeDir]);
-
-  const runResolve = async (path: string, mode: Exclude<SubmissionMode, null>) => {
-    setSubmissionMode(mode);
-    setManualError(null);
-
-    try {
-      const workspace = await resolveWorkspace.mutateAsync({ path });
-      onWorkspaceResolved(workspace.id);
-      if (mode === "manual") {
-        setManualPath("");
-      }
-      toast.success(`Workspace ready: ${workspace.name}`);
-      onSuccessClose?.();
-    } catch (error) {
-      const message = getErrorMessage(error, "Failed to register workspace");
-      if (mode === "manual") {
-        setManualError(message);
-      }
-      toast.error(message);
-    } finally {
-      setSubmissionMode(null);
-    }
-  };
-
-  const handleManualSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    const trimmedPath = manualPath.trim();
-    if (trimmedPath === "") {
-      setManualError("Workspace path is required.");
-      return;
-    }
-
-    if (!isAbsoluteWorkspacePath(trimmedPath)) {
-      setManualError("Workspace path must be absolute.");
-      return;
-    }
-
-    await runResolve(trimmedPath, "manual");
-  };
+  const setup = useWorkspaceSetupContent({
+    onSuccessClose,
+    onWorkspaceResolved,
+  });
 
   const globalCard = (
     <section
@@ -133,17 +65,17 @@ function WorkspaceSetupContent({
             Register your OS home directory as the default AGH workspace and start with one click.
           </p>
           <p className="mt-3 truncate font-mono text-[0.68rem] text-[color:var(--color-text-tertiary)]">
-            {userHomeDir || globalUnavailableReason}
+            {setup.userHomeDir || setup.globalUnavailableReason}
           </p>
         </div>
       </div>
       <Button
         className="mt-4 w-full justify-between text-[color:var(--color-accent-ink)]"
-        disabled={submissionMode !== null || globalUnavailableReason !== null}
-        onClick={() => void runResolve(userHomeDir, "global")}
+        disabled={setup.submissionMode !== null || setup.globalUnavailableReason !== null}
+        onClick={setup.handleUseGlobalWorkspace}
       >
         <span>Use global workspace</span>
-        {submissionMode === "global" ? <Loader2 className="animate-spin" /> : <Sparkles />}
+        {setup.submissionMode === "global" ? <Loader2 className="animate-spin" /> : <Sparkles />}
       </Button>
     </section>
   );
@@ -174,30 +106,34 @@ function WorkspaceSetupContent({
         </div>
       </div>
 
-      <form className="mt-4 flex flex-col gap-3" onSubmit={handleManualSubmit}>
+      <form className="mt-4 flex flex-col gap-3" onSubmit={setup.handleManualSubmit}>
         <Input
           aria-label="Workspace path"
           className="border-[color:var(--color-divider)] bg-[color:var(--color-surface-panel)]"
-          disabled={submissionMode !== null}
-          onChange={event => setManualPath(event.currentTarget.value)}
+          disabled={setup.submissionMode !== null}
+          onChange={event => setup.setManualPath(event.currentTarget.value)}
           placeholder="/Users/name/project"
-          value={manualPath}
+          value={setup.manualPath}
         />
-        {manualError && (
+        {setup.manualError && (
           <p
             className="text-sm text-[color:var(--color-danger)]"
             data-testid="workspace-path-error"
           >
-            {manualError}
+            {setup.manualError}
           </p>
         )}
         <Button
           className="w-full justify-between text-[color:var(--color-accent-ink)]"
-          disabled={submissionMode !== null}
+          disabled={setup.submissionMode !== null}
           type="submit"
         >
           <span>Register workspace</span>
-          {submissionMode === "manual" ? <Loader2 className="animate-spin" /> : <FolderPlus />}
+          {setup.submissionMode === "manual" ? (
+            <Loader2 className="animate-spin" />
+          ) : (
+            <FolderPlus />
+          )}
         </Button>
       </form>
     </section>

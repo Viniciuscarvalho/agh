@@ -355,14 +355,14 @@ func TestUDSShutdownWaitsForInflightRequests(t *testing.T) {
 	release := make(chan struct{})
 	server, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithSocketPath(socketPath),
 		WithLogger(discardLogger()),
 		WithSessionManager(stubSessionManager{
-			ListAllFn: func(context.Context) ([]*session.SessionInfo, error) {
+			ListAllFn: func(context.Context) ([]*session.Info, error) {
 				entered <- struct{}{}
 				<-release
-				return []*session.SessionInfo{newSessionInfo("sess-1")}, nil
+				return []*session.Info{newSessionInfo("sess-1")}, nil
 			},
 		}),
 		WithTaskService(stubTaskManager{}),
@@ -704,8 +704,8 @@ func TestUDSTaskRunLifecycleRoutesRoundTrip(t *testing.T) {
 	}
 	var cancelled contract.TaskRunResponse
 	decodeHTTPJSON(t, cancelResp, &cancelled)
-	if cancelled.Run.Status != taskpkg.TaskRunStatusCancelled {
-		t.Fatalf("cancelled status = %q, want %q", cancelled.Run.Status, taskpkg.TaskRunStatusCancelled)
+	if cancelled.Run.Status != taskpkg.TaskRunStatusCanceled {
+		t.Fatalf("cancelled status = %q, want %q", cancelled.Run.Status, taskpkg.TaskRunStatusCanceled)
 	}
 
 	finalRunsResp := mustUnixRequest(t, runtime.client, http.MethodGet, "http://unix/api/tasks/"+created.ID+"/runs", nil, nil)
@@ -720,11 +720,11 @@ func TestUDSTaskRunLifecycleRoutesRoundTrip(t *testing.T) {
 		t.Fatalf("len(final runs) = %d, want 3", len(finalRuns.Runs))
 	}
 
-	seenStatuses := map[taskpkg.TaskRunStatus]int{}
+	seenStatuses := map[taskpkg.RunStatus]int{}
 	for _, run := range finalRuns.Runs {
 		seenStatuses[run.Status]++
 	}
-	if seenStatuses[taskpkg.TaskRunStatusCompleted] != 1 || seenStatuses[taskpkg.TaskRunStatusFailed] != 1 || seenStatuses[taskpkg.TaskRunStatusCancelled] != 1 {
+	if seenStatuses[taskpkg.TaskRunStatusCompleted] != 1 || seenStatuses[taskpkg.TaskRunStatusFailed] != 1 || seenStatuses[taskpkg.TaskRunStatusCanceled] != 1 {
 		t.Fatalf("final run statuses = %#v, want one completed, failed, cancelled", seenStatuses)
 	}
 }
@@ -733,7 +733,7 @@ type integrationRuntime struct {
 	client    *http.Client
 	server    *Server
 	manager   *session.Manager
-	tasks     *taskpkg.TaskManager
+	tasks     *taskpkg.Service
 	observer  *observe.Observer
 	registry  *globaldb.GlobalDB
 	bridges   *integrationBridgeService
@@ -747,7 +747,10 @@ type integrationTaskSessionExecutor struct {
 	started int
 }
 
-func (e *integrationTaskSessionExecutor) StartTaskSession(_ context.Context, _ taskpkg.StartTaskSession) (*taskpkg.SessionRef, error) {
+func (e *integrationTaskSessionExecutor) StartTaskSession(
+	_ context.Context,
+	_ *taskpkg.StartTaskSession,
+) (*taskpkg.SessionRef, error) {
 	e.started++
 	return &taskpkg.SessionRef{SessionID: fmt.Sprintf("task-sess-%d", e.started)}, nil
 }
@@ -939,7 +942,7 @@ func (d *integrationDriver) Start(_ context.Context, opts acp.StartOpts) (*sessi
 		Command:   opts.Command,
 		Cwd:       opts.Cwd,
 		SessionID: sessionID,
-		Caps: acp.ACPCaps{
+		Caps: acp.Caps{
 			SupportsLoadSession: true,
 			SupportedModels:     []string{"fake-model"},
 		},
@@ -1097,7 +1100,7 @@ func newIntegrationRuntime(t *testing.T) integrationRuntime {
 
 	server, err := New(
 		WithHomePaths(homePaths),
-		WithConfig(cfg),
+		WithConfig(&cfg),
 		WithSocketPath(socketPath),
 		WithLogger(discardLogger()),
 		WithSessionManager(manager),

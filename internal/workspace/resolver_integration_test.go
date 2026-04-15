@@ -141,7 +141,7 @@ func TestResolverIntegrationResolveUpdatesStaleSymlinkRegistration(t *testing.T)
 	}
 }
 
-func newIntegrationResolver(t *testing.T, store aghworkspace.WorkspaceStore, homePaths aghconfig.HomePaths) *aghworkspace.Resolver {
+func newIntegrationResolver(t *testing.T, store aghworkspace.Store, homePaths aghconfig.HomePaths) *aghworkspace.Resolver {
 	t.Helper()
 
 	resolver, err := aghworkspace.NewResolver(store,

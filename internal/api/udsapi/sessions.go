@@ -9,5 +9,10 @@ import (
 )
 
 func (h *Handlers) approveSession(c *gin.Context) {
-	core.RespondError(c, http.StatusNotImplemented, errors.New("interactive permission approval is not implemented"), false)
+	core.RespondError(
+		c,
+		http.StatusNotImplemented,
+		errors.New("interactive permission approval is not implemented"),
+		false,
+	)
 }

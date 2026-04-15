@@ -21,6 +21,7 @@ const (
 	defaultTransportReadyTimeout   = 5 * time.Second
 	defaultTransportPublishTimeout = 5 * time.Second
 	subjectPrefix                  = "agh.network.v0"
+	maxNATSPayloadBytes            = int(^uint32(0) >> 1)
 )
 
 // TransportOption customizes embedded transport startup behavior.
@@ -98,40 +99,18 @@ func NewTransport(ctx context.Context, cfg aghconfig.NetworkConfig, opts ...Tran
 		return nil, fmt.Errorf("network: validate transport config: %w", err)
 	}
 
-	options := transportOptions{
-		logger:         slog.Default(),
-		readyTimeout:   defaultTransportReadyTimeout,
-		publishTimeout: defaultTransportPublishTimeout,
-	}
-	for _, opt := range opts {
-		if opt != nil {
-			opt(&options)
-		}
-	}
-	if options.logger == nil {
-		options.logger = slog.Default()
-	}
-	if options.readyTimeout <= 0 {
-		options.readyTimeout = defaultTransportReadyTimeout
-	}
-	if options.publishTimeout <= 0 {
-		options.publishTimeout = defaultTransportPublishTimeout
-	}
+	options := resolveTransportOptions(opts...)
 
 	token := rand.Text()
-	serverOptions := &server.Options{
-		Authorization: token,
-		Host:          "127.0.0.1",
-		Port:          cfg.Port,
-		NoSigs:        true,
-		MaxPayload:    int32(cfg.MaxPayload),
+	serverOptions, err := newEmbeddedServerOptions(cfg, token)
+	if err != nil {
+		return nil, err
 	}
 
 	natsServer, err := server.NewServer(serverOptions)
 	if err != nil {
 		return nil, fmt.Errorf("network: create embedded nats server: %w", err)
 	}
-
 	natsServer.Start()
 	if !natsServer.ReadyForConnections(options.readyTimeout) {
 		natsServer.Shutdown()
@@ -179,6 +158,59 @@ func NewTransport(ctx context.Context, cfg aghconfig.NetworkConfig, opts ...Tran
 	}
 
 	return transport, nil
+}
+
+func resolveTransportOptions(opts ...TransportOption) transportOptions {
+	options := transportOptions{
+		logger:         slog.Default(),
+		readyTimeout:   defaultTransportReadyTimeout,
+		publishTimeout: defaultTransportPublishTimeout,
+	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&options)
+		}
+	}
+	if options.logger == nil {
+		options.logger = slog.Default()
+	}
+	if options.readyTimeout <= 0 {
+		options.readyTimeout = defaultTransportReadyTimeout
+	}
+	if options.publishTimeout <= 0 {
+		options.publishTimeout = defaultTransportPublishTimeout
+	}
+	return options
+}
+
+func newEmbeddedServerOptions(cfg aghconfig.NetworkConfig, token string) (*server.Options, error) {
+	maxPayload, err := natsMaxPayload(cfg.MaxPayload)
+	if err != nil {
+		return nil, err
+	}
+
+	return &server.Options{
+		Authorization: token,
+		Host:          "127.0.0.1",
+		Port:          cfg.Port,
+		NoSigs:        true,
+		MaxPayload:    maxPayload,
+	}, nil
+}
+
+func natsMaxPayload(maxPayload int) (int32, error) {
+	if maxPayload < 0 {
+		return 0, fmt.Errorf("%w: network max payload must be non-negative", ErrInvalidField)
+	}
+	if maxPayload > maxNATSPayloadBytes {
+		return 0, fmt.Errorf(
+			"%w: network max payload %d exceeds supported limit %d",
+			ErrInvalidField,
+			maxPayload,
+			maxNATSPayloadBytes,
+		)
+	}
+	return int32(maxPayload), nil
 }
 
 // Port reports the resolved listener port. Random-port servers return the
@@ -265,7 +297,8 @@ func (t *Transport) Drain(ctx context.Context) error {
 	t.drained = true
 	t.mu.Unlock()
 
-	if err := t.conn.Drain(); err != nil && !errors.Is(err, nats.ErrConnectionClosed) && !errors.Is(err, nats.ErrConnectionDraining) {
+	if err := t.conn.Drain(); err != nil && !errors.Is(err, nats.ErrConnectionClosed) &&
+		!errors.Is(err, nats.ErrConnectionDraining) {
 		return fmt.Errorf("network: drain embedded nats client: %w", err)
 	}
 

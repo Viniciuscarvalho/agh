@@ -1,4 +1,4 @@
-package extension_test
+package extensionpkg_test
 
 import (
 	"strings"

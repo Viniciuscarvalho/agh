@@ -16,8 +16,7 @@ import (
 func TestPeerCallDispatchesRequestAndResponse(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	leftConn, rightConn := net.Pipe()
 	defer func() {
@@ -55,8 +54,7 @@ func TestPeerCallDispatchesRequestAndResponse(t *testing.T) {
 func TestPeerCallReturnsRPCError(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	leftConn, rightConn := net.Pipe()
 	defer func() {
@@ -103,8 +101,7 @@ func TestPeerHandleRejectsInvalidRegistration(t *testing.T) {
 func TestPeerCallReturnsContextErrorWhenResponseDoesNotArrive(t *testing.T) {
 	t.Parallel()
 
-	parentCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	parentCtx := t.Context()
 
 	leftConn, rightConn := net.Pipe()
 	defer func() {

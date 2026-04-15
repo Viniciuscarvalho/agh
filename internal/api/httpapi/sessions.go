@@ -13,7 +13,12 @@ import (
 func (h *Handlers) approveSession(c *gin.Context) {
 	var req contract.ApproveSessionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		core.RespondError(c, http.StatusBadRequest, fmt.Errorf("httpapi: decode approve session request: %w", err), true)
+		core.RespondError(
+			c,
+			http.StatusBadRequest,
+			fmt.Errorf("httpapi: decode approve session request: %w", err),
+			true,
+		)
 		return
 	}
 

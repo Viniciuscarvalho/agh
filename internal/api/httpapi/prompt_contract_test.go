@@ -14,9 +14,9 @@ func TestPromptStreamPayloadsRemainTransportLocal(t *testing.T) {
 	t.Run("Should keep transport payloads local and separate from shared contract", func(t *testing.T) {
 		t.Parallel()
 
-		promptPkg := reflect.TypeOf(promptRequest{}).PkgPath()
-		transportPkg := reflect.TypeOf(agentEventPayload{}).PkgPath()
-		sharedPkg := reflect.TypeOf(contract.AgentEventPayload{}).PkgPath()
+		promptPkg := reflect.TypeFor[promptRequest]().PkgPath()
+		transportPkg := reflect.TypeFor[agentEventPayload]().PkgPath()
+		sharedPkg := reflect.TypeFor[contract.AgentEventPayload]().PkgPath()
 
 		if promptPkg != transportPkg {
 			t.Fatalf("prompt payload package = %q, agent event package = %q", promptPkg, transportPkg)
@@ -25,7 +25,7 @@ func TestPromptStreamPayloadsRemainTransportLocal(t *testing.T) {
 			t.Fatalf("transport-local payload unexpectedly uses shared contract package %q", sharedPkg)
 		}
 
-		transportTimestamp, ok := reflect.TypeOf(agentEventPayload{}).FieldByName("Timestamp")
+		transportTimestamp, ok := reflect.TypeFor[agentEventPayload]().FieldByName("Timestamp")
 		if !ok {
 			t.Fatal("agentEventPayload.Timestamp field is missing")
 		}
@@ -33,11 +33,11 @@ func TestPromptStreamPayloadsRemainTransportLocal(t *testing.T) {
 			t.Fatalf("transport timestamp type = %v, want string", transportTimestamp.Type)
 		}
 
-		sharedTimestamp, ok := reflect.TypeOf(contract.AgentEventPayload{}).FieldByName("Timestamp")
+		sharedTimestamp, ok := reflect.TypeFor[contract.AgentEventPayload]().FieldByName("Timestamp")
 		if !ok {
 			t.Fatal("contract.AgentEventPayload.Timestamp field is missing")
 		}
-		if sharedTimestamp.Type != reflect.TypeOf(time.Time{}) {
+		if sharedTimestamp.Type != reflect.TypeFor[time.Time]() {
 			t.Fatalf("shared timestamp type = %v, want time.Time", sharedTimestamp.Type)
 		}
 	})

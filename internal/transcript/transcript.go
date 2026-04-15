@@ -87,7 +87,7 @@ type canonicalEventPayload struct {
 	SessionID  string          `json:"session_id,omitempty"`
 	TurnID     string          `json:"turn_id,omitempty"`
 	RequestID  string          `json:"request_id,omitempty"`
-	Timestamp  time.Time       `json:"timestamp,omitempty"`
+	Timestamp  time.Time       `json:"timestamp"`
 	Text       string          `json:"text,omitempty"`
 	Title      string          `json:"title,omitempty"`
 	ToolName   string          `json:"tool_name,omitempty"`
@@ -110,6 +110,21 @@ func Assemble(events []store.SessionEvent) ([]Message, error) {
 		return []Message{}, nil
 	}
 
+	sorted := sortedTranscriptEvents(events)
+
+	messages := make([]Message, 0, len(sorted))
+	var assistant assistantBuffer
+	toolStates := make(map[string]*toolLifecycle)
+
+	for _, sessionEvent := range sorted {
+		processTranscriptEvent(&messages, &assistant, toolStates, parseEvent(sessionEvent))
+	}
+
+	flushAssistantBuffer(&messages, &assistant)
+	return messages, nil
+}
+
+func sortedTranscriptEvents(events []store.SessionEvent) []store.SessionEvent {
 	sorted := append([]store.SessionEvent(nil), events...)
 	sort.SliceStable(sorted, func(i, j int) bool {
 		if sorted[i].Sequence == sorted[j].Sequence {
@@ -120,88 +135,98 @@ func Assemble(events []store.SessionEvent) ([]Message, error) {
 		}
 		return sorted[i].Sequence < sorted[j].Sequence
 	})
+	return sorted
+}
 
-	messages := make([]Message, 0, len(sorted))
-	var assistant assistantBuffer
-	toolStates := make(map[string]*toolLifecycle)
+func processTranscriptEvent(
+	messages *[]Message,
+	assistant *assistantBuffer,
+	toolStates map[string]*toolLifecycle,
+	parsed event,
+) {
+	flushAssistantOnTurnChange(messages, assistant, parsed)
 
-	flushAssistant := func() {
-		if assistant.id == "" {
-			return
-		}
-		content := assistant.content.String()
-		thinking := assistant.thinking.String()
-		if strings.TrimSpace(content) == "" && strings.TrimSpace(thinking) == "" {
-			assistant = assistantBuffer{}
-			return
-		}
+	switch parsed.Type {
+	case acp.EventTypeUserMessage:
+		appendUserTranscriptMessage(messages, assistant, parsed)
+	case acp.EventTypeAgentMessage:
+		appendAssistantTranscriptContent(assistant, parsed, false)
+	case acp.EventTypeThought:
+		appendAssistantTranscriptContent(assistant, parsed, true)
+	case acp.EventTypeToolCall:
+		flushAssistantBuffer(messages, assistant)
+		applyToolCall(messages, toolStates, parsed)
+	case acp.EventTypeToolResult:
+		flushAssistantBuffer(messages, assistant)
+		applyToolResult(messages, toolStates, parsed)
+	default:
+		flushAssistantBuffer(messages, assistant)
+	}
+}
 
-		messages = append(messages, Message{
-			ID:               assistant.id,
-			Role:             RoleAssistant,
-			Content:          content,
-			Thinking:         thinking,
-			ThinkingComplete: strings.TrimSpace(thinking) != "",
-			Timestamp:        assistant.timestamp,
-		})
-		assistant = assistantBuffer{}
+func flushAssistantOnTurnChange(messages *[]Message, assistant *assistantBuffer, parsed event) {
+	if assistant.id == "" || assistant.turnID == "" || parsed.TurnID == "" {
+		return
+	}
+	if assistant.turnID != parsed.TurnID {
+		flushAssistantBuffer(messages, assistant)
+	}
+}
+
+func appendUserTranscriptMessage(messages *[]Message, assistant *assistantBuffer, parsed event) {
+	flushAssistantBuffer(messages, assistant)
+	if strings.TrimSpace(parsed.Text) == "" {
+		return
+	}
+	*messages = append(*messages, Message{
+		ID:        parsed.ID,
+		Role:      RoleUser,
+		Content:   parsed.Text,
+		Timestamp: parsed.Timestamp,
+	})
+}
+
+func appendAssistantTranscriptContent(assistant *assistantBuffer, parsed event, thinking bool) {
+	if strings.TrimSpace(parsed.Text) == "" && assistant.id == "" {
+		return
+	}
+	ensureAssistantBuffer(assistant, parsed)
+	if thinking {
+		assistant.thinking.WriteString(parsed.Text)
+		return
+	}
+	assistant.content.WriteString(parsed.Text)
+}
+
+func ensureAssistantBuffer(assistant *assistantBuffer, parsed event) {
+	if assistant.id != "" {
+		return
+	}
+	assistant.id = parsed.ID
+	assistant.turnID = parsed.TurnID
+	assistant.timestamp = parsed.Timestamp
+}
+
+func flushAssistantBuffer(messages *[]Message, assistant *assistantBuffer) {
+	if assistant.id == "" {
+		return
+	}
+	content := assistant.content.String()
+	thinking := assistant.thinking.String()
+	if strings.TrimSpace(content) == "" && strings.TrimSpace(thinking) == "" {
+		*assistant = assistantBuffer{}
+		return
 	}
 
-	for _, sessionEvent := range sorted {
-		parsed, err := parseEvent(sessionEvent)
-		if err != nil {
-			return nil, err
-		}
-
-		if assistant.id != "" && assistant.turnID != "" && parsed.TurnID != "" && assistant.turnID != parsed.TurnID {
-			flushAssistant()
-		}
-
-		switch parsed.Type {
-		case acp.EventTypeUserMessage:
-			flushAssistant()
-			if strings.TrimSpace(parsed.Text) == "" {
-				continue
-			}
-			messages = append(messages, Message{
-				ID:        parsed.ID,
-				Role:      RoleUser,
-				Content:   parsed.Text,
-				Timestamp: parsed.Timestamp,
-			})
-		case acp.EventTypeAgentMessage:
-			if strings.TrimSpace(parsed.Text) == "" && assistant.id == "" {
-				continue
-			}
-			if assistant.id == "" {
-				assistant.id = parsed.ID
-				assistant.turnID = parsed.TurnID
-				assistant.timestamp = parsed.Timestamp
-			}
-			assistant.content.WriteString(parsed.Text)
-		case acp.EventTypeThought:
-			if strings.TrimSpace(parsed.Text) == "" && assistant.id == "" {
-				continue
-			}
-			if assistant.id == "" {
-				assistant.id = parsed.ID
-				assistant.turnID = parsed.TurnID
-				assistant.timestamp = parsed.Timestamp
-			}
-			assistant.thinking.WriteString(parsed.Text)
-		case acp.EventTypeToolCall:
-			flushAssistant()
-			applyToolCall(&messages, toolStates, parsed)
-		case acp.EventTypeToolResult:
-			flushAssistant()
-			applyToolResult(&messages, toolStates, parsed)
-		default:
-			flushAssistant()
-		}
-	}
-
-	flushAssistant()
-	return messages, nil
+	*messages = append(*messages, Message{
+		ID:               assistant.id,
+		Role:             RoleAssistant,
+		Content:          content,
+		Thinking:         thinking,
+		ThinkingComplete: strings.TrimSpace(thinking) != "",
+		Timestamp:        assistant.timestamp,
+	})
+	*assistant = assistantBuffer{}
 }
 
 func applyToolCall(messages *[]Message, toolStates map[string]*toolLifecycle, parsed event) {
@@ -294,12 +319,13 @@ func mergeToolCallMessage(msg *Message, parsed event) {
 		return
 	}
 	msg.ToolName = firstNonEmpty(msg.ToolName, parsed.ToolName)
-	if (len(msg.ToolInput) == 0 || rawMessageIsEmptyObject(msg.ToolInput)) && len(parsed.ToolInput) > 0 && !rawMessageIsEmptyObject(parsed.ToolInput) {
+	if (len(msg.ToolInput) == 0 || rawMessageIsEmptyObject(msg.ToolInput)) && len(parsed.ToolInput) > 0 &&
+		!rawMessageIsEmptyObject(parsed.ToolInput) {
 		msg.ToolInput = acp.CloneRawMessage(parsed.ToolInput)
 	}
 }
 
-func parseEvent(sessionEvent store.SessionEvent) (event, error) {
+func parseEvent(sessionEvent store.SessionEvent) event {
 	parsed := event{
 		ID:        strings.TrimSpace(sessionEvent.ID),
 		TurnID:    strings.TrimSpace(sessionEvent.TurnID),
@@ -309,25 +335,26 @@ func parseEvent(sessionEvent store.SessionEvent) (event, error) {
 
 	content := strings.TrimSpace(sessionEvent.Content)
 	if content == "" {
-		return parsed, nil
+		return parsed
 	}
 
 	var payload map[string]any
 	if err := json.Unmarshal([]byte(content), &payload); err != nil {
-		if parsed.Type == acp.EventTypeUserMessage || parsed.Type == acp.EventTypeAgentMessage || parsed.Type == acp.EventTypeThought {
+		if parsed.Type == acp.EventTypeUserMessage || parsed.Type == acp.EventTypeAgentMessage ||
+			parsed.Type == acp.EventTypeThought {
 			parsed.Text = content
-			return parsed, nil
+			return parsed
 		}
-		return parsed, nil
+		return parsed
 	}
 
 	if schema := nestedString(payload, "schema"); schema == CanonicalSchema {
-		return parseCanonicalEvent(parsed, payload), nil
+		return parseCanonicalEvent(parsed, payload)
 	}
 	if _, ok := payload["sessionUpdate"]; ok {
-		return parseLegacyEvent(parsed, payload), nil
+		return parseLegacyEvent(parsed, payload)
 	}
-	return parseLooseEvent(parsed, payload), nil
+	return parseLooseEvent(parsed, payload)
 }
 
 func parseCanonicalEvent(parsed event, payload map[string]any) event {
@@ -390,7 +417,11 @@ func parseLooseEvent(parsed event, payload map[string]any) event {
 	parsed.Type = firstNonEmpty(nestedString(payload, "type"), parsed.Type)
 	parsed.Text = nestedString(payload, "text")
 	parsed.ToolCallID = firstNonEmpty(nestedString(payload, "tool_call_id"), nestedString(payload, "toolCallId"))
-	parsed.ToolName = firstNonEmpty(nestedString(payload, "tool_name"), nestedString(payload, "title"), legacyToolName(payload))
+	parsed.ToolName = firstNonEmpty(
+		nestedString(payload, "tool_name"),
+		nestedString(payload, "title"),
+		legacyToolName(payload),
+	)
 	parsed.ToolInput = acp.CloneRawMessage(firstNonEmptyRaw(
 		rawMessageFromValue(payload["tool_input"]),
 		rawMessageFromValue(payload["rawInput"]),
@@ -428,7 +459,11 @@ func buildToolResult(toolName string, failed bool, contentText string, rawOutput
 		if mapped := map[string]any(nil); json.Unmarshal(raw, &mapped) == nil {
 			result.Stdout = firstNonEmpty(result.Stdout, nestedString(mapped, "stdout"))
 			result.Stderr = firstNonEmpty(result.Stderr, nestedString(mapped, "stderr"))
-			result.FilePath = firstNonEmpty(result.FilePath, nestedString(mapped, "file_path"), nestedString(mapped, "filePath"))
+			result.FilePath = firstNonEmpty(
+				result.FilePath,
+				nestedString(mapped, "file_path"),
+				nestedString(mapped, "filePath"),
+			)
 			result.Content = firstNonEmpty(result.Content, nestedString(mapped, "content"))
 			result.Error = firstNonEmpty(result.Error, nestedString(mapped, "error"))
 			if patch := rawMessageFromValue(mapped["structuredPatch"]); len(patch) > 0 {
@@ -614,7 +649,17 @@ func firstNonNil(values ...any) any {
 	return nil
 }
 
-func canonicalPayload(eventType string, turnID string, timestamp time.Time, text string, toolName string, toolCallID string, toolInput json.RawMessage, toolResult *ToolResult, toolError bool) ([]byte, error) {
+func canonicalPayload(
+	eventType string,
+	turnID string,
+	timestamp time.Time,
+	text string,
+	toolName string,
+	toolCallID string,
+	toolInput json.RawMessage,
+	toolResult *ToolResult,
+	toolError bool,
+) ([]byte, error) {
 	payload := canonicalEventPayload{
 		Schema:     CanonicalSchema,
 		Type:       strings.TrimSpace(eventType),

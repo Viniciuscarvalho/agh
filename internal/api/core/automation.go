@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"strconv"
 	"strings"
@@ -68,7 +69,13 @@ func (h *BaseHandlers) CreateAutomationJob(c *gin.Context) {
 
 	var req contract.CreateJobRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.respondError(c, http.StatusBadRequest, NewAutomationValidationError(fmt.Errorf("%s: decode automation job create request: %w", h.transportName(), err)))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewAutomationValidationError(
+				fmt.Errorf("%s: decode automation job create request: %w", h.transportName(), err),
+			),
+		)
 		return
 	}
 
@@ -86,7 +93,10 @@ func (h *BaseHandlers) CreateAutomationJob(c *gin.Context) {
 
 	nextRunByID := h.automationNextRunByJobIDBestEffort(c.Request.Context(), manager, "create_job")
 
-	c.JSON(http.StatusCreated, contract.JobResponse{Job: JobPayloadFromJob(created, timePointerFromMap(nextRunByID, created.ID))})
+	c.JSON(
+		http.StatusCreated,
+		contract.JobResponse{Job: JobPayloadFromJob(created, timePointerFromMap(nextRunByID, created.ID))},
+	)
 }
 
 // GetAutomationJob returns one automation job by id.
@@ -120,11 +130,21 @@ func (h *BaseHandlers) UpdateAutomationJob(c *gin.Context) {
 
 	var req contract.UpdateJobRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.respondError(c, http.StatusBadRequest, NewAutomationValidationError(fmt.Errorf("%s: decode automation job update request: %w", h.transportName(), err)))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewAutomationValidationError(
+				fmt.Errorf("%s: decode automation job update request: %w", h.transportName(), err),
+			),
+		)
 		return
 	}
 	if !req.HasChanges() {
-		h.respondError(c, http.StatusBadRequest, NewAutomationValidationError(errors.New("automation job update must include at least one field")))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewAutomationValidationError(errors.New("automation job update must include at least one field")),
+		)
 		return
 	}
 
@@ -157,7 +177,10 @@ func (h *BaseHandlers) UpdateAutomationJob(c *gin.Context) {
 
 	nextRunByID := h.automationNextRunByJobIDBestEffort(c.Request.Context(), manager, "update_job")
 
-	c.JSON(http.StatusOK, contract.JobResponse{Job: JobPayloadFromJob(updated, timePointerFromMap(nextRunByID, updated.ID))})
+	c.JSON(
+		http.StatusOK,
+		contract.JobResponse{Job: JobPayloadFromJob(updated, timePointerFromMap(nextRunByID, updated.ID))},
+	)
 }
 
 // DeleteAutomationJob removes one dynamic automation job definition.
@@ -173,7 +196,11 @@ func (h *BaseHandlers) DeleteAutomationJob(c *gin.Context) {
 		return
 	}
 	if current.Source == automationpkg.JobSourceConfig {
-		h.respondError(c, http.StatusBadRequest, NewAutomationValidationError(errors.New("config-backed automation jobs cannot be deleted")))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewAutomationValidationError(errors.New("config-backed automation jobs cannot be deleted")),
+		)
 		return
 	}
 
@@ -259,7 +286,13 @@ func (h *BaseHandlers) CreateAutomationTrigger(c *gin.Context) {
 
 	var req contract.CreateTriggerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.respondError(c, http.StatusBadRequest, NewAutomationValidationError(fmt.Errorf("%s: decode automation trigger create request: %w", h.transportName(), err)))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewAutomationValidationError(
+				fmt.Errorf("%s: decode automation trigger create request: %w", h.transportName(), err),
+			),
+		)
 		return
 	}
 
@@ -302,11 +335,21 @@ func (h *BaseHandlers) UpdateAutomationTrigger(c *gin.Context) {
 
 	var req contract.UpdateTriggerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.respondError(c, http.StatusBadRequest, NewAutomationValidationError(fmt.Errorf("%s: decode automation trigger update request: %w", h.transportName(), err)))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewAutomationValidationError(
+				fmt.Errorf("%s: decode automation trigger update request: %w", h.transportName(), err),
+			),
+		)
 		return
 	}
 	if !req.HasChanges() {
-		h.respondError(c, http.StatusBadRequest, NewAutomationValidationError(errors.New("automation trigger update must include at least one field")))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewAutomationValidationError(errors.New("automation trigger update must include at least one field")),
+		)
 		return
 	}
 
@@ -353,7 +396,11 @@ func (h *BaseHandlers) DeleteAutomationTrigger(c *gin.Context) {
 		return
 	}
 	if current.Source == automationpkg.JobSourceConfig {
-		h.respondError(c, http.StatusBadRequest, NewAutomationValidationError(errors.New("config-backed automation triggers cannot be deleted")))
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewAutomationValidationError(errors.New("config-backed automation triggers cannot be deleted")),
+		)
 		return
 	}
 
@@ -439,7 +486,7 @@ func (h *BaseHandlers) DeliverWorkspaceWebhook(c *gin.Context) {
 	h.deliverWebhook(c, automationpkg.AutomationScopeWorkspace)
 }
 
-func (h *BaseHandlers) deliverWebhook(c *gin.Context, scope automationpkg.AutomationScope) {
+func (h *BaseHandlers) deliverWebhook(c *gin.Context, scope automationpkg.Scope) {
 	manager, ok := h.requireAutomationManager(c)
 	if !ok {
 		return
@@ -461,13 +508,20 @@ func (h *BaseHandlers) deliverWebhook(c *gin.Context, scope automationpkg.Automa
 
 func (h *BaseHandlers) requireAutomationManager(c *gin.Context) (AutomationManager, bool) {
 	if h.Automation == nil {
-		h.respondError(c, http.StatusServiceUnavailable, fmt.Errorf("%s: automation manager is not configured", h.transportName()))
+		h.respondError(
+			c,
+			http.StatusServiceUnavailable,
+			fmt.Errorf("%s: automation manager is not configured", h.transportName()),
+		)
 		return nil, false
 	}
 	return h.Automation, true
 }
 
-func (h *BaseHandlers) automationNextRunByJobID(ctx context.Context, manager AutomationManager) (map[string]*time.Time, error) {
+func (h *BaseHandlers) automationNextRunByJobID(
+	ctx context.Context,
+	manager AutomationManager,
+) (map[string]*time.Time, error) {
 	if manager == nil {
 		return nil, nil
 	}
@@ -488,7 +542,11 @@ func (h *BaseHandlers) automationNextRunByJobID(ctx context.Context, manager Aut
 	return nextRunByID, nil
 }
 
-func (h *BaseHandlers) automationNextRunByJobIDBestEffort(ctx context.Context, manager AutomationManager, operation string) map[string]*time.Time {
+func (h *BaseHandlers) automationNextRunByJobIDBestEffort(
+	ctx context.Context,
+	manager AutomationManager,
+	operation string,
+) map[string]*time.Time {
 	nextRunByID, err := h.automationNextRunByJobID(ctx, manager)
 	if err == nil {
 		return nextRunByID
@@ -532,7 +590,7 @@ func ParseAutomationJobListQuery(c *gin.Context) (automationpkg.JobListQuery, er
 		Limit:       limit,
 	}
 	if rawScope := strings.TrimSpace(c.Query("scope")); rawScope != "" {
-		query.Scope = automationpkg.AutomationScope(rawScope)
+		query.Scope = automationpkg.Scope(rawScope)
 		if err := query.Scope.Validate("scope"); err != nil {
 			return automationpkg.JobListQuery{}, err
 		}
@@ -559,7 +617,7 @@ func ParseAutomationTriggerListQuery(c *gin.Context) (automationpkg.TriggerListQ
 		Limit:       limit,
 	}
 	if rawScope := strings.TrimSpace(c.Query("scope")); rawScope != "" {
-		query.Scope = automationpkg.AutomationScope(rawScope)
+		query.Scope = automationpkg.Scope(rawScope)
 		if err := query.Scope.Validate("scope"); err != nil {
 			return automationpkg.TriggerListQuery{}, err
 		}
@@ -604,7 +662,7 @@ func ParseAutomationRunQuery(c *gin.Context) (automationpkg.RunQuery, error) {
 	return query, nil
 }
 
-func webhookRequestFromHTTP(c *gin.Context, scope automationpkg.AutomationScope) (automationpkg.WebhookRequest, error) {
+func webhookRequestFromHTTP(c *gin.Context, scope automationpkg.Scope) (automationpkg.WebhookRequest, error) {
 	workspaceID := strings.TrimSpace(c.Param("workspace_id"))
 	if err := scope.Validate("scope"); err != nil {
 		return automationpkg.WebhookRequest{}, NewAutomationValidationError(err)
@@ -625,11 +683,15 @@ func webhookRequestFromHTTP(c *gin.Context, scope automationpkg.AutomationScope)
 
 	signature := strings.TrimSpace(c.GetHeader(WebhookSignatureHeader))
 	if signature == "" {
-		return automationpkg.WebhookRequest{}, NewAutomationValidationError(errors.New("webhook signature header is required"))
+		return automationpkg.WebhookRequest{}, NewAutomationValidationError(
+			errors.New("webhook signature header is required"),
+		)
 	}
 	deliveryID := strings.TrimSpace(c.GetHeader(WebhookDeliveryIDHeader))
 	if deliveryID == "" {
-		return automationpkg.WebhookRequest{}, NewAutomationValidationError(errors.New("webhook delivery id header is required"))
+		return automationpkg.WebhookRequest{}, NewAutomationValidationError(
+			errors.New("webhook delivery id header is required"),
+		)
 	}
 
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxWebhookPayloadSize)
@@ -637,7 +699,9 @@ func webhookRequestFromHTTP(c *gin.Context, scope automationpkg.AutomationScope)
 	if err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
-			return automationpkg.WebhookRequest{}, NewAutomationValidationError(fmt.Errorf("webhook request body exceeds %d bytes: %w", maxWebhookPayloadSize, err))
+			return automationpkg.WebhookRequest{}, NewAutomationValidationError(
+				fmt.Errorf("webhook request body exceeds %d bytes: %w", maxWebhookPayloadSize, err),
+			)
 		}
 		return automationpkg.WebhookRequest{}, fmt.Errorf("%s: read webhook request body: %w", c.FullPath(), err)
 	}
@@ -761,7 +825,14 @@ func validateConfigJobUpdate(req contract.UpdateJobRequest) error {
 	switch {
 	case req.Enabled == nil:
 		return errors.New("config-backed automation jobs only accept enabled updates")
-	case req.Name != nil || req.AgentName != nil || req.WorkspaceID != nil || req.Prompt != nil || req.Schedule != nil || req.Task != nil || req.Retry != nil || req.FireLimit != nil:
+	case req.Name != nil ||
+		req.AgentName != nil ||
+		req.WorkspaceID != nil ||
+		req.Prompt != nil ||
+		req.Schedule != nil ||
+		req.Task != nil ||
+		req.Retry != nil ||
+		req.FireLimit != nil:
 		return errors.New("config-backed automation jobs only accept enabled updates")
 	default:
 		return nil
@@ -867,7 +938,17 @@ func validateConfigTriggerUpdate(req contract.UpdateTriggerRequest) error {
 	switch {
 	case req.Enabled == nil:
 		return errors.New("config-backed automation triggers only accept enabled updates")
-	case req.Name != nil || req.AgentName != nil || req.WorkspaceID != nil || req.Prompt != nil || req.Event != nil || req.Filter != nil || req.Retry != nil || req.FireLimit != nil || req.WebhookID != nil || req.EndpointSlug != nil || req.WebhookSecret != nil:
+	case req.Name != nil ||
+		req.AgentName != nil ||
+		req.WorkspaceID != nil ||
+		req.Prompt != nil ||
+		req.Event != nil ||
+		req.Filter != nil ||
+		req.Retry != nil ||
+		req.FireLimit != nil ||
+		req.WebhookID != nil ||
+		req.EndpointSlug != nil ||
+		req.WebhookSecret != nil:
 		return errors.New("config-backed automation triggers only accept enabled updates")
 	default:
 		return nil
@@ -879,8 +960,6 @@ func cloneAutomationFilter(source map[string]string) map[string]string {
 		return nil
 	}
 	cloned := make(map[string]string, len(source))
-	for key, value := range source {
-		cloned[key] = value
-	}
+	maps.Copy(cloned, source)
 	return cloned
 }

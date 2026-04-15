@@ -510,7 +510,7 @@ func TestResumeFailureRestoresStoppedMetadata(t *testing.T) {
 	}
 
 	metaBefore := readMeta(t, session.MetaPath())
-	h.driver.startHook = func(opts acp.StartOpts, sequence int) (*fakeProcess, error) {
+	h.driver.startHook = func(_ acp.StartOpts, _ int) (*fakeProcess, error) {
 		return nil, errors.New("start failed")
 	}
 
@@ -576,7 +576,14 @@ func TestActivateAndWatchUpdatesStateAndStartsWatcher(t *testing.T) {
 		t.Fatalf("Start() error = %v", err)
 	}
 
-	if err := h.manager.activateAndWatch(testutil.Context(t), session, proc, aghconfig.ResolvedAgent{Name: "coder"}, hookspkg.HookSessionPostCreate, false); err != nil {
+	if err := h.manager.activateAndWatch(
+		testutil.Context(t),
+		session,
+		proc,
+		aghconfig.ResolvedAgent{Name: "coder"},
+		hookspkg.HookSessionPostCreate,
+		false,
+	); err != nil {
 		t.Fatalf("activateAndWatch() error = %v", err)
 	}
 
@@ -667,7 +674,14 @@ func TestActivateAndWatchRollsBackOnMetaWriteFailure(t *testing.T) {
 		t.Fatalf("Start() error = %v", err)
 	}
 
-	if err := h.manager.activateAndWatch(testutil.Context(t), session, proc, aghconfig.ResolvedAgent{Name: "coder"}, hookspkg.HookSessionPostCreate, false); err == nil {
+	if err := h.manager.activateAndWatch(
+		testutil.Context(t),
+		session,
+		proc,
+		aghconfig.ResolvedAgent{Name: "coder"},
+		hookspkg.HookSessionPostCreate,
+		false,
+	); err == nil {
 		t.Fatal("activateAndWatch() error = nil, want non-nil")
 	}
 	if _, ok := h.manager.Get(session.ID); ok {
@@ -831,7 +845,8 @@ func TestPromptPersistsUserMessageBeforeDriverPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Prompt() error = %v", err)
 	}
-	for range eventsCh {
+	for event := range eventsCh {
+		_ = event
 	}
 
 	if len(storedBeforePrompt) != 1 {
@@ -970,7 +985,6 @@ func TestApprovePermissionMapsPendingLookupErrors(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -1132,7 +1146,7 @@ func TestPromptSerializesSetupAgainstConcurrentStop(t *testing.T) {
 
 	promptEntered := make(chan struct{})
 	releasePrompt := make(chan struct{})
-	h.driver.promptHook = func(proc *fakeProcess, req acp.PromptRequest) (<-chan acp.AgentEvent, error) {
+	h.driver.promptHook = func(_ *fakeProcess, _ acp.PromptRequest) (<-chan acp.AgentEvent, error) {
 		close(promptEntered)
 		<-releasePrompt
 		events := make(chan acp.AgentEvent)
@@ -1147,7 +1161,8 @@ func TestPromptSerializesSetupAgainstConcurrentStop(t *testing.T) {
 			promptDone <- err
 			return
 		}
-		for range eventsCh {
+		for event := range eventsCh {
+			_ = event
 		}
 		promptDone <- nil
 	}()
@@ -1225,9 +1240,7 @@ func TestConcurrentCreateStopGet(t *testing.T) {
 
 	done := make(chan struct{})
 	var readers sync.WaitGroup
-	readers.Add(1)
-	go func() {
-		defer readers.Done()
+	readers.Go(func() {
 		for {
 			select {
 			case <-done:
@@ -1239,11 +1252,11 @@ func TestConcurrentCreateStopGet(t *testing.T) {
 				}
 			}
 		}
-	}()
+	})
 
 	const total = 8
 	var workers sync.WaitGroup
-	for i := 0; i < total; i++ {
+	for i := range total {
 		workers.Add(1)
 		go func(index int) {
 			defer workers.Done()
@@ -1311,7 +1324,7 @@ func TestCreatePassesMergedMCPServers(t *testing.T) {
 			{Name: "override", Command: "provider-override"},
 		},
 	}
-	h.resolver.upsert(workspacepkg.ResolvedWorkspace{
+	h.resolver.upsert(&workspacepkg.ResolvedWorkspace{
 		Workspace: workspacepkg.Workspace{
 			ID:      h.workspaceID,
 			RootDir: h.workspace,
@@ -1465,13 +1478,21 @@ func TestCreateInvokesPromptAssemblerWhenConfigured(t *testing.T) {
 		gotAgentName   string
 		gotAgentPrompt string
 	)
-	h.manager = newManagerWithHarness(t, h, WithPromptAssembler(promptAssemblerFunc(func(_ context.Context, agent aghconfig.AgentDef, workspace workspacepkg.ResolvedWorkspace) (string, error) {
-		called = true
-		gotWorkspace = workspace.RootDir
-		gotAgentName = agent.Name
-		gotAgentPrompt = agent.Prompt
-		return agent.Prompt + "\n\nmemory block", nil
-	})))
+	h.manager = newManagerWithHarness(
+		t,
+		h,
+		WithPromptAssembler(
+			promptAssemblerFunc(
+				func(_ context.Context, agent aghconfig.AgentDef, workspace *workspacepkg.ResolvedWorkspace) (string, error) {
+					called = true
+					gotWorkspace = workspace.RootDir
+					gotAgentName = agent.Name
+					gotAgentPrompt = agent.Prompt
+					return agent.Prompt + "\n\nmemory block", nil
+				},
+			),
+		),
+	)
 
 	session := createSession(t, h)
 	t.Cleanup(func() {
@@ -1504,12 +1525,20 @@ func TestCreateWithChannelAppendsBundledNetworkSkillAfterPromptAssembly(t *testi
 		t.Fatalf("LoadContent(%q) error = %v", networkSkillName, err)
 	}
 
-	h.manager = newManagerWithHarness(t, h, WithPromptAssembler(promptAssemblerFunc(func(_ context.Context, agent aghconfig.AgentDef, workspace workspacepkg.ResolvedWorkspace) (string, error) {
-		if got, want := workspace.RootDir, h.workspace; got != want {
-			t.Fatalf("assembler workspace = %q, want %q", got, want)
-		}
-		return agent.Prompt + "\n\nmemory block", nil
-	})))
+	h.manager = newManagerWithHarness(
+		t,
+		h,
+		WithPromptAssembler(
+			promptAssemblerFunc(
+				func(_ context.Context, agent aghconfig.AgentDef, workspace *workspacepkg.ResolvedWorkspace) (string, error) {
+					if got, want := workspace.RootDir, h.workspace; got != want {
+						t.Fatalf("assembler workspace = %q, want %q", got, want)
+					}
+					return agent.Prompt + "\n\nmemory block", nil
+				},
+			),
+		),
+	)
 
 	session, err := h.manager.Create(testutil.Context(t), CreateOpts{
 		AgentName: "coder",
@@ -1726,7 +1755,7 @@ func TestCreateAppliesDreamPermissionsOverride(t *testing.T) {
 
 	h := newHarness(t)
 	h.cfg.Permissions.Mode = aghconfig.PermissionModeDenyAll
-	h.resolver.upsert(workspacepkg.ResolvedWorkspace{
+	h.resolver.upsert(&workspacepkg.ResolvedWorkspace{
 		Workspace: workspacepkg.Workspace{
 			ID:      h.workspaceID,
 			RootDir: h.workspace,
@@ -1770,7 +1799,7 @@ func TestCreateUsesConfiguredPermissionsForUserSessions(t *testing.T) {
 
 	h := newHarness(t)
 	h.cfg.Permissions.Mode = aghconfig.PermissionModeDenyAll
-	h.resolver.upsert(workspacepkg.ResolvedWorkspace{
+	h.resolver.upsert(&workspacepkg.ResolvedWorkspace{
 		Workspace: workspacepkg.Workspace{
 			ID:      h.workspaceID,
 			RootDir: h.workspace,
@@ -1858,7 +1887,7 @@ func newHarness(t *testing.T, extraOpts ...Option) *harness {
 		workspaceID:   "ws-primary",
 		workspaceName: "workspace",
 	}
-	h.resolver = newFakeWorkspaceResolver(workspacepkg.ResolvedWorkspace{
+	h.resolver = newFakeWorkspaceResolver(&workspacepkg.ResolvedWorkspace{
 		Workspace: workspacepkg.Workspace{
 			ID:      h.workspaceID,
 			RootDir: h.workspace,
@@ -2022,16 +2051,20 @@ func sequentialIDGenerator(prefix string) IDGenerator {
 	}
 }
 
-type promptAssemblerFunc func(context.Context, aghconfig.AgentDef, workspacepkg.ResolvedWorkspace) (string, error)
+type promptAssemblerFunc func(context.Context, aghconfig.AgentDef, *workspacepkg.ResolvedWorkspace) (string, error)
 
-func (fn promptAssemblerFunc) Assemble(ctx context.Context, agent aghconfig.AgentDef, workspace workspacepkg.ResolvedWorkspace) (string, error) {
+func (fn promptAssemblerFunc) Assemble(
+	ctx context.Context,
+	agent aghconfig.AgentDef,
+	workspace *workspacepkg.ResolvedWorkspace,
+) (string, error) {
 	return fn(ctx, agent, workspace)
 }
 
 type fakeNotifier struct {
 	mu      sync.Mutex
-	created []*SessionInfo
-	stopped []*SessionInfo
+	created []*Info
+	stopped []*Info
 	events  map[string][]acp.AgentEvent
 	order   []string
 }
@@ -2106,7 +2139,12 @@ func newFakeNetworkPeerLifecycle() *fakeNetworkPeerLifecycle {
 	return &fakeNetworkPeerLifecycle{}
 }
 
-func (f *fakeNetworkPeerLifecycle) JoinChannel(_ context.Context, sessionID string, peerID string, channel string) error {
+func (f *fakeNetworkPeerLifecycle) JoinChannel(
+	_ context.Context,
+	sessionID string,
+	peerID string,
+	channel string,
+) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.joins = append(f.joins, fakeNetworkJoinCall{
@@ -2210,7 +2248,7 @@ type fakeSkillRegistry struct {
 	err               error
 }
 
-func newFakeWorkspaceResolver(resolved workspacepkg.ResolvedWorkspace) *fakeWorkspaceResolver {
+func newFakeWorkspaceResolver(resolved *workspacepkg.ResolvedWorkspace) *fakeWorkspaceResolver {
 	r := &fakeWorkspaceResolver{
 		byRef:              make(map[string]workspacepkg.ResolvedWorkspace),
 		byPath:             make(map[string]workspacepkg.ResolvedWorkspace),
@@ -2227,13 +2265,21 @@ func newFakeSkillRegistry() *fakeSkillRegistry {
 	}
 }
 
-func (r *fakeSkillRegistry) ForWorkspace(_ context.Context, resolved workspacepkg.ResolvedWorkspace) ([]*skillspkg.Skill, error) {
+func (r *fakeSkillRegistry) ForWorkspace(
+	_ context.Context,
+	resolved *workspacepkg.ResolvedWorkspace,
+) ([]*skillspkg.Skill, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.calls = append(r.calls, cloneResolvedWorkspaceForTests(resolved))
+	if resolved != nil {
+		r.calls = append(r.calls, cloneResolvedWorkspaceForTests(resolved))
+	}
 	if r.err != nil {
 		return nil, r.err
+	}
+	if resolved == nil {
+		return nil, nil
 	}
 
 	skills := r.skillsByWorkspace[resolved.ID]
@@ -2256,7 +2302,7 @@ func (r *fakeSkillRegistry) callCount() int {
 func (r *fakeSkillRegistry) call(index int) workspacepkg.ResolvedWorkspace {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return cloneResolvedWorkspaceForTests(r.calls[index])
+	return cloneResolvedWorkspaceForTests(&r.calls[index])
 }
 
 func (r *fakeWorkspaceResolver) Resolve(ctx context.Context, idOrPath string) (workspacepkg.ResolvedWorkspace, error) {
@@ -2272,15 +2318,18 @@ func (r *fakeWorkspaceResolver) Resolve(ctx context.Context, idOrPath string) (w
 		return workspacepkg.ResolvedWorkspace{}, r.resolveErr
 	}
 	if resolved, ok := r.byRef[ref]; ok {
-		return cloneResolvedWorkspaceForTests(resolved), nil
+		return cloneResolvedWorkspaceForTests(&resolved), nil
 	}
 	if resolved, ok := r.byPath[normalizeResolverPath(ref)]; ok {
-		return cloneResolvedWorkspaceForTests(resolved), nil
+		return cloneResolvedWorkspaceForTests(&resolved), nil
 	}
 	return workspacepkg.ResolvedWorkspace{}, workspacepkg.ErrWorkspaceNotFound
 }
 
-func (r *fakeWorkspaceResolver) ResolveOrRegister(ctx context.Context, path string) (workspacepkg.ResolvedWorkspace, error) {
+func (r *fakeWorkspaceResolver) ResolveOrRegister(
+	ctx context.Context,
+	path string,
+) (workspacepkg.ResolvedWorkspace, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -2293,7 +2342,7 @@ func (r *fakeWorkspaceResolver) ResolveOrRegister(ctx context.Context, path stri
 		return workspacepkg.ResolvedWorkspace{}, r.resolveOrRegisterErr
 	}
 	if resolved, ok := r.byPath[target]; ok {
-		return cloneResolvedWorkspaceForTests(resolved), nil
+		return cloneResolvedWorkspaceForTests(&resolved), nil
 	}
 
 	r.nextID++
@@ -2306,11 +2355,11 @@ func (r *fakeWorkspaceResolver) ResolveOrRegister(ctx context.Context, path stri
 		Config: r.autoRegisterConfig,
 		Agents: append([]aghconfig.AgentDef(nil), r.autoRegisterAgents...),
 	}
-	r.upsert(resolved)
-	return cloneResolvedWorkspaceForTests(resolved), nil
+	r.upsert(&resolved)
+	return cloneResolvedWorkspaceForTests(&resolved), nil
 }
 
-func (r *fakeWorkspaceResolver) upsert(resolved workspacepkg.ResolvedWorkspace) {
+func (r *fakeWorkspaceResolver) upsert(resolved *workspacepkg.ResolvedWorkspace) {
 	cloned := cloneResolvedWorkspaceForTests(resolved)
 	r.byRef[cloned.ID] = cloned
 	if name := strings.TrimSpace(cloned.Name); name != "" {
@@ -2334,8 +2383,11 @@ func normalizeResolverPath(path string) string {
 	return filepath.Clean(absPath)
 }
 
-func cloneResolvedWorkspaceForTests(src workspacepkg.ResolvedWorkspace) workspacepkg.ResolvedWorkspace {
-	dst := src
+func cloneResolvedWorkspaceForTests(src *workspacepkg.ResolvedWorkspace) workspacepkg.ResolvedWorkspace {
+	if src == nil {
+		return workspacepkg.ResolvedWorkspace{}
+	}
+	dst := *src
 	dst.AdditionalDirs = append([]string(nil), src.AdditionalDirs...)
 	dst.Agents = append([]aghconfig.AgentDef(nil), src.Agents...)
 	dst.Skills = append([]workspacepkg.SkillPath(nil), src.Skills...)
@@ -2398,7 +2450,11 @@ func (d *fakeDriver) Start(_ context.Context, opts acp.StartOpts) (*AgentProcess
 	return proc.handle, nil
 }
 
-func (d *fakeDriver) Prompt(_ context.Context, proc *AgentProcess, req acp.PromptRequest) (<-chan acp.AgentEvent, error) {
+func (d *fakeDriver) Prompt(
+	_ context.Context,
+	proc *AgentProcess,
+	req acp.PromptRequest,
+) (<-chan acp.AgentEvent, error) {
 	d.mu.Lock()
 	fakeProc := d.processes[proc]
 	d.promptCalls = append(d.promptCalls, req)
@@ -2506,7 +2562,7 @@ func newFakeProcess(agentName string, command string, cwd string, sessionID stri
 		Command:   command,
 		Cwd:       cwd,
 		SessionID: sessionID,
-		Caps: acp.ACPCaps{
+		Caps: acp.Caps{
 			SupportsLoadSession: true,
 			SupportedModes:      []string{"chat"},
 			SupportedModels:     []string{"gpt-4o"},

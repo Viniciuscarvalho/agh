@@ -292,10 +292,11 @@ func TestValidationHelpersAndPathUtilities(t *testing.T) {
 		})
 	}
 
-	if got, want := SessionDBFile("/tmp/session-a"), filepath.Join("/tmp/session-a", SessionDatabaseName); got != want {
+	sessionRoot := filepath.Join(string(filepath.Separator), "tmp", "session-a")
+	if got, want := SessionDBFile(sessionRoot), filepath.Join(sessionRoot, SessionDatabaseName); got != want {
 		t.Fatalf("SessionDBFile() = %q, want %q", got, want)
 	}
-	if got, want := SessionMetaFile("/tmp/session-a"), filepath.Join("/tmp/session-a", SessionMetaName); got != want {
+	if got, want := SessionMetaFile(sessionRoot), filepath.Join(sessionRoot, SessionMetaName); got != want {
 		t.Fatalf("SessionMetaFile() = %q, want %q", got, want)
 	}
 }

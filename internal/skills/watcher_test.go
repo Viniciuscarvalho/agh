@@ -24,7 +24,12 @@ func TestWatcherDetectChangesAddedSkill(t *testing.T) {
 		t.Fatal("detectChanges() initial changed = true, want false")
 	}
 
-	skillPath := writeSkillFile(t, root, filepath.Join("added", skillFileName), skillWithDescription("added", "Added skill"))
+	skillPath := writeSkillFile(
+		t,
+		root,
+		filepath.Join("added", skillFileName),
+		skillWithDescription("added", "Added skill"),
+	)
 
 	changed, snapshots, changes, err := watcher.detectChanges(context.Background())
 	if err != nil {
@@ -85,7 +90,12 @@ func TestWatcherDetectChangesDeletedSkill(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	skillPath := writeSkillFile(t, root, filepath.Join("deleted", skillFileName), skillWithDescription("deleted", "Deleted skill"))
+	skillPath := writeSkillFile(
+		t,
+		root,
+		filepath.Join("deleted", skillFileName),
+		skillWithDescription("deleted", "Deleted skill"),
+	)
 	watcher := newTestWatcher(nil, time.Millisecond, root)
 
 	if changed, _, _, err := watcher.detectChanges(context.Background()); err != nil {
@@ -163,8 +173,18 @@ func TestNewWatcherOnlyUsesGlobalRoots(t *testing.T) {
 		t.Fatal("detectChanges() initial changed = true, want false")
 	}
 
-	writeSkillFile(t, filepath.Join(workspace, ".agents", "skills"), filepath.Join("workspace-only", skillFileName), skillWithDescription("workspace-only", "Workspace skill"))
-	writeSkillFile(t, filepath.Join(workspace, ".agh", "skills"), filepath.Join("workspace-agh", skillFileName), skillWithDescription("workspace-agh", "Workspace agh skill"))
+	writeSkillFile(
+		t,
+		filepath.Join(workspace, ".agents", "skills"),
+		filepath.Join("workspace-only", skillFileName),
+		skillWithDescription("workspace-only", "Workspace skill"),
+	)
+	writeSkillFile(
+		t,
+		filepath.Join(workspace, ".agh", "skills"),
+		filepath.Join("workspace-agh", skillFileName),
+		skillWithDescription("workspace-agh", "Workspace agh skill"),
+	)
 
 	if changed, _, _, err := watcher.detectChanges(context.Background()); err != nil {
 		t.Fatalf("detectChanges() after workspace-only updates error = %v", err)
@@ -188,7 +208,12 @@ func TestNewWatcherSeedsSnapshotsFromRegistryLoadAll(t *testing.T) {
 			t.Fatalf("LoadAll() error = %v", err)
 		}
 
-		skillPath := writeSkillFile(t, userDir, filepath.Join("added", skillFileName), skillWithDescription("added", "Added after load"))
+		skillPath := writeSkillFile(
+			t,
+			userDir,
+			filepath.Join("added", skillFileName),
+			skillWithDescription("added", "Added after load"),
+		)
 		watcher := NewWatcher(registry, time.Millisecond)
 		watcher.logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -209,7 +234,12 @@ func TestNewWatcherSeedsSnapshotsFromRegistryLoadAll(t *testing.T) {
 
 		root := t.TempDir()
 		userDir := filepath.Join(root, "user")
-		skillPath := writeSkillFile(t, userDir, filepath.Join("modified", skillFileName), skillWithDescription("modified", "Version one"))
+		skillPath := writeSkillFile(
+			t,
+			userDir,
+			filepath.Join("modified", skillFileName),
+			skillWithDescription("modified", "Version one"),
+		)
 
 		registry := newTestRegistry(t, RegistryConfig{
 			UserSkillsDir: userDir,

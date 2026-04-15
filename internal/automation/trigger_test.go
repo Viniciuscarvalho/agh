@@ -198,7 +198,7 @@ func TestTriggerEngineHookTelemetrySinkNormalizesCompletion(t *testing.T) {
 		t,
 		dispatcher,
 		WithTriggerEngineHookSessionResolver(stubHookSessionResolver{
-			info: &session.SessionInfo{
+			info: &session.Info{
 				ID:          "sess-hook",
 				Name:        "hook-session",
 				AgentName:   "researcher",
@@ -241,7 +241,7 @@ func TestTriggerEngineFireHookCompletionRejectsNilContextBeforeResolvingSession(
 	creator := newRecordingSessionCreator()
 	dispatcher := newTestDispatcher(t, creator, store)
 	resolver := &recordingHookSessionResolver{
-		info: &session.SessionInfo{
+		info: &session.Info{
 			ID:          "sess-hook",
 			Name:        "hook-session",
 			WorkspaceID: "ws_alpha",
@@ -590,7 +590,12 @@ func TestTriggerEngineRegisterUpdateUnregisterAndLifecycle(t *testing.T) {
 	if err := engine.Start(testutil.Context(t)); !errors.Is(err, ErrTriggerEngineStopped) {
 		t.Fatalf("Start(after shutdown) error = %v, want ErrTriggerEngineStopped", err)
 	}
-	if err := engine.Register(TriggerRegistration{Trigger: trigger, WebhookSecret: "secret-a"}); !errors.Is(err, ErrTriggerEngineStopped) {
+	if err := engine.Register(
+		TriggerRegistration{Trigger: trigger, WebhookSecret: "secret-a"},
+	); !errors.Is(
+		err,
+		ErrTriggerEngineStopped,
+	) {
 		t.Fatalf("Register(after shutdown) error = %v, want ErrTriggerEngineStopped", err)
 	}
 }
@@ -628,7 +633,15 @@ func TestWebhookHelpersRejectInvalidInputs(t *testing.T) {
 	if _, err := FormatWebhookEndpoint("", "wbh_123"); !errors.Is(err, ErrWebhookEndpointInvalid) {
 		t.Fatalf("FormatWebhookEndpoint(empty slug) error = %v, want ErrWebhookEndpointInvalid", err)
 	}
-	if err := ValidateWebhookSignature("secret", time.Date(2026, 4, 11, 6, 0, 0, 0, time.UTC), []byte("body"), "invalid"); !errors.Is(err, ErrWebhookSignatureInvalid) {
+	if err := ValidateWebhookSignature(
+		"secret",
+		time.Date(2026, 4, 11, 6, 0, 0, 0, time.UTC),
+		[]byte("body"),
+		"invalid",
+	); !errors.Is(
+		err,
+		ErrWebhookSignatureInvalid,
+	) {
 		t.Fatalf("ValidateWebhookSignature(invalid) error = %v, want ErrWebhookSignatureInvalid", err)
 	}
 	if err := ValidateWebhookTimestamp(time.Time{}, time.Now().UTC(), time.Minute); err == nil {
@@ -675,7 +688,6 @@ func TestEnvelopeFilterValueHandlesNestedMapsAndScalarKinds(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run("Should resolve "+tc.path, func(t *testing.T) {
 			t.Parallel()
 
@@ -718,7 +730,6 @@ func TestStringifyEnvelopeValueHandlesScalarKindsAndFallbacks(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run("Should stringify "+tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -768,7 +779,12 @@ func TestTriggerEngineRejectsWebhookScopeMismatchAndDuplicateWebhookID(t *testin
 	if err := engine.Register(TriggerRegistration{Trigger: first, WebhookSecret: "secret"}); err != nil {
 		t.Fatalf("Register(first) error = %v", err)
 	}
-	if err := engine.Register(TriggerRegistration{Trigger: second, WebhookSecret: "secret"}); !errors.Is(err, ErrTriggerWebhookIDTaken) {
+	if err := engine.Register(
+		TriggerRegistration{Trigger: second, WebhookSecret: "secret"},
+	); !errors.Is(
+		err,
+		ErrTriggerWebhookIDTaken,
+	) {
 		t.Fatalf("Register(duplicate webhook id) error = %v, want ErrTriggerWebhookIDTaken", err)
 	}
 
@@ -801,7 +817,7 @@ func newTestTriggerEngine(t *testing.T, dispatcher TriggerDispatcher, opts ...Tr
 	return engine
 }
 
-func testEventTrigger(scope AutomationScope, name string, workspaceID string, event string) Trigger {
+func testEventTrigger(scope Scope, name string, workspaceID string, event string) Trigger {
 	trigger := testTrigger(scope, name, workspaceID)
 	trigger.Event = event
 	trigger.WebhookID = ""
@@ -810,7 +826,7 @@ func testEventTrigger(scope AutomationScope, name string, workspaceID string, ev
 	return trigger
 }
 
-func testWebhookTrigger(scope AutomationScope, name string, workspaceID string) Trigger {
+func testWebhookTrigger(scope Scope, name string, workspaceID string) Trigger {
 	trigger := testTrigger(scope, name, workspaceID)
 	trigger.WebhookID = "wbh_" + name
 	trigger.EndpointSlug = "deploy-review"
@@ -818,11 +834,11 @@ func testWebhookTrigger(scope AutomationScope, name string, workspaceID string) 
 }
 
 type stubHookSessionResolver struct {
-	info *session.SessionInfo
+	info *session.Info
 	err  error
 }
 
-func (r stubHookSessionResolver) Status(context.Context, string) (*session.SessionInfo, error) {
+func (r stubHookSessionResolver) Status(context.Context, string) (*session.Info, error) {
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -831,11 +847,11 @@ func (r stubHookSessionResolver) Status(context.Context, string) (*session.Sessi
 
 type recordingHookSessionResolver struct {
 	calls int
-	info  *session.SessionInfo
+	info  *session.Info
 	err   error
 }
 
-func (r *recordingHookSessionResolver) Status(ctx context.Context, _ string) (*session.SessionInfo, error) {
+func (r *recordingHookSessionResolver) Status(ctx context.Context, _ string) (*session.Info, error) {
 	r.calls++
 	if ctx == nil {
 		return nil, errors.New("nil context reached hook session resolver")

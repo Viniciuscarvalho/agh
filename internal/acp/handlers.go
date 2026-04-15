@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
+	exec "os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -17,9 +17,13 @@ import (
 
 	acpsdk "github.com/coder/acp-go-sdk"
 	"github.com/kballard/go-shellquote"
+	"golang.org/x/sys/execabs"
 )
 
-const defaultTerminalOutputLimit = 64 * 1024
+const (
+	defaultTerminalOutputLimit = 64 * 1024
+	networkCommandName         = "network"
+)
 
 type wireSessionNotification struct {
 	SessionID acpsdk.SessionId `json:"sessionId"`
@@ -110,36 +114,65 @@ type terminalOutputWriter struct {
 	terminal *managedTerminal
 }
 
-func (p *AgentProcess) handleInbound(ctx context.Context, method string, params json.RawMessage) (any, *acpsdk.RequestError) {
+func (p *AgentProcess) handleInbound(
+	ctx context.Context,
+	method string,
+	params json.RawMessage,
+) (any, *acpsdk.RequestError) {
+	if method == acpsdk.ClientMethodSessionUpdate {
+		if err := p.handleSessionUpdate(params); err != nil {
+			return nil, requestError(err)
+		}
+		return nil, nil
+	}
+
 	handlers := map[string]func(context.Context, json.RawMessage) (any, *acpsdk.RequestError){
-		acpsdk.ClientMethodFsReadTextFile: func(ctx context.Context, params json.RawMessage) (any, *acpsdk.RequestError) {
+		acpsdk.ClientMethodFsReadTextFile: func(
+			ctx context.Context,
+			params json.RawMessage,
+		) (any, *acpsdk.RequestError) {
 			return handleInboundRequest(ctx, params, p.handleReadTextFile)
 		},
-		acpsdk.ClientMethodFsWriteTextFile: func(ctx context.Context, params json.RawMessage) (any, *acpsdk.RequestError) {
+		acpsdk.ClientMethodFsWriteTextFile: func(
+			ctx context.Context,
+			params json.RawMessage,
+		) (any, *acpsdk.RequestError) {
 			return handleInboundRequest(ctx, params, p.handleWriteTextFile)
 		},
-		acpsdk.ClientMethodSessionRequestPermission: func(ctx context.Context, params json.RawMessage) (any, *acpsdk.RequestError) {
+		acpsdk.ClientMethodSessionRequestPermission: func(
+			ctx context.Context,
+			params json.RawMessage,
+		) (any, *acpsdk.RequestError) {
 			return handleInboundRequest(ctx, params, p.handleRequestPermission)
 		},
-		acpsdk.ClientMethodSessionUpdate: func(_ context.Context, params json.RawMessage) (any, *acpsdk.RequestError) {
-			if err := p.handleSessionUpdate(params); err != nil {
-				return nil, requestError(err)
-			}
-			return nil, nil
-		},
-		acpsdk.ClientMethodTerminalCreate: func(_ context.Context, params json.RawMessage) (any, *acpsdk.RequestError) {
+		acpsdk.ClientMethodTerminalCreate: func(
+			_ context.Context,
+			params json.RawMessage,
+		) (any, *acpsdk.RequestError) {
 			return handleInboundRequestNoContext(params, p.handleCreateTerminal)
 		},
-		acpsdk.ClientMethodTerminalKill: func(_ context.Context, params json.RawMessage) (any, *acpsdk.RequestError) {
+		acpsdk.ClientMethodTerminalKill: func(
+			_ context.Context,
+			params json.RawMessage,
+		) (any, *acpsdk.RequestError) {
 			return handleInboundRequestNoContext(params, p.handleKillTerminal)
 		},
-		acpsdk.ClientMethodTerminalOutput: func(_ context.Context, params json.RawMessage) (any, *acpsdk.RequestError) {
+		acpsdk.ClientMethodTerminalOutput: func(
+			_ context.Context,
+			params json.RawMessage,
+		) (any, *acpsdk.RequestError) {
 			return handleInboundRequestNoContext(params, p.handleTerminalOutput)
 		},
-		acpsdk.ClientMethodTerminalWaitForExit: func(ctx context.Context, params json.RawMessage) (any, *acpsdk.RequestError) {
+		acpsdk.ClientMethodTerminalWaitForExit: func(
+			ctx context.Context,
+			params json.RawMessage,
+		) (any, *acpsdk.RequestError) {
 			return handleInboundRequest(ctx, params, p.handleWaitForTerminalExit)
 		},
-		acpsdk.ClientMethodTerminalRelease: func(_ context.Context, params json.RawMessage) (any, *acpsdk.RequestError) {
+		acpsdk.ClientMethodTerminalRelease: func(
+			_ context.Context,
+			params json.RawMessage,
+		) (any, *acpsdk.RequestError) {
 			return handleInboundRequestNoContext(params, p.handleReleaseTerminal)
 		},
 	}
@@ -151,7 +184,11 @@ func (p *AgentProcess) handleInbound(ctx context.Context, method string, params 
 	return handler(ctx, params)
 }
 
-func handleInboundRequest[Req any, Resp any](ctx context.Context, params json.RawMessage, fn func(context.Context, Req) (Resp, error)) (any, *acpsdk.RequestError) {
+func handleInboundRequest[Req any, Resp any](
+	ctx context.Context,
+	params json.RawMessage,
+	fn func(context.Context, Req) (Resp, error),
+) (any, *acpsdk.RequestError) {
 	var request Req
 	if err := json.Unmarshal(params, &request); err != nil {
 		return nil, acpsdk.NewInvalidParams(map[string]any{"error": err.Error()})
@@ -164,7 +201,10 @@ func handleInboundRequest[Req any, Resp any](ctx context.Context, params json.Ra
 	return response, nil
 }
 
-func handleInboundRequestNoContext[Req any, Resp any](params json.RawMessage, fn func(Req) (Resp, error)) (any, *acpsdk.RequestError) {
+func handleInboundRequestNoContext[Req any, Resp any](
+	params json.RawMessage,
+	fn func(Req) (Resp, error),
+) (any, *acpsdk.RequestError) {
 	var request Req
 	if err := json.Unmarshal(params, &request); err != nil {
 		return nil, acpsdk.NewInvalidParams(map[string]any{"error": err.Error()})
@@ -177,7 +217,10 @@ func handleInboundRequestNoContext[Req any, Resp any](params json.RawMessage, fn
 	return response, nil
 }
 
-func (p *AgentProcess) handleReadTextFile(_ context.Context, request acpsdk.ReadTextFileRequest) (acpsdk.ReadTextFileResponse, error) {
+func (p *AgentProcess) handleReadTextFile(
+	_ context.Context,
+	request acpsdk.ReadTextFileRequest,
+) (acpsdk.ReadTextFileResponse, error) {
 	if err := p.permissions.authorize(permissionReadTextFile); err != nil {
 		return acpsdk.ReadTextFileResponse{}, err
 	}
@@ -192,7 +235,10 @@ func (p *AgentProcess) handleReadTextFile(_ context.Context, request acpsdk.Read
 	return acpsdk.ReadTextFileResponse{Content: sliceLines(string(content), request.Line, request.Limit)}, nil
 }
 
-func (p *AgentProcess) handleWriteTextFile(_ context.Context, request acpsdk.WriteTextFileRequest) (acpsdk.WriteTextFileResponse, error) {
+func (p *AgentProcess) handleWriteTextFile(
+	_ context.Context,
+	request acpsdk.WriteTextFileRequest,
+) (acpsdk.WriteTextFileResponse, error) {
 	if err := p.permissions.authorize(permissionWriteTextFile); err != nil {
 		return acpsdk.WriteTextFileResponse{}, err
 	}
@@ -204,15 +250,22 @@ func (p *AgentProcess) handleWriteTextFile(_ context.Context, request acpsdk.Wri
 		return acpsdk.WriteTextFileResponse{}, err
 	}
 	if err := os.MkdirAll(filepath.Dir(resolvedPath), 0o755); err != nil {
-		return acpsdk.WriteTextFileResponse{}, fmt.Errorf("acp: create parent directories for %q: %w", resolvedPath, err)
+		return acpsdk.WriteTextFileResponse{}, fmt.Errorf(
+			"acp: create parent directories for %q: %w",
+			resolvedPath,
+			err,
+		)
 	}
-	if err := os.WriteFile(resolvedPath, []byte(request.Content), 0o644); err != nil {
+	if err := os.WriteFile(resolvedPath, []byte(request.Content), 0o600); err != nil {
 		return acpsdk.WriteTextFileResponse{}, fmt.Errorf("acp: write %q: %w", resolvedPath, err)
 	}
 	return acpsdk.WriteTextFileResponse{}, nil
 }
 
-func (p *AgentProcess) handleRequestPermission(ctx context.Context, request acpsdk.RequestPermissionRequest) (acpsdk.RequestPermissionResponse, error) {
+func (p *AgentProcess) handleRequestPermission(
+	ctx context.Context,
+	request acpsdk.RequestPermissionRequest,
+) (acpsdk.RequestPermissionResponse, error) {
 	turnID := p.activeTurnID()
 	resource := ""
 	if request.ToolCall.Title != nil {
@@ -304,7 +357,16 @@ func (p *AgentProcess) handleSessionUpdate(params json.RawMessage) error {
 	return nil
 }
 
-func (p *AgentProcess) emitPermissionEvent(sessionID string, turnID string, requestID string, title string, toolCallID string, resource string, decision permissionDecision, raw json.RawMessage) {
+func (p *AgentProcess) emitPermissionEvent(
+	sessionID string,
+	turnID string,
+	requestID string,
+	title string,
+	toolCallID string,
+	resource string,
+	decision permissionDecision,
+	raw json.RawMessage,
+) {
 	p.emitPromptEvent(AgentEvent{
 		Type:       EventTypePermission,
 		SessionID:  sessionID,
@@ -320,7 +382,9 @@ func (p *AgentProcess) emitPermissionEvent(sessionID string, turnID string, requ
 	})
 }
 
-func (p *AgentProcess) handleCreateTerminal(request acpsdk.CreateTerminalRequest) (acpsdk.CreateTerminalResponse, error) {
+func (p *AgentProcess) handleCreateTerminal(
+	request acpsdk.CreateTerminalRequest,
+) (acpsdk.CreateTerminalResponse, error) {
 	if err := p.permissions.authorize(permissionCreateTerminal); err != nil {
 		return acpsdk.CreateTerminalResponse{}, err
 	}
@@ -351,7 +415,9 @@ func (p *AgentProcess) handleCreateTerminal(request acpsdk.CreateTerminalRequest
 	return p.terminals.create(resolvedCwd, request, ownership)
 }
 
-func (p *AgentProcess) handleKillTerminal(request acpsdk.KillTerminalCommandRequest) (acpsdk.KillTerminalCommandResponse, error) {
+func (p *AgentProcess) handleKillTerminal(
+	request acpsdk.KillTerminalCommandRequest,
+) (acpsdk.KillTerminalCommandResponse, error) {
 	if err := p.ensureNetworkTurnTerminalAccess(request.TerminalId, false); err != nil {
 		return acpsdk.KillTerminalCommandResponse{}, err
 	}
@@ -361,7 +427,9 @@ func (p *AgentProcess) handleKillTerminal(request acpsdk.KillTerminalCommandRequ
 	return acpsdk.KillTerminalCommandResponse{}, nil
 }
 
-func (p *AgentProcess) handleTerminalOutput(request acpsdk.TerminalOutputRequest) (acpsdk.TerminalOutputResponse, error) {
+func (p *AgentProcess) handleTerminalOutput(
+	request acpsdk.TerminalOutputRequest,
+) (acpsdk.TerminalOutputResponse, error) {
 	if err := p.ensureNetworkTurnTerminalAccess(request.TerminalId, true); err != nil {
 		return acpsdk.TerminalOutputResponse{}, err
 	}
@@ -376,7 +444,10 @@ func (p *AgentProcess) handleTerminalOutput(request acpsdk.TerminalOutputRequest
 	}, nil
 }
 
-func (p *AgentProcess) handleWaitForTerminalExit(ctx context.Context, request acpsdk.WaitForTerminalExitRequest) (acpsdk.WaitForTerminalExitResponse, error) {
+func (p *AgentProcess) handleWaitForTerminalExit(
+	ctx context.Context,
+	request acpsdk.WaitForTerminalExitRequest,
+) (acpsdk.WaitForTerminalExitResponse, error) {
 	if err := p.ensureNetworkTurnTerminalAccess(request.TerminalId, true); err != nil {
 		return acpsdk.WaitForTerminalExitResponse{}, err
 	}
@@ -393,7 +464,9 @@ func (p *AgentProcess) handleWaitForTerminalExit(ctx context.Context, request ac
 	}, nil
 }
 
-func (p *AgentProcess) handleReleaseTerminal(request acpsdk.ReleaseTerminalRequest) (acpsdk.ReleaseTerminalResponse, error) {
+func (p *AgentProcess) handleReleaseTerminal(
+	request acpsdk.ReleaseTerminalRequest,
+) (acpsdk.ReleaseTerminalResponse, error) {
 	if err := p.ensureNetworkTurnTerminalAccess(request.TerminalId, false); err != nil {
 		return acpsdk.ReleaseTerminalResponse{}, err
 	}
@@ -411,13 +484,20 @@ func newTerminalManager(ctx context.Context, logger *slog.Logger) *terminalManag
 	}
 }
 
-func (m *terminalManager) create(cwd string, request acpsdk.CreateTerminalRequest, ownership terminalOwnership) (acpsdk.CreateTerminalResponse, error) {
+func (m *terminalManager) create(
+	cwd string,
+	request acpsdk.CreateTerminalRequest,
+	ownership terminalOwnership,
+) (acpsdk.CreateTerminalResponse, error) {
 	argv, err := terminalArgv(request)
 	if err != nil {
 		return acpsdk.CreateTerminalResponse{}, err
 	}
 
-	cmd := exec.CommandContext(m.ctx, argv[0], argv[1:]...)
+	cmd, err := newManagedTerminalCommand(argv)
+	if err != nil {
+		return acpsdk.CreateTerminalResponse{}, err
+	}
 	configureManagedCommand(cmd)
 	cmd.Dir = cwd
 	cmd.Env = mergeCommandEnv(os.Environ(), request.Env)
@@ -436,6 +516,14 @@ func (m *terminalManager) create(cwd string, request acpsdk.CreateTerminalReques
 	if err := cmd.Start(); err != nil {
 		return acpsdk.CreateTerminalResponse{}, fmt.Errorf("acp: start terminal command %q: %w", argv[0], err)
 	}
+	if m.ctx != nil {
+		go func() {
+			<-m.ctx.Done()
+			if err := killManagedProcess(cmd); err != nil {
+				m.logTerminalKillError(term.id, "manager shutdown", err)
+			}
+		}()
+	}
 
 	m.mu.Lock()
 	m.terminals[term.id] = term
@@ -446,12 +534,31 @@ func (m *terminalManager) create(cwd string, request acpsdk.CreateTerminalReques
 	return acpsdk.CreateTerminalResponse{TerminalId: term.id}, nil
 }
 
+func newManagedTerminalCommand(argv []string) (*exec.Cmd, error) {
+	if len(argv) == 0 {
+		return nil, errors.New("acp: terminal command is required")
+	}
+
+	resolvedPath, err := execabs.LookPath(argv[0])
+	if err != nil {
+		return nil, fmt.Errorf("acp: resolve terminal executable %q: %w", argv[0], err)
+	}
+
+	commandArgs := make([]string, 0, len(argv))
+	commandArgs = append(commandArgs, resolvedPath)
+	commandArgs = append(commandArgs, argv[1:]...)
+	return &exec.Cmd{
+		Path: resolvedPath,
+		Args: commandArgs,
+	}, nil
+}
+
 func (m *terminalManager) kill(id string) error {
 	term, err := m.lookup(id)
 	if err != nil {
 		return err
 	}
-	if err := killManagedProcess(term.cmd); err != nil && !strings.Contains(err.Error(), "process already finished") {
+	if err := killManagedProcess(term.cmd); err != nil {
 		return fmt.Errorf("acp: kill terminal %q: %w", id, err)
 	}
 	return nil
@@ -485,7 +592,9 @@ func (m *terminalManager) release(id string) error {
 	if err != nil {
 		return err
 	}
-	_ = killManagedProcess(term.cmd)
+	if killErr := killManagedProcess(term.cmd); killErr != nil {
+		m.logTerminalKillError(id, "release", killErr)
+	}
 	m.mu.Lock()
 	delete(m.terminals, id)
 	m.mu.Unlock()
@@ -501,8 +610,17 @@ func (m *terminalManager) closeAll() {
 	m.mu.RUnlock()
 
 	for _, terminal := range terminals {
-		_ = killManagedProcess(terminal.cmd)
+		if err := killManagedProcess(terminal.cmd); err != nil {
+			m.logTerminalKillError(terminal.id, "close_all", err)
+		}
 	}
+}
+
+func (m *terminalManager) logTerminalKillError(id string, reason string, err error) {
+	if err == nil || m.logger == nil {
+		return
+	}
+	m.logger.Warn("acp: kill terminal", "terminal_id", id, "reason", reason, "error", err)
 }
 
 func (m *terminalManager) lookup(id string) (*managedTerminal, error) {
@@ -562,7 +680,11 @@ func (t *managedTerminal) snapshot() (string, bool, *acpsdk.TerminalExitStatus) 
 	return output, t.truncated, exitStatus
 }
 
-func translateSessionUpdate(notification acpsdk.SessionNotification, rawUpdate json.RawMessage, turnID string) AgentEvent {
+func translateSessionUpdate(
+	notification acpsdk.SessionNotification,
+	rawUpdate json.RawMessage,
+	turnID string,
+) AgentEvent {
 	event := AgentEvent{
 		SessionID: string(notification.SessionId),
 		TurnID:    turnID,
@@ -653,7 +775,8 @@ func requestError(err error) *acpsdk.RequestError {
 	if errors.As(err, &requestErr) {
 		return requestErr
 	}
-	if errors.Is(err, ErrPermissionDenied) || errors.Is(err, ErrPathOutsideWorkspace) || errors.Is(err, ErrToolBlockedForNetworkTurn) {
+	if errors.Is(err, ErrPermissionDenied) || errors.Is(err, ErrPathOutsideWorkspace) ||
+		errors.Is(err, ErrToolBlockedForNetworkTurn) {
 		return acpsdk.NewInvalidParams(map[string]any{"error": err.Error()})
 	}
 	return acpsdk.NewInternalError(map[string]any{"error": err.Error()})
@@ -676,7 +799,7 @@ func terminalArgv(request acpsdk.CreateTerminalRequest) ([]string, error) {
 }
 
 func isAllowedNetworkTerminalArgv(argv []string) bool {
-	if len(argv) < 3 || argv[0] != "agh" || argv[1] != "network" {
+	if len(argv) < 3 || argv[0] != "agh" || argv[1] != networkCommandName {
 		return false
 	}
 
@@ -744,10 +867,7 @@ func sliceLines(content string, line, limit *int) string {
 	lines := strings.Split(content, "\n")
 	start := 0
 	if line != nil && *line > 1 {
-		start = *line - 1
-		if start > len(lines) {
-			start = len(lines)
-		}
+		start = min(*line-1, len(lines))
 	}
 	end := len(lines)
 	if limit != nil && *limit >= 0 && start+*limit < end {
@@ -783,7 +903,10 @@ func mustMarshalJSON(value any) json.RawMessage {
 	if value == nil {
 		return nil
 	}
-	encoded, _ := json.Marshal(value)
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		panic(fmt.Errorf("acp: marshal json: %w", err))
+	}
 	return encoded
 }
 

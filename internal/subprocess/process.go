@@ -8,10 +8,12 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"os/exec"
+	exec "os/exec"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sys/execabs"
 )
 
 const (
@@ -103,6 +105,14 @@ type Process struct {
 	health          healthMonitor
 }
 
+type launchRuntimeConfig struct {
+	logger          *slog.Logger
+	maxMessageBytes int
+	shutdownTimeout time.Duration
+	postSignalGrace time.Duration
+	healthThreshold int
+}
+
 // Launch starts a managed subprocess and optionally attaches the shared JSON-RPC transport.
 func Launch(ctx context.Context, cfg LaunchConfig) (*Process, error) {
 	if ctx == nil {
@@ -115,6 +125,39 @@ func Launch(ctx context.Context, cfg LaunchConfig) (*Process, error) {
 		return nil, errors.New("subprocess: command is required")
 	}
 
+	runtime := resolveLaunchRuntime(cfg)
+	cmd, stdin, stdout, stderr, err := startManagedCommand(cfg)
+	if err != nil {
+		return nil, err
+	}
+	lifecycleCtx, cancelLifecycle := context.WithCancel(context.Background())
+	process := &Process{
+		cmd:             cmd,
+		stdin:           stdin,
+		stdout:          stdout,
+		stderr:          stderr,
+		logger:          runtime.logger,
+		lifecycleCtx:    lifecycleCtx,
+		cancelLifecycle: cancelLifecycle,
+		done:            make(chan struct{}),
+		state:           processStateStarting,
+		shutdownTimeout: runtime.shutdownTimeout,
+		postSignalGrace: runtime.postSignalGrace,
+		shutdownReason:  cfg.defaultShutdownReason(),
+		healthThreshold: runtime.healthThreshold,
+	}
+
+	if !cfg.DisableTransport {
+		process.transport = newTransport(process, runtime.maxMessageBytes)
+		process.transport.start()
+	}
+
+	go process.waitForExit()
+
+	return process, nil
+}
+
+func resolveLaunchRuntime(cfg LaunchConfig) launchRuntimeConfig {
 	logger := cfg.Logger
 	if logger == nil {
 		logger = slog.Default()
@@ -140,7 +183,25 @@ func Launch(ctx context.Context, cfg LaunchConfig) (*Process, error) {
 		healthThreshold = defaultHealthFailureThresh
 	}
 
-	cmd := exec.Command(cfg.Command, cfg.Args...)
+	return launchRuntimeConfig{
+		logger:          logger,
+		maxMessageBytes: maxMessageBytes,
+		shutdownTimeout: shutdownTimeout,
+		postSignalGrace: postSignalGrace,
+		healthThreshold: healthThreshold,
+	}
+}
+
+func startManagedCommand(cfg LaunchConfig) (*exec.Cmd, io.WriteCloser, io.ReadCloser, *boundedBuffer, error) {
+	commandPath, commandArgs, err := resolvedCommand(cfg.Command, cfg.Args)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	cmd := &exec.Cmd{
+		Path: commandPath,
+		Args: commandArgs,
+	}
 	configureManagedCommand(cmd)
 	cmd.Dir = cfg.Dir
 	if len(cfg.Env) > 0 {
@@ -151,45 +212,32 @@ func Launch(ctx context.Context, cfg LaunchConfig) (*Process, error) {
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return nil, fmt.Errorf("subprocess: open stdin pipe: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("subprocess: open stdin pipe: %w", err)
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, fmt.Errorf("subprocess: open stdout pipe: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("subprocess: open stdout pipe: %w", err)
 	}
 
 	stderr := &boundedBuffer{limit: 128 * 1024}
 	cmd.Stderr = stderr
-
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("subprocess: start %q: %w", cfg.Command, err)
+		return nil, nil, nil, nil, fmt.Errorf("subprocess: start %q: %w", cfg.Command, err)
 	}
 
-	lifecycleCtx, cancelLifecycle := context.WithCancel(context.Background())
-	process := &Process{
-		cmd:             cmd,
-		stdin:           stdin,
-		stdout:          stdout,
-		stderr:          stderr,
-		logger:          logger,
-		lifecycleCtx:    lifecycleCtx,
-		cancelLifecycle: cancelLifecycle,
-		done:            make(chan struct{}),
-		state:           processStateStarting,
-		shutdownTimeout: shutdownTimeout,
-		postSignalGrace: postSignalGrace,
-		shutdownReason:  cfg.defaultShutdownReason(),
-		healthThreshold: healthThreshold,
+	return cmd, stdin, stdout, stderr, nil
+}
+
+func resolvedCommand(command string, args []string) (string, []string, error) {
+	resolvedPath, err := execabs.LookPath(command)
+	if err != nil {
+		return "", nil, fmt.Errorf("subprocess: resolve executable %q: %w", command, err)
 	}
 
-	if !cfg.DisableTransport {
-		process.transport = newTransport(process, maxMessageBytes)
-		process.transport.start()
-	}
-
-	go process.waitForExit()
-
-	return process, nil
+	commandArgs := make([]string, 0, len(args)+1)
+	commandArgs = append(commandArgs, resolvedPath)
+	commandArgs = append(commandArgs, args...)
+	return resolvedPath, commandArgs, nil
 }
 
 // PID returns the operating-system process identifier.
@@ -503,7 +551,8 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 		return len(p), nil
 	}
 
-	combined := append(b.buf, p...)
+	b.buf = append(b.buf[:len(b.buf):len(b.buf)], p...)
+	combined := b.buf
 	if len(combined) > b.limit {
 		combined = append([]byte(nil), combined[len(combined)-b.limit:]...)
 	}

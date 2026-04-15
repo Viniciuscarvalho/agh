@@ -95,7 +95,6 @@ func TestSortResolvedHooks(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			tt.assert(t)
@@ -117,7 +116,6 @@ func TestDefaultHookPriority(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.source.String(), func(t *testing.T) {
 			t.Parallel()
 

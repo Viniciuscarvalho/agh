@@ -108,7 +108,10 @@ func TestSessionDBQueryHookRunsFiltersByEvent(t *testing.T) {
 		}
 	}
 
-	filtered, err := sessionDB.QueryHookRuns(testutil.Context(t), store.HookRunQuery{Event: hookspkg.HookPermissionRequest.String()})
+	filtered, err := sessionDB.QueryHookRuns(
+		testutil.Context(t),
+		store.HookRunQuery{Event: hookspkg.HookPermissionRequest.String()},
+	)
 	if err != nil {
 		t.Fatalf("QueryHookRuns(filtered) error = %v", err)
 	}
@@ -149,7 +152,10 @@ func TestSessionDBQueryHookRunsFiltersByOutcome(t *testing.T) {
 		}
 	}
 
-	filtered, err := sessionDB.QueryHookRuns(testutil.Context(t), store.HookRunQuery{Outcome: hookspkg.HookRunOutcomeFailed})
+	filtered, err := sessionDB.QueryHookRuns(
+		testutil.Context(t),
+		store.HookRunQuery{Outcome: hookspkg.HookRunOutcomeFailed},
+	)
 	if err != nil {
 		t.Fatalf("QueryHookRuns(filtered) error = %v", err)
 	}
@@ -230,6 +236,10 @@ func TestSessionDBQueryHookRunsAppliesEventOutcomeSinceAndLimitInAscendingOrder(
 		t.Fatalf("filtered = %#v, want ascending last-two applied permission hooks", filtered)
 	}
 	if !filtered[0].RecordedAt.Before(filtered[1].RecordedAt) {
-		t.Fatalf("filtered order = %s then %s, want ascending chronology", filtered[0].RecordedAt, filtered[1].RecordedAt)
+		t.Fatalf(
+			"filtered order = %s then %s, want ascending chronology",
+			filtered[0].RecordedAt,
+			filtered[1].RecordedAt,
+		)
 	}
 }

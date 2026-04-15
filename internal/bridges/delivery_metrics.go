@@ -11,6 +11,6 @@ type BridgeDeliveryMetrics struct {
 	DeliveryDroppedByReason map[string]int `json:"delivery_dropped_by_reason,omitempty"`
 	DeliveryFailuresTotal   int            `json:"delivery_failures_total"`
 	LastError               string         `json:"last_error,omitempty"`
-	LastErrorAt             time.Time      `json:"last_error_at,omitempty"`
-	LastSuccessAt           time.Time      `json:"last_success_at,omitempty"`
+	LastErrorAt             time.Time      `json:"last_error_at"`
+	LastSuccessAt           time.Time      `json:"last_success_at"`
 }

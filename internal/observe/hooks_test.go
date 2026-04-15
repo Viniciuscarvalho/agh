@@ -20,7 +20,11 @@ func TestObserverAttachHooksAndQueryHookCatalog(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	if entries, err := h.observer.QueryHookCatalog(testutil.Context(t), hookspkg.CatalogFilter{}); err != nil || entries != nil {
+	if entries, err := h.observer.QueryHookCatalog(
+		testutil.Context(t),
+		hookspkg.CatalogFilter{},
+	); err != nil ||
+		entries != nil {
 		t.Fatalf("QueryHookCatalog(before attach) = (%#v, %v), want (nil, nil)", entries, err)
 	}
 
@@ -160,7 +164,7 @@ func TestObserverHookOptionsUseCustomSourcesAndStores(t *testing.T) {
 	observer, err := New(testutil.Context(t),
 		WithRegistry(h.registry),
 		WithHomePaths(h.home),
-		WithWorkspaceResolver(fakeObserveWorkspaceResolver{}),
+		WithWorkspaceResolver(&fakeObserveWorkspaceResolver{}),
 		WithHookCatalogSource(source),
 		WithHookStoreOpener(func(_ context.Context, gotSessionID string, path string) (HookRunStore, error) {
 			storeHandle.lastSessionID = gotSessionID
@@ -262,7 +266,11 @@ func (s *stubHookRunStore) Close(context.Context) error {
 func openObserverHookSessionDB(t *testing.T, homePaths aghconfig.HomePaths, sessionID string) *sessiondb.SessionDB {
 	t.Helper()
 
-	db, err := sessiondb.OpenSessionDB(testutil.Context(t), sessionID, store.SessionDBFile(filepath.Join(homePaths.SessionsDir, sessionID)))
+	db, err := sessiondb.OpenSessionDB(
+		testutil.Context(t),
+		sessionID,
+		store.SessionDBFile(filepath.Join(homePaths.SessionsDir, sessionID)),
+	)
 	if err != nil {
 		t.Fatalf("OpenSessionDB(%q) error = %v", sessionID, err)
 	}

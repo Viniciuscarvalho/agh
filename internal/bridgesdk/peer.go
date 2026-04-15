@@ -58,6 +58,9 @@ type Peer struct {
 	writeMu sync.Mutex
 	wg      sync.WaitGroup
 	nextID  atomic.Int64
+
+	errMu        sync.Mutex
+	transportErr error
 }
 
 // NewPeer constructs a JSON-RPC peer bound to the provided reader and writer.
@@ -136,6 +139,9 @@ func (p *Peer) Call(ctx context.Context, method string, params any, result any) 
 		return ctx.Err()
 	case response, ok := <-responseCh:
 		if !ok {
+			if transportErr := p.currentTransportError(); transportErr != nil {
+				return transportErr
+			}
 			return errors.New("bridgesdk: peer closed before response")
 		}
 		if response.err != nil {
@@ -200,6 +206,9 @@ func (p *Peer) Serve(ctx context.Context) error {
 
 	p.closePending()
 	p.wg.Wait()
+	if err := p.currentTransportError(); err != nil {
+		return err
+	}
 	if err := p.scanner.Err(); err != nil && !errors.Is(err, io.EOF) {
 		return fmt.Errorf("bridgesdk: read rpc frame: %w", err)
 	}
@@ -217,11 +226,13 @@ func (p *Peer) dispatchRequest(ctx context.Context, envelope rpcEnvelope) {
 	handler, ok := p.handlers[method]
 	p.handlersMu.RUnlock()
 	if !ok {
-		_ = p.sendError(envelope.ID, subprocess.NewRPCError(
+		if err := p.sendError(envelope.ID, subprocess.NewRPCError(
 			bridgeSDKRPCCodeMethodNotFound,
 			"Method not found",
 			map[string]string{"method": method},
-		))
+		)); err != nil {
+			p.failTransport(fmt.Errorf("bridgesdk: send method-not-found error: %w", err))
+		}
 		return
 	}
 
@@ -229,18 +240,24 @@ func (p *Peer) dispatchRequest(ctx context.Context, envelope rpcEnvelope) {
 	if err != nil {
 		var rpcErr *subprocess.RPCError
 		if errors.As(err, &rpcErr) {
-			_ = p.sendError(envelope.ID, rpcErr)
+			if sendErr := p.sendError(envelope.ID, rpcErr); sendErr != nil {
+				p.failTransport(fmt.Errorf("bridgesdk: send rpc error: %w", sendErr))
+			}
 			return
 		}
-		_ = p.sendError(envelope.ID, subprocess.NewRPCError(
+		if sendErr := p.sendError(envelope.ID, subprocess.NewRPCError(
 			bridgeSDKRPCCodeInternal,
 			"Internal error",
 			map[string]string{"error": err.Error()},
-		))
+		)); sendErr != nil {
+			p.failTransport(fmt.Errorf("bridgesdk: send internal error: %w", sendErr))
+		}
 		return
 	}
 
-	_ = p.sendResult(envelope.ID, result)
+	if sendErr := p.sendResult(envelope.ID, result); sendErr != nil {
+		p.failTransport(fmt.Errorf("bridgesdk: send result: %w", sendErr))
+	}
 }
 
 func (p *Peer) handleResponse(envelope rpcEnvelope) {
@@ -259,7 +276,18 @@ func (p *Peer) handleResponse(envelope rpcEnvelope) {
 		return
 	}
 
-	payload, _ := json.Marshal(envelope.Result)
+	payload, err := json.Marshal(envelope.Result)
+	if err != nil {
+		responseCh <- rpcResult{
+			err: subprocess.NewRPCError(
+				bridgeSDKRPCCodeInternal,
+				"Invalid response payload",
+				map[string]string{"error": err.Error()},
+			),
+		}
+		close(responseCh)
+		return
+	}
 	responseCh <- rpcResult{
 		result: payload,
 		err:    envelope.Error,
@@ -305,6 +333,23 @@ func (p *Peer) closePending() {
 		delete(p.pending, key)
 		close(ch)
 	}
+}
+
+func (p *Peer) failTransport(err error) {
+	p.errMu.Lock()
+	if p.transportErr == nil {
+		p.transportErr = err
+	} else {
+		p.transportErr = errors.Join(p.transportErr, err)
+	}
+	p.errMu.Unlock()
+	p.closePending()
+}
+
+func (p *Peer) currentTransportError() error {
+	p.errMu.Lock()
+	defer p.errMu.Unlock()
+	return p.transportErr
 }
 
 func rpcIDKey(raw json.RawMessage) string {

@@ -115,20 +115,56 @@ func TestGlobalDBCreateJobScopeAwareUniqueness(t *testing.T) {
 	workspaceA := registerWorkspaceForGlobalTests(t, globalDB, "automation-uniqueness-a", t.TempDir())
 	workspaceB := registerWorkspaceForGlobalTests(t, globalDB, "automation-uniqueness-b", t.TempDir())
 
-	if _, err := globalDB.CreateJob(testutil.Context(t), automationJobForTest(automation.AutomationScopeGlobal, "daily-report", "", automation.JobSourceDynamic)); err != nil {
+	if _, err := globalDB.CreateJob(
+		testutil.Context(t),
+		automationJobForTest(automation.AutomationScopeGlobal, "daily-report", "", automation.JobSourceDynamic),
+	); err != nil {
 		t.Fatalf("CreateJob(global) error = %v", err)
 	}
-	if _, err := globalDB.CreateJob(testutil.Context(t), automationJobForTest(automation.AutomationScopeWorkspace, "daily-report", workspaceA, automation.JobSourceDynamic)); err != nil {
+	if _, err := globalDB.CreateJob(
+		testutil.Context(t),
+		automationJobForTest(
+			automation.AutomationScopeWorkspace,
+			"daily-report",
+			workspaceA,
+			automation.JobSourceDynamic,
+		),
+	); err != nil {
 		t.Fatalf("CreateJob(workspace same name) error = %v", err)
 	}
-	if _, err := globalDB.CreateJob(testutil.Context(t), automationJobForTest(automation.AutomationScopeWorkspace, "daily-report", workspaceB, automation.JobSourceDynamic)); err != nil {
+	if _, err := globalDB.CreateJob(
+		testutil.Context(t),
+		automationJobForTest(
+			automation.AutomationScopeWorkspace,
+			"daily-report",
+			workspaceB,
+			automation.JobSourceDynamic,
+		),
+	); err != nil {
 		t.Fatalf("CreateJob(second workspace same name) error = %v", err)
 	}
 
-	if _, err := globalDB.CreateJob(testutil.Context(t), automationJobForTest(automation.AutomationScopeGlobal, "daily-report", "", automation.JobSourceDynamic)); !errors.Is(err, automation.ErrJobNameTaken) {
+	if _, err := globalDB.CreateJob(
+		testutil.Context(t),
+		automationJobForTest(automation.AutomationScopeGlobal, "daily-report", "", automation.JobSourceDynamic),
+	); !errors.Is(
+		err,
+		automation.ErrJobNameTaken,
+	) {
 		t.Fatalf("CreateJob(duplicate global) error = %v, want ErrJobNameTaken", err)
 	}
-	if _, err := globalDB.CreateJob(testutil.Context(t), automationJobForTest(automation.AutomationScopeWorkspace, "daily-report", workspaceA, automation.JobSourceDynamic)); !errors.Is(err, automation.ErrJobNameTaken) {
+	if _, err := globalDB.CreateJob(
+		testutil.Context(t),
+		automationJobForTest(
+			automation.AutomationScopeWorkspace,
+			"daily-report",
+			workspaceA,
+			automation.JobSourceDynamic,
+		),
+	); !errors.Is(
+		err,
+		automation.ErrJobNameTaken,
+	) {
 		t.Fatalf("CreateJob(duplicate workspace) error = %v, want ErrJobNameTaken", err)
 	}
 }
@@ -137,7 +173,12 @@ func TestGlobalDBGetTriggerByWebhookIDUsesStableID(t *testing.T) {
 	t.Parallel()
 
 	globalDB := openTestGlobalDB(t)
-	trigger := automationWebhookTriggerForTest(automation.AutomationScopeGlobal, "deploy-review", "", automation.JobSourceDynamic)
+	trigger := automationWebhookTriggerForTest(
+		automation.AutomationScopeGlobal,
+		"deploy-review",
+		"",
+		automation.JobSourceDynamic,
+	)
 	trigger.WebhookID = "wbh_stable-001"
 	trigger.EndpointSlug = "deploy-review-v1"
 
@@ -171,7 +212,12 @@ func TestGlobalDBTriggerWebhookSecretRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	globalDB := openTestGlobalDB(t)
-	trigger := automationWebhookTriggerForTest(automation.AutomationScopeGlobal, "deploy-review", "", automation.JobSourceDynamic)
+	trigger := automationWebhookTriggerForTest(
+		automation.AutomationScopeGlobal,
+		"deploy-review",
+		"",
+		automation.JobSourceDynamic,
+	)
 
 	created, err := globalDB.CreateTrigger(testutil.Context(t), trigger)
 	if err != nil {
@@ -204,7 +250,13 @@ func TestGlobalDBTriggerWebhookSecretRoundTrip(t *testing.T) {
 	if err := globalDB.DeleteTriggerWebhookSecret(testutil.Context(t), created.ID); err != nil {
 		t.Fatalf("DeleteTriggerWebhookSecret() error = %v", err)
 	}
-	if _, err := globalDB.GetTriggerWebhookSecret(testutil.Context(t), created.ID); !errors.Is(err, automation.ErrTriggerWebhookSecretNotFound) {
+	if _, err := globalDB.GetTriggerWebhookSecret(
+		testutil.Context(t),
+		created.ID,
+	); !errors.Is(
+		err,
+		automation.ErrTriggerWebhookSecretNotFound,
+	) {
 		t.Fatalf("GetTriggerWebhookSecret(after delete) error = %v, want ErrTriggerWebhookSecretNotFound", err)
 	}
 }
@@ -215,7 +267,12 @@ func TestGlobalDBJobEnabledOverlayDoesNotMutateDefinition(t *testing.T) {
 	globalDB := openTestGlobalDB(t)
 	workspaceID := registerWorkspaceForGlobalTests(t, globalDB, "automation-overlay-workspace", t.TempDir())
 
-	configJob := automationJobForTest(automation.AutomationScopeWorkspace, "config-job", workspaceID, automation.JobSourceConfig)
+	configJob := automationJobForTest(
+		automation.AutomationScopeWorkspace,
+		"config-job",
+		workspaceID,
+		automation.JobSourceConfig,
+	)
 	configJob.Enabled = true
 	created, err := globalDB.CreateJob(testutil.Context(t), configJob)
 	if err != nil {
@@ -257,7 +314,15 @@ func TestGlobalDBJobEnabledOverlayDoesNotMutateDefinition(t *testing.T) {
 		t.Fatalf("len(ListJobEnabledOverlays()) = %d, want %d", got, want)
 	}
 
-	dynamicJob, err := globalDB.CreateJob(testutil.Context(t), automationJobForTest(automation.AutomationScopeWorkspace, "dynamic-job", workspaceID, automation.JobSourceDynamic))
+	dynamicJob, err := globalDB.CreateJob(
+		testutil.Context(t),
+		automationJobForTest(
+			automation.AutomationScopeWorkspace,
+			"dynamic-job",
+			workspaceID,
+			automation.JobSourceDynamic,
+		),
+	)
 	if err != nil {
 		t.Fatalf("CreateJob(dynamic) error = %v", err)
 	}
@@ -271,7 +336,13 @@ func TestGlobalDBJobEnabledOverlayDoesNotMutateDefinition(t *testing.T) {
 	if err := globalDB.DeleteJobEnabledOverlay(testutil.Context(t), created.ID); err != nil {
 		t.Fatalf("DeleteJobEnabledOverlay() error = %v", err)
 	}
-	if _, err := globalDB.GetJobEnabledOverlay(testutil.Context(t), created.ID); !errors.Is(err, automation.ErrJobOverlayNotFound) {
+	if _, err := globalDB.GetJobEnabledOverlay(
+		testutil.Context(t),
+		created.ID,
+	); !errors.Is(
+		err,
+		automation.ErrJobOverlayNotFound,
+	) {
 		t.Fatalf("GetJobEnabledOverlay(after delete) error = %v, want ErrJobOverlayNotFound", err)
 	}
 }
@@ -282,7 +353,12 @@ func TestGlobalDBTriggerEnabledOverlayDoesNotMutateDefinition(t *testing.T) {
 	globalDB := openTestGlobalDB(t)
 	workspaceID := registerWorkspaceForGlobalTests(t, globalDB, "automation-trigger-overlay-workspace", t.TempDir())
 
-	configTrigger := automationWebhookTriggerForTest(automation.AutomationScopeWorkspace, "config-trigger", workspaceID, automation.JobSourceConfig)
+	configTrigger := automationWebhookTriggerForTest(
+		automation.AutomationScopeWorkspace,
+		"config-trigger",
+		workspaceID,
+		automation.JobSourceConfig,
+	)
 	configTrigger.Enabled = true
 	created, err := globalDB.CreateTrigger(testutil.Context(t), configTrigger)
 	if err != nil {
@@ -320,7 +396,12 @@ func TestGlobalDBTriggerEnabledOverlayDoesNotMutateDefinition(t *testing.T) {
 		t.Fatalf("len(ListTriggerEnabledOverlays()) = %d, want %d", got, want)
 	}
 
-	dynamicTriggerDef := automationWebhookTriggerForTest(automation.AutomationScopeWorkspace, "dynamic-trigger", workspaceID, automation.JobSourceDynamic)
+	dynamicTriggerDef := automationWebhookTriggerForTest(
+		automation.AutomationScopeWorkspace,
+		"dynamic-trigger",
+		workspaceID,
+		automation.JobSourceDynamic,
+	)
 	dynamicTriggerDef.WebhookID = "wbh_dynamic-trigger-webhook"
 	dynamicTriggerDef.EndpointSlug = "dynamic-trigger-endpoint"
 	dynamicTrigger, err := globalDB.CreateTrigger(testutil.Context(t), dynamicTriggerDef)
@@ -337,7 +418,13 @@ func TestGlobalDBTriggerEnabledOverlayDoesNotMutateDefinition(t *testing.T) {
 	if err := globalDB.DeleteTriggerEnabledOverlay(testutil.Context(t), created.ID); err != nil {
 		t.Fatalf("DeleteTriggerEnabledOverlay() error = %v", err)
 	}
-	if _, err := globalDB.GetTriggerEnabledOverlay(testutil.Context(t), created.ID); !errors.Is(err, automation.ErrTriggerOverlayNotFound) {
+	if _, err := globalDB.GetTriggerEnabledOverlay(
+		testutil.Context(t),
+		created.ID,
+	); !errors.Is(
+		err,
+		automation.ErrTriggerOverlayNotFound,
+	) {
 		t.Fatalf("GetTriggerEnabledOverlay(after delete) error = %v, want ErrTriggerOverlayNotFound", err)
 	}
 }
@@ -348,27 +435,59 @@ func TestGlobalDBTriggerUniquenessAndWebhookIDConstraints(t *testing.T) {
 	globalDB := openTestGlobalDB(t)
 	workspaceID := registerWorkspaceForGlobalTests(t, globalDB, "automation-trigger-constraints", t.TempDir())
 
-	globalWebhook := automationWebhookTriggerForTest(automation.AutomationScopeGlobal, "deploy-review", "", automation.JobSourceDynamic)
+	globalWebhook := automationWebhookTriggerForTest(
+		automation.AutomationScopeGlobal,
+		"deploy-review",
+		"",
+		automation.JobSourceDynamic,
+	)
 	globalWebhook.WebhookID = "wbh_stable-webhook-a"
 	if _, err := globalDB.CreateTrigger(testutil.Context(t), globalWebhook); err != nil {
 		t.Fatalf("CreateTrigger(globalWebhook) error = %v", err)
 	}
 
-	workspaceTrigger := automationWebhookTriggerForTest(automation.AutomationScopeWorkspace, "deploy-review", workspaceID, automation.JobSourceDynamic)
+	workspaceTrigger := automationWebhookTriggerForTest(
+		automation.AutomationScopeWorkspace,
+		"deploy-review",
+		workspaceID,
+		automation.JobSourceDynamic,
+	)
 	workspaceTrigger.WebhookID = "wbh_stable-webhook-b"
 	if _, err := globalDB.CreateTrigger(testutil.Context(t), workspaceTrigger); err != nil {
 		t.Fatalf("CreateTrigger(workspace same name) error = %v", err)
 	}
 
-	duplicateName := automationWebhookTriggerForTest(automation.AutomationScopeGlobal, "deploy-review", "", automation.JobSourceDynamic)
+	duplicateName := automationWebhookTriggerForTest(
+		automation.AutomationScopeGlobal,
+		"deploy-review",
+		"",
+		automation.JobSourceDynamic,
+	)
 	duplicateName.WebhookID = "wbh_stable-webhook-c"
-	if _, err := globalDB.CreateTrigger(testutil.Context(t), duplicateName); !errors.Is(err, automation.ErrTriggerNameTaken) {
+	if _, err := globalDB.CreateTrigger(
+		testutil.Context(t),
+		duplicateName,
+	); !errors.Is(
+		err,
+		automation.ErrTriggerNameTaken,
+	) {
 		t.Fatalf("CreateTrigger(duplicate name) error = %v, want ErrTriggerNameTaken", err)
 	}
 
-	duplicateWebhook := automationWebhookTriggerForTest(automation.AutomationScopeWorkspace, "another-name", workspaceID, automation.JobSourceDynamic)
+	duplicateWebhook := automationWebhookTriggerForTest(
+		automation.AutomationScopeWorkspace,
+		"another-name",
+		workspaceID,
+		automation.JobSourceDynamic,
+	)
 	duplicateWebhook.WebhookID = "wbh_stable-webhook-a"
-	if _, err := globalDB.CreateTrigger(testutil.Context(t), duplicateWebhook); !errors.Is(err, automation.ErrTriggerWebhookIDTaken) {
+	if _, err := globalDB.CreateTrigger(
+		testutil.Context(t),
+		duplicateWebhook,
+	); !errors.Is(
+		err,
+		automation.ErrTriggerWebhookIDTaken,
+	) {
 		t.Fatalf("CreateTrigger(duplicate webhook) error = %v, want ErrTriggerWebhookIDTaken", err)
 	}
 
@@ -412,15 +531,45 @@ func TestGlobalDBAutomationValidationAndDeleteBehavior(t *testing.T) {
 		t.Fatal("CreateRun(without job or trigger) error = nil, want non-nil")
 	}
 
-	if _, err := globalDB.CreateJob(testutil.Context(t), automationJobForTest(automation.AutomationScopeWorkspace, "missing-workspace-job", "ws-missing", automation.JobSourceDynamic)); !errors.Is(err, aghworkspace.ErrWorkspaceNotFound) {
+	if _, err := globalDB.CreateJob(
+		testutil.Context(t),
+		automationJobForTest(
+			automation.AutomationScopeWorkspace,
+			"missing-workspace-job",
+			"ws-missing",
+			automation.JobSourceDynamic,
+		),
+	); !errors.Is(
+		err,
+		aghworkspace.ErrWorkspaceNotFound,
+	) {
 		t.Fatalf("CreateJob(missing workspace) error = %v, want ErrWorkspaceNotFound", err)
 	}
-	if _, err := globalDB.CreateTrigger(testutil.Context(t), automationWebhookTriggerForTest(automation.AutomationScopeWorkspace, "missing-workspace-trigger", "ws-missing", automation.JobSourceDynamic)); !errors.Is(err, aghworkspace.ErrWorkspaceNotFound) {
+	if _, err := globalDB.CreateTrigger(
+		testutil.Context(t),
+		automationWebhookTriggerForTest(
+			automation.AutomationScopeWorkspace,
+			"missing-workspace-trigger",
+			"ws-missing",
+			automation.JobSourceDynamic,
+		),
+	); !errors.Is(
+		err,
+		aghworkspace.ErrWorkspaceNotFound,
+	) {
 		t.Fatalf("CreateTrigger(missing workspace) error = %v, want ErrWorkspaceNotFound", err)
 	}
 
 	workspaceID := registerWorkspaceForGlobalTests(t, globalDB, "automation-delete-workspace", t.TempDir())
-	job, err := globalDB.CreateJob(testutil.Context(t), automationJobForTest(automation.AutomationScopeWorkspace, "delete-job", workspaceID, automation.JobSourceDynamic))
+	job, err := globalDB.CreateJob(
+		testutil.Context(t),
+		automationJobForTest(
+			automation.AutomationScopeWorkspace,
+			"delete-job",
+			workspaceID,
+			automation.JobSourceDynamic,
+		),
+	)
 	if err != nil {
 		t.Fatalf("CreateJob() error = %v", err)
 	}
@@ -440,11 +589,22 @@ func TestGlobalDBAutomationValidationAndDeleteBehavior(t *testing.T) {
 	if got, want := loadedJob.Prompt, "Updated automation prompt."; got != want {
 		t.Fatalf("GetJob().Prompt = %q, want %q", got, want)
 	}
-	trigger, err := globalDB.CreateTrigger(testutil.Context(t), automationNonWebhookTriggerForTest(automation.AutomationScopeWorkspace, "delete-trigger", workspaceID, automation.JobSourceDynamic))
+	trigger, err := globalDB.CreateTrigger(
+		testutil.Context(t),
+		automationNonWebhookTriggerForTest(
+			automation.AutomationScopeWorkspace,
+			"delete-trigger",
+			workspaceID,
+			automation.JobSourceDynamic,
+		),
+	)
 	if err != nil {
 		t.Fatalf("CreateTrigger() error = %v", err)
 	}
-	run, err := globalDB.CreateRun(testutil.Context(t), automationRunForJob(job.ID, automation.RunRunning, 1, time.Date(2026, 4, 10, 22, 0, 0, 0, time.UTC)))
+	run, err := globalDB.CreateRun(
+		testutil.Context(t),
+		automationRunForJob(job.ID, automation.RunRunning, 1, time.Date(2026, 4, 10, 22, 0, 0, 0, time.UTC)),
+	)
 	if err != nil {
 		t.Fatalf("CreateRun() error = %v", err)
 	}
@@ -470,7 +630,10 @@ func TestGlobalDBAutomationValidationAndDeleteBehavior(t *testing.T) {
 		t.Fatalf("GetRun().Attempt = %d, want %d", got, want)
 	}
 
-	jobs, err := globalDB.ListJobs(testutil.Context(t), JobListQuery{Scope: automation.AutomationScopeWorkspace, Source: automation.JobSourceDynamic})
+	jobs, err := globalDB.ListJobs(
+		testutil.Context(t),
+		JobListQuery{Scope: automation.AutomationScopeWorkspace, Source: automation.JobSourceDynamic},
+	)
 	if err != nil {
 		t.Fatalf("ListJobs(filtered) error = %v", err)
 	}
@@ -615,7 +778,10 @@ func TestAutomationStoreHelperBranches(t *testing.T) {
 	}
 
 	var schedule *automation.ScheduleSpec
-	if err := decodeAutomationSchedule(sql.NullString{Valid: true, String: `{"mode":"cron","expr":"0 * * * *"}`}, &schedule); err != nil {
+	if err := decodeAutomationSchedule(
+		sql.NullString{Valid: true, String: `{"mode":"cron","expr":"0 * * * *"}`},
+		&schedule,
+	); err != nil {
 		t.Fatalf("decodeAutomationSchedule(valid) error = %v", err)
 	}
 	if schedule == nil || schedule.Mode != automation.ScheduleModeCron {
@@ -626,7 +792,10 @@ func TestAutomationStoreHelperBranches(t *testing.T) {
 	}
 
 	var taskConfig *automation.JobTaskConfig
-	if err := decodeAutomationTaskConfig(sql.NullString{Valid: true, String: `{"title":"Review findings","network_channel":"ops-automation"}`}, &taskConfig); err != nil {
+	if err := decodeAutomationTaskConfig(
+		sql.NullString{Valid: true, String: `{"title":"Review findings","network_channel":"ops-automation"}`},
+		&taskConfig,
+	); err != nil {
 		t.Fatalf("decodeAutomationTaskConfig(valid) error = %v", err)
 	}
 	if taskConfig == nil || taskConfig.Title != "Review findings" {
@@ -637,7 +806,10 @@ func TestAutomationStoreHelperBranches(t *testing.T) {
 	}
 
 	var filter map[string]string
-	if err := decodeAutomationFilter(sql.NullString{Valid: true, String: `{"data.kind":"ready"}`}, &filter); err != nil {
+	if err := decodeAutomationFilter(
+		sql.NullString{Valid: true, String: `{"data.kind":"ready"}`},
+		&filter,
+	); err != nil {
 		t.Fatalf("decodeAutomationFilter(valid) error = %v", err)
 	}
 	if got, want := filter["data.kind"], "ready"; got != want {
@@ -654,13 +826,28 @@ func TestAutomationStoreHelperBranches(t *testing.T) {
 		t.Fatalf("nullableAutomationTimestamp(value) = %#v, want %#v", got, want)
 	}
 
-	if err := mapAutomationJobConstraintError(errors.New("UNIQUE constraint failed: automation_jobs.name")); !errors.Is(err, automation.ErrJobNameTaken) {
+	if err := mapAutomationJobConstraintError(
+		errors.New("UNIQUE constraint failed: automation_jobs.name"),
+	); !errors.Is(
+		err,
+		automation.ErrJobNameTaken,
+	) {
 		t.Fatalf("mapAutomationJobConstraintError(name) = %v, want ErrJobNameTaken", err)
 	}
-	if err := mapAutomationJobConstraintError(errors.New("FOREIGN KEY constraint failed")); !errors.Is(err, aghworkspace.ErrWorkspaceNotFound) {
+	if err := mapAutomationJobConstraintError(
+		errors.New("FOREIGN KEY constraint failed"),
+	); !errors.Is(
+		err,
+		aghworkspace.ErrWorkspaceNotFound,
+	) {
 		t.Fatalf("mapAutomationJobConstraintError(fk) = %v, want ErrWorkspaceNotFound", err)
 	}
-	if err := mapAutomationTriggerConstraintError(errors.New("UNIQUE constraint failed: automation_triggers.webhook_id")); !errors.Is(err, automation.ErrTriggerWebhookIDTaken) {
+	if err := mapAutomationTriggerConstraintError(
+		errors.New("UNIQUE constraint failed: automation_triggers.webhook_id"),
+	); !errors.Is(
+		err,
+		automation.ErrTriggerWebhookIDTaken,
+	) {
 		t.Fatalf("mapAutomationTriggerConstraintError(webhook) = %v, want ErrTriggerWebhookIDTaken", err)
 	}
 }
@@ -670,11 +857,27 @@ func TestGlobalDBLookupAutomationSources(t *testing.T) {
 
 	globalDB := openTestGlobalDB(t)
 	workspaceID := registerWorkspaceForGlobalTests(t, globalDB, "automation-source-workspace", t.TempDir())
-	job, err := globalDB.CreateJob(testutil.Context(t), automationJobForTest(automation.AutomationScopeWorkspace, "source-job", workspaceID, automation.JobSourceConfig))
+	job, err := globalDB.CreateJob(
+		testutil.Context(t),
+		automationJobForTest(
+			automation.AutomationScopeWorkspace,
+			"source-job",
+			workspaceID,
+			automation.JobSourceConfig,
+		),
+	)
 	if err != nil {
 		t.Fatalf("CreateJob() error = %v", err)
 	}
-	trigger, err := globalDB.CreateTrigger(testutil.Context(t), automationWebhookTriggerForTest(automation.AutomationScopeWorkspace, "source-trigger", workspaceID, automation.JobSourceConfig))
+	trigger, err := globalDB.CreateTrigger(
+		testutil.Context(t),
+		automationWebhookTriggerForTest(
+			automation.AutomationScopeWorkspace,
+			"source-trigger",
+			workspaceID,
+			automation.JobSourceConfig,
+		),
+	)
 	if err != nil {
 		t.Fatalf("CreateTrigger() error = %v", err)
 	}
@@ -694,10 +897,22 @@ func TestGlobalDBLookupAutomationSources(t *testing.T) {
 		t.Fatalf("lookupTriggerSource() = %q, want %q", got, want)
 	}
 
-	if _, err := globalDB.lookupJobSource(testutil.Context(t), "missing-job"); !errors.Is(err, automation.ErrJobNotFound) {
+	if _, err := globalDB.lookupJobSource(
+		testutil.Context(t),
+		"missing-job",
+	); !errors.Is(
+		err,
+		automation.ErrJobNotFound,
+	) {
 		t.Fatalf("lookupJobSource(missing) error = %v, want ErrJobNotFound", err)
 	}
-	if _, err := globalDB.lookupTriggerSource(testutil.Context(t), "missing-trigger"); !errors.Is(err, automation.ErrTriggerNotFound) {
+	if _, err := globalDB.lookupTriggerSource(
+		testutil.Context(t),
+		"missing-trigger",
+	); !errors.Is(
+		err,
+		automation.ErrTriggerNotFound,
+	) {
 		t.Fatalf("lookupTriggerSource(missing) error = %v, want ErrTriggerNotFound", err)
 	}
 }
@@ -746,7 +961,10 @@ func TestAutomationOverlayNormalizersAndQueryValidators(t *testing.T) {
 	if _, err := normalizeJobOverlay(JobEnabledOverlay{}, time.Date(2026, 4, 10, 23, 30, 0, 0, time.UTC)); err == nil {
 		t.Fatal("normalizeJobOverlay(empty) error = nil, want non-nil")
 	}
-	if _, err := normalizeTriggerOverlay(TriggerEnabledOverlay{}, time.Date(2026, 4, 10, 23, 30, 0, 0, time.UTC)); err == nil {
+	if _, err := normalizeTriggerOverlay(
+		TriggerEnabledOverlay{},
+		time.Date(2026, 4, 10, 23, 30, 0, 0, time.UTC),
+	); err == nil {
 		t.Fatal("normalizeTriggerOverlay(empty) error = nil, want non-nil")
 	}
 	if err := validateAutomationJobListQuery(JobListQuery{Source: "bad-source"}); err == nil {
@@ -762,15 +980,29 @@ func TestGlobalDBListRunsFiltersByJobTriggerStatusAndTimeWindow(t *testing.T) {
 
 	globalDB := openTestGlobalDB(t)
 	workspaceID := registerWorkspaceForGlobalTests(t, globalDB, "automation-runs-workspace", t.TempDir())
-	jobA, err := globalDB.CreateJob(testutil.Context(t), automationJobForTest(automation.AutomationScopeWorkspace, "job-a", workspaceID, automation.JobSourceDynamic))
+	jobA, err := globalDB.CreateJob(
+		testutil.Context(t),
+		automationJobForTest(automation.AutomationScopeWorkspace, "job-a", workspaceID, automation.JobSourceDynamic),
+	)
 	if err != nil {
 		t.Fatalf("CreateJob(jobA) error = %v", err)
 	}
-	jobB, err := globalDB.CreateJob(testutil.Context(t), automationJobForTest(automation.AutomationScopeWorkspace, "job-b", workspaceID, automation.JobSourceDynamic))
+	jobB, err := globalDB.CreateJob(
+		testutil.Context(t),
+		automationJobForTest(automation.AutomationScopeWorkspace, "job-b", workspaceID, automation.JobSourceDynamic),
+	)
 	if err != nil {
 		t.Fatalf("CreateJob(jobB) error = %v", err)
 	}
-	trigger, err := globalDB.CreateTrigger(testutil.Context(t), automationNonWebhookTriggerForTest(automation.AutomationScopeWorkspace, "trigger-a", workspaceID, automation.JobSourceDynamic))
+	trigger, err := globalDB.CreateTrigger(
+		testutil.Context(t),
+		automationNonWebhookTriggerForTest(
+			automation.AutomationScopeWorkspace,
+			"trigger-a",
+			workspaceID,
+			automation.JobSourceDynamic,
+		),
+	)
 	if err != nil {
 		t.Fatalf("CreateTrigger() error = %v", err)
 	}
@@ -830,7 +1062,12 @@ func TestGlobalDBListRunsFiltersByJobTriggerStatusAndTimeWindow(t *testing.T) {
 	}
 }
 
-func automationJobForTest(scope automation.AutomationScope, name string, workspaceID string, source automation.JobSource) Job {
+func automationJobForTest(
+	scope automation.Scope,
+	name string,
+	workspaceID string,
+	source automation.JobSource,
+) Job {
 	createdAt := time.Date(2026, 4, 10, 18, 0, 0, 0, time.UTC)
 	return Job{
 		Scope:       scope,
@@ -851,7 +1088,12 @@ func automationJobForTest(scope automation.AutomationScope, name string, workspa
 	}
 }
 
-func automationWebhookTriggerForTest(scope automation.AutomationScope, name string, workspaceID string, source automation.JobSource) Trigger {
+func automationWebhookTriggerForTest(
+	scope automation.Scope,
+	name string,
+	workspaceID string,
+	source automation.JobSource,
+) Trigger {
 	createdAt := time.Date(2026, 4, 10, 18, 5, 0, 0, time.UTC)
 	return Trigger{
 		Scope:        scope,
@@ -871,7 +1113,12 @@ func automationWebhookTriggerForTest(scope automation.AutomationScope, name stri
 	}
 }
 
-func automationNonWebhookTriggerForTest(scope automation.AutomationScope, name string, workspaceID string, source automation.JobSource) Trigger {
+func automationNonWebhookTriggerForTest(
+	scope automation.Scope,
+	name string,
+	workspaceID string,
+	source automation.JobSource,
+) Trigger {
 	createdAt := time.Date(2026, 4, 10, 18, 10, 0, 0, time.UTC)
 	return Trigger{
 		Scope:       scope,

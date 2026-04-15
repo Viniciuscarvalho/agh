@@ -26,7 +26,7 @@ const (
 	defaultProtocolVersion = "1"
 )
 
-func TestSubprocessHelperProcess(t *testing.T) {
+func TestSubprocessHelperProcess(_ *testing.T) {
 	if os.Getenv(testHelperEnvKey) != "1" {
 		return
 	}
@@ -237,6 +237,31 @@ func TestHealthCheckHealthyFalseMarksUnhealthyImmediately(t *testing.T) {
 	})
 }
 
+func TestStopHealthMonitorIsRaceFree(t *testing.T) {
+	t.Parallel()
+
+	for range 32 {
+		lifecycleCtx, cancel := context.WithCancel(context.Background())
+		process := &Process{
+			lifecycleCtx:    lifecycleCtx,
+			cancelLifecycle: cancel,
+			healthThreshold: 1,
+		}
+
+		process.maybeStartHealthMonitor(InitializeRuntime{
+			HealthCheckIntervalMS: 1,
+			HealthCheckTimeoutMS:  10,
+		}, InitializeSupports{HealthCheck: true})
+
+		waitForCondition(t, time.Second, func() bool {
+			return process.HealthState().LastCheckedAt != (time.Time{})
+		})
+
+		process.stopHealthMonitor()
+		cancel()
+	}
+}
+
 func TestShutdownSendsCooperativeRequest(t *testing.T) {
 	t.Parallel()
 
@@ -348,14 +373,22 @@ func TestCallRejectsBeforeInitialize(t *testing.T) {
 func TestHandleMethodRegistrationValidation(t *testing.T) {
 	t.Parallel()
 
-	if err := (*Process)(nil).HandleMethod("host/add", func(context.Context, json.RawMessage) (any, error) { return nil, nil }); err == nil {
+	if err := (*Process)(
+		nil,
+	).HandleMethod("host/add", func(context.Context, json.RawMessage) (any, error) { return nil, nil }); err == nil {
 		t.Fatal("(*Process)(nil).HandleMethod() error = nil, want non-nil")
 	}
 
 	rawProcess := launchHelperProcess(t, "raw_echo", LaunchConfig{DisableTransport: true})
 	defer shutdownProcess(t, rawProcess)
 
-	if err := rawProcess.HandleMethod("host/add", func(context.Context, json.RawMessage) (any, error) { return nil, nil }); !errors.Is(err, ErrTransportDisabled) {
+	if err := rawProcess.HandleMethod(
+		"host/add",
+		func(context.Context, json.RawMessage) (any, error) { return nil, nil },
+	); !errors.Is(
+		err,
+		ErrTransportDisabled,
+	) {
 		t.Fatalf("HandleMethod() error = %v, want ErrTransportDisabled", err)
 	}
 }
@@ -448,7 +481,6 @@ func TestInitializeRequestValidateRejectsMissingFields(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -521,7 +553,9 @@ func TestValidateInitializeResponseRejectsInvalidContracts(t *testing.T) {
 			name: "missing-bridge-deliver-service",
 			setup: func(request *InitializeRequest) {
 				request.Capabilities.Provides = []string{extensionprotocol.CapabilityProvideBridgeAdapter}
-				request.Methods.ExtensionServices = extensionprotocol.CapabilityServiceMethods(request.Capabilities.Provides)
+				request.Methods.ExtensionServices = extensionprotocol.CapabilityServiceMethods(
+					request.Capabilities.Provides,
+				)
 			},
 			mutate: func(response *InitializeResponse) {
 				response.AcceptedCapabilities.Provides = []string{extensionprotocol.CapabilityProvideBridgeAdapter}
@@ -532,7 +566,6 @@ func TestValidateInitializeResponseRejectsInvalidContracts(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -811,7 +844,10 @@ func (h *helperServer) handleRequest(envelope rpcEnvelope) {
 	case "oversize":
 		h.handleOversize(envelope)
 	default:
-		_ = h.sendError(envelope.ID, NewRPCError(codeMethodNotFound, "Method not found", map[string]string{"method": envelope.Method}))
+		_ = h.sendError(
+			envelope.ID,
+			NewRPCError(codeMethodNotFound, "Method not found", map[string]string{"method": envelope.Method}),
+		)
 	}
 }
 
@@ -827,7 +863,10 @@ func (h *helperServer) handleInitialize(envelope rpcEnvelope) {
 
 	var request InitializeRequest
 	if err := json.Unmarshal(envelope.Params, &request); err != nil {
-		_ = h.sendError(envelope.ID, NewRPCError(codeInvalidParams, "Invalid params", map[string]string{"error": err.Error()}))
+		_ = h.sendError(
+			envelope.ID,
+			NewRPCError(codeInvalidParams, "Invalid params", map[string]string{"error": err.Error()}),
+		)
 		return
 	}
 
@@ -863,7 +902,10 @@ func (h *helperServer) handleEcho(envelope rpcEnvelope) {
 		Message string `json:"message"`
 	}
 	if err := json.Unmarshal(envelope.Params, &request); err != nil {
-		_ = h.sendError(envelope.ID, NewRPCError(codeInvalidParams, "Invalid params", map[string]string{"error": err.Error()}))
+		_ = h.sendError(
+			envelope.ID,
+			NewRPCError(codeInvalidParams, "Invalid params", map[string]string{"error": err.Error()}),
+		)
 		return
 	}
 	_ = h.sendResult(envelope.ID, map[string]string{"message": request.Message})
@@ -875,7 +917,10 @@ func (h *helperServer) handleSleep(envelope rpcEnvelope) {
 		Message string `json:"message"`
 	}
 	if err := json.Unmarshal(envelope.Params, &request); err != nil {
-		_ = h.sendError(envelope.ID, NewRPCError(codeInvalidParams, "Invalid params", map[string]string{"error": err.Error()}))
+		_ = h.sendError(
+			envelope.ID,
+			NewRPCError(codeInvalidParams, "Invalid params", map[string]string{"error": err.Error()}),
+		)
 		return
 	}
 	time.Sleep(time.Duration(request.DelayMS) * time.Millisecond)
@@ -888,13 +933,19 @@ func (h *helperServer) handleRelayToHost(envelope rpcEnvelope) {
 		Params json.RawMessage `json:"params"`
 	}
 	if err := json.Unmarshal(envelope.Params, &request); err != nil {
-		_ = h.sendError(envelope.ID, NewRPCError(codeInvalidParams, "Invalid params", map[string]string{"error": err.Error()}))
+		_ = h.sendError(
+			envelope.ID,
+			NewRPCError(codeInvalidParams, "Invalid params", map[string]string{"error": err.Error()}),
+		)
 		return
 	}
 
 	result, err := h.callHost(request.Method, request.Params)
 	if err != nil {
-		_ = h.sendError(envelope.ID, NewRPCError(codeInternalError, "Internal error", map[string]string{"error": err.Error()}))
+		_ = h.sendError(
+			envelope.ID,
+			NewRPCError(codeInternalError, "Internal error", map[string]string{"error": err.Error()}),
+		)
 		return
 	}
 	_ = h.sendResult(envelope.ID, result)
@@ -982,7 +1033,7 @@ func (h *helperServer) deliverResponse(envelope rpcEnvelope) {
 
 func (h *helperServer) sendResult(id json.RawMessage, result any) error {
 	if h.scenario == "blank_lines" {
-		if _, err := os.Stdout.Write([]byte("\n\n")); err != nil {
+		if _, err := os.Stdout.WriteString("\n\n"); err != nil {
 			return err
 		}
 	}
@@ -1012,7 +1063,7 @@ func (h *helperServer) writeEnvelope(envelope any) error {
 	if _, err := os.Stdout.Write(encoded); err != nil {
 		return err
 	}
-	_, err = os.Stdout.Write([]byte("\n"))
+	_, err = os.Stdout.WriteString("\n")
 	return err
 }
 

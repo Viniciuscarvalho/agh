@@ -37,7 +37,7 @@ func newBridgeListCommand(deps commandDeps) *cobra.Command {
 		Use:   "list",
 		Short: "List bridge instances",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -57,7 +57,7 @@ func newBridgeGetCommand(deps commandDeps) *cobra.Command {
 		Short: "Show one bridge instance",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -90,44 +90,25 @@ func newBridgeCreateCommand(deps commandDeps) *cobra.Command {
 		Use:   "create",
 		Short: "Create a bridge instance",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
 
-			scope, err := parseBridgeScope(scopeRaw)
+			payload, err := buildBridgeCreatePayload(
+				scopeRaw,
+				workspaceID,
+				platform,
+				extensionName,
+				displayName,
+				enabled,
+				statusRaw,
+				includePeer,
+				includeThread,
+				includeGroup,
+				deliveryDefaults,
+			)
 			if err != nil {
-				return err
-			}
-			if scope == bridgepkg.ScopeWorkspace && strings.TrimSpace(workspaceID) == "" {
-				return errors.New("cli: --workspace-id is required when --scope=workspace")
-			}
-			status, err := resolveBridgeStatus(enabled, statusRaw)
-			if err != nil {
-				return err
-			}
-
-			payload := CreateBridgeRequest{
-				Scope:         scope,
-				WorkspaceID:   strings.TrimSpace(workspaceID),
-				Platform:      strings.TrimSpace(platform),
-				ExtensionName: strings.TrimSpace(extensionName),
-				DisplayName:   strings.TrimSpace(displayName),
-				Enabled:       enabled,
-				Status:        status,
-				RoutingPolicy: bridgepkg.RoutingPolicy{
-					IncludePeer:   includePeer,
-					IncludeThread: includeThread,
-					IncludeGroup:  includeGroup,
-				},
-			}
-
-			if raw, err := parseOptionalBridgeJSON(deliveryDefaults); err != nil {
-				return err
-			} else if raw != nil {
-				payload.DeliveryDefaults = contract.BridgeDeliveryDefaultsPayload(*raw)
-			}
-			if err := validateBridgeCreatePayload(payload); err != nil {
 				return err
 			}
 
@@ -144,15 +125,70 @@ func newBridgeCreateCommand(deps commandDeps) *cobra.Command {
 	cmd.Flags().StringVar(&extensionName, "extension", "", "Owning extension name")
 	cmd.Flags().StringVar(&displayName, "display-name", "", "Operator-facing bridge display name")
 	cmd.Flags().BoolVar(&enabled, "enabled", true, "Whether the instance starts enabled")
-	cmd.Flags().StringVar(&statusRaw, "status", "", "Lifecycle status (defaults to starting when enabled, disabled otherwise)")
+	cmd.Flags().
+		StringVar(&statusRaw, "status", "", "Lifecycle status (defaults to starting when enabled, disabled otherwise)")
 	cmd.Flags().BoolVar(&includePeer, "include-peer", false, "Include peer identity in routing")
 	cmd.Flags().BoolVar(&includeThread, "include-thread", false, "Include thread identity in routing")
 	cmd.Flags().BoolVar(&includeGroup, "include-group", false, "Include group identity in routing")
-	cmd.Flags().StringVar(&deliveryDefaults, bridgeDeliveryDefaultsFlag, "", "JSON object or null for delivery target defaults")
+	cmd.Flags().
+		StringVar(&deliveryDefaults, bridgeDeliveryDefaultsFlag, "", "JSON object or null for delivery target defaults")
 	mustMarkFlagRequired(cmd, "platform")
 	mustMarkFlagRequired(cmd, "extension")
 	mustMarkFlagRequired(cmd, "display-name")
 	return cmd
+}
+
+func buildBridgeCreatePayload(
+	scopeRaw string,
+	workspaceID string,
+	platform string,
+	extensionName string,
+	displayName string,
+	enabled bool,
+	statusRaw string,
+	includePeer bool,
+	includeThread bool,
+	includeGroup bool,
+	deliveryDefaults string,
+) (CreateBridgeRequest, error) {
+	scope, err := parseBridgeScope(scopeRaw)
+	if err != nil {
+		return CreateBridgeRequest{}, err
+	}
+	if scope == bridgepkg.ScopeWorkspace && strings.TrimSpace(workspaceID) == "" {
+		return CreateBridgeRequest{}, errors.New("cli: --workspace-id is required when --scope=workspace")
+	}
+	status, err := resolveBridgeStatus(enabled, statusRaw)
+	if err != nil {
+		return CreateBridgeRequest{}, err
+	}
+
+	payload := CreateBridgeRequest{
+		Scope:         scope,
+		WorkspaceID:   strings.TrimSpace(workspaceID),
+		Platform:      strings.TrimSpace(platform),
+		ExtensionName: strings.TrimSpace(extensionName),
+		DisplayName:   strings.TrimSpace(displayName),
+		Enabled:       enabled,
+		Status:        status,
+		RoutingPolicy: bridgepkg.RoutingPolicy{
+			IncludePeer:   includePeer,
+			IncludeThread: includeThread,
+			IncludeGroup:  includeGroup,
+		},
+	}
+
+	raw, err := parseOptionalBridgeJSON(deliveryDefaults)
+	if err != nil {
+		return CreateBridgeRequest{}, err
+	}
+	if raw != nil {
+		payload.DeliveryDefaults = contract.BridgeDeliveryDefaultsPayload(*raw)
+	}
+	if err := validateBridgeCreatePayload(payload); err != nil {
+		return CreateBridgeRequest{}, err
+	}
+	return payload, nil
 }
 
 func newBridgeUpdateCommand(deps commandDeps) *cobra.Command {
@@ -169,7 +205,7 @@ func newBridgeUpdateCommand(deps commandDeps) *cobra.Command {
 		Short: "Update mutable bridge fields",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -228,7 +264,8 @@ func newBridgeUpdateCommand(deps commandDeps) *cobra.Command {
 	cmd.Flags().BoolVar(&includePeer, "include-peer", false, "Override whether routing includes peer identity")
 	cmd.Flags().BoolVar(&includeThread, "include-thread", false, "Override whether routing includes thread identity")
 	cmd.Flags().BoolVar(&includeGroup, "include-group", false, "Override whether routing includes group identity")
-	cmd.Flags().StringVar(&deliveryDefaults, bridgeDeliveryDefaultsFlag, "", "JSON object or null for delivery target defaults")
+	cmd.Flags().
+		StringVar(&deliveryDefaults, bridgeDeliveryDefaultsFlag, "", "JSON object or null for delivery target defaults")
 	return cmd
 }
 
@@ -238,7 +275,7 @@ func newBridgeEnableCommand(deps commandDeps) *cobra.Command {
 		Short: "Enable a bridge instance",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -258,7 +295,7 @@ func newBridgeDisableCommand(deps commandDeps) *cobra.Command {
 		Short: "Disable a bridge instance",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -278,7 +315,7 @@ func newBridgeRestartCommand(deps commandDeps) *cobra.Command {
 		Short: "Restart a bridge instance",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -298,7 +335,7 @@ func newBridgeRoutesCommand(deps commandDeps) *cobra.Command {
 		Short: "Inspect routes for one bridge instance",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -326,7 +363,7 @@ func newBridgeTestDeliveryCommand(deps commandDeps) *cobra.Command {
 		Short: "Resolve a typed outbound delivery target for one bridge instance",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := clientFromDeps(deps)
+			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
@@ -368,7 +405,17 @@ func bridgeListBundle(items []BridgeRecord, now func() time.Time) outputBundle {
 		"Bridges",
 		[]string{"ID", "Name", "Platform", "Extension", "Scope", "Workspace", "Status", "Routing", "Updated"},
 		"bridges",
-		[]string{"id", "display_name", "platform", "extension_name", "scope", "workspace_id", "status", "routing", "updated_at"},
+		[]string{
+			"id",
+			"display_name",
+			"platform",
+			"extension_name",
+			"scope",
+			"workspace_id",
+			"status",
+			"routing",
+			"updated_at",
+		},
 		func(item BridgeRecord) []string {
 			return []string{
 				stringOrDash(item.ID),
@@ -419,7 +466,21 @@ func bridgeBundle(item BridgeRecord) outputBundle {
 		},
 		toon: func() (string, error) {
 			return renderToonObject("bridge", []string{
-				"id", "display_name", "platform", "extension_name", "scope", "workspace_id", "enabled", "status", "routing", "include_peer", "include_thread", "include_group", "delivery_defaults", "created_at", "updated_at",
+				"id",
+				"display_name",
+				"platform",
+				"extension_name",
+				"scope",
+				"workspace_id",
+				"enabled",
+				"status",
+				"routing",
+				"include_peer",
+				"include_thread",
+				"include_group",
+				"delivery_defaults",
+				"created_at",
+				"updated_at",
 			}, []string{
 				item.ID,
 				item.DisplayName,
@@ -448,7 +509,17 @@ func bridgeRoutesBundle(routes []BridgeRouteRecord, now func() time.Time) output
 		"Bridge Routes",
 		[]string{"Hash", "Scope", "Workspace", "Peer", "Thread", "Group", "Session", "Agent", "Last Active"},
 		"bridge_routes",
-		[]string{"routing_key_hash", "scope", "workspace_id", "peer_id", "thread_id", "group_id", "session_id", "agent_name", "last_activity_at"},
+		[]string{
+			"routing_key_hash",
+			"scope",
+			"workspace_id",
+			"peer_id",
+			"thread_id",
+			"group_id",
+			"session_id",
+			"agent_name",
+			"last_activity_at",
+		},
 		func(route BridgeRouteRecord) []string {
 			return []string{
 				stringOrDash(route.RoutingKeyHash),

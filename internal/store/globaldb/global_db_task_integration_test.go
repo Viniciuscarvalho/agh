@@ -52,7 +52,7 @@ func TestGlobalDBTaskPersistenceSurvivesReopenWithGlobalAndWorkspaceTasks(t *tes
 		}
 	})
 
-	globalTasks, err := second.ListTasks(ctx, taskpkg.TaskQuery{Scope: taskpkg.ScopeGlobal})
+	globalTasks, err := second.ListTasks(ctx, taskpkg.Query{Scope: taskpkg.ScopeGlobal})
 	if err != nil {
 		t.Fatalf("ListTasks(global) error = %v", err)
 	}
@@ -61,7 +61,7 @@ func TestGlobalDBTaskPersistenceSurvivesReopenWithGlobalAndWorkspaceTasks(t *tes
 	}
 	assertTaskSummaryMatchesTask(t, globalTasks[0], globalTask)
 
-	workspaceTasks, err := second.ListTasks(ctx, taskpkg.TaskQuery{WorkspaceID: workspaceID})
+	workspaceTasks, err := second.ListTasks(ctx, taskpkg.Query{WorkspaceID: workspaceID})
 	if err != nil {
 		t.Fatalf("ListTasks(workspace) error = %v", err)
 	}
@@ -144,7 +144,7 @@ func TestGlobalDBTaskRunSessionAttachmentSurvivesReopen(t *testing.T) {
 	}
 	assertTaskRunEqual(t, reloadedRun, storedQueued)
 
-	runs, err := third.ListTaskRuns(ctx, taskpkg.TaskRunQuery{TaskID: taskRecord.ID})
+	runs, err := third.ListTaskRuns(ctx, taskpkg.RunQuery{TaskID: taskRecord.ID})
 	if err != nil {
 		t.Fatalf("ListTaskRuns() error = %v", err)
 	}

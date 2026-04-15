@@ -65,7 +65,13 @@ func TestInstallExtensionHandler(t *testing.T) {
 		}, homePaths)
 		engine := newTestRouter(t, handlers)
 
-		recorder := performRequest(t, engine, http.MethodPost, "/api/extensions", []byte(`{"path":" /tmp/ext-a ","checksum":" sha256:abc "}`))
+		recorder := performRequest(
+			t,
+			engine,
+			http.MethodPost,
+			"/api/extensions",
+			[]byte(`{"path":" /tmp/ext-a ","checksum":" sha256:abc "}`),
+		)
 		if recorder.Code != http.StatusCreated {
 			t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusCreated, recorder.Body.String())
 		}
@@ -97,12 +103,17 @@ func TestInstallExtensionHandler(t *testing.T) {
 	}
 
 	for _, tc := range validationCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			homePaths := newTestHomePaths(t)
-			handlers := newTestHandlersWithExtensions(t, stubSessionManager{}, stubObserver{}, stubExtensionService{}, homePaths)
+			handlers := newTestHandlersWithExtensions(
+				t,
+				stubSessionManager{},
+				stubObserver{},
+				stubExtensionService{},
+				homePaths,
+			)
 			engine := newTestRouter(t, handlers)
 
 			recorder := performRequest(t, engine, http.MethodPost, "/api/extensions", []byte(tc.payload))
@@ -146,7 +157,12 @@ func TestEnableDisableExtensionHandlers(t *testing.T) {
 
 		disableResp := performRequest(t, engine, http.MethodPost, "/api/extensions/%20ext-a%20/disable", nil)
 		if disableResp.Code != http.StatusOK {
-			t.Fatalf("disable status = %d, want %d; body=%s", disableResp.Code, http.StatusOK, disableResp.Body.String())
+			t.Fatalf(
+				"disable status = %d, want %d; body=%s",
+				disableResp.Code,
+				http.StatusOK,
+				disableResp.Body.String(),
+			)
 		}
 	})
 
@@ -154,11 +170,19 @@ func TestEnableDisableExtensionHandlers(t *testing.T) {
 		t.Parallel()
 
 		homePaths := newTestHomePaths(t)
-		engine := newTestRouter(t, newTestHandlersWithExtensions(t, stubSessionManager{}, stubObserver{}, stubExtensionService{}, homePaths))
+		engine := newTestRouter(
+			t,
+			newTestHandlersWithExtensions(t, stubSessionManager{}, stubObserver{}, stubExtensionService{}, homePaths),
+		)
 
 		blankName := performRequest(t, engine, http.MethodPost, "/api/extensions/%20%20/enable", nil)
 		if blankName.Code != http.StatusBadRequest {
-			t.Fatalf("blank name status = %d, want %d; body=%s", blankName.Code, http.StatusBadRequest, blankName.Body.String())
+			t.Fatalf(
+				"blank name status = %d, want %d; body=%s",
+				blankName.Code,
+				http.StatusBadRequest,
+				blankName.Body.String(),
+			)
 		}
 		if !strings.Contains(strings.ToLower(blankName.Body.String()), "name") {
 			t.Fatalf("blank name body = %q, want substring %q", blankName.Body.String(), "name")
@@ -176,16 +200,35 @@ func TestExtensionStatusCodeMappings(t *testing.T) {
 	}{
 		{name: "ShouldMapNilToOK", err: nil, want: http.StatusOK},
 		{name: "ShouldMapNotFoundToNotFound", err: extensionpkg.ErrExtensionNotFound, want: http.StatusNotFound},
-		{name: "ShouldMapChecksumMismatchToBadRequest", err: extensionpkg.ErrExtensionChecksumMismatch, want: http.StatusBadRequest},
-		{name: "ShouldMapInvalidManifestToBadRequest", err: extensionpkg.ErrManifestInvalid, want: http.StatusBadRequest},
-		{name: "ShouldMapIncompatibleManifestToBadRequest", err: extensionpkg.ErrManifestIncompatible, want: http.StatusBadRequest},
-		{name: "ShouldMapMissingManifestToBadRequest", err: extensionpkg.ErrManifestNotFound, want: http.StatusBadRequest},
+		{
+			name: "ShouldMapChecksumMismatchToBadRequest",
+			err:  extensionpkg.ErrExtensionChecksumMismatch,
+			want: http.StatusBadRequest,
+		},
+		{
+			name: "ShouldMapInvalidManifestToBadRequest",
+			err:  extensionpkg.ErrManifestInvalid,
+			want: http.StatusBadRequest,
+		},
+		{
+			name: "ShouldMapIncompatibleManifestToBadRequest",
+			err:  extensionpkg.ErrManifestIncompatible,
+			want: http.StatusBadRequest,
+		},
+		{
+			name: "ShouldMapMissingManifestToBadRequest",
+			err:  extensionpkg.ErrManifestNotFound,
+			want: http.StatusBadRequest,
+		},
 		{name: "ShouldMapMissingFilesToBadRequest", err: os.ErrNotExist, want: http.StatusBadRequest},
-		{name: "ShouldMapUnexpectedErrorsToInternalServerError", err: errors.New("boom"), want: http.StatusInternalServerError},
+		{
+			name: "ShouldMapUnexpectedErrorsToInternalServerError",
+			err:  errors.New("boom"),
+			want: http.StatusInternalServerError,
+		},
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -207,7 +250,12 @@ func TestApproveSessionHandler(t *testing.T) {
 
 		recorder := performRequest(t, engine, http.MethodPost, "/api/sessions/sess-1/approve", nil)
 		if recorder.Code != http.StatusNotImplemented {
-			t.Fatalf("approve status = %d, want %d; body=%s", recorder.Code, http.StatusNotImplemented, recorder.Body.String())
+			t.Fatalf(
+				"approve status = %d, want %d; body=%s",
+				recorder.Code,
+				http.StatusNotImplemented,
+				recorder.Body.String(),
+			)
 		}
 		if !strings.Contains(strings.ToLower(recorder.Body.String()), "not implemented") {
 			t.Fatalf("approve body = %q, want substring %q", recorder.Body.String(), "not implemented")

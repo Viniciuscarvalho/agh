@@ -14,7 +14,7 @@ func TestHooksListCommandPassesFiltersAndRendersJSON(t *testing.T) {
 	t.Parallel()
 
 	var seenQuery HookCatalogQuery
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		hookCatalogFn: func(_ context.Context, query HookCatalogQuery) ([]HookCatalogRecord, error) {
 			seenQuery = query
 			return []HookCatalogRecord{{
@@ -69,7 +69,7 @@ func TestHooksListCommandPassesFiltersAndRendersJSON(t *testing.T) {
 func TestHooksListCommandRendersHumanAndToon(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		hookCatalogFn: func(context.Context, HookCatalogQuery) ([]HookCatalogRecord, error) {
 			return []HookCatalogRecord{{
 				Order:       1,
@@ -105,7 +105,7 @@ func TestHooksInfoCommandReturnsAllMatchesAcrossFormats(t *testing.T) {
 	t.Parallel()
 
 	var seenQuery HookCatalogQuery
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		hookCatalogFn: func(_ context.Context, query HookCatalogQuery) ([]HookCatalogRecord, error) {
 			seenQuery = query
 			return []HookCatalogRecord{
@@ -148,7 +148,17 @@ func TestHooksInfoCommandReturnsAllMatchesAcrossFormats(t *testing.T) {
 		},
 	})
 
-	jsonOut, _, err := executeRootCommand(t, deps, "hooks", "info", "permission-guard", "--workspace", "alpha", "-o", "json")
+	jsonOut, _, err := executeRootCommand(
+		t,
+		deps,
+		"hooks",
+		"info",
+		"permission-guard",
+		"--workspace",
+		"alpha",
+		"-o",
+		"json",
+	)
 	if err != nil {
 		t.Fatalf("executeRootCommand(hooks info json) error = %v", err)
 	}
@@ -168,7 +178,8 @@ func TestHooksInfoCommandReturnsAllMatchesAcrossFormats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("executeRootCommand(hooks info human) error = %v", err)
 	}
-	if !strings.Contains(humanOut, "Matcher") || !strings.Contains(humanOut, "Metadata") || !strings.Contains(humanOut, "Executor Kind") {
+	if !strings.Contains(humanOut, "Matcher") || !strings.Contains(humanOut, "Metadata") ||
+		!strings.Contains(humanOut, "Executor Kind") {
 		t.Fatalf("human output = %q, want detail sections", humanOut)
 	}
 
@@ -176,7 +187,10 @@ func TestHooksInfoCommandReturnsAllMatchesAcrossFormats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("executeRootCommand(hooks info toon) error = %v", err)
 	}
-	if !strings.Contains(toonOut, "hooks[2]{name,order,event,source,skill_source,mode,required,priority,timeout_ms,executor_kind}:") {
+	if !strings.Contains(
+		toonOut,
+		"hooks[2]{name,order,event,source,skill_source,mode,required,priority,timeout_ms,executor_kind}:",
+	) {
 		t.Fatalf("toon output = %q, want hooks array", toonOut)
 	}
 	if !strings.Contains(toonOut, "matcher[1]{field,value}:") || !strings.Contains(toonOut, "metadata[1]{key,value}:") {
@@ -188,7 +202,7 @@ func TestHooksEventsCommandPassesFiltersAndRendersFormats(t *testing.T) {
 	t.Parallel()
 
 	var seenQuery HookEventsQuery
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		hookEventsFn: func(_ context.Context, query HookEventsQuery) ([]HookEventRecord, error) {
 			seenQuery = query
 			return []HookEventRecord{{
@@ -237,7 +251,7 @@ func TestHooksEventsCommandPassesFiltersAndRendersFormats(t *testing.T) {
 func TestHooksRunsCommandRequiresSession(t *testing.T) {
 	t.Parallel()
 
-	code, _, stderr := executeRootCommandWithExit(t, newTestDeps(t, stubClient{}), "hooks", "runs")
+	code, _, stderr := executeRootCommandWithExit(t, newTestDeps(t, &stubClient{}), "hooks", "runs")
 	if code != 1 {
 		t.Fatalf("executeRootCommandWithExit() code = %d, want 1", code)
 	}
@@ -250,7 +264,7 @@ func TestHooksRunsCommandParsesSinceAndRendersFormats(t *testing.T) {
 	t.Parallel()
 
 	var seenQuery HookRunsQuery
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		hookRunsFn: func(_ context.Context, query HookRunsQuery) ([]HookRunRecord, error) {
 			seenQuery = query
 			return []HookRunRecord{{
@@ -276,7 +290,8 @@ func TestHooksRunsCommandParsesSinceAndRendersFormats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("executeRootCommand(hooks runs json) error = %v", err)
 	}
-	if seenQuery.Session != "sess-1" || seenQuery.Event != "permission.request" || seenQuery.Outcome != "failed" || seenQuery.Last != 2 {
+	if seenQuery.Session != "sess-1" || seenQuery.Event != "permission.request" || seenQuery.Outcome != "failed" ||
+		seenQuery.Last != 2 {
 		t.Fatalf("HookRuns() query = %#v, want session/event/outcome/last", seenQuery)
 	}
 	if want := fixedTestNow.Add(-5 * time.Minute).UTC().Format(time.RFC3339Nano); seenQuery.Since != want {
@@ -295,7 +310,8 @@ func TestHooksRunsCommandParsesSinceAndRendersFormats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("executeRootCommand(hooks runs human) error = %v", err)
 	}
-	if !strings.Contains(humanOut, "Hook Runs") || !strings.Contains(humanOut, "permission-guard") || !strings.Contains(humanOut, "12ms") {
+	if !strings.Contains(humanOut, "Hook Runs") || !strings.Contains(humanOut, "permission-guard") ||
+		!strings.Contains(humanOut, "12ms") {
 		t.Fatalf("human output = %q, want runs table", humanOut)
 	}
 

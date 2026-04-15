@@ -19,7 +19,7 @@ func TestSessionPayloadJSONShape(t *testing.T) {
 		t.Parallel()
 
 		now := time.Date(2026, 4, 7, 10, 30, 0, 0, time.UTC)
-		payload := core.SessionPayloadFromInfo(&session.SessionInfo{
+		payload := core.SessionPayloadFromInfo(&session.Info{
 			ID:           "sess-1",
 			Name:         "demo",
 			AgentName:    "coder",
@@ -29,7 +29,7 @@ func TestSessionPayloadJSONShape(t *testing.T) {
 			ACPSessionID: "acp-123",
 			CreatedAt:    now,
 			UpdatedAt:    now,
-			ACPCaps: acp.ACPCaps{
+			ACPCaps: acp.Caps{
 				SupportsLoadSession: true,
 				SupportedModes:      []string{"chat"},
 				SupportedModels:     []string{"gpt-test"},
@@ -66,7 +66,7 @@ func TestSessionPayloadJSONIncludesSessionStopFields(t *testing.T) {
 		t.Parallel()
 
 		now := time.Date(2026, 4, 7, 10, 30, 0, 0, time.UTC)
-		payload := core.SessionPayloadFromInfo(&session.SessionInfo{
+		payload := core.SessionPayloadFromInfo(&session.Info{
 			ID:          "sess-stopped",
 			Name:        "demo",
 			AgentName:   "coder",
@@ -350,7 +350,6 @@ func TestAutomationUpdateRequestsHasChanges(t *testing.T) {
 		}
 
 		for _, tc := range testCases {
-			tc := tc
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel()
 
@@ -437,7 +436,6 @@ func TestAutomationUpdateRequestsHasChanges(t *testing.T) {
 		}
 
 		for _, tc := range testCases {
-			tc := tc
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel()
 
@@ -590,14 +588,25 @@ func TestUpdateTaskRequestHasChanges(t *testing.T) {
 	}{
 		{name: "Should return false when no task changes are set", req: contract.UpdateTaskRequest{}, want: false},
 		{name: "Should return true when title is set", req: contract.UpdateTaskRequest{Title: &title}, want: true},
-		{name: "Should return true when network channel is set", req: contract.UpdateTaskRequest{NetworkChannel: &channel}, want: true},
+		{
+			name: "Should return true when network channel is set",
+			req:  contract.UpdateTaskRequest{NetworkChannel: &channel},
+			want: true,
+		},
 		{name: "Should return true when owner is set", req: contract.UpdateTaskRequest{Owner: owner}, want: true},
-		{name: "Should return true when metadata is set", req: contract.UpdateTaskRequest{Metadata: &metadata}, want: true},
-		{name: "Should return true when clear owner is set", req: contract.UpdateTaskRequest{ClearOwner: true}, want: true},
+		{
+			name: "Should return true when metadata is set",
+			req:  contract.UpdateTaskRequest{Metadata: &metadata},
+			want: true,
+		},
+		{
+			name: "Should return true when clear owner is set",
+			req:  contract.UpdateTaskRequest{ClearOwner: true},
+			want: true,
+		},
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

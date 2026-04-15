@@ -77,7 +77,11 @@ func testInitializeRequest() subprocess.InitializeRequest {
 	}
 }
 
-func testInboundEnvelope(idempotencyKey string, platformMessageID string, text string) bridgepkg.InboundMessageEnvelope {
+func testInboundEnvelope(
+	idempotencyKey string,
+	platformMessageID string,
+	text string,
+) bridgepkg.InboundMessageEnvelope {
 	return bridgepkg.InboundMessageEnvelope{
 		BridgeInstanceID:  "brg-1",
 		Scope:             bridgepkg.ScopeWorkspace,

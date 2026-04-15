@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -36,9 +37,13 @@ type githubViewer struct {
 	Login string `json:"login,omitempty"`
 }
 
+type githubHTTPDoer interface {
+	Do(*http.Request) (*http.Response, error)
+}
+
 type githubClient struct {
 	cfg        resolvedInstanceConfig
-	httpClient *http.Client
+	httpClient githubHTTPDoer
 	now        func() time.Time
 
 	mu                sync.Mutex
@@ -51,7 +56,10 @@ type githubAccessTokenResponse struct {
 	ExpiresAt string `json:"expires_at,omitempty"`
 }
 
-func validateGitHubAppCredentials(cfg resolvedInstanceConfig) error {
+func validateGitHubAppCredentials(cfg *resolvedInstanceConfig) error {
+	if cfg == nil {
+		return errors.New("github: config is required")
+	}
 	if strings.TrimSpace(cfg.appID) == "" {
 		return errors.New("github: app_id is required")
 	}
@@ -70,21 +78,32 @@ func (c *githubClient) ValidateAuth(ctx context.Context, installationID int64) (
 		return nil, err
 	}
 	viewer := githubViewer{}
-	if _, err := c.doJSON(req, &viewer); err != nil {
+	if err := c.doJSON(req, &viewer); err != nil {
 		return nil, err
 	}
 	return &viewer, nil
 }
 
-func (c *githubClient) CreateIssueComment(ctx context.Context, issueNumber int64, body string, installationID int64) (*githubIssueComment, error) {
-	req, err := c.newRequest(ctx, http.MethodPost, fmt.Sprintf("/repos/%s/%s/issues/%d/comments", c.cfg.repoOwner, c.cfg.repoName, issueNumber), map[string]any{
-		"body": body,
-	}, installationID)
+func (c *githubClient) CreateIssueComment(
+	ctx context.Context,
+	issueNumber int64,
+	body string,
+	installationID int64,
+) (*githubIssueComment, error) {
+	req, err := c.newRequest(
+		ctx,
+		http.MethodPost,
+		fmt.Sprintf("/repos/%s/%s/issues/%d/comments", c.cfg.repoOwner, c.cfg.repoName, issueNumber),
+		map[string]any{
+			"body": body,
+		},
+		installationID,
+	)
 	if err != nil {
 		return nil, err
 	}
 	comment := githubIssueComment{}
-	if _, err := c.doJSON(req, &comment); err != nil {
+	if err := c.doJSON(req, &comment); err != nil {
 		return nil, err
 	}
 	if comment.ID <= 0 {
@@ -93,32 +112,63 @@ func (c *githubClient) CreateIssueComment(ctx context.Context, issueNumber int64
 	return &comment, nil
 }
 
-func (c *githubClient) CreateReviewCommentReply(ctx context.Context, pullNumber int64, commentID int64, body string, installationID int64) (*githubReviewComment, error) {
-	req, err := c.newRequest(ctx, http.MethodPost, fmt.Sprintf("/repos/%s/%s/pulls/%d/comments/%d/replies", c.cfg.repoOwner, c.cfg.repoName, pullNumber, commentID), map[string]any{
-		"body": body,
-	}, installationID)
+func (c *githubClient) CreateReviewCommentReply(
+	ctx context.Context,
+	pullNumber int64,
+	commentID int64,
+	body string,
+	installationID int64,
+) (*githubReviewComment, error) {
+	req, err := c.newRequest(
+		ctx,
+		http.MethodPost,
+		fmt.Sprintf(
+			"/repos/%s/%s/pulls/%d/comments/%d/replies",
+			c.cfg.repoOwner,
+			c.cfg.repoName,
+			pullNumber,
+			commentID,
+		),
+		map[string]any{
+			"body": body,
+		},
+		installationID,
+	)
 	if err != nil {
 		return nil, err
 	}
 	comment := githubReviewComment{}
-	if _, err := c.doJSON(req, &comment); err != nil {
+	if err := c.doJSON(req, &comment); err != nil {
 		return nil, err
 	}
 	if comment.ID <= 0 {
-		return nil, &bridgesdk.TransientError{Err: errors.New("github: create review comment reply response omitted id")}
+		return nil, &bridgesdk.TransientError{
+			Err: errors.New("github: create review comment reply response omitted id"),
+		}
 	}
 	return &comment, nil
 }
 
-func (c *githubClient) UpdateIssueComment(ctx context.Context, commentID int64, body string, installationID int64) (*githubIssueComment, error) {
-	req, err := c.newRequest(ctx, http.MethodPatch, fmt.Sprintf("/repos/%s/%s/issues/comments/%d", c.cfg.repoOwner, c.cfg.repoName, commentID), map[string]any{
-		"body": body,
-	}, installationID)
+func (c *githubClient) UpdateIssueComment(
+	ctx context.Context,
+	commentID int64,
+	body string,
+	installationID int64,
+) (*githubIssueComment, error) {
+	req, err := c.newRequest(
+		ctx,
+		http.MethodPatch,
+		fmt.Sprintf("/repos/%s/%s/issues/comments/%d", c.cfg.repoOwner, c.cfg.repoName, commentID),
+		map[string]any{
+			"body": body,
+		},
+		installationID,
+	)
 	if err != nil {
 		return nil, err
 	}
 	comment := githubIssueComment{}
-	if _, err := c.doJSON(req, &comment); err != nil {
+	if err := c.doJSON(req, &comment); err != nil {
 		return nil, err
 	}
 	if comment.ID <= 0 {
@@ -127,15 +177,26 @@ func (c *githubClient) UpdateIssueComment(ctx context.Context, commentID int64, 
 	return &comment, nil
 }
 
-func (c *githubClient) UpdateReviewComment(ctx context.Context, commentID int64, body string, installationID int64) (*githubReviewComment, error) {
-	req, err := c.newRequest(ctx, http.MethodPatch, fmt.Sprintf("/repos/%s/%s/pulls/comments/%d", c.cfg.repoOwner, c.cfg.repoName, commentID), map[string]any{
-		"body": body,
-	}, installationID)
+func (c *githubClient) UpdateReviewComment(
+	ctx context.Context,
+	commentID int64,
+	body string,
+	installationID int64,
+) (*githubReviewComment, error) {
+	req, err := c.newRequest(
+		ctx,
+		http.MethodPatch,
+		fmt.Sprintf("/repos/%s/%s/pulls/comments/%d", c.cfg.repoOwner, c.cfg.repoName, commentID),
+		map[string]any{
+			"body": body,
+		},
+		installationID,
+	)
 	if err != nil {
 		return nil, err
 	}
 	comment := githubReviewComment{}
-	if _, err := c.doJSON(req, &comment); err != nil {
+	if err := c.doJSON(req, &comment); err != nil {
 		return nil, err
 	}
 	if comment.ID <= 0 {
@@ -145,30 +206,49 @@ func (c *githubClient) UpdateReviewComment(ctx context.Context, commentID int64,
 }
 
 func (c *githubClient) DeleteIssueComment(ctx context.Context, commentID int64, installationID int64) error {
-	req, err := c.newRequest(ctx, http.MethodDelete, fmt.Sprintf("/repos/%s/%s/issues/comments/%d", c.cfg.repoOwner, c.cfg.repoName, commentID), nil, installationID)
+	req, err := c.newRequest(
+		ctx,
+		http.MethodDelete,
+		fmt.Sprintf("/repos/%s/%s/issues/comments/%d", c.cfg.repoOwner, c.cfg.repoName, commentID),
+		nil,
+		installationID,
+	)
 	if err != nil {
 		return err
 	}
-	_, err = c.doJSON(req, nil)
-	return err
+	return c.doJSON(req, nil)
 }
 
 func (c *githubClient) DeleteReviewComment(ctx context.Context, commentID int64, installationID int64) error {
-	req, err := c.newRequest(ctx, http.MethodDelete, fmt.Sprintf("/repos/%s/%s/pulls/comments/%d", c.cfg.repoOwner, c.cfg.repoName, commentID), nil, installationID)
+	req, err := c.newRequest(
+		ctx,
+		http.MethodDelete,
+		fmt.Sprintf("/repos/%s/%s/pulls/comments/%d", c.cfg.repoOwner, c.cfg.repoName, commentID),
+		nil,
+		installationID,
+	)
 	if err != nil {
 		return err
 	}
-	_, err = c.doJSON(req, nil)
-	return err
+	return c.doJSON(req, nil)
 }
 
-func (c *githubClient) newRequest(ctx context.Context, method string, path string, body any, installationID int64) (*http.Request, error) {
+func (c *githubClient) newRequest(
+	ctx context.Context,
+	method string,
+	path string,
+	body any,
+	installationID int64,
+) (*http.Request, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
 	endpoint, err := joinGitHubURL(c.cfg.apiBaseURL, path)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateGitHubEndpointURL(endpoint); err != nil {
 		return nil, err
 	}
 
@@ -242,6 +322,9 @@ func (c *githubClient) installationAccessToken(ctx context.Context, installation
 	if err != nil {
 		return "", err
 	}
+	if err := validateGitHubEndpointURL(endpoint); err != nil {
+		return "", err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader("{}"))
 	if err != nil {
 		return "", err
@@ -252,7 +335,7 @@ func (c *githubClient) installationAccessToken(ctx context.Context, installation
 	req.Header.Set("User-Agent", "agh-bridge-github/0.1.0")
 
 	response := githubAccessTokenResponse{}
-	if _, err := c.doJSON(req, &response); err != nil {
+	if err := c.doJSON(req, &response); err != nil {
 		return "", err
 	}
 	if strings.TrimSpace(response.Token) == "" {
@@ -269,10 +352,13 @@ func (c *githubClient) installationAccessToken(ctx context.Context, installation
 	return c.installationToken, nil
 }
 
-func (c *githubClient) doJSON(req *http.Request, dest any) (*http.Response, error) {
+func (c *githubClient) doJSON(req *http.Request, dest any) error {
+	if err := validateGitHubRequestURL(req); err != nil {
+		return &bridgesdk.PermanentError{Err: err}
+	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, &bridgesdk.TransientError{Err: err}
+		return &bridgesdk.TransientError{Err: err}
 	}
 	defer func() {
 		_ = resp.Body.Close()
@@ -280,15 +366,15 @@ func (c *githubClient) doJSON(req *http.Request, dest any) (*http.Response, erro
 
 	raw := readResponseBody(resp.Body)
 	if resp.StatusCode >= 400 {
-		return resp, classifyGitHubHTTPError(resp.StatusCode, resp.Header.Get("Retry-After"), raw)
+		return classifyGitHubHTTPError(resp.StatusCode, resp.Header.Get("Retry-After"), raw)
 	}
 	if dest == nil || strings.TrimSpace(raw) == "" {
-		return resp, nil
+		return nil
 	}
 	if err := json.Unmarshal([]byte(raw), dest); err != nil {
-		return resp, &bridgesdk.TransientError{Err: fmt.Errorf("github: decode response: %w", err)}
+		return &bridgesdk.TransientError{Err: fmt.Errorf("github: decode response: %w", err)}
 	}
-	return resp, nil
+	return nil
 }
 
 func signGitHubAppJWT(appID string, privateKeyPEM string, now time.Time) (string, error) {
@@ -344,6 +430,39 @@ func joinGitHubURL(base string, path string) (string, error) {
 		return "", err
 	}
 	return baseURL.ResolveReference(ref).String(), nil
+}
+
+func validateGitHubRequestURL(req *http.Request) error {
+	if req == nil || req.URL == nil {
+		return errors.New("github: request url is required")
+	}
+	return validateGitHubEndpointURL(req.URL.String())
+}
+
+func validateGitHubEndpointURL(value string) error {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil {
+		return fmt.Errorf("github: parse api url: %w", err)
+	}
+	if parsed == nil || strings.TrimSpace(parsed.Hostname()) == "" {
+		return errors.New("github: api url host is required")
+	}
+	if strings.EqualFold(parsed.Scheme, "https") {
+		return nil
+	}
+	if !strings.EqualFold(parsed.Scheme, "http") {
+		return fmt.Errorf("github: api url scheme %q is not allowed", parsed.Scheme)
+	}
+
+	host := strings.TrimSpace(parsed.Hostname())
+	if strings.EqualFold(host, "localhost") {
+		return nil
+	}
+	ip := net.ParseIP(host)
+	if ip != nil && ip.IsLoopback() {
+		return nil
+	}
+	return fmt.Errorf("github: insecure api host %q is not allowed", host)
 }
 
 func classifyGitHubHTTPError(statusCode int, retryAfterHeader string, raw string) error {

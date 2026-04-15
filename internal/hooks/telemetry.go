@@ -74,7 +74,10 @@ func HookRunWriterFromContext(ctx context.Context) HookRunWriter {
 	if ctx == nil {
 		return nil
 	}
-	writer, _ := ctx.Value(hookRunWriterContextKey{}).(HookRunWriter)
+	writer, ok := ctx.Value(hookRunWriterContextKey{}).(HookRunWriter)
+	if !ok {
+		return nil
+	}
 	return writer
 }
 
@@ -166,7 +169,16 @@ func (m *hookMetrics) observeRegistryReload(duration time.Duration, hookDelta in
 	m.registryReloadLastHookDelta = hookDelta
 }
 
-func (h *Hooks) emitHookRun(ctx context.Context, payload any, hook RegisteredHook, outcome HookRunOutcome, duration time.Duration, rawPatch json.RawMessage, err error, depth int) {
+func (h *Hooks) emitHookRun(
+	ctx context.Context,
+	payload any,
+	hook RegisteredHook,
+	outcome HookRunOutcome,
+	duration time.Duration,
+	rawPatch json.RawMessage,
+	err error,
+	depth int,
+) {
 	if h == nil {
 		return
 	}
@@ -189,7 +201,16 @@ func (h *Hooks) emitHookRun(ctx context.Context, payload any, hook RegisteredHoo
 
 	if writer := HookRunWriterFromContext(ctx); writer != nil {
 		if writeErr := writer.RecordHookRun(ctx, record); writeErr != nil {
-			h.logger.WarnContext(ctx, "hook.dispatch.telemetry_write_failed", "hook", hook.Name, "event", hook.Event.String(), "error", writeErr)
+			h.logger.WarnContext(
+				ctx,
+				"hook.dispatch.telemetry_write_failed",
+				"hook",
+				hook.Name,
+				"event",
+				hook.Event.String(),
+				"error",
+				writeErr,
+			)
 		}
 		return
 	}
@@ -204,7 +225,18 @@ func (h *Hooks) emitHookRun(ctx context.Context, payload any, hook RegisteredHoo
 	}
 
 	if writeErr := h.telemetrySink.WriteHookRecord(ctx, sessionID, record); writeErr != nil {
-		h.logger.WarnContext(ctx, "hook.dispatch.telemetry_write_failed", "hook", hook.Name, "event", hook.Event.String(), "session_id", sessionID, "error", writeErr)
+		h.logger.WarnContext(
+			ctx,
+			"hook.dispatch.telemetry_write_failed",
+			"hook",
+			hook.Name,
+			"event",
+			hook.Event.String(),
+			"session_id",
+			sessionID,
+			"error",
+			writeErr,
+		)
 	}
 }
 

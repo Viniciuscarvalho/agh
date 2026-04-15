@@ -21,6 +21,8 @@ const (
 	DirName = ".agh"
 	// ConfigName is the standard TOML configuration filename.
 	ConfigName = "config.toml"
+	// marketplaceSchemeHTTP is the accepted plaintext marketplace URL scheme.
+	marketplaceSchemeHTTP = "http"
 )
 
 // DaemonConfig controls the daemon-local socket settings.
@@ -358,7 +360,23 @@ func DefaultWithHome(homePaths HomePaths) Config {
 }
 
 // Validate ensures the loaded configuration is internally consistent.
-func (c Config) Validate() error {
+func (c *Config) Validate() error {
+	if c == nil {
+		return errors.New("config is required")
+	}
+	if err := c.validateCore(); err != nil {
+		return err
+	}
+	if err := c.validateFeatures(); err != nil {
+		return err
+	}
+	if err := c.validateProviders(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Config) validateCore() error {
 	if err := c.Daemon.Validate(); err != nil {
 		return err
 	}
@@ -382,6 +400,10 @@ func (c Config) Validate() error {
 			return err
 		}
 	}
+	return nil
+}
+
+func (c *Config) validateFeatures() error {
 	if err := c.Observability.Validate(); err != nil {
 		return err
 	}
@@ -406,7 +428,10 @@ func (c Config) Validate() error {
 	if err := c.Network.Validate(); err != nil {
 		return fmt.Errorf("validate network config: %w", err)
 	}
+	return nil
+}
 
+func (c *Config) validateProviders() error {
 	for name := range c.Providers {
 		if _, err := c.ResolveProvider(name); err != nil {
 			return err
@@ -487,7 +512,14 @@ func (m PermissionMode) Validate(path string) error {
 	case PermissionModeDenyAll, PermissionModeApproveReads, PermissionModeApproveAll:
 		return nil
 	default:
-		return fmt.Errorf("%s must be one of %q, %q, %q: %q", path, PermissionModeDenyAll, PermissionModeApproveReads, PermissionModeApproveAll, m)
+		return fmt.Errorf(
+			"%s must be one of %q, %q, %q: %q",
+			path,
+			PermissionModeDenyAll,
+			PermissionModeApproveReads,
+			PermissionModeApproveAll,
+			m,
+		)
 	}
 }
 
@@ -576,13 +608,21 @@ func (c NetworkConfig) Validate() error {
 		return fmt.Errorf("network.greet_interval must be positive seconds: %d", c.GreetInterval)
 	}
 	if int64(c.GreetInterval) > maxNetworkDurationSeconds {
-		return fmt.Errorf("network.greet_interval must be between 1 and %d seconds: %d", maxNetworkDurationSeconds, c.GreetInterval)
+		return fmt.Errorf(
+			"network.greet_interval must be between 1 and %d seconds: %d",
+			maxNetworkDurationSeconds,
+			c.GreetInterval,
+		)
 	}
 	if c.MaxReplayAge <= 0 {
 		return fmt.Errorf("network.max_replay_age must be positive seconds: %d", c.MaxReplayAge)
 	}
 	if int64(c.MaxReplayAge) > maxNetworkDurationSeconds {
-		return fmt.Errorf("network.max_replay_age must be between 1 and %d seconds: %d", maxNetworkDurationSeconds, c.MaxReplayAge)
+		return fmt.Errorf(
+			"network.max_replay_age must be between 1 and %d seconds: %d",
+			maxNetworkDurationSeconds,
+			c.MaxReplayAge,
+		)
 	}
 	if c.MaxQueueDepth <= 0 {
 		return fmt.Errorf("network.max_queue_depth must be positive: %d", c.MaxQueueDepth)
@@ -616,7 +656,7 @@ func (c MarketplaceConfig) Validate() error {
 		if err != nil {
 			return fmt.Errorf("skills.marketplace.base_url is invalid: %w", err)
 		}
-		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		if parsed.Scheme != marketplaceSchemeHTTP && parsed.Scheme != "https" {
 			return fmt.Errorf("skills.marketplace.base_url must use http or https: %q", c.BaseURL)
 		}
 		if strings.TrimSpace(parsed.Host) == "" {
@@ -634,6 +674,8 @@ func (c MarketplaceConfig) Validate() error {
 
 // Validate ensures the extension marketplace configuration is internally consistent when configured.
 func (c ExtensionsMarketplaceConfig) Validate() error {
+	const githubRegistry = "github"
+
 	registry := strings.TrimSpace(c.Registry)
 	baseURL := strings.TrimSpace(c.BaseURL)
 	if registry == "" && baseURL == "" {
@@ -659,10 +701,10 @@ func (c ExtensionsMarketplaceConfig) Validate() error {
 	}
 
 	switch strings.ToLower(registry) {
-	case "github":
+	case githubRegistry:
 		return nil
 	default:
-		return fmt.Errorf("extensions.marketplace.registry must be %q: %q", "github", c.Registry)
+		return fmt.Errorf("extensions.marketplace.registry must be %q: %q", githubRegistry, c.Registry)
 	}
 }
 

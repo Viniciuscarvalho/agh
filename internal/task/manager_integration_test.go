@@ -31,8 +31,14 @@ type integrationSessionExecutor struct {
 	forceStopCalls   []integrationStopCall
 }
 
-func (e *integrationSessionExecutor) StartTaskSession(_ context.Context, spec taskpkg.StartTaskSession) (*taskpkg.SessionRef, error) {
-	e.startCalls = append(e.startCalls, spec)
+func (e *integrationSessionExecutor) StartTaskSession(
+	_ context.Context,
+	spec *taskpkg.StartTaskSession,
+) (*taskpkg.SessionRef, error) {
+	if spec == nil {
+		return nil, errors.New("task integration session executor requires start spec")
+	}
+	e.startCalls = append(e.startCalls, *spec)
 	return &taskpkg.SessionRef{SessionID: "sess-int-" + strconv.Itoa(len(e.startCalls))}, nil
 }
 
@@ -93,7 +99,7 @@ func TestTaskManagerCreateTaskPersistsAgentSessionIdentity(t *testing.T) {
 		t.Fatalf("stored.Status = %q, want %q", got, want)
 	}
 
-	events, err := db.ListTaskEvents(ctx, taskpkg.TaskEventQuery{TaskID: stored.ID})
+	events, err := db.ListTaskEvents(ctx, taskpkg.EventQuery{TaskID: stored.ID})
 	if err != nil {
 		t.Fatalf("ListTaskEvents() error = %v", err)
 	}
@@ -215,7 +221,7 @@ func TestTaskManagerChildAndDependencyFlowsPersistAudit(t *testing.T) {
 		t.Fatalf("dependencies[0].DependsOnTaskID = %q, want %q", got, want)
 	}
 
-	childEvents, err := db.ListTaskEvents(ctx, taskpkg.TaskEventQuery{TaskID: child.ID})
+	childEvents, err := db.ListTaskEvents(ctx, taskpkg.EventQuery{TaskID: child.ID})
 	if err != nil {
 		t.Fatalf("ListTaskEvents(child) error = %v", err)
 	}
@@ -223,7 +229,7 @@ func TestTaskManagerChildAndDependencyFlowsPersistAudit(t *testing.T) {
 		t.Fatalf("child event types = %#v, want task.created + task.dependency_added", sortedEventTypes(childEvents))
 	}
 
-	parentEvents, err := db.ListTaskEvents(ctx, taskpkg.TaskEventQuery{TaskID: parent.ID})
+	parentEvents, err := db.ListTaskEvents(ctx, taskpkg.EventQuery{TaskID: parent.ID})
 	if err != nil {
 		t.Fatalf("ListTaskEvents(parent) error = %v", err)
 	}
@@ -325,7 +331,7 @@ func TestTaskManagerRunLifecyclePersistsAndReconcilesAgainstStorage(t *testing.T
 		t.Fatalf("task status after complete = %q, want %q", got, want)
 	}
 
-	events, err := db.ListTaskEvents(ctx, taskpkg.TaskEventQuery{TaskID: taskRecord.ID})
+	events, err := db.ListTaskEvents(ctx, taskpkg.EventQuery{TaskID: taskRecord.ID})
 	if err != nil {
 		t.Fatalf("ListTaskEvents() error = %v", err)
 	}
@@ -404,7 +410,7 @@ func TestTaskManagerCancelTaskTreePersistsCancellationAudit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CancelTask() error = %v", err)
 	}
-	if got, want := cancelledParent.Status, taskpkg.TaskStatusCancelled; got != want {
+	if got, want := cancelledParent.Status, taskpkg.TaskStatusCanceled; got != want {
 		t.Fatalf("cancelled parent status = %q, want %q", got, want)
 	}
 
@@ -413,7 +419,7 @@ func TestTaskManagerCancelTaskTreePersistsCancellationAudit(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetTask(%q) error = %v", taskID, err)
 		}
-		if got, want := record.Status, taskpkg.TaskStatusCancelled; got != want {
+		if got, want := record.Status, taskpkg.TaskStatusCanceled; got != want {
 			t.Fatalf("task %q status = %q, want %q", taskID, got, want)
 		}
 	}
@@ -422,14 +428,14 @@ func TestTaskManagerCancelTaskTreePersistsCancellationAudit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTaskRun(queued) error = %v", err)
 	}
-	if got, want := storedQueuedRun.Status, taskpkg.TaskRunStatusCancelled; got != want {
+	if got, want := storedQueuedRun.Status, taskpkg.TaskRunStatusCanceled; got != want {
 		t.Fatalf("queued child run status = %q, want %q", got, want)
 	}
 	storedActiveRun, err := db.GetTaskRun(ctx, activeRun.ID)
 	if err != nil {
 		t.Fatalf("GetTaskRun(active) error = %v", err)
 	}
-	if got, want := storedActiveRun.Status, taskpkg.TaskRunStatusCancelled; got != want {
+	if got, want := storedActiveRun.Status, taskpkg.TaskRunStatusCanceled; got != want {
 		t.Fatalf("active child run status = %q, want %q", got, want)
 	}
 
@@ -443,20 +449,20 @@ func TestTaskManagerCancelTaskTreePersistsCancellationAudit(t *testing.T) {
 		t.Fatalf("len(forceStopCalls) = %d, want 1", len(executor.forceStopCalls))
 	}
 
-	parentEvents, err := db.ListTaskEvents(ctx, taskpkg.TaskEventQuery{TaskID: parent.ID})
+	parentEvents, err := db.ListTaskEvents(ctx, taskpkg.EventQuery{TaskID: parent.ID})
 	if err != nil {
 		t.Fatalf("ListTaskEvents(parent) error = %v", err)
 	}
-	if !containsEventType(parentEvents, "task.cancelled") {
-		t.Fatalf("parent event types = %#v, want task.cancelled", sortedEventTypes(parentEvents))
+	if !containsEventType(parentEvents, "task.canceled") {
+		t.Fatalf("parent event types = %#v, want task.canceled", sortedEventTypes(parentEvents))
 	}
 
-	activeChildEvents, err := db.ListTaskEvents(ctx, taskpkg.TaskEventQuery{TaskID: activeChild.ID})
+	activeChildEvents, err := db.ListTaskEvents(ctx, taskpkg.EventQuery{TaskID: activeChild.ID})
 	if err != nil {
 		t.Fatalf("ListTaskEvents(active child) error = %v", err)
 	}
-	if !containsEventType(activeChildEvents, "task.run_cancelled") {
-		t.Fatalf("active child event types = %#v, want task.run_cancelled", sortedEventTypes(activeChildEvents))
+	if !containsEventType(activeChildEvents, "task.run_canceled") {
+		t.Fatalf("active child event types = %#v, want task.run_canceled", sortedEventTypes(activeChildEvents))
 	}
 	if !containsEventType(activeChildEvents, "task.run_force_stopped") {
 		t.Fatalf("active child event types = %#v, want task.run_force_stopped", sortedEventTypes(activeChildEvents))
@@ -480,7 +486,7 @@ func openTaskManagerGlobalDB(t *testing.T) *globaldb.GlobalDB {
 	return db
 }
 
-func newTaskManagerIntegration(t *testing.T, store taskpkg.Store, extraOpts ...taskpkg.Option) *taskpkg.TaskManager {
+func newTaskManagerIntegration(t *testing.T, store taskpkg.Store, extraOpts ...taskpkg.Option) *taskpkg.Service {
 	t.Helper()
 
 	options := []taskpkg.Option{taskpkg.WithStore(store)}
@@ -512,7 +518,7 @@ func registerTaskManagerWorkspace(t *testing.T, db *globaldb.GlobalDB, name stri
 	return workspace.ID
 }
 
-func sortedEventTypes(events []taskpkg.TaskEvent) []string {
+func sortedEventTypes(events []taskpkg.Event) []string {
 	types := make([]string, 0, len(events))
 	for _, event := range events {
 		types = append(types, event.EventType)
@@ -521,7 +527,7 @@ func sortedEventTypes(events []taskpkg.TaskEvent) []string {
 	return types
 }
 
-func containsEventType(events []taskpkg.TaskEvent, want string) bool {
+func containsEventType(events []taskpkg.Event, want string) bool {
 	for _, event := range events {
 		if event.EventType == want {
 			return true

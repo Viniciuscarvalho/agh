@@ -30,15 +30,16 @@ import (
 )
 
 const (
-	gchatListenAddrEnv  = "AGH_BRIDGE_GCHAT_LISTEN_ADDR"
-	gchatAPIBaseEnv     = "AGH_BRIDGE_GCHAT_API_BASE_URL"
-	gchatTokenURLEnv    = "AGH_BRIDGE_GCHAT_TOKEN_URL"
-	gchatDirectCertsEnv = "AGH_BRIDGE_GCHAT_DIRECT_CERTS_URL"
-	gchatPubSubCertsEnv = "AGH_BRIDGE_GCHAT_PUBSUB_CERTS_URL"
+	gchatListenAddrEnv   = "AGH_BRIDGE_GCHAT_LISTEN_ADDR"
+	gchatAPIBaseEnv      = "AGH_BRIDGE_GCHAT_API_BASE_URL"
+	gchatAuthEndpointEnv = "AGH_BRIDGE_GCHAT_AUTH_URL"
+	gchatDirectCertsEnv  = "AGH_BRIDGE_GCHAT_DIRECT_CERTS_URL"
+	gchatPubSubCertsEnv  = "AGH_BRIDGE_GCHAT_PUBSUB_CERTS_URL"
 
-	gchatDefaultAPIBaseURL        = "https://chat.googleapis.com"
-	gchatDefaultTokenURL          = "https://oauth2.googleapis.com/token"
-	gchatDefaultDirectCertsURL    = "https://www.googleapis.com/service_accounts/v1/metadata/x509/chat@system.gserviceaccount.com"
+	gchatDefaultAPIBaseURL      = "https://chat.googleapis.com"
+	gchatDefaultAuthEndpointURL = "https://oauth2.googleapis.com/token"
+	gchatDefaultDirectCertsURL  = "https://www.googleapis.com/service_accounts/v1/metadata/x509/" +
+		"chat@system.gserviceaccount.com"
 	gchatDefaultPubSubCertsURL    = "https://www.googleapis.com/oauth2/v1/certs"
 	gchatDefaultDirectIssuer      = "chat@system.gserviceaccount.com"
 	gchatDefaultPubSubIssuerURL   = "https://accounts.google.com"
@@ -100,7 +101,7 @@ type gchatProviderConfig struct {
 	Webhook    struct {
 		ListenAddr string `json:"listen_addr,omitempty"`
 		Path       string `json:"path,omitempty"`
-	} `json:"webhook,omitempty"`
+	} `json:"webhook"`
 	Verification struct {
 		DirectCertsURL       string `json:"direct_certs_url,omitempty"`
 		DirectIssuer         string `json:"direct_issuer,omitempty"`
@@ -108,18 +109,18 @@ type gchatProviderConfig struct {
 		PubSubCertsURL       string `json:"pubsub_certs_url,omitempty"`
 		PubSubIssuer         string `json:"pubsub_issuer,omitempty"`
 		PubSubServiceAccount string `json:"pubsub_service_account_email,omitempty"`
-	} `json:"verification,omitempty"`
+	} `json:"verification"`
 	Batching struct {
 		DelayMS        int `json:"delay_ms,omitempty"`
 		SplitDelayMS   int `json:"split_delay_ms,omitempty"`
 		SplitThreshold int `json:"split_threshold,omitempty"`
-	} `json:"batching,omitempty"`
+	} `json:"batching"`
 	DM struct {
 		AllowUserIDs    []string `json:"allow_user_ids,omitempty"`
 		AllowUsernames  []string `json:"allow_usernames,omitempty"`
 		PairedUserIDs   []string `json:"paired_user_ids,omitempty"`
 		PairedUsernames []string `json:"paired_usernames,omitempty"`
-	} `json:"dm,omitempty"`
+	} `json:"dm"`
 }
 
 type serviceAccountCredentials struct {
@@ -303,9 +304,15 @@ type gchatAPI interface {
 	GetMessage(context.Context, string) (*gchatMessage, error)
 }
 
+type gchatHTTPDoer interface {
+	Do(*http.Request) (*http.Response, error)
+}
+
+type validatedGChatURL string
+
 type gchatBotClient struct {
 	cfg        resolvedInstanceConfig
-	httpClient *http.Client
+	httpClient gchatHTTPDoer
 
 	mu          sync.Mutex
 	cachedToken string
@@ -408,7 +415,10 @@ func newGChatProvider(stderr io.Writer) (*gchatProvider, error) {
 }
 
 func (p *gchatProvider) serve(stdin io.Reader, stdout io.Writer) error {
-	p.reportSideEffectError("write start marker", appendMarkerLine(p.env.startsPath, fmt.Sprintf("pid=%d", os.Getpid())))
+	p.reportSideEffectError(
+		"write start marker",
+		appendMarkerLine(p.env.startsPath, fmt.Sprintf("pid=%d", os.Getpid())),
+	)
 	return p.sdk.Serve(context.Background(), stdin, stdout)
 }
 
@@ -424,11 +434,9 @@ func (p *gchatProvider) handleInitialize(_ context.Context, session *bridgesdk.S
 	p.reportSideEffectError("write initialize marker", writeJSONFile(p.env.handshakePath, marker))
 	p.clearLastError()
 
-	p.wg.Add(1)
-	go func() {
-		defer p.wg.Done()
+	p.wg.Go(func() {
 		p.afterInitialize(session)
-	}()
+	})
 
 	return nil
 }
@@ -463,17 +471,22 @@ func (p *gchatProvider) afterInitialize(session *bridgesdk.Session) {
 	}
 	p.reportSideEffectError("write ownership marker", writeJSONFile(p.env.ownershipPath, ownership))
 
-	configs, reconcileErr := p.reconcileInstanceConfigs(ctx, session, listed)
-	if reconcileErr != nil && ownershipErr == nil {
-		ownershipErr = reconcileErr
-	}
-	for _, cfg := range configs {
+	configs := p.reconcileInstanceConfigs(ctx, session, listed)
+	for idx := range configs {
+		cfg := configs[idx]
 		status := cfg.initialStatus
 		degradation := cfg.initialDegradation
 		if status == "" {
 			status = bridgepkg.BridgeStatusReady
 		}
-		if _, reportErr := p.reportState(ctx, session, cfg.instanceID, status, degradation); reportErr != nil && ownershipErr == nil {
+		if reportErr := p.reportState(
+			ctx,
+			session,
+			cfg.instanceID,
+			status,
+			degradation,
+		); reportErr != nil &&
+			ownershipErr == nil {
 			ownershipErr = reportErr
 		}
 	}
@@ -502,6 +515,13 @@ func (p *gchatProvider) handleBridgesDeliver(
 		p.setLastError(err)
 		return bridgepkg.DeliveryAck{}, err
 	}
+	if cfg.configError != nil {
+		err = cfg.configError
+		marker.Error = err.Error()
+		p.reportSideEffectError("write failed delivery marker", appendJSONLine(p.env.deliveryPath, marker))
+		p.setLastError(err)
+		return bridgepkg.DeliveryAck{}, err
+	}
 
 	if shouldCrashOnce(p.env.crashOncePath) {
 		p.reportSideEffectError("write pre-crash delivery marker", appendJSONLine(p.env.deliveryPath, marker))
@@ -514,7 +534,12 @@ func (p *gchatProvider) handleBridgesDeliver(
 		os.Exit(23)
 	}
 
-	ack, state, err := executeGChatDelivery(ctx, p.apiFactory(cfg), request, p.deliveryState(cfg.instanceID, request.Event.DeliveryID))
+	ack, state, err := executeGChatDelivery(
+		ctx,
+		p.apiFactory(cfg),
+		request,
+		p.deliveryState(cfg.instanceID, request.Event.DeliveryID),
+	)
 	if err != nil {
 		marker.Error = err.Error()
 		p.reportSideEffectError("write failed delivery marker", appendJSONLine(p.env.deliveryPath, marker))
@@ -559,7 +584,10 @@ func (p *gchatProvider) handleShutdown(
 	shutdownCtx := context.Background()
 	if request.DeadlineMS > 0 {
 		var cancel context.CancelFunc
-		shutdownCtx, cancel = context.WithTimeout(context.Background(), time.Duration(request.DeadlineMS)*time.Millisecond)
+		shutdownCtx, cancel = context.WithTimeout(
+			context.Background(),
+			time.Duration(request.DeadlineMS)*time.Millisecond,
+		)
 		defer cancel()
 	}
 
@@ -567,7 +595,10 @@ func (p *gchatProvider) handleShutdown(
 	server := p.server
 	p.mu.Unlock()
 	if server != nil {
-		_ = server.Shutdown(shutdownCtx)
+		if err := server.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			p.reportSideEffectError("shutdown gchat webhook server", err)
+			p.setLastError(err)
+		}
 	}
 
 	done := make(chan struct{})
@@ -581,22 +612,28 @@ func (p *gchatProvider) handleShutdown(
 	case <-shutdownCtx.Done():
 	}
 
-	p.reportSideEffectError("write shutdown marker", appendMarkerLine(p.env.shutdownPath, fmt.Sprintf("pid=%d", os.Getpid())))
+	p.reportSideEffectError(
+		"write shutdown marker",
+		appendMarkerLine(p.env.shutdownPath, fmt.Sprintf("pid=%d", os.Getpid())),
+	)
 	return nil
 }
 
 func (p *gchatProvider) stop() {
 	p.stopOnce.Do(func() {
 		close(p.stopCh)
+		batchersToClose := make(map[*bridgesdk.InboundBatcher]struct{}, len(p.routes))
 		p.mu.Lock()
-		defer p.mu.Unlock()
-		for id, cfg := range p.routes {
+		for id := range p.routes {
+			cfg := p.routes[id]
 			if cfg.batcher != nil {
-				cfg.batcher.Close()
+				batchersToClose[cfg.batcher] = struct{}{}
 				cfg.batcher = nil
 				p.routes[id] = cfg
 			}
 		}
+		p.mu.Unlock()
+		closeGChatInboundBatchers(batchersToClose)
 	})
 }
 
@@ -637,14 +674,15 @@ func (p *gchatProvider) reportState(
 	bridgeInstanceID string,
 	status bridgepkg.BridgeStatus,
 	degradation *bridgepkg.BridgeDegradation,
-) (*bridgepkg.BridgeInstance, error) {
+) error {
 	var result *bridgepkg.BridgeInstance
 	err := p.retryHostCall(ctx, func(callCtx context.Context) error {
-		instance, callErr := session.HostAPI().ReportBridgeInstanceState(callCtx, extensioncontract.BridgesInstancesReportStateParams{
-			BridgeInstanceID: strings.TrimSpace(bridgeInstanceID),
-			Status:           status,
-			Degradation:      cloneDegradation(degradation),
-		})
+		instance, callErr := session.HostAPI().
+			ReportBridgeInstanceState(callCtx, extensioncontract.BridgesInstancesReportStateParams{
+				BridgeInstanceID: strings.TrimSpace(bridgeInstanceID),
+				Status:           status,
+				Degradation:      cloneDegradation(degradation),
+			})
 		if callErr == nil {
 			result = instance
 		}
@@ -656,7 +694,7 @@ func (p *gchatProvider) reportState(
 			Status:           status,
 			Error:            err.Error(),
 		}))
-		return nil, err
+		return err
 	}
 
 	p.mu.Lock()
@@ -667,10 +705,14 @@ func (p *gchatProvider) reportState(
 		Status:           result.Status,
 		Instance:         *result,
 	}))
-	return result, nil
+	return nil
 }
 
-func (p *gchatProvider) reportReadyIfNeeded(ctx context.Context, session *bridgesdk.Session, bridgeInstanceID string) error {
+func (p *gchatProvider) reportReadyIfNeeded(
+	ctx context.Context,
+	session *bridgesdk.Session,
+	bridgeInstanceID string,
+) error {
 	bridgeInstanceID = strings.TrimSpace(bridgeInstanceID)
 	p.mu.RLock()
 	status := p.reportedStatus[bridgeInstanceID]
@@ -678,8 +720,7 @@ func (p *gchatProvider) reportReadyIfNeeded(ctx context.Context, session *bridge
 	if status == bridgepkg.BridgeStatusReady {
 		return nil
 	}
-	_, err := p.reportState(ctx, session, bridgeInstanceID, bridgepkg.BridgeStatusReady, nil)
-	return err
+	return p.reportState(ctx, session, bridgeInstanceID, bridgepkg.BridgeStatusReady, nil)
 }
 
 func (p *gchatProvider) ingestBridgeMessage(
@@ -705,7 +746,7 @@ func (p *gchatProvider) retryHostCall(ctx context.Context, fn func(context.Conte
 
 	delay := 10 * time.Millisecond
 	var lastErr error
-	for attempt := 0; attempt < 6; attempt++ {
+	for range 6 {
 		err := fn(ctx)
 		if err == nil {
 			return nil
@@ -748,80 +789,141 @@ func (p *gchatProvider) reconcileInstanceConfigs(
 	ctx context.Context,
 	session *bridgesdk.Session,
 	managed []subprocess.InitializeBridgeManagedInstance,
-) ([]resolvedInstanceConfig, error) {
+) []resolvedInstanceConfig {
 	if len(managed) == 0 {
 		p.mu.Lock()
 		p.routes = make(map[string]resolvedInstanceConfig)
 		p.mu.Unlock()
-		return nil, nil
+		return nil
 	}
 
-	configs := make([]resolvedInstanceConfig, 0, len(managed))
-	requestedListen := strings.TrimSpace(os.Getenv(gchatListenAddrEnv))
-	usedPaths := make(map[string]string, len(managed))
-
-	for _, item := range managed {
-		cfg := p.resolveInstanceConfig(session, item)
-		if cfg.listenAddr != "" {
-			if requestedListen == "" {
-				requestedListen = cfg.listenAddr
-			} else if requestedListen != cfg.listenAddr && cfg.configError == nil {
-				cfg.configError = fmt.Errorf("gchat: instance %q configured incompatible listen_addr %q (runtime uses %q)", cfg.instanceID, cfg.listenAddr, requestedListen)
-			}
-		}
-		if owner, ok := usedPaths[cfg.webhookPath]; ok && cfg.webhookPath != "" && cfg.configError == nil {
-			cfg.configError = fmt.Errorf("gchat: webhook path %q is shared by %q and %q", cfg.webhookPath, owner, cfg.instanceID)
-		}
-		if cfg.webhookPath != "" {
-			usedPaths[cfg.webhookPath] = cfg.instanceID
-		}
-		configs = append(configs, cfg)
-	}
-
-	if requestedListen == "" {
-		for idx := range configs {
-			if configs[idx].configError == nil {
-				configs[idx].configError = errors.New("gchat: webhook listen address is required")
-			}
-		}
-	} else if err := p.startServer(requestedListen); err != nil {
-		for idx := range configs {
-			if configs[idx].configError == nil {
-				configs[idx].configError = err
-			}
-		}
-	}
-
-	nextRoutes := make(map[string]resolvedInstanceConfig, len(configs))
-	p.mu.Lock()
-	existing := p.routes
-	for _, cfg := range configs {
-		if prior, ok := existing[cfg.instanceID]; ok && prior.batcher != nil && cfg.batcher == nil {
-			prior.batcher.Close()
-		}
-		nextRoutes[cfg.instanceID] = cfg
-	}
-	for instanceID, prior := range existing {
-		if _, ok := nextRoutes[instanceID]; ok {
-			continue
-		}
-		if prior.batcher != nil {
-			prior.batcher.Close()
-		}
-	}
-	p.routes = nextRoutes
-	p.listenAddr = requestedListen
-	p.mu.Unlock()
+	configs, requestedListen := p.collectGChatConfigs(session, managed)
+	p.applyGChatListenErrors(configs, requestedListen)
+	nextRoutes := buildGChatRouteMap(configs)
+	closeGChatInboundBatchers(p.swapGChatRoutes(nextRoutes, requestedListen))
 
 	for idx := range configs {
-		status, degradation, err := p.determineInitialState(ctx, configs[idx])
+		status, degradation, err := p.determineInitialState(ctx, &configs[idx])
 		if err != nil {
 			p.setLastError(err)
 		}
 		configs[idx].initialStatus = status
 		configs[idx].initialDegradation = degradation
 	}
-	return configs, nil
+	return configs
+}
+
+func (p *gchatProvider) collectGChatConfigs(
+	session *bridgesdk.Session,
+	managed []subprocess.InitializeBridgeManagedInstance,
+) ([]resolvedInstanceConfig, string) {
+	configs := make([]resolvedInstanceConfig, 0, len(managed))
+	requestedListen := strings.TrimSpace(os.Getenv(gchatListenAddrEnv))
+	usedPaths := make(map[string]string, len(managed))
+
+	for _, item := range managed {
+		cfg := p.resolveInstanceConfig(session, item)
+		requestedListen = applyGChatListenConstraint(&cfg, requestedListen)
+		applyGChatWebhookPathConflict(&cfg, usedPaths)
+		configs = append(configs, cfg)
+	}
+
+	return configs, requestedListen
+}
+
+func applyGChatListenConstraint(cfg *resolvedInstanceConfig, requestedListen string) string {
+	if cfg == nil || cfg.listenAddr == "" {
+		return requestedListen
+	}
+	if requestedListen == "" {
+		return cfg.listenAddr
+	}
+	if requestedListen != cfg.listenAddr && cfg.configError == nil {
+		cfg.configError = fmt.Errorf(
+			"gchat: instance %q configured incompatible listen_addr %q (runtime uses %q)",
+			cfg.instanceID,
+			cfg.listenAddr,
+			requestedListen,
+		)
+	}
+	return requestedListen
+}
+
+func applyGChatWebhookPathConflict(cfg *resolvedInstanceConfig, usedPaths map[string]string) {
+	if cfg == nil || cfg.webhookPath == "" {
+		return
+	}
+	if owner, ok := usedPaths[cfg.webhookPath]; ok && cfg.configError == nil {
+		cfg.configError = fmt.Errorf(
+			"gchat: webhook path %q is shared by %q and %q",
+			cfg.webhookPath,
+			owner,
+			cfg.instanceID,
+		)
+	}
+	usedPaths[cfg.webhookPath] = cfg.instanceID
+}
+
+func (p *gchatProvider) applyGChatListenErrors(configs []resolvedInstanceConfig, requestedListen string) {
+	if requestedListen == "" {
+		for idx := range configs {
+			if configs[idx].configError == nil {
+				configs[idx].configError = errors.New("gchat: webhook listen address is required")
+			}
+		}
+		return
+	}
+	if err := p.startServer(requestedListen); err != nil {
+		for idx := range configs {
+			if configs[idx].configError == nil {
+				configs[idx].configError = err
+			}
+		}
+	}
+}
+
+func buildGChatRouteMap(configs []resolvedInstanceConfig) map[string]resolvedInstanceConfig {
+	nextRoutes := make(map[string]resolvedInstanceConfig, len(configs))
+	for idx := range configs {
+		cfg := configs[idx]
+		nextRoutes[cfg.instanceID] = cfg
+	}
+	return nextRoutes
+}
+
+func (p *gchatProvider) swapGChatRoutes(
+	nextRoutes map[string]resolvedInstanceConfig,
+	requestedListen string,
+) map[*bridgesdk.InboundBatcher]struct{} {
+	batchersToClose := make(map[*bridgesdk.InboundBatcher]struct{})
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	existing := p.routes
+	for instanceID := range nextRoutes {
+		cfg := nextRoutes[instanceID]
+		if prior, ok := existing[instanceID]; ok && prior.batcher != nil && prior.batcher != cfg.batcher {
+			batchersToClose[prior.batcher] = struct{}{}
+		}
+	}
+	for instanceID := range existing {
+		prior := existing[instanceID]
+		if _, ok := nextRoutes[instanceID]; ok {
+			continue
+		}
+		if prior.batcher != nil {
+			batchersToClose[prior.batcher] = struct{}{}
+		}
+	}
+	p.routes = nextRoutes
+	p.listenAddr = requestedListen
+	return batchersToClose
+}
+
+func closeGChatInboundBatchers(batchers map[*bridgesdk.InboundBatcher]struct{}) {
+	for batcher := range batchers {
+		batcher.Close()
+	}
 }
 
 func (p *gchatProvider) resolveInstanceConfig(
@@ -839,50 +941,89 @@ func (p *gchatProvider) resolveInstanceConfig(
 		}
 	}
 
-	credentialsJSON, _ := session.Cache().BoundSecretValue(managed.Instance.ID, "credentials_json")
-	projectNumber, _ := session.Cache().BoundSecretValue(managed.Instance.ID, "project_number")
-
-	credentials := serviceAccountCredentials{}
-	if strings.TrimSpace(credentialsJSON) != "" {
-		if err := json.Unmarshal([]byte(credentialsJSON), &credentials); err != nil {
-			return resolvedInstanceConfig{
-				managed:     managed,
-				instanceID:  managed.Instance.ID,
-				configError: fmt.Errorf("gchat: decode credentials_json for %q: %w", managed.Instance.ID, err),
-			}
+	credentials, err := resolveGChatCredentials(session, managed)
+	if err != nil {
+		return resolvedInstanceConfig{
+			managed:     managed,
+			instanceID:  managed.Instance.ID,
+			configError: err,
 		}
 	}
+	resolved, err := p.newResolvedGChatConfig(managed, cfg, credentials, session)
+	if err != nil {
+		resolved.configError = err
+		return resolved
+	}
+	if err := validateResolvedGChatConfig(&resolved, cfg.Mode); err != nil {
+		resolved.configError = err
+		return resolved
+	}
+	if err := p.attachGChatBatcher(&resolved, cfg.Batching); err != nil {
+		resolved.configError = err
+		return resolved
+	}
+	return resolved
+}
 
-	listenAddr := firstNonEmpty(cfg.Webhook.ListenAddr, strings.TrimSpace(os.Getenv(gchatListenAddrEnv)))
-	webhookPath := normalizeWebhookPath(firstNonEmpty(cfg.Webhook.Path, "/gchat/"+strings.TrimSpace(managed.Instance.ID)))
-	apiBaseURL := normalizeURL(firstNonEmpty(strings.TrimSpace(os.Getenv(gchatAPIBaseEnv)), gchatDefaultAPIBaseURL))
-	tokenURL := normalizeURL(firstNonEmpty(strings.TrimSpace(os.Getenv(gchatTokenURLEnv)), strings.TrimSpace(credentials.TokenURI), gchatDefaultTokenURL))
+func resolveGChatCredentials(
+	session *bridgesdk.Session,
+	managed subprocess.InitializeBridgeManagedInstance,
+) (serviceAccountCredentials, error) {
+	credentialsJSON, _ := session.Cache().BoundSecretValue(managed.Instance.ID, "credentials_json")
+	credentials := serviceAccountCredentials{}
+	if strings.TrimSpace(credentialsJSON) == "" {
+		return credentials, nil
+	}
+	if err := json.Unmarshal([]byte(credentialsJSON), &credentials); err != nil {
+		return serviceAccountCredentials{}, fmt.Errorf(
+			"gchat: decode credentials_json for %q: %w",
+			managed.Instance.ID,
+			err,
+		)
+	}
+	return credentials, nil
+}
+
+func (p *gchatProvider) newResolvedGChatConfig(
+	managed subprocess.InitializeBridgeManagedInstance,
+	cfg gchatProviderConfig,
+	credentials serviceAccountCredentials,
+	session *bridgesdk.Session,
+) (resolvedInstanceConfig, error) {
+	projectNumber, _ := session.Cache().BoundSecretValue(managed.Instance.ID, "project_number")
+	directCertsURL, pubsubCertsURL, err := resolveGChatVerificationURLs(cfg)
+	if err != nil {
+		return resolvedInstanceConfig{
+			managed:    managed,
+			instanceID: strings.TrimSpace(managed.Instance.ID),
+		}, err
+	}
+
 	mode := normalizeGChatMode(cfg.Mode)
 	if mode == "" {
 		mode = gchatModeDirect
 	}
-	directCertsURL, directCertsErr := resolveAllowedGoogleURLOverride(
-		strings.TrimSpace(os.Getenv(gchatDirectCertsEnv)),
-		cfg.Verification.DirectCertsURL,
-		gchatDefaultDirectCertsURL,
-		"provider_config.verification.direct_certs_url",
-		"www.googleapis.com",
-	)
-	pubsubCertsURL, pubsubCertsErr := resolveAllowedGoogleURLOverride(
-		strings.TrimSpace(os.Getenv(gchatPubSubCertsEnv)),
-		cfg.Verification.PubSubCertsURL,
-		gchatDefaultPubSubCertsURL,
-		"provider_config.verification.pubsub_certs_url",
-		"www.googleapis.com",
-	)
 
 	resolved := resolvedInstanceConfig{
-		managed:                   managed,
-		instanceID:                strings.TrimSpace(managed.Instance.ID),
-		listenAddr:                listenAddr,
-		webhookPath:               webhookPath,
-		apiBaseURL:                apiBaseURL,
-		tokenURL:                  tokenURL,
+		managed:    managed,
+		instanceID: strings.TrimSpace(managed.Instance.ID),
+		listenAddr: firstNonEmpty(
+			cfg.Webhook.ListenAddr,
+			strings.TrimSpace(os.Getenv(gchatListenAddrEnv)),
+		),
+		webhookPath: normalizeWebhookPath(
+			firstNonEmpty(cfg.Webhook.Path, "/gchat/"+strings.TrimSpace(managed.Instance.ID)),
+		),
+		apiBaseURL: normalizeURL(
+			firstNonEmpty(strings.TrimSpace(os.Getenv(gchatAPIBaseEnv)), gchatDefaultAPIBaseURL),
+		),
+		tokenURL: normalizeURL(
+			firstNonEmpty(
+				strings.TrimSpace(os.Getenv(gchatAuthEndpointEnv)),
+				strings.TrimSpace(credentials.TokenURI),
+				gchatDefaultAuthEndpointURL,
+			),
+		),
 		mode:                      mode,
 		credentials:               credentials,
 		projectNumber:             strings.TrimSpace(projectNumber),
@@ -904,75 +1045,113 @@ func (p *gchatProvider) resolveInstanceConfig(
 	if resolved.dmPolicy == "" {
 		resolved.dmPolicy = bridgepkg.BridgeDMPolicyOpen
 	}
-	if directCertsErr != nil {
-		resolved.configError = directCertsErr
-		return resolved
-	}
-	if pubsubCertsErr != nil {
-		resolved.configError = pubsubCertsErr
-		return resolved
-	}
+	return resolved, nil
+}
 
+func resolveGChatVerificationURLs(cfg gchatProviderConfig) (string, string, error) {
+	directCertsURL, directErr := resolveAllowedGoogleURLOverride(
+		strings.TrimSpace(os.Getenv(gchatDirectCertsEnv)),
+		cfg.Verification.DirectCertsURL,
+		gchatDefaultDirectCertsURL,
+		"provider_config.verification.direct_certs_url",
+		"www.googleapis.com",
+	)
+	if directErr != nil {
+		return "", "", directErr
+	}
+	pubsubCertsURL, pubsubErr := resolveAllowedGoogleURLOverride(
+		strings.TrimSpace(os.Getenv(gchatPubSubCertsEnv)),
+		cfg.Verification.PubSubCertsURL,
+		gchatDefaultPubSubCertsURL,
+		"provider_config.verification.pubsub_certs_url",
+		"www.googleapis.com",
+	)
+	if pubsubErr != nil {
+		return "", "", pubsubErr
+	}
+	return directCertsURL, pubsubCertsURL, nil
+}
+
+func validateResolvedGChatConfig(resolved *resolvedInstanceConfig, configuredMode string) error {
+	if resolved == nil {
+		return errors.New("gchat: resolved config is required")
+	}
+	apiBaseErr := validateGChatEndpointURL(resolved.apiBaseURL)
+	tokenURLErr := validateGChatEndpointURL(resolved.tokenURL)
 	switch {
 	case resolved.webhookPath == "":
-		resolved.configError = errors.New("gchat: webhook path is required")
-		return resolved
+		return errors.New("gchat: webhook path is required")
 	case resolved.apiBaseURL == "":
-		resolved.configError = errors.New("gchat: api base url is required")
-		return resolved
+		return errors.New("gchat: api base url is required")
 	case resolved.tokenURL == "":
-		resolved.configError = errors.New("gchat: oauth token url is required")
-		return resolved
+		return errors.New("gchat: oauth token url is required")
+	case apiBaseErr != nil:
+		return apiBaseErr
+	case tokenURLErr != nil:
+		return tokenURLErr
 	case !validGChatMode(resolved.mode):
-		resolved.configError = fmt.Errorf("gchat: unsupported provider_config.mode %q", cfg.Mode)
-		return resolved
+		return fmt.Errorf("gchat: unsupported provider_config.mode %q", configuredMode)
 	case modeUsesDirectIngress(resolved.mode) && strings.TrimSpace(resolved.projectNumber) == "":
-		resolved.configError = fmt.Errorf("gchat: project_number secret binding is required for mode %q", resolved.mode)
-		return resolved
+		return fmt.Errorf("gchat: project_number secret binding is required for mode %q", resolved.mode)
 	case modeUsesDirectIngress(resolved.mode) && resolved.directCertsURL == "":
-		resolved.configError = errors.New("gchat: direct certs url is required")
-		return resolved
+		return errors.New("gchat: direct certs url is required")
 	case modeUsesPubSubIngress(resolved.mode) && resolved.pubsubAudience == "":
-		resolved.configError = fmt.Errorf("gchat: provider_config.verification.pubsub_audience is required for mode %q", resolved.mode)
-		return resolved
+		return fmt.Errorf(
+			"gchat: provider_config.verification.pubsub_audience is required for mode %q",
+			resolved.mode,
+		)
 	case modeUsesPubSubIngress(resolved.mode) && resolved.pubsubServiceAccountEmail == "":
-		resolved.configError = fmt.Errorf("gchat: provider_config.verification.pubsub_service_account_email is required for mode %q", resolved.mode)
-		return resolved
+		return fmt.Errorf(
+			"gchat: provider_config.verification.pubsub_service_account_email is required for mode %q",
+			resolved.mode,
+		)
 	case modeUsesPubSubIngress(resolved.mode) && resolved.pubsubCertsURL == "":
-		resolved.configError = errors.New("gchat: pubsub certs url is required")
-		return resolved
+		return errors.New("gchat: pubsub certs url is required")
+	default:
+		return nil
 	}
+}
 
-	if cfg.Batching.DelayMS > 0 {
-		batcher, err := bridgesdk.NewInboundBatcher(bridgesdk.InboundBatcherConfig{
-			Context: context.Background(),
-			Delay:   time.Duration(cfg.Batching.DelayMS) * time.Millisecond,
-			SplitDelay: func() time.Duration {
-				if cfg.Batching.SplitDelayMS <= 0 {
-					return time.Duration(cfg.Batching.DelayMS) * time.Millisecond
-				}
-				return time.Duration(cfg.Batching.SplitDelayMS) * time.Millisecond
-			}(),
-			SplitThreshold: cfg.Batching.SplitThreshold,
-			Dispatch: func(ctx context.Context, batch bridgesdk.InboundBatch) error {
-				return p.dispatchInboundBatch(ctx, resolved.instanceID, batch)
-			},
-			Now: func() time.Time { return p.now() },
-		})
-		if err != nil {
-			resolved.configError = err
-			return resolved
-		}
-		resolved.batcher = batcher
+func (p *gchatProvider) attachGChatBatcher(
+	resolved *resolvedInstanceConfig,
+	cfg struct {
+		DelayMS        int `json:"delay_ms,omitempty"`
+		SplitDelayMS   int `json:"split_delay_ms,omitempty"`
+		SplitThreshold int `json:"split_threshold,omitempty"`
+	},
+) error {
+	if resolved == nil || cfg.DelayMS <= 0 {
+		return nil
 	}
-
-	return resolved
+	batcher, err := bridgesdk.NewInboundBatcher(bridgesdk.InboundBatcherConfig{
+		Context: context.Background(),
+		Delay:   time.Duration(cfg.DelayMS) * time.Millisecond,
+		SplitDelay: func() time.Duration {
+			if cfg.SplitDelayMS <= 0 {
+				return time.Duration(cfg.DelayMS) * time.Millisecond
+			}
+			return time.Duration(cfg.SplitDelayMS) * time.Millisecond
+		}(),
+		SplitThreshold: cfg.SplitThreshold,
+		Dispatch: func(ctx context.Context, batch bridgesdk.InboundBatch) error {
+			return p.dispatchInboundBatch(ctx, resolved.instanceID, batch)
+		},
+		Now: func() time.Time { return p.now() },
+	})
+	if err != nil {
+		return err
+	}
+	resolved.batcher = batcher
+	return nil
 }
 
 func (p *gchatProvider) determineInitialState(
 	ctx context.Context,
-	cfg resolvedInstanceConfig,
+	cfg *resolvedInstanceConfig,
 ) (bridgepkg.BridgeStatus, *bridgepkg.BridgeDegradation, error) {
+	if cfg == nil {
+		return bridgepkg.BridgeStatusError, nil, errors.New("gchat: config is required")
+	}
 	if cfg.configError != nil {
 		return bridgepkg.BridgeStatusDegraded, &bridgepkg.BridgeDegradation{
 			Reason:  bridgepkg.BridgeDegradationReasonTenantConfigInvalid,
@@ -986,7 +1165,7 @@ func (p *gchatProvider) determineInitialState(
 			Message: err.Error(),
 		}, err
 	}
-	if err := p.apiFactory(cfg).ValidateAuth(ctx); err != nil {
+	if err := p.apiFactory(*cfg).ValidateAuth(ctx); err != nil {
 		classified := bridgesdk.ClassifyError(err)
 		recovery := classified.Recovery()
 		status := recovery.Status
@@ -1016,7 +1195,7 @@ func (p *gchatProvider) startServer(listenAddr string) error {
 		return nil
 	}
 
-	ln, err := net.Listen("tcp", strings.TrimSpace(listenAddr))
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", strings.TrimSpace(listenAddr))
 	if err != nil {
 		return fmt.Errorf("gchat: listen %q: %w", listenAddr, err)
 	}
@@ -1034,15 +1213,16 @@ func (p *gchatProvider) startServer(listenAddr string) error {
 	p.listenAddr = strings.TrimSpace(listenAddr)
 	p.mu.Unlock()
 
-	p.reportSideEffectError("write start marker", appendMarkerLine(p.env.startsPath, fmt.Sprintf("listen=%s", actualAddr)))
+	p.reportSideEffectError(
+		"write start marker",
+		appendMarkerLine(p.env.startsPath, fmt.Sprintf("listen=%s", actualAddr)),
+	)
 
-	p.wg.Add(1)
-	go func() {
-		defer p.wg.Done()
+	p.wg.Go(func() {
 		if serveErr := httpServer.Serve(ln); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			p.setLastError(serveErr)
 		}
-	}()
+	})
 	return nil
 }
 
@@ -1060,14 +1240,14 @@ func (p *gchatProvider) serveWebhookHTTP(w http.ResponseWriter, r *http.Request)
 		RateLimiter:         cfg.rateLimiter,
 		InFlightLimiter:     cfg.inFlightLimiter,
 		VerifySignature: func(ctx context.Context, req *http.Request, body []byte) error {
-			return verifyGChatWebhookBearer(ctx, req, body, cfg)
+			return verifyGChatWebhookBearer(ctx, req, body, &cfg)
 		},
 		RequestKey: func(req *http.Request) string {
 			return req.RemoteAddr + "|" + cfg.instanceID
 		},
 		Now: func() time.Time { return p.now() },
 	}, func(w http.ResponseWriter, r *http.Request, request bridgesdk.WebhookRequest) error {
-		return p.handleWebhookRequest(w, r, cfg, request)
+		return p.handleWebhookRequest(w, r, &cfg, request)
 	})
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -1080,7 +1260,7 @@ func (p *gchatProvider) serveWebhookHTTP(w http.ResponseWriter, r *http.Request)
 func (p *gchatProvider) handleWebhookRequest(
 	w http.ResponseWriter,
 	r *http.Request,
-	cfg resolvedInstanceConfig,
+	cfg *resolvedInstanceConfig,
 	request bridgesdk.WebhookRequest,
 ) error {
 	ctx := context.Background()
@@ -1091,12 +1271,12 @@ func (p *gchatProvider) handleWebhookRequest(
 	switch shape {
 	case gchatModePubSub:
 		if !modeUsesPubSubIngress(cfg.mode) {
-			return writeWebhookJSON(w, http.StatusOK, map[string]any{"ignored": true})
+			return writeWebhookJSON(w, map[string]any{"ignored": true})
 		}
 		return p.handlePubSubWebhook(ctx, w, cfg, request)
 	case gchatModeDirect:
 		if !modeUsesDirectIngress(cfg.mode) {
-			return writeWebhookJSON(w, http.StatusOK, map[string]any{"ignored": true})
+			return writeWebhookJSON(w, map[string]any{"ignored": true})
 		}
 		return p.handleDirectWebhook(ctx, w, cfg, request)
 	default:
@@ -1107,38 +1287,41 @@ func (p *gchatProvider) handleWebhookRequest(
 func (p *gchatProvider) handleDirectWebhook(
 	ctx context.Context,
 	w http.ResponseWriter,
-	cfg resolvedInstanceConfig,
+	cfg *resolvedInstanceConfig,
 	request bridgesdk.WebhookRequest,
 ) error {
 	event := gchatEvent{}
 	if err := json.Unmarshal(request.Body, &event); err != nil {
-		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: "invalid google chat direct webhook payload"}
+		return &bridgesdk.HTTPError{
+			StatusCode: http.StatusBadRequest,
+			Message:    "invalid google chat direct webhook payload",
+		}
 	}
 
 	if event.Chat == nil {
-		return writeWebhookJSON(w, http.StatusOK, map[string]any{})
+		return writeWebhookJSON(w, map[string]any{})
 	}
 	if item, ok, err := mapDirectActionEvent(event, cfg.managed, request.ReceivedAt); err != nil {
 		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
 	} else if ok {
 		if cfg.dedup.Mark(item.Envelope.IdempotencyKey) {
-			return writeWebhookJSON(w, http.StatusOK, map[string]any{})
+			return writeWebhookJSON(w, map[string]any{})
 		}
 		if allowGChatDirectMessage(cfg, item.User, item.Direct) {
 			if err := p.dispatchInboundEnvelope(ctx, cfg.instanceID, item.Envelope); err != nil {
 				return &bridgesdk.HTTPError{StatusCode: http.StatusInternalServerError, Message: err.Error()}
 			}
 		}
-		return writeWebhookJSON(w, http.StatusOK, map[string]any{})
+		return writeWebhookJSON(w, map[string]any{})
 	}
 	if item, ok, err := mapDirectMessageEvent(event, cfg.managed, request.ReceivedAt); err != nil {
 		return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: err.Error()}
 	} else if ok {
 		if cfg.dedup.Mark(item.Envelope.IdempotencyKey) {
-			return writeWebhookJSON(w, http.StatusOK, map[string]any{})
+			return writeWebhookJSON(w, map[string]any{})
 		}
 		if !allowGChatDirectMessage(cfg, item.User, item.Direct) {
-			return writeWebhookJSON(w, http.StatusOK, map[string]any{})
+			return writeWebhookJSON(w, map[string]any{})
 		}
 		if cfg.batcher != nil {
 			if err := cfg.batcher.Enqueue(item.Envelope); err != nil {
@@ -1150,13 +1333,13 @@ func (p *gchatProvider) handleDirectWebhook(
 			}
 		}
 	}
-	return writeWebhookJSON(w, http.StatusOK, map[string]any{})
+	return writeWebhookJSON(w, map[string]any{})
 }
 
 func (p *gchatProvider) handlePubSubWebhook(
 	ctx context.Context,
 	w http.ResponseWriter,
-	cfg resolvedInstanceConfig,
+	cfg *resolvedInstanceConfig,
 	request bridgesdk.WebhookRequest,
 ) error {
 	push := gchatPubSubPushMessage{}
@@ -1175,10 +1358,10 @@ func (p *gchatProvider) handlePubSubWebhook(
 			return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: mapErr.Error()}
 		}
 		if cfg.dedup.Mark(item.Envelope.IdempotencyKey) {
-			return writeWebhookJSON(w, http.StatusOK, map[string]any{"success": true})
+			return writeWebhookJSON(w, map[string]any{"success": true})
 		}
 		if !allowGChatDirectMessage(cfg, item.User, item.Direct) {
-			return writeWebhookJSON(w, http.StatusOK, map[string]any{"success": true})
+			return writeWebhookJSON(w, map[string]any{"success": true})
 		}
 		if cfg.batcher != nil {
 			if err := cfg.batcher.Enqueue(item.Envelope); err != nil {
@@ -1190,24 +1373,28 @@ func (p *gchatProvider) handlePubSubWebhook(
 			}
 		}
 	case notification.Reaction != nil:
-		item, mapErr := mapPubSubReactionEvent(ctx, p.apiFactory(cfg), notification, cfg.managed, request.ReceivedAt)
+		item, mapErr := mapPubSubReactionEvent(ctx, p.apiFactory(*cfg), notification, cfg.managed, request.ReceivedAt)
 		if mapErr != nil {
 			return &bridgesdk.HTTPError{StatusCode: http.StatusBadRequest, Message: mapErr.Error()}
 		}
 		if cfg.dedup.Mark(item.Envelope.IdempotencyKey) {
-			return writeWebhookJSON(w, http.StatusOK, map[string]any{"success": true})
+			return writeWebhookJSON(w, map[string]any{"success": true})
 		}
 		if !allowGChatDirectMessage(cfg, item.User, item.Direct) {
-			return writeWebhookJSON(w, http.StatusOK, map[string]any{"success": true})
+			return writeWebhookJSON(w, map[string]any{"success": true})
 		}
 		if err := p.dispatchInboundEnvelope(ctx, cfg.instanceID, item.Envelope); err != nil {
 			return &bridgesdk.HTTPError{StatusCode: http.StatusInternalServerError, Message: err.Error()}
 		}
 	}
-	return writeWebhookJSON(w, http.StatusOK, map[string]any{"success": true})
+	return writeWebhookJSON(w, map[string]any{"success": true})
 }
 
-func (p *gchatProvider) dispatchInboundBatch(ctx context.Context, bridgeInstanceID string, batch bridgesdk.InboundBatch) error {
+func (p *gchatProvider) dispatchInboundBatch(
+	ctx context.Context,
+	bridgeInstanceID string,
+	batch bridgesdk.InboundBatch,
+) error {
 	if len(batch.Items) == 0 {
 		return nil
 	}
@@ -1228,7 +1415,11 @@ func (p *gchatProvider) dispatchInboundBatch(ctx context.Context, bridgeInstance
 	return p.dispatchInboundEnvelope(ctx, bridgeInstanceID, merged)
 }
 
-func (p *gchatProvider) dispatchInboundEnvelope(ctx context.Context, bridgeInstanceID string, envelope bridgepkg.InboundMessageEnvelope) error {
+func (p *gchatProvider) dispatchInboundEnvelope(
+	ctx context.Context,
+	bridgeInstanceID string,
+	envelope bridgepkg.InboundMessageEnvelope,
+) error {
 	session := p.currentSession()
 	if session == nil {
 		return errors.New("gchat: runtime session is not initialized")
@@ -1267,7 +1458,10 @@ func (p *gchatProvider) configForInstance(instanceID string) (resolvedInstanceCo
 	return cfg, nil
 }
 
-func (p *gchatProvider) waitForInstanceConfig(instanceID string, timeout time.Duration) (resolvedInstanceConfig, error) {
+func (p *gchatProvider) waitForInstanceConfig(
+	instanceID string,
+	timeout time.Duration,
+) (resolvedInstanceConfig, error) {
 	if timeout <= 0 {
 		return p.configForInstance(instanceID)
 	}
@@ -1297,7 +1491,8 @@ func (p *gchatProvider) waitForInstanceConfig(instanceID string, timeout time.Du
 func (p *gchatProvider) configForPath(path string) (resolvedInstanceConfig, bool) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	for _, cfg := range p.routes {
+	for instanceID := range p.routes {
+		cfg := p.routes[instanceID]
 		if cfg.webhookPath == normalizeWebhookPath(path) {
 			return cfg, true
 		}
@@ -1350,74 +1545,109 @@ func executeGChatDelivery(
 ) (bridgepkg.DeliveryAck, deliveryState, error) {
 	event := request.Event
 	if event.Seq <= state.LastSeq {
-		return bridgepkg.DeliveryAck{}, state, fmt.Errorf("gchat: out-of-order delivery seq %d after %d", event.Seq, state.LastSeq)
+		return bridgepkg.DeliveryAck{}, state, fmt.Errorf(
+			"gchat: out-of-order delivery seq %d after %d",
+			event.Seq,
+			state.LastSeq,
+		)
 	}
 
-	if event.Operation.Normalize() == bridgepkg.DeliveryOperationDelete || normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeDelete {
-		messageName := firstNonEmpty(referenceRemoteMessageID(event.Reference), state.RemoteMessageID)
-		if messageName == "" && request.Snapshot != nil {
-			messageName = strings.TrimSpace(request.Snapshot.RemoteMessageID)
-		}
-		if messageName == "" {
-			return bridgepkg.DeliveryAck{}, state, errors.New("gchat: delete delivery requires a remote message id")
-		}
-		if err := api.DeleteMessage(ctx, messageName); err != nil {
-			return bridgepkg.DeliveryAck{}, state, err
-		}
-		state.LastSeq = event.Seq
-		state.ReplaceRemoteMessageID = messageName
-		ack := bridgepkg.DeliveryAck{
-			DeliveryID:             event.DeliveryID,
-			Seq:                    event.Seq,
-			RemoteMessageID:        messageName,
-			ReplaceRemoteMessageID: messageName,
-		}
-		return ack, state, ack.ValidateFor(event)
+	switch {
+	case isGChatDeleteEvent(event):
+		return executeGChatDelete(ctx, api, request, state)
+	case shouldPostGChatMessage(event, state, request):
+		return executeGChatCreate(ctx, api, event, state)
+	default:
+		return executeGChatUpdate(ctx, api, request, state)
 	}
+}
 
-	text := strings.TrimSpace(event.Content.Text)
-	if text == "" {
-		return bridgepkg.DeliveryAck{}, state, &bridgesdk.PermanentError{Err: errors.New("gchat: text delivery content is required")}
-	}
+func isGChatDeleteEvent(event bridgepkg.DeliveryEvent) bool {
+	return event.Operation.Normalize() == bridgepkg.DeliveryOperationDelete ||
+		normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeDelete
+}
 
-	if shouldPostGChatMessage(event, state, request) {
-		target, err := resolveGChatDeliveryTarget(event)
-		if err != nil {
-			return bridgepkg.DeliveryAck{}, state, err
-		}
-		message, err := api.CreateMessage(ctx, gchatCreateMessageRequest{
-			SpaceName:  target.SpaceName,
-			ThreadName: target.ThreadName,
-			Text:       text,
-		})
-		if err != nil {
-			return bridgepkg.DeliveryAck{}, state, err
-		}
-		if strings.TrimSpace(message.Name) == "" {
-			return bridgepkg.DeliveryAck{}, state, &bridgesdk.TransientError{Err: errors.New("gchat: create message response omitted name")}
-		}
-		state.LastSeq = event.Seq
-		state.RemoteMessageID = strings.TrimSpace(message.Name)
-		if event.Seq > 1 {
-			state.ReplaceRemoteMessageID = state.RemoteMessageID
-		}
-		ack := bridgepkg.DeliveryAck{
-			DeliveryID:             event.DeliveryID,
-			Seq:                    event.Seq,
-			RemoteMessageID:        state.RemoteMessageID,
-			ReplaceRemoteMessageID: state.ReplaceRemoteMessageID,
-		}
-		return ack, state, ack.ValidateFor(event)
+func executeGChatDelete(
+	ctx context.Context,
+	api gchatAPI,
+	request bridgepkg.DeliveryRequest,
+	state deliveryState,
+) (bridgepkg.DeliveryAck, deliveryState, error) {
+	event := request.Event
+	messageName := gchatRemoteMessageIDFromRequest(request, state)
+	if messageName == "" {
+		return bridgepkg.DeliveryAck{}, state, errors.New("gchat: delete delivery requires a remote message id")
 	}
+	if err := api.DeleteMessage(ctx, messageName); err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
+	}
+	state.LastSeq = event.Seq
+	state.ReplaceRemoteMessageID = messageName
+	ack := bridgepkg.DeliveryAck{
+		DeliveryID:             event.DeliveryID,
+		Seq:                    event.Seq,
+		RemoteMessageID:        messageName,
+		ReplaceRemoteMessageID: messageName,
+	}
+	return ack, state, ack.ValidateFor(event)
+}
 
-	messageName := firstNonEmpty(referenceRemoteMessageID(event.Reference), state.RemoteMessageID)
-	if messageName == "" && request.Snapshot != nil {
-		messageName = strings.TrimSpace(request.Snapshot.RemoteMessageID)
+func executeGChatCreate(
+	ctx context.Context,
+	api gchatAPI,
+	event bridgepkg.DeliveryEvent,
+	state deliveryState,
+) (bridgepkg.DeliveryAck, deliveryState, error) {
+	text, err := gchatDeliveryText(event)
+	if err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
 	}
+	target, err := resolveGChatDeliveryTarget(event)
+	if err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
+	}
+	message, err := api.CreateMessage(ctx, gchatCreateMessageRequest{
+		SpaceName:  target.SpaceName,
+		ThreadName: target.ThreadName,
+		Text:       text,
+	})
+	if err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
+	}
+	if strings.TrimSpace(message.Name) == "" {
+		return bridgepkg.DeliveryAck{}, state, &bridgesdk.TransientError{
+			Err: errors.New("gchat: create message response omitted name"),
+		}
+	}
+	state.LastSeq = event.Seq
+	state.RemoteMessageID = strings.TrimSpace(message.Name)
+	if event.Seq > 1 {
+		state.ReplaceRemoteMessageID = state.RemoteMessageID
+	}
+	ack := bridgepkg.DeliveryAck{
+		DeliveryID:             event.DeliveryID,
+		Seq:                    event.Seq,
+		RemoteMessageID:        state.RemoteMessageID,
+		ReplaceRemoteMessageID: state.ReplaceRemoteMessageID,
+	}
+	return ack, state, ack.ValidateFor(event)
+}
+
+func executeGChatUpdate(
+	ctx context.Context,
+	api gchatAPI,
+	request bridgepkg.DeliveryRequest,
+	state deliveryState,
+) (bridgepkg.DeliveryAck, deliveryState, error) {
+	event := request.Event
+	text, err := gchatDeliveryText(event)
+	if err != nil {
+		return bridgepkg.DeliveryAck{}, state, err
+	}
+	messageName := gchatRemoteMessageIDFromRequest(request, state)
 	if messageName == "" {
 		return bridgepkg.DeliveryAck{}, state, errors.New("gchat: edit delivery requires a remote message id")
 	}
-
 	updated, err := api.UpdateMessage(ctx, gchatUpdateMessageRequest{
 		MessageName: messageName,
 		Text:        text,
@@ -1440,7 +1670,27 @@ func executeGChatDelivery(
 	return ack, state, ack.ValidateFor(event)
 }
 
-func shouldPostGChatMessage(event bridgepkg.DeliveryEvent, state deliveryState, request bridgepkg.DeliveryRequest) bool {
+func gchatDeliveryText(event bridgepkg.DeliveryEvent) (string, error) {
+	text := strings.TrimSpace(event.Content.Text)
+	if text == "" {
+		return "", &bridgesdk.PermanentError{Err: errors.New("gchat: text delivery content is required")}
+	}
+	return text, nil
+}
+
+func gchatRemoteMessageIDFromRequest(request bridgepkg.DeliveryRequest, state deliveryState) string {
+	messageName := firstNonEmpty(referenceRemoteMessageID(request.Event.Reference), state.RemoteMessageID)
+	if messageName == "" && request.Snapshot != nil {
+		return strings.TrimSpace(request.Snapshot.RemoteMessageID)
+	}
+	return messageName
+}
+
+func shouldPostGChatMessage(
+	event bridgepkg.DeliveryEvent,
+	state deliveryState,
+	request bridgepkg.DeliveryRequest,
+) bool {
 	if normalizeDeliveryEventType(event.EventType) == bridgepkg.DeliveryEventTypeStart {
 		return true
 	}
@@ -1453,7 +1703,10 @@ func shouldPostGChatMessage(event bridgepkg.DeliveryEvent, state deliveryState, 
 	return strings.TrimSpace(state.RemoteMessageID) == ""
 }
 
-func allowGChatDirectMessage(cfg resolvedInstanceConfig, user gchatUserIdentity, direct bool) bool {
+func allowGChatDirectMessage(cfg *resolvedInstanceConfig, user gchatUserIdentity, direct bool) bool {
+	if cfg == nil {
+		return false
+	}
 	if !direct {
 		return true
 	}
@@ -1498,7 +1751,14 @@ func mapDirectMessageEvent(
 	if isBotUser(message.Sender) {
 		return gchatMappedInbound{}, false, nil
 	}
-	item, err := mapGChatMessage(message, space, managed, receivedAt, "direct:"+strings.TrimSpace(message.Name), "direct_webhook")
+	item, err := mapGChatMessage(
+		message,
+		space,
+		managed,
+		receivedAt,
+		"direct:"+strings.TrimSpace(message.Name),
+		"direct_webhook",
+	)
 	return item, true, err
 }
 
@@ -1507,8 +1767,29 @@ func mapDirectActionEvent(
 	managed subprocess.InitializeBridgeManagedInstance,
 	receivedAt time.Time,
 ) (gchatMappedInbound, bool, error) {
-	if event.Chat == nil {
+	actionCtx, ok := buildDirectActionContext(event)
+	if !ok {
 		return gchatMappedInbound{}, false, nil
+	}
+	if isBotUser(actionCtx.user) {
+		return gchatMappedInbound{}, false, nil
+	}
+	item, err := buildDirectActionItem(event, managed, receivedAt, actionCtx)
+	return item, true, err
+}
+
+type gchatDirectActionContext struct {
+	space           gchatSpace
+	message         gchatMessage
+	user            gchatUser
+	actionID        string
+	invokedFunction string
+	parameters      map[string]string
+}
+
+func buildDirectActionContext(event gchatEvent) (gchatDirectActionContext, bool) {
+	if event.Chat == nil {
+		return gchatDirectActionContext{}, false
 	}
 	button := event.Chat.ButtonClickedPayload
 	invokedFunction := ""
@@ -1518,73 +1799,78 @@ func mapDirectActionEvent(
 		parameters = event.CommonEventObject.Parameters
 	}
 	if button == nil && invokedFunction == "" {
-		return gchatMappedInbound{}, false, nil
+		return gchatDirectActionContext{}, false
 	}
 
-	space := gchatSpace{}
-	message := gchatMessage{}
-	user := gchatUser{}
+	ctx := gchatDirectActionContext{
+		invokedFunction: invokedFunction,
+		parameters:      parameters,
+	}
 	if button != nil {
-		space = button.Space
-		message = button.Message
-		user = button.User
+		ctx.space = button.Space
+		ctx.message = button.Message
+		ctx.user = button.User
 	}
-	if user.Name == "" && event.Chat.User != nil {
-		user = *event.Chat.User
+	if ctx.user.Name == "" && event.Chat.User != nil {
+		ctx.user = *event.Chat.User
 	}
-	if isBotUser(user) {
-		return gchatMappedInbound{}, false, nil
+	ctx.actionID = firstNonEmpty(paramValue(parameters, "actionId"), invokedFunction)
+	if ctx.actionID == "" {
+		return gchatDirectActionContext{}, false
 	}
-	actionID := firstNonEmpty(paramValue(parameters, "actionId"), invokedFunction)
-	if actionID == "" {
-		return gchatMappedInbound{}, false, nil
-	}
-	direct := isDirectSpace(space)
-	threadName := firstNonEmpty(threadNameForMessage(message, direct), strings.TrimSpace(message.Name))
-	threadID := ""
-	if direct || threadName != "" {
-		threadID = encodeGChatThreadID(gchatThreadRef{
-			SpaceName:  strings.TrimSpace(space.Name),
-			ThreadName: threadName,
-			IsDM:       direct,
-		})
-	}
+	return ctx, true
+}
+
+func buildDirectActionItem(
+	event gchatEvent,
+	managed subprocess.InitializeBridgeManagedInstance,
+	receivedAt time.Time,
+	actionCtx gchatDirectActionContext,
+) (gchatMappedInbound, error) {
+	direct := isDirectSpace(actionCtx.space)
+	threadName := firstNonEmpty(
+		threadNameForMessage(actionCtx.message, direct),
+		strings.TrimSpace(actionCtx.message.Name),
+	)
 	envelope := bridgepkg.InboundMessageEnvelope{
 		BridgeInstanceID: managed.Instance.ID,
 		Scope:            managed.Instance.Scope,
 		WorkspaceID:      managed.Instance.WorkspaceID,
 		ReceivedAt:       normalizeReceivedAt(receivedAt, event.Chat.EventTime),
-		Sender:           gchatSender(user),
+		Sender:           gchatSender(actionCtx.user),
 		EventFamily:      bridgepkg.InboundEventFamilyAction,
 		Action: &bridgepkg.InboundAction{
-			ActionID:  actionID,
-			MessageID: strings.TrimSpace(message.Name),
-			Value:     paramValue(parameters, "value"),
-			TriggerID: firstNonEmpty(paramValue(parameters, "triggerId"), invokedFunction),
+			ActionID:  actionCtx.actionID,
+			MessageID: strings.TrimSpace(actionCtx.message.Name),
+			Value:     paramValue(actionCtx.parameters, "value"),
+			TriggerID: firstNonEmpty(paramValue(actionCtx.parameters, "triggerId"), actionCtx.invokedFunction),
 		},
-		IdempotencyKey: fmt.Sprintf("gchat:%s:action:%s:%s", managed.Instance.ID, actionID, strings.TrimSpace(message.Name)),
+		IdempotencyKey: fmt.Sprintf(
+			"gchat:%s:action:%s:%s",
+			managed.Instance.ID,
+			actionCtx.actionID,
+			strings.TrimSpace(actionCtx.message.Name),
+		),
 	}
-	if direct {
-		envelope.PeerID = strings.TrimSpace(space.Name)
-	} else {
-		envelope.GroupID = strings.TrimSpace(space.Name)
-	}
-	envelope.ThreadID = threadID
+	assignGChatRoute(&envelope, strings.TrimSpace(actionCtx.space.Name), threadName, direct)
 	if metadata, err := json.Marshal(map[string]any{
 		"source":       "direct_webhook",
-		"space_name":   strings.TrimSpace(space.Name),
+		"space_name":   strings.TrimSpace(actionCtx.space.Name),
 		"thread_name":  threadName,
-		"message_name": strings.TrimSpace(message.Name),
+		"message_name": strings.TrimSpace(actionCtx.message.Name),
 	}); err == nil {
 		envelope.ProviderMetadata = metadata
 	}
-
 	item := gchatMappedInbound{
 		Envelope: envelope,
 		Direct:   direct,
-		User:     gchatUserIdentity{ID: envelope.Sender.ID, Username: envelope.Sender.Username, DisplayName: envelope.Sender.DisplayName},
+		User: gchatUserIdentity{
+			ID:          envelope.Sender.ID,
+			Username:    envelope.Sender.Username,
+			DisplayName: envelope.Sender.DisplayName,
+		},
 	}
-	return item, true, item.Envelope.Validate()
+	return item, item.Envelope.Validate()
 }
 
 func mapPubSubMessageEvent(
@@ -1603,7 +1889,14 @@ func mapPubSubMessageEvent(
 	if space.Name == "" {
 		space.Name = strings.TrimPrefix(strings.TrimSpace(notification.TargetResource), "//chat.googleapis.com/")
 	}
-	return mapGChatMessage(*message, space, managed, normalizeReceivedAt(receivedAt, notification.EventTime), "pubsub:"+firstNonEmpty(notification.EventType, strings.TrimSpace(message.Name)), "pubsub_workspace_events")
+	return mapGChatMessage(
+		*message,
+		space,
+		managed,
+		normalizeReceivedAt(receivedAt, notification.EventTime),
+		"pubsub:"+firstNonEmpty(notification.EventType, strings.TrimSpace(message.Name)),
+		"pubsub_workspace_events",
+	)
 }
 
 func mapPubSubReactionEvent(
@@ -1616,10 +1909,31 @@ func mapPubSubReactionEvent(
 	if notification.Reaction == nil {
 		return gchatMappedInbound{}, errors.New("gchat: pubsub notification missing reaction")
 	}
+	route, err := resolvePubSubReactionRoute(ctx, api, notification)
+	if err != nil {
+		return gchatMappedInbound{}, err
+	}
+	item := buildPubSubReactionItem(notification, managed, receivedAt, route)
+	return item, item.Envelope.Validate()
+}
+
+type gchatPubSubReactionRoute struct {
+	messageName string
+	spaceName   string
+	threadName  string
+	direct      bool
+	reaction    *gchatReaction
+}
+
+func resolvePubSubReactionRoute(
+	ctx context.Context,
+	api gchatAPI,
+	notification gchatWorkspaceEventNotification,
+) (gchatPubSubReactionRoute, error) {
 	reaction := notification.Reaction
 	messageName := extractReactionMessageName(reaction.Name)
 	if messageName == "" {
-		return gchatMappedInbound{}, errors.New("gchat: reaction resource omitted message reference")
+		return gchatPubSubReactionRoute{}, errors.New("gchat: reaction resource omitted message reference")
 	}
 
 	spaceName := strings.TrimPrefix(strings.TrimSpace(notification.TargetResource), "//chat.googleapis.com/")
@@ -1646,8 +1960,45 @@ func mapPubSubReactionEvent(
 	if threadName == "" {
 		threadName = messageName
 	}
+	return gchatPubSubReactionRoute{
+		messageName: messageName,
+		spaceName:   spaceName,
+		threadName:  threadName,
+		direct:      direct,
+		reaction:    reaction,
+	}, nil
+}
 
-	sender := gchatSender(derefUser(reaction.User))
+func assignGChatRoute(
+	envelope *bridgepkg.InboundMessageEnvelope,
+	spaceName string,
+	threadName string,
+	direct bool,
+) {
+	if envelope == nil {
+		return
+	}
+	if direct {
+		envelope.PeerID = strings.TrimSpace(spaceName)
+	} else {
+		envelope.GroupID = strings.TrimSpace(spaceName)
+	}
+	if direct || strings.TrimSpace(threadName) != "" {
+		envelope.ThreadID = encodeGChatThreadID(gchatThreadRef{
+			SpaceName:  strings.TrimSpace(spaceName),
+			ThreadName: strings.TrimSpace(threadName),
+			IsDM:       direct,
+		})
+	}
+}
+
+func buildPubSubReactionItem(
+	notification gchatWorkspaceEventNotification,
+	managed subprocess.InitializeBridgeManagedInstance,
+	receivedAt time.Time,
+	route gchatPubSubReactionRoute,
+) gchatMappedInbound {
+	sender := gchatSender(derefUser(route.reaction.User))
 	envelope := bridgepkg.InboundMessageEnvelope{
 		BridgeInstanceID: managed.Instance.ID,
 		Scope:            managed.Instance.Scope,
@@ -1656,40 +2007,34 @@ func mapPubSubReactionEvent(
 		Sender:           sender,
 		EventFamily:      bridgepkg.InboundEventFamilyReaction,
 		Reaction: &bridgepkg.InboundReaction{
-			MessageID: messageName,
-			Emoji:     normalizeGChatEmoji(reactionEmoji(reaction)),
-			RawEmoji:  reactionEmoji(reaction),
+			MessageID: route.messageName,
+			Emoji:     normalizeGChatEmoji(reactionEmoji(route.reaction)),
+			RawEmoji:  reactionEmoji(route.reaction),
 			Added:     strings.Contains(strings.ToLower(strings.TrimSpace(notification.EventType)), "created"),
 		},
-		IdempotencyKey: fmt.Sprintf("gchat:%s:reaction:%s:%s", managed.Instance.ID, strings.TrimSpace(notification.EventType), strings.TrimSpace(reaction.Name)),
+		IdempotencyKey: fmt.Sprintf(
+			"gchat:%s:reaction:%s:%s",
+			managed.Instance.ID,
+			strings.TrimSpace(notification.EventType),
+			strings.TrimSpace(route.reaction.Name),
+		),
 	}
-	threadID := encodeGChatThreadID(gchatThreadRef{
-		SpaceName:  spaceName,
-		ThreadName: threadName,
-		IsDM:       direct,
-	})
-	if direct {
-		envelope.PeerID = spaceName
-	} else {
-		envelope.GroupID = spaceName
-	}
-	envelope.ThreadID = threadID
+	assignGChatRoute(&envelope, route.spaceName, route.threadName, route.direct)
 	if metadata, err := json.Marshal(map[string]any{
 		"source":        "pubsub_workspace_events",
 		"event_type":    strings.TrimSpace(notification.EventType),
-		"space_name":    spaceName,
-		"thread_name":   threadName,
-		"reaction_name": strings.TrimSpace(reaction.Name),
+		"space_name":    route.spaceName,
+		"thread_name":   route.threadName,
+		"reaction_name": strings.TrimSpace(route.reaction.Name),
 	}); err == nil {
 		envelope.ProviderMetadata = metadata
 	}
 
-	item := gchatMappedInbound{
+	return gchatMappedInbound{
 		Envelope: envelope,
-		Direct:   direct,
+		Direct:   route.direct,
 		User:     gchatUserIdentity{ID: sender.ID, Username: sender.Username, DisplayName: sender.DisplayName},
 	}
-	return item, item.Envelope.Validate()
 }
 
 func mapGChatMessage(
@@ -1753,7 +2098,10 @@ func mapGChatMessage(
 }
 
 func resolveGChatDeliveryTarget(event bridgepkg.DeliveryEvent) (gchatResolvedTarget, error) {
-	if thread := firstNonEmpty(strings.TrimSpace(event.DeliveryTarget.ThreadID), strings.TrimSpace(event.RoutingKey.ThreadID)); thread != "" {
+	if thread := firstNonEmpty(
+		strings.TrimSpace(event.DeliveryTarget.ThreadID),
+		strings.TrimSpace(event.RoutingKey.ThreadID),
+	); thread != "" {
 		if decoded, err := decodeGChatThreadID(thread); err == nil && strings.TrimSpace(decoded.SpaceName) != "" {
 			return gchatResolvedTarget{
 				SpaceName:  strings.TrimSpace(decoded.SpaceName),
@@ -1774,7 +2122,10 @@ func resolveGChatDeliveryTarget(event bridgepkg.DeliveryEvent) (gchatResolvedTar
 	return gchatResolvedTarget{SpaceName: spaceName}, nil
 }
 
-func verifyGChatWebhookBearer(ctx context.Context, req *http.Request, body []byte, cfg resolvedInstanceConfig) error {
+func verifyGChatWebhookBearer(ctx context.Context, req *http.Request, body []byte, cfg *resolvedInstanceConfig) error {
+	if cfg == nil {
+		return errors.New("gchat: config is required")
+	}
 	switch detectGChatWebhookShape(body) {
 	case gchatModePubSub:
 		if !modeUsesPubSubIngress(cfg.mode) {
@@ -1791,7 +2142,10 @@ func verifyGChatWebhookBearer(ctx context.Context, req *http.Request, body []byt
 	}
 }
 
-func verifyDirectBearerToken(ctx context.Context, req *http.Request, cfg resolvedInstanceConfig) error {
+func verifyDirectBearerToken(ctx context.Context, req *http.Request, cfg *resolvedInstanceConfig) error {
+	if cfg == nil {
+		return errors.New("gchat: config is required")
+	}
 	tokenString, err := bearerToken(req)
 	if err != nil {
 		return err
@@ -1819,7 +2173,10 @@ func verifyDirectBearerToken(ctx context.Context, req *http.Request, cfg resolve
 	return nil
 }
 
-func verifyPubSubBearerToken(ctx context.Context, req *http.Request, cfg resolvedInstanceConfig) error {
+func verifyPubSubBearerToken(ctx context.Context, req *http.Request, cfg *resolvedInstanceConfig) error {
+	if cfg == nil {
+		return errors.New("gchat: config is required")
+	}
 	tokenString, err := bearerToken(req)
 	if err != nil {
 		return err
@@ -1841,11 +2198,20 @@ func verifyPubSubBearerToken(ctx context.Context, req *http.Request, cfg resolve
 	if !parsed.Valid {
 		return errors.New("gchat: invalid pubsub bearer token")
 	}
-	if !issuerMatches(claims.Issuer, strings.TrimSpace(cfg.pubsubIssuer), "accounts.google.com", "https://accounts.google.com") {
+	if !issuerMatches(
+		claims.Issuer,
+		strings.TrimSpace(cfg.pubsubIssuer),
+		"accounts.google.com",
+		"https://accounts.google.com",
+	) {
 		return fmt.Errorf("gchat: pubsub bearer issuer %q did not match expected Google issuer", claims.Issuer)
 	}
 	if !strings.EqualFold(strings.TrimSpace(claims.Email), strings.TrimSpace(cfg.pubsubServiceAccountEmail)) {
-		return fmt.Errorf("gchat: pubsub bearer email %q did not match expected service account %q", claims.Email, cfg.pubsubServiceAccountEmail)
+		return fmt.Errorf(
+			"gchat: pubsub bearer email %q did not match expected service account %q",
+			claims.Email,
+			cfg.pubsubServiceAccountEmail,
+		)
 	}
 	if !claims.EmailVerified {
 		return fmt.Errorf("gchat: pubsub bearer email %q is not verified", strings.TrimSpace(claims.Email))
@@ -1909,9 +2275,15 @@ func (c *googleX509KeyCache) fetch(ctx context.Context, certsURL string) (map[st
 	return keys, nil
 }
 
-func (c *googleX509KeyCache) fetchRemote(ctx context.Context, certsURL string) (map[string]*rsa.PublicKey, time.Time, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, certsURL, nil)
+func (c *googleX509KeyCache) fetchRemote(
+	ctx context.Context,
+	certsURL string,
+) (map[string]*rsa.PublicKey, time.Time, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, certsURL, http.NoBody)
 	if err != nil {
+		return nil, time.Time{}, err
+	}
+	if err := validateGChatRequestURL(req); err != nil {
 		return nil, time.Time{}, err
 	}
 	resp, err := c.client.Do(req)
@@ -1920,7 +2292,11 @@ func (c *googleX509KeyCache) fetchRemote(ctx context.Context, certsURL string) (
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, time.Time{}, classifyGChatHTTPError(resp.StatusCode, resp.Header.Get("Retry-After"), readResponseBody(resp.Body))
+		return nil, time.Time{}, classifyGChatHTTPError(
+			resp.StatusCode,
+			resp.Header.Get("Retry-After"),
+			readResponseBody(resp.Body),
+		)
 	}
 	certs := map[string]string{}
 	if err := json.NewDecoder(resp.Body).Decode(&certs); err != nil {
@@ -1948,16 +2324,24 @@ func (c *googleX509KeyCache) fetchRemote(ctx context.Context, certsURL string) (
 	return keys, cacheExpiryFromHeaders(c.now(), resp.Header, c.fallbackTTL), nil
 }
 
-func resolveAllowedGoogleURLOverride(envOverride string, providerOverride string, fallback string, fieldName string, allowedHosts ...string) (string, error) {
+func resolveAllowedGoogleURLOverride(
+	envOverride string,
+	providerOverride string,
+	fallback string,
+	fieldName string,
+	allowedHosts ...string,
+) (string, error) {
 	if trimmedEnv := strings.TrimSpace(envOverride); trimmedEnv != "" {
-		return normalizeURL(trimmedEnv), nil
+		normalized := normalizeURL(trimmedEnv)
+		return normalized, validateGChatEndpointURL(normalized)
 	}
 	if strings.TrimSpace(providerOverride) == "" {
 		return normalizeURL(fallback), nil
 	}
 	normalized := normalizeURL(providerOverride)
 	parsed, err := url.Parse(normalized)
-	if err != nil || parsed == nil || strings.TrimSpace(parsed.Hostname()) == "" || !strings.EqualFold(parsed.Scheme, "https") {
+	if err != nil || parsed == nil || strings.TrimSpace(parsed.Hostname()) == "" ||
+		!strings.EqualFold(parsed.Scheme, "https") {
 		return "", fmt.Errorf("gchat: %s must use an allowed Google https host", fieldName)
 	}
 	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
@@ -1976,7 +2360,7 @@ func cacheExpiryFromHeaders(now time.Time, header http.Header, fallback time.Dur
 	if fallback <= 0 {
 		fallback = gchatCertCacheFallbackTTL
 	}
-	for _, directive := range strings.Split(header.Get("Cache-Control"), ",") {
+	for directive := range strings.SplitSeq(header.Get("Cache-Control"), ",") {
 		part := strings.TrimSpace(directive)
 		lower := strings.ToLower(part)
 		if !strings.HasPrefix(lower, "max-age=") {
@@ -2109,7 +2493,8 @@ func gchatSender(user gchatUser) bridgepkg.MessageSender {
 }
 
 func isDirectSpace(space gchatSpace) bool {
-	return strings.EqualFold(strings.TrimSpace(space.Type), "DM") || strings.EqualFold(strings.TrimSpace(space.SpaceType), "DIRECT_MESSAGE")
+	return strings.EqualFold(strings.TrimSpace(space.Type), "DM") ||
+		strings.EqualFold(strings.TrimSpace(space.SpaceType), "DIRECT_MESSAGE")
 }
 
 func isBotUser(user gchatUser) bool {
@@ -2215,7 +2600,14 @@ func (c *gchatBotClient) CreateMessage(ctx context.Context, req gchatCreateMessa
 		query.Set("messageReplyOption", gchatReplyMode)
 	}
 	var out gchatSentMessage
-	if err := c.callJSON(ctx, http.MethodPost, "/v1/"+strings.TrimPrefix(strings.TrimSpace(req.SpaceName), "/")+"/messages", query, body, &out); err != nil {
+	if err := c.callJSON(
+		ctx,
+		http.MethodPost,
+		"/v1/"+strings.TrimPrefix(strings.TrimSpace(req.SpaceName), "/")+"/messages",
+		query,
+		body,
+		&out,
+	); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -2225,21 +2617,42 @@ func (c *gchatBotClient) UpdateMessage(ctx context.Context, req gchatUpdateMessa
 	query := url.Values{}
 	query.Set("updateMask", "text")
 	var out gchatSentMessage
-	if err := c.callJSON(ctx, http.MethodPut, "/v1/"+strings.TrimPrefix(strings.TrimSpace(req.MessageName), "/"), query, map[string]any{
-		"text": req.Text,
-	}, &out); err != nil {
+	if err := c.callJSON(
+		ctx,
+		http.MethodPut,
+		"/v1/"+strings.TrimPrefix(strings.TrimSpace(req.MessageName), "/"),
+		query,
+		map[string]any{
+			"text": req.Text,
+		},
+		&out,
+	); err != nil {
 		return nil, err
 	}
 	return &out, nil
 }
 
 func (c *gchatBotClient) DeleteMessage(ctx context.Context, messageName string) error {
-	return c.callJSON(ctx, http.MethodDelete, "/v1/"+strings.TrimPrefix(strings.TrimSpace(messageName), "/"), nil, nil, nil)
+	return c.callJSON(
+		ctx,
+		http.MethodDelete,
+		"/v1/"+strings.TrimPrefix(strings.TrimSpace(messageName), "/"),
+		nil,
+		nil,
+		nil,
+	)
 }
 
 func (c *gchatBotClient) GetMessage(ctx context.Context, messageName string) (*gchatMessage, error) {
 	var out gchatMessage
-	if err := c.callJSON(ctx, http.MethodGet, "/v1/"+strings.TrimPrefix(strings.TrimSpace(messageName), "/"), nil, nil, &out); err != nil {
+	if err := c.callJSON(
+		ctx,
+		http.MethodGet,
+		"/v1/"+strings.TrimPrefix(strings.TrimSpace(messageName), "/"),
+		nil,
+		nil,
+		&out,
+	); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -2277,7 +2690,11 @@ func (c *gchatBotClient) accessToken(ctx context.Context) (string, error) {
 	form.Set("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
 	form.Set("assertion", signed)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.tokenURL, strings.NewReader(form.Encode()))
+	endpoint, err := newValidatedGChatURL(c.cfg.tokenURL)
+	if err != nil {
+		return "", err
+	}
+	req, err := newGChatRequest(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", err
 	}
@@ -2321,9 +2738,16 @@ func (c *gchatBotClient) callJSON(
 	if err != nil {
 		return err
 	}
-	fullURL := strings.TrimRight(normalizeURL(c.cfg.apiBaseURL), "/") + path
+	fullURL, err := joinGChatURL(c.cfg.apiBaseURL, path)
+	if err != nil {
+		return err
+	}
 	if len(query) > 0 {
 		fullURL += "?" + query.Encode()
+	}
+	endpoint, err := newValidatedGChatURL(fullURL)
+	if err != nil {
+		return err
 	}
 	var body io.Reader
 	if payload != nil {
@@ -2333,7 +2757,7 @@ func (c *gchatBotClient) callJSON(
 		}
 		body = bytes.NewReader(encoded)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, fullURL, body)
+	req, err := newGChatRequest(ctx, method, endpoint, body)
 	if err != nil {
 		return err
 	}
@@ -2351,13 +2775,15 @@ func (c *gchatBotClient) callJSON(
 		return classifyGChatHTTPError(resp.StatusCode, resp.Header.Get("Retry-After"), readResponseBody(resp.Body))
 	}
 	if out == nil || resp.StatusCode == http.StatusNoContent {
-		_, _ = io.Copy(io.Discard, resp.Body)
+		if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+			return err
+		}
 		return nil
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-func (c *gchatBotClient) client() *http.Client {
+func (c *gchatBotClient) client() gchatHTTPDoer {
 	if c.httpClient == nil {
 		c.httpClient = &http.Client{Timeout: 10 * time.Second}
 	}
@@ -2404,7 +2830,11 @@ func classifyGChatHTTPError(statusCode int, retryAfterHeader string, raw string)
 	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusInternalServerError:
 		return &bridgesdk.TransientError{Err: errors.New(message)}
 	default:
-		return &bridgesdk.HTTPError{StatusCode: statusCode, Message: message, RetryAfter: parseRetryAfter(retryAfterHeader)}
+		return &bridgesdk.HTTPError{
+			StatusCode: statusCode,
+			Message:    message,
+			RetryAfter: parseRetryAfter(retryAfterHeader),
+		}
 	}
 }
 
@@ -2436,7 +2866,10 @@ func stringHeader(header map[string]any, key string) string {
 	if !ok {
 		return ""
 	}
-	text, _ := value.(string)
+	text, ok := value.(string)
+	if !ok {
+		return ""
+	}
 	return strings.TrimSpace(text)
 }
 
@@ -2453,9 +2886,9 @@ func issuerMatches(issuer string, allowed ...string) bool {
 	return false
 }
 
-func writeWebhookJSON(w http.ResponseWriter, statusCode int, body any) error {
+func writeWebhookJSON(w http.ResponseWriter, body any) error {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
+	w.WriteHeader(http.StatusOK)
 	return json.NewEncoder(w).Encode(body)
 }
 
@@ -2480,6 +2913,87 @@ func normalizeURL(value string) string {
 		return trimmed
 	}
 	return strings.TrimRight(parsed.String(), "/")
+}
+
+func joinGChatURL(base string, path string) (string, error) {
+	baseURL, err := url.Parse(strings.TrimSpace(base))
+	if err != nil {
+		return "", err
+	}
+	ref, err := url.Parse(strings.TrimSpace(path))
+	if err != nil {
+		return "", err
+	}
+	return baseURL.ResolveReference(ref).String(), nil
+}
+
+func newValidatedGChatURL(value string) (validatedGChatURL, error) {
+	normalized := normalizeURL(value)
+	if err := validateGChatEndpointURL(normalized); err != nil {
+		return "", err
+	}
+	return validatedGChatURL(normalized), nil
+}
+
+func newGChatRequest(
+	ctx context.Context,
+	method string,
+	endpoint validatedGChatURL,
+	body io.Reader,
+) (*http.Request, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	parsed, err := url.ParseRequestURI(string(endpoint))
+	if err != nil {
+		return nil, err
+	}
+	req := &http.Request{
+		Method: method,
+		URL:    parsed,
+		Header: make(http.Header),
+	}
+	if body != nil {
+		req.Body = io.NopCloser(body)
+	}
+	req = req.WithContext(ctx)
+	if err := validateGChatRequestURL(req); err != nil {
+		return nil, err
+	}
+	return req, nil
+}
+
+func validateGChatRequestURL(req *http.Request) error {
+	if req == nil || req.URL == nil {
+		return errors.New("gchat: request url is required")
+	}
+	return validateGChatEndpointURL(req.URL.String())
+}
+
+func validateGChatEndpointURL(value string) error {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil {
+		return fmt.Errorf("gchat: parse api url: %w", err)
+	}
+	if parsed == nil || strings.TrimSpace(parsed.Hostname()) == "" {
+		return errors.New("gchat: api url host is required")
+	}
+	if strings.EqualFold(parsed.Scheme, "https") {
+		return nil
+	}
+	if !strings.EqualFold(parsed.Scheme, "http") {
+		return fmt.Errorf("gchat: api url scheme %q is not allowed", parsed.Scheme)
+	}
+
+	host := strings.TrimSpace(parsed.Hostname())
+	if strings.EqualFold(host, "localhost") {
+		return nil
+	}
+	ip := net.ParseIP(host)
+	if ip != nil && ip.IsLoopback() {
+		return nil
+	}
+	return fmt.Errorf("gchat: insecure api host %q is not allowed", host)
 }
 
 func buildIdentitySet(values []string) map[string]struct{} {
@@ -2537,7 +3051,8 @@ func isNotInitializedRPCError(err error) bool {
 	if !errors.As(err, &rpcErr) {
 		return false
 	}
-	return rpcErr.Code == rpcCodeNotInitialized || strings.EqualFold(strings.TrimSpace(rpcErr.Message), "Not initialized")
+	return rpcErr.Code == rpcCodeNotInitialized ||
+		strings.EqualFold(strings.TrimSpace(rpcErr.Message), "Not initialized")
 }
 
 func cloneDegradation(degradation *bridgepkg.BridgeDegradation) *bridgepkg.BridgeDegradation {

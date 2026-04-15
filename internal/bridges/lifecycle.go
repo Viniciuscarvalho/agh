@@ -21,7 +21,12 @@ func ValidateInstanceStateTransition(current BridgeInstance, nextEnabled bool, n
 		return nil
 	}
 
-	if !canTransitionInstanceState(normalizedCurrent.Enabled, normalizedCurrent.Status, nextEnabled, normalizedNextStatus) {
+	if !canTransitionInstanceState(
+		normalizedCurrent.Enabled,
+		normalizedCurrent.Status,
+		nextEnabled,
+		normalizedNextStatus,
+	) {
 		return fmt.Errorf(
 			"%w: enabled=%t,status=%s -> enabled=%t,status=%s",
 			ErrInvalidBridgeStateTransition,
@@ -51,7 +56,12 @@ func validateInstanceLifecycle(enabled bool, status BridgeStatus) error {
 	return nil
 }
 
-func canTransitionInstanceState(currentEnabled bool, currentStatus BridgeStatus, nextEnabled bool, nextStatus BridgeStatus) bool {
+func canTransitionInstanceState(
+	currentEnabled bool,
+	currentStatus BridgeStatus,
+	nextEnabled bool,
+	nextStatus BridgeStatus,
+) bool {
 	normalizedCurrent := currentStatus.Normalize()
 	normalizedNext := nextStatus.Normalize()
 

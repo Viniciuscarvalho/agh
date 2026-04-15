@@ -11,12 +11,17 @@ import (
 	"strings"
 	"time"
 
+	// Register the pure-Go SQLite driver used by AGH stores.
 	_ "modernc.org/sqlite"
 )
 
 // OpenSQLiteDatabase opens a SQLite database, applies shared configuration,
 // and retries once after moving aside a corrupt file.
-func OpenSQLiteDatabase(ctx context.Context, path string, initialize func(context.Context, *sql.DB) error) (*sql.DB, error) {
+func OpenSQLiteDatabase(
+	ctx context.Context,
+	path string,
+	initialize func(context.Context, *sql.DB) error,
+) (*sql.DB, error) {
 	cleanPath := strings.TrimSpace(path)
 	if cleanPath == "" {
 		return nil, errors.New("store: database path is required")
@@ -41,12 +46,19 @@ func OpenSQLiteDatabase(ctx context.Context, path string, initialize func(contex
 
 	db, reopenErr := openSQLiteDatabaseOnce(ctx, cleanPath, initialize)
 	if reopenErr != nil {
-		return nil, errors.Join(err, fmt.Errorf("store: reopen sqlite database %q after recovery: %w", cleanPath, reopenErr))
+		return nil, errors.Join(
+			err,
+			fmt.Errorf("store: reopen sqlite database %q after recovery: %w", cleanPath, reopenErr),
+		)
 	}
 	return db, nil
 }
 
-func openSQLiteDatabaseOnce(ctx context.Context, path string, initialize func(context.Context, *sql.DB) error) (*sql.DB, error) {
+func openSQLiteDatabaseOnce(
+	ctx context.Context,
+	path string,
+	initialize func(context.Context, *sql.DB) error,
+) (*sql.DB, error) {
 	db, err := sql.Open(sqliteDriverName, sqliteDSN(path))
 	if err != nil {
 		return nil, fmt.Errorf("store: open sqlite database %q: %w", path, err)
@@ -201,7 +213,11 @@ func closeQuietly(db *sql.DB) {
 	}
 }
 
-func openSQLiteDatabase(ctx context.Context, path string, initialize func(context.Context, *sql.DB) error) (*sql.DB, error) {
+func openSQLiteDatabase(
+	ctx context.Context,
+	path string,
+	initialize func(context.Context, *sql.DB) error,
+) (*sql.DB, error) {
 	return OpenSQLiteDatabase(ctx, path, initialize)
 }
 

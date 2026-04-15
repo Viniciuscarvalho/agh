@@ -7,7 +7,9 @@ const consolidationPromptTemplate = `
 
 You are running a one-shot AGH dream consolidation session.
 
-Your job is to distill durable, cross-session knowledge from recent session outputs and team-memory artifacts into the persistent memory store. Work in four phases and stop when the consolidation pass is complete.
+Your job is to distill durable, cross-session knowledge from recent session
+outputs and team-memory artifacts into the persistent memory store. Work in four
+phases and stop when the consolidation pass is complete.
 
 ## Phase 1: Orient
 
@@ -19,8 +21,10 @@ Your job is to distill durable, cross-session knowledge from recent session outp
 
 ## Phase 2: Gather
 
-- Review recent completed session artifacts, especially session event databases for sessions completed since the last consolidation.
-- Extract high-signal facts, repeated patterns, stable decisions, user corrections, and durable references that would help future sessions.
+- Review recent completed session artifacts, especially session event databases
+  for sessions completed since the last consolidation.
+- Extract high-signal facts, repeated patterns, stable decisions, user
+  corrections, and durable references that would help future sessions.
 - Ignore transient debugging chatter, routine tool noise, speculative ideas without evidence, and secrets.
 
 ## Phase 3: Consolidate

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"strings"
@@ -81,7 +82,6 @@ func TestTaskActorContextAndTransportHelpers(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -93,7 +93,8 @@ func TestTaskActorContextAndTransportHelpers(t *testing.T) {
 			if err != nil {
 				t.Fatalf("taskActorContext() error = %v", err)
 			}
-			if actor.Actor.Ref != defaultTaskActorRef || actor.Origin.Kind != tc.wantKind || actor.Origin.Ref != "tasks.get" {
+			if actor.Actor.Ref != defaultTaskActorRef || actor.Origin.Kind != tc.wantKind ||
+				actor.Origin.Ref != "tasks.get" {
 				t.Fatalf("taskActorContext() = %#v", actor)
 			}
 		})
@@ -136,19 +137,30 @@ func TestTaskParsingAndValidationHelpers(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest("GET", "/tasks?scope=workspace&workspace=alpha&status=ready&owner_kind=pool&owner_ref=reviewers&parent_task_id=task-root&network_channel=builders&limit=3", nil)
+	ctx.Request = httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"/tasks?scope=workspace&workspace=alpha&status=ready&owner_kind=pool&owner_ref=reviewers&parent_task_id=task-root&network_channel=builders&limit=3",
+		http.NoBody,
+	)
 
 	query, err := handlers.parseTaskListQuery(context.Background(), ctx)
 	if err != nil {
 		t.Fatalf("parseTaskListQuery() error = %v", err)
 	}
-	if query.WorkspaceID != "ws-alpha" || query.Status != taskpkg.TaskStatusReady || query.OwnerKind != taskpkg.OwnerKindPool {
+	if query.WorkspaceID != "ws-alpha" || query.Status != taskpkg.TaskStatusReady ||
+		query.OwnerKind != taskpkg.OwnerKindPool {
 		t.Fatalf("parseTaskListQuery() = %#v", query)
 	}
 
 	runRecorder := httptest.NewRecorder()
 	runCtx, _ := gin.CreateTestContext(runRecorder)
-	runCtx.Request = httptest.NewRequest("GET", "/tasks/task-1/runs?status=running&session_id=sess-1&limit=1", nil)
+	runCtx.Request = httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"/tasks/task-1/runs?status=running&session_id=sess-1&limit=1",
+		http.NoBody,
+	)
 
 	runQuery, err := parseTaskRunListQuery(runCtx)
 	if err != nil {
@@ -158,7 +170,10 @@ func TestTaskParsingAndValidationHelpers(t *testing.T) {
 		t.Fatalf("parseTaskRunListQuery() = %#v", runQuery)
 	}
 
-	if _, err := addTaskDependencyFromRequest("task-1", contract.AddTaskDependencyRequest{DependsOnTaskID: "task-2"}); err != nil {
+	if _, err := addTaskDependencyFromRequest(
+		"task-1",
+		contract.AddTaskDependencyRequest{DependsOnTaskID: "task-2"},
+	); err != nil {
 		t.Fatalf("addTaskDependencyFromRequest() error = %v", err)
 	}
 	if _, err := claimTaskRunFromRequest(contract.ClaimTaskRunRequest{IdempotencyKey: "claim-1"}); err != nil {
@@ -167,13 +182,19 @@ func TestTaskParsingAndValidationHelpers(t *testing.T) {
 	if _, err := startTaskRunFromRequest(contract.StartTaskRunRequest{IdempotencyKey: "start-1"}); err != nil {
 		t.Fatalf("startTaskRunFromRequest() error = %v", err)
 	}
-	if _, err := completeTaskRunFromRequest(contract.CompleteTaskRunRequest{Result: json.RawMessage(`{"ok":true}`)}); err != nil {
+	if _, err := completeTaskRunFromRequest(
+		contract.CompleteTaskRunRequest{Result: json.RawMessage(`{"ok":true}`)},
+	); err != nil {
 		t.Fatalf("completeTaskRunFromRequest() error = %v", err)
 	}
-	if _, err := cancelTaskRunFromRequest(contract.CancelTaskRunRequest{Reason: "stop", Metadata: json.RawMessage(`{"source":"test"}`)}); err != nil {
+	if _, err := cancelTaskRunFromRequest(
+		contract.CancelTaskRunRequest{Reason: "stop", Metadata: json.RawMessage(`{"source":"test"}`)},
+	); err != nil {
 		t.Fatalf("cancelTaskRunFromRequest() error = %v", err)
 	}
-	if _, err := cancelTaskFromRequest(contract.CancelTaskRequest{Reason: "stop", Metadata: json.RawMessage(`{"source":"test"}`)}); err != nil {
+	if _, err := cancelTaskFromRequest(
+		contract.CancelTaskRequest{Reason: "stop", Metadata: json.RawMessage(`{"source":"test"}`)},
+	); err != nil {
 		t.Fatalf("cancelTaskFromRequest() error = %v", err)
 	}
 
@@ -192,7 +213,10 @@ func TestTaskParsingAndValidationHelpers(t *testing.T) {
 	} else {
 		assertTaskValidationError(t, err, `task.network_channel: network: invalid field: channel="bad.channel"`)
 	}
-	if _, err := enqueueTaskRunFromRequest("task-1", contract.EnqueueTaskRunRequest{NetworkChannel: "bad.channel"}); err == nil {
+	if _, err := enqueueTaskRunFromRequest(
+		"task-1",
+		contract.EnqueueTaskRunRequest{NetworkChannel: "bad.channel"},
+	); err == nil {
 		t.Fatal("enqueueTaskRunFromRequest(invalid) error = nil, want non-nil")
 	} else {
 		assertTaskValidationError(t, err, `enqueue_run.network_channel: network: invalid field: channel="bad.channel"`)
@@ -205,7 +229,12 @@ func TestTaskParsingAndValidationHelpers(t *testing.T) {
 
 	invalidRecorder := httptest.NewRecorder()
 	invalidCtx, _ := gin.CreateTestContext(invalidRecorder)
-	invalidCtx.Request = httptest.NewRequest("GET", "/tasks?limit=bad", nil)
+	invalidCtx.Request = httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"/tasks?limit=bad",
+		http.NoBody,
+	)
 	if _, err := handlers.parseTaskListQuery(context.Background(), invalidCtx); err == nil {
 		t.Fatal("parseTaskListQuery(invalid limit) error = nil, want non-nil")
 	} else {
@@ -214,7 +243,12 @@ func TestTaskParsingAndValidationHelpers(t *testing.T) {
 
 	invalidRunRecorder := httptest.NewRecorder()
 	invalidRunCtx, _ := gin.CreateTestContext(invalidRunRecorder)
-	invalidRunCtx.Request = httptest.NewRequest("GET", "/tasks/task-1/runs?limit=bad", nil)
+	invalidRunCtx.Request = httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"/tasks/task-1/runs?limit=bad",
+		http.NoBody,
+	)
 	if _, err := parseTaskRunListQuery(invalidRunCtx); err == nil {
 		t.Fatal("parseTaskRunListQuery(invalid limit) error = nil, want non-nil")
 	} else {
@@ -223,7 +257,12 @@ func TestTaskParsingAndValidationHelpers(t *testing.T) {
 
 	decodeRecorder := httptest.NewRecorder()
 	decodeCtx, _ := gin.CreateTestContext(decodeRecorder)
-	decodeCtx.Request = httptest.NewRequest("POST", "/tasks", bytes.NewBufferString(`{"broken":`))
+	decodeCtx.Request = httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/tasks",
+		bytes.NewBufferString(`{"broken":`),
+	)
 	decodeCtx.Request.Header.Set("Content-Type", "application/json")
 	var payload contract.CancelTaskRequest
 	if err := decodeOptionalJSON(decodeCtx, &payload); err == nil {

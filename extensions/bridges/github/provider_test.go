@@ -157,14 +157,14 @@ func TestDetermineGitHubInitialStateValidatesPATAndAppModes(t *testing.T) {
 	t.Parallel()
 
 	provider := &githubProvider{
-		apiFactory: func(cfg resolvedInstanceConfig) githubAPI {
+		apiFactory: func(_ resolvedInstanceConfig) githubAPI {
 			return &fakeGitHubAPI{viewer: &githubViewer{ID: 77, Login: "bridge-bot"}}
 		},
 	}
 
 	ctx := context.Background()
 
-	_, status, degradation, err := provider.determineInitialState(ctx, resolvedInstanceConfig{
+	_, status, degradation, err := provider.determineInitialState(ctx, &resolvedInstanceConfig{
 		instanceID:    "brg-pat",
 		mode:          githubModePAT,
 		repoOwner:     "acme",
@@ -182,7 +182,7 @@ func TestDetermineGitHubInitialStateValidatesPATAndAppModes(t *testing.T) {
 		t.Fatalf("PAT missing token degradation = %#v, want auth_failed", degradation)
 	}
 
-	updated, status, degradation, err := provider.determineInitialState(ctx, resolvedInstanceConfig{
+	updated, status, degradation, err := provider.determineInitialState(ctx, &resolvedInstanceConfig{
 		instanceID:    "brg-pat",
 		mode:          githubModePAT,
 		repoOwner:     "acme",
@@ -204,7 +204,7 @@ func TestDetermineGitHubInitialStateValidatesPATAndAppModes(t *testing.T) {
 		t.Fatalf("valid PAT bot login = %q, want %q", got, want)
 	}
 
-	_, status, degradation, err = provider.determineInitialState(ctx, resolvedInstanceConfig{
+	_, status, degradation, err = provider.determineInitialState(ctx, &resolvedInstanceConfig{
 		instanceID:    "brg-app",
 		mode:          githubModeApp,
 		repoOwner:     "acme",
@@ -223,7 +223,7 @@ func TestDetermineGitHubInitialStateValidatesPATAndAppModes(t *testing.T) {
 	}
 
 	privateKey := mustGitHubTestPrivateKey(t)
-	updated, status, degradation, err = provider.determineInitialState(ctx, resolvedInstanceConfig{
+	updated, status, degradation, err = provider.determineInitialState(ctx, &resolvedInstanceConfig{
 		instanceID:    "brg-app",
 		mode:          githubModeApp,
 		repoOwner:     "acme",
@@ -246,7 +246,7 @@ func TestDetermineGitHubInitialStateValidatesPATAndAppModes(t *testing.T) {
 		t.Fatalf("app without installation bot login = %q, want empty", got)
 	}
 
-	updated, status, degradation, err = provider.determineInitialState(ctx, resolvedInstanceConfig{
+	updated, status, degradation, err = provider.determineInitialState(ctx, &resolvedInstanceConfig{
 		instanceID:     "brg-app",
 		mode:           githubModeApp,
 		repoOwner:      "acme",
@@ -300,7 +300,12 @@ func TestVerifyGitHubWebhookSignatureAndRouteSelection(t *testing.T) {
 		t.Fatalf("json.Marshal() error = %v", err)
 	}
 	signature := signGitHubTestBody("super-secret", body)
-	req := httptest.NewRequest(http.MethodPost, "http://example.test/github", strings.NewReader(string(body)))
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"http://example.test/github",
+		strings.NewReader(string(body)),
+	)
 	req.Header.Set("X-Hub-Signature-256", signature)
 
 	candidates := []resolvedInstanceConfig{
@@ -322,7 +327,12 @@ func TestVerifyGitHubWebhookSignatureAndRouteSelection(t *testing.T) {
 		t.Fatalf("selected instance id = %q, want %q", got, want)
 	}
 
-	badReq := httptest.NewRequest(http.MethodPost, "http://example.test/github", strings.NewReader(string(body)))
+	badReq := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"http://example.test/github",
+		strings.NewReader(string(body)),
+	)
 	badReq.Header.Set("X-Hub-Signature-256", "sha256=deadbeef")
 	if err := verifyGitHubWebhookSignature(context.Background(), badReq, body, candidates); err == nil {
 		t.Fatal("verifyGitHubWebhookSignature(invalid) error = nil, want non-nil")
@@ -367,7 +377,7 @@ func TestExecuteGitHubDeliveryIssueReviewDeleteAndResume(t *testing.T) {
 			Content:   bridgepkg.MessageContent{Text: "hello"},
 		},
 	}
-	startAck, state, err := executeGitHubDelivery(context.Background(), api, cfg, startReq, deliveryState{}, 9001)
+	startAck, state, err := executeGitHubDelivery(context.Background(), api, &cfg, startReq, deliveryState{}, 9001)
 	if err != nil {
 		t.Fatalf("executeGitHubDelivery(start issue) error = %v", err)
 	}
@@ -380,7 +390,7 @@ func TestExecuteGitHubDeliveryIssueReviewDeleteAndResume(t *testing.T) {
 	finalReq.Event.EventType = bridgepkg.DeliveryEventTypeFinal
 	finalReq.Event.Final = true
 	finalReq.Event.Content.Text = "hello world"
-	finalAck, state, err := executeGitHubDelivery(context.Background(), api, cfg, finalReq, state, 9001)
+	finalAck, state, err := executeGitHubDelivery(context.Background(), api, &cfg, finalReq, state, 9001)
 	if err != nil {
 		t.Fatalf("executeGitHubDelivery(final issue) error = %v", err)
 	}
@@ -397,7 +407,7 @@ func TestExecuteGitHubDeliveryIssueReviewDeleteAndResume(t *testing.T) {
 	deleteReq.Event.Operation = bridgepkg.DeliveryOperationDelete
 	deleteReq.Event.Final = true
 	deleteReq.Event.Reference = &bridgepkg.DeliveryMessageReference{RemoteMessageID: finalAck.RemoteMessageID}
-	if _, _, err := executeGitHubDelivery(context.Background(), api, cfg, deleteReq, state, 9001); err != nil {
+	if _, _, err := executeGitHubDelivery(context.Background(), api, &cfg, deleteReq, state, 9001); err != nil {
 		t.Fatalf("executeGitHubDelivery(delete issue) error = %v", err)
 	}
 	if got, want := api.deletedIssueCommentIDs, []int64{500}; !equalInt64s(got, want) {
@@ -426,7 +436,7 @@ func TestExecuteGitHubDeliveryIssueReviewDeleteAndResume(t *testing.T) {
 			Content:   bridgepkg.MessageContent{Text: "review reply"},
 		},
 	}
-	reviewAck, _, err := executeGitHubDelivery(context.Background(), api, cfg, reviewReq, deliveryState{}, 9002)
+	reviewAck, _, err := executeGitHubDelivery(context.Background(), api, &cfg, reviewReq, deliveryState{}, 9002)
 	if err != nil {
 		t.Fatalf("executeGitHubDelivery(start review) error = %v", err)
 	}
@@ -453,7 +463,7 @@ func TestExecuteGitHubDeliveryIssueReviewDeleteAndResume(t *testing.T) {
 		Final:            true,
 		UpdatedAt:        time.Date(2026, 4, 15, 21, 10, 0, 0, time.UTC),
 	}
-	resumeAck, _, err := executeGitHubDelivery(context.Background(), api, cfg, resumeReq, deliveryState{}, 9002)
+	resumeAck, _, err := executeGitHubDelivery(context.Background(), api, &cfg, resumeReq, deliveryState{}, 9002)
 	if err != nil {
 		t.Fatalf("executeGitHubDelivery(resume review) error = %v", err)
 	}
@@ -786,7 +796,10 @@ func TestGitHubProviderServeWebhookHTTPSharedEndpointIngestsMultipleInstances(t 
 		case "bridges/instances/report_state":
 			report := params.(extensioncontract.BridgesInstancesReportStateParams)
 			reported = append(reported, report)
-			*(result.(*bridgepkg.BridgeInstance)) = bridgepkg.BridgeInstance{ID: report.BridgeInstanceID, Status: report.Status}
+			*(result.(*bridgepkg.BridgeInstance)) = bridgepkg.BridgeInstance{
+				ID:     report.BridgeInstanceID,
+				Status: report.Status,
+			}
 			return nil
 		default:
 			return errors.New("unexpected method: " + method)
@@ -871,7 +884,12 @@ func TestGitHubProviderServeWebhookHTTPSharedEndpointIngestsMultipleInstances(t 
 	})
 
 	recorder := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "http://example.test/github/app-one", strings.NewReader(string(first)))
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"http://example.test/github/app-one",
+		strings.NewReader(string(first)),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-GitHub-Event", "issue_comment")
 	req.Header.Set("X-Hub-Signature-256", signGitHubTestBody("secret", first))
@@ -881,7 +899,12 @@ func TestGitHubProviderServeWebhookHTTPSharedEndpointIngestsMultipleInstances(t 
 	}
 
 	recorder = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "http://example.test/github/app-two", strings.NewReader(string(second)))
+	req = httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"http://example.test/github/app-two",
+		strings.NewReader(string(second)),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-GitHub-Event", "pull_request_review_comment")
 	req.Header.Set("X-Hub-Signature-256", signGitHubTestBody("secret", second))
@@ -1016,10 +1039,11 @@ func TestGitHubProviderReconcileRejectsSharedWebhookPaths(t *testing.T) {
 		},
 	}
 
-	configs, err := provider.reconcileInstanceConfigs(context.Background(), session, []subprocess.InitializeBridgeManagedInstance{first, second})
-	if err != nil {
-		t.Fatalf("reconcileInstanceConfigs() error = %v", err)
-	}
+	configs := provider.reconcileInstanceConfigs(
+		context.Background(),
+		session,
+		[]subprocess.InitializeBridgeManagedInstance{first, second},
+	)
 	if got, want := len(configs), 2; got != want {
 		t.Fatalf("len(configs) = %d, want %d", got, want)
 	}
@@ -1047,7 +1071,10 @@ func TestGitHubProviderHandleBridgesDeliverReportsReadyAndErrors(t *testing.T) {
 		}
 		report := params.(extensioncontract.BridgesInstancesReportStateParams)
 		reported = append(reported, report)
-		*(result.(*bridgepkg.BridgeInstance)) = bridgepkg.BridgeInstance{ID: report.BridgeInstanceID, Status: report.Status}
+		*(result.(*bridgepkg.BridgeInstance)) = bridgepkg.BridgeInstance{
+			ID:     report.BridgeInstanceID,
+			Status: report.Status,
+		}
 		return nil
 	})
 
@@ -1206,7 +1233,11 @@ func TestGitHubMarkerAndUtilityHelpers(t *testing.T) {
 		t.Fatal("shouldCrashOnce(existing) = true, want false")
 	}
 
-	if got, want := installationIDFromMetadata(mustJSON(t, map[string]any{"installation_id": 77})), int64(77); got != want {
+	if got, want := installationIDFromMetadata(
+		mustJSON(t, map[string]any{"installation_id": 77}),
+	), int64(
+		77,
+	); got != want {
 		t.Fatalf("installationIDFromMetadata(valid) = %d, want %d", got, want)
 	}
 	if got := installationIDFromMetadata(json.RawMessage(`{`)); got != 0 {
@@ -1214,7 +1245,12 @@ func TestGitHubMarkerAndUtilityHelpers(t *testing.T) {
 	}
 
 	fallback := time.Date(2026, 4, 15, 21, 40, 0, 0, time.UTC)
-	if got := normalizeGitHubReceivedAt(fallback, "2026-04-15T21:41:00Z"); !got.Equal(time.Date(2026, 4, 15, 21, 41, 0, 0, time.UTC)) {
+	if got := normalizeGitHubReceivedAt(
+		fallback,
+		"2026-04-15T21:41:00Z",
+	); !got.Equal(
+		time.Date(2026, 4, 15, 21, 41, 0, 0, time.UTC),
+	) {
 		t.Fatalf("normalizeGitHubReceivedAt(valid) = %s, want parsed time", got)
 	}
 	if got := normalizeGitHubReceivedAt(fallback, "not-a-time"); !got.Equal(fallback) {
@@ -1350,16 +1386,19 @@ func TestGitHubClientUpdateDeleteAndCredentialValidation(t *testing.T) {
 		t.Fatalf("DeleteReviewComment() error = %v", err)
 	}
 
-	if err := validateGitHubAppCredentials(resolvedInstanceConfig{appID: "", privateKey: privateKey}); err == nil {
+	if err := validateGitHubAppCredentials(&resolvedInstanceConfig{appID: "", privateKey: privateKey}); err == nil {
 		t.Fatal("validateGitHubAppCredentials(missing appID) error = nil, want non-nil")
 	}
-	if err := validateGitHubAppCredentials(resolvedInstanceConfig{appID: "abc", privateKey: privateKey}); err == nil {
+	if err := validateGitHubAppCredentials(&resolvedInstanceConfig{appID: "abc", privateKey: privateKey}); err == nil {
 		t.Fatal("validateGitHubAppCredentials(non-numeric appID) error = nil, want non-nil")
 	}
-	if err := validateGitHubAppCredentials(resolvedInstanceConfig{appID: "12345", privateKey: "bad"}); err == nil {
+	if err := validateGitHubAppCredentials(&resolvedInstanceConfig{appID: "12345", privateKey: "bad"}); err == nil {
 		t.Fatal("validateGitHubAppCredentials(bad key) error = nil, want non-nil")
 	}
-	if err := validateGitHubAppCredentials(resolvedInstanceConfig{appID: "12345", privateKey: privateKey}); err != nil {
+	if err := validateGitHubAppCredentials(&resolvedInstanceConfig{
+		appID:      "12345",
+		privateKey: privateKey,
+	}); err != nil {
 		t.Fatalf("validateGitHubAppCredentials(valid) error = %v", err)
 	}
 
@@ -1428,7 +1467,11 @@ func TestGitHubProviderLifecycleRunAndRetryHelpers(t *testing.T) {
 	if err := provider.startServer("127.0.0.1:0"); err != nil {
 		t.Fatalf("startServer() error = %v", err)
 	}
-	if err := provider.handleShutdown(context.Background(), session, subprocess.ShutdownRequest{DeadlineMS: 250}); err != nil {
+	if err := provider.handleShutdown(
+		context.Background(),
+		session,
+		subprocess.ShutdownRequest{DeadlineMS: 250},
+	); err != nil {
 		t.Fatalf("handleShutdown() error = %v", err)
 	}
 	shutdownRaw, err := os.ReadFile(shutdownPath)
@@ -1482,10 +1525,18 @@ func TestGitHubProviderResolveDeliveryInstallationAndWebhookBranches(t *testing.
 		mode:         githubModeApp,
 		repoFullName: "acme/app",
 	}
-	if got, err := provider.resolveDeliveryInstallationID(resolvedInstanceConfig{mode: githubModePAT}, bridgepkg.DeliveryRequest{}); err != nil || got != 0 {
+	if got, err := provider.resolveDeliveryInstallationID(
+		&resolvedInstanceConfig{mode: githubModePAT},
+		bridgepkg.DeliveryRequest{},
+	); err != nil ||
+		got != 0 {
 		t.Fatalf("resolveDeliveryInstallationID(PAT) = (%d, %v), want (0, nil)", got, err)
 	}
-	if got, err := provider.resolveDeliveryInstallationID(resolvedInstanceConfig{mode: githubModeApp, installationID: 9001}, bridgepkg.DeliveryRequest{}); err != nil || got != 9001 {
+	if got, err := provider.resolveDeliveryInstallationID(
+		&resolvedInstanceConfig{mode: githubModeApp, installationID: 9001},
+		bridgepkg.DeliveryRequest{},
+	); err != nil ||
+		got != 9001 {
 		t.Fatalf("resolveDeliveryInstallationID(config) = (%d, %v), want (9001, nil)", got, err)
 	}
 
@@ -1494,7 +1545,7 @@ func TestGitHubProviderResolveDeliveryInstallationAndWebhookBranches(t *testing.
 			ProviderMetadata: mustJSON(t, map[string]any{"installation_id": 9002}),
 		},
 	}
-	if got, err := provider.resolveDeliveryInstallationID(cfg, request); err != nil || got != 9002 {
+	if got, err := provider.resolveDeliveryInstallationID(&cfg, request); err != nil || got != 9002 {
 		t.Fatalf("resolveDeliveryInstallationID(event metadata) = (%d, %v), want (9002, nil)", got, err)
 	}
 	if got := provider.cachedInstallationID("acme/app"); got != 9002 {
@@ -1506,16 +1557,19 @@ func TestGitHubProviderResolveDeliveryInstallationAndWebhookBranches(t *testing.
 			ProviderMetadata: mustJSON(t, map[string]any{"installation_id": 9003}),
 		},
 	}
-	if got, err := provider.resolveDeliveryInstallationID(cfg, request); err != nil || got != 9003 {
+	if got, err := provider.resolveDeliveryInstallationID(&cfg, request); err != nil || got != 9003 {
 		t.Fatalf("resolveDeliveryInstallationID(snapshot metadata) = (%d, %v), want (9003, nil)", got, err)
 	}
 
 	provider.storeInstallationID("acme/app", 9004)
-	if got, err := provider.resolveDeliveryInstallationID(cfg, bridgepkg.DeliveryRequest{}); err != nil || got != 9004 {
+	if got, err := provider.resolveDeliveryInstallationID(
+		&cfg,
+		bridgepkg.DeliveryRequest{},
+	); err != nil || got != 9004 {
 		t.Fatalf("resolveDeliveryInstallationID(cache) = (%d, %v), want (9004, nil)", got, err)
 	}
 
-	if _, err := provider.resolveDeliveryInstallationID(resolvedInstanceConfig{
+	if _, err := provider.resolveDeliveryInstallationID(&resolvedInstanceConfig{
 		instanceID:   "brg-github",
 		mode:         githubModeApp,
 		repoFullName: "acme/other",
@@ -1556,26 +1610,49 @@ func TestGitHubProviderResolveDeliveryInstallationAndWebhookBranches(t *testing.
 			t.Fatalf("json.Marshal() error = %v", err)
 		}
 		recorder := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "http://example.test/github", strings.NewReader(string(body)))
+		req := httptest.NewRequestWithContext(
+			context.Background(),
+			http.MethodPost,
+			"http://example.test/github",
+			strings.NewReader(string(body)),
+		)
 		req.Header.Set("X-GitHub-Event", event)
-		err = provider.handleWebhookRequest(recorder, req, []resolvedInstanceConfig{provider.routes["brg-github"]}, bridgesdk.WebhookRequest{
-			Body:       body,
-			ReceivedAt: time.Date(2026, 4, 15, 21, 50, 0, 0, time.UTC),
-		})
+		err = provider.handleWebhookRequest(
+			recorder,
+			req,
+			[]resolvedInstanceConfig{provider.routes["brg-github"]},
+			bridgesdk.WebhookRequest{
+				Body:       body,
+				ReceivedAt: time.Date(2026, 4, 15, 21, 50, 0, 0, time.UTC),
+			},
+		)
 		return recorder.Code, recorder.Body.String(), err
 	}
 
-	if status, body, err := writeWebhook("ping", map[string]any{}); err != nil || status != http.StatusOK || body != "pong" {
+	if status, body, err := writeWebhook(
+		"ping",
+		map[string]any{},
+	); err != nil || status != http.StatusOK ||
+		body != "pong" {
 		t.Fatalf("ping webhook = (%d, %q, %v), want (200, pong, nil)", status, body, err)
 	}
 
-	if status, body, err := writeWebhook("workflow_run", map[string]any{}); err != nil || status != http.StatusOK || body != "ok" {
+	if status, body, err := writeWebhook(
+		"workflow_run",
+		map[string]any{},
+	); err != nil || status != http.StatusOK ||
+		body != "ok" {
 		t.Fatalf("unknown webhook = (%d, %q, %v), want (200, ok, nil)", status, body, err)
 	}
 
 	if status, body, err := writeWebhook("issue_comment", map[string]any{
-		"action":     "edited",
-		"comment":    map[string]any{"id": 1, "body": "ignored", "created_at": "2026-04-15T21:50:00Z", "user": map[string]any{"id": 1, "login": "alice"}},
+		"action": "edited",
+		"comment": map[string]any{
+			"id":         1,
+			"body":       "ignored",
+			"created_at": "2026-04-15T21:50:00Z",
+			"user":       map[string]any{"id": 1, "login": "alice"},
+		},
 		"issue":      map[string]any{"number": 42},
 		"repository": map[string]any{"full_name": "acme/app", "name": "app", "owner": map[string]any{"login": "acme"}},
 		"sender":     map[string]any{"id": 1, "login": "alice"},
@@ -1584,8 +1661,13 @@ func TestGitHubProviderResolveDeliveryInstallationAndWebhookBranches(t *testing.
 	}
 
 	if status, body, err := writeWebhook("issue_comment", map[string]any{
-		"action":     "created",
-		"comment":    map[string]any{"id": 2, "body": "self", "created_at": "2026-04-15T21:50:00Z", "user": map[string]any{"id": 2, "login": "bridge-bot"}},
+		"action": "created",
+		"comment": map[string]any{
+			"id":         2,
+			"body":       "self",
+			"created_at": "2026-04-15T21:50:00Z",
+			"user":       map[string]any{"id": 2, "login": "bridge-bot"},
+		},
 		"issue":      map[string]any{"number": 42},
 		"repository": map[string]any{"full_name": "acme/app", "name": "app", "owner": map[string]any{"login": "acme"}},
 		"sender":     map[string]any{"id": 2, "login": "bridge-bot"},
@@ -1594,22 +1676,41 @@ func TestGitHubProviderResolveDeliveryInstallationAndWebhookBranches(t *testing.
 	}
 
 	if status, body, err := writeWebhook("issue_comment", map[string]any{
-		"action":     "created",
-		"comment":    map[string]any{"id": 3, "body": "other repo", "created_at": "2026-04-15T21:50:00Z", "user": map[string]any{"id": 3, "login": "alice"}},
-		"issue":      map[string]any{"number": 42},
-		"repository": map[string]any{"full_name": "acme/other", "name": "other", "owner": map[string]any{"login": "acme"}},
-		"sender":     map[string]any{"id": 3, "login": "alice"},
+		"action": "created",
+		"comment": map[string]any{
+			"id":         3,
+			"body":       "other repo",
+			"created_at": "2026-04-15T21:50:00Z",
+			"user":       map[string]any{"id": 3, "login": "alice"},
+		},
+		"issue": map[string]any{"number": 42},
+		"repository": map[string]any{
+			"full_name": "acme/other",
+			"name":      "other",
+			"owner":     map[string]any{"login": "acme"},
+		},
+		"sender": map[string]any{"id": 3, "login": "alice"},
 	}); err != nil || status != http.StatusOK || body != "ignored" {
 		t.Fatalf("unmatched issue webhook = (%d, %q, %v), want (200, ignored, nil)", status, body, err)
 	}
 
 	recorder := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "http://example.test/github", strings.NewReader("{"))
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"http://example.test/github",
+		strings.NewReader("{"),
+	)
 	req.Header.Set("X-GitHub-Event", "issue_comment")
-	if err := provider.handleWebhookRequest(recorder, req, []resolvedInstanceConfig{provider.routes["brg-github"]}, bridgesdk.WebhookRequest{
-		Body:       []byte("{"),
-		ReceivedAt: time.Date(2026, 4, 15, 21, 50, 0, 0, time.UTC),
-	}); err == nil {
+	if err := provider.handleWebhookRequest(
+		recorder,
+		req,
+		[]resolvedInstanceConfig{provider.routes["brg-github"]},
+		bridgesdk.WebhookRequest{
+			Body:       []byte("{"),
+			ReceivedAt: time.Date(2026, 4, 15, 21, 50, 0, 0, time.UTC),
+		},
+	); err == nil {
 		t.Fatal("invalid issue_comment payload error = nil, want non-nil")
 	}
 }
@@ -1725,7 +1826,11 @@ func TestGitHubAdditionalHelpersAndErrorClassification(t *testing.T) {
 	}()
 	waitCtx, waitCancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer waitCancel()
-	if cfg, err := waitProvider.waitForInstanceConfig(waitCtx, "brg-github"); err != nil || cfg.instanceID != "brg-github" {
+	if cfg, err := waitProvider.waitForInstanceConfig(
+		waitCtx,
+		"brg-github",
+	); err != nil ||
+		cfg.instanceID != "brg-github" {
 		t.Fatalf("waitForInstanceConfig(available later) = (%#v, %v), want brg-github", cfg, err)
 	}
 
@@ -1753,12 +1858,22 @@ func TestGitHubProviderStoreDeliveryStateEvictsTerminalEntries(t *testing.T) {
 	startEvent := bridgepkg.DeliveryEvent{EventType: bridgepkg.DeliveryEventTypeStart}
 	finalEvent := bridgepkg.DeliveryEvent{EventType: bridgepkg.DeliveryEventTypeFinal}
 
-	provider.storeDeliveryState("brg-github", "delivery-1", startEvent, deliveryState{LastSeq: 1, RemoteMessageID: "issue:1"})
+	provider.storeDeliveryState(
+		"brg-github",
+		"delivery-1",
+		startEvent,
+		deliveryState{LastSeq: 1, RemoteMessageID: "issue:1"},
+	)
 	if got := provider.deliveryState("brg-github", "delivery-1").RemoteMessageID; got != "issue:1" {
 		t.Fatalf("deliveryState(start) = %q, want %q", got, "issue:1")
 	}
 
-	provider.storeDeliveryState("brg-github", "delivery-1", finalEvent, deliveryState{LastSeq: 2, RemoteMessageID: "issue:1"})
+	provider.storeDeliveryState(
+		"brg-github",
+		"delivery-1",
+		finalEvent,
+		deliveryState{LastSeq: 2, RemoteMessageID: "issue:1"},
+	)
 	if got := provider.deliveryState("brg-github", "delivery-1"); got != (deliveryState{}) {
 		t.Fatalf("deliveryState(final) = %#v, want empty after eviction", got)
 	}
@@ -1890,7 +2005,13 @@ func (f *fakeGitHubAPI) CreateIssueComment(context.Context, int64, string, int64
 	return comment, nil
 }
 
-func (f *fakeGitHubAPI) CreateReviewCommentReply(context.Context, int64, int64, string, int64) (*githubReviewComment, error) {
+func (f *fakeGitHubAPI) CreateReviewCommentReply(
+	context.Context,
+	int64,
+	int64,
+	string,
+	int64,
+) (*githubReviewComment, error) {
 	if f.nextReviewCommentID == 0 {
 		f.nextReviewCommentID = 600
 	}
@@ -1899,12 +2020,22 @@ func (f *fakeGitHubAPI) CreateReviewCommentReply(context.Context, int64, int64, 
 	return comment, nil
 }
 
-func (f *fakeGitHubAPI) UpdateIssueComment(_ context.Context, commentID int64, _ string, _ int64) (*githubIssueComment, error) {
+func (f *fakeGitHubAPI) UpdateIssueComment(
+	_ context.Context,
+	commentID int64,
+	_ string,
+	_ int64,
+) (*githubIssueComment, error) {
 	f.issueUpdates = append(f.issueUpdates, commentID)
 	return &githubIssueComment{ID: commentID}, nil
 }
 
-func (f *fakeGitHubAPI) UpdateReviewComment(_ context.Context, commentID int64, _ string, _ int64) (*githubReviewComment, error) {
+func (f *fakeGitHubAPI) UpdateReviewComment(
+	_ context.Context,
+	commentID int64,
+	_ string,
+	_ int64,
+) (*githubReviewComment, error) {
 	f.reviewUpdates = append(f.reviewUpdates, commentID)
 	return &githubReviewComment{ID: commentID}, nil
 }
@@ -1937,7 +2068,13 @@ func (f *fakeGitHubErrorAPI) CreateIssueComment(context.Context, int64, string, 
 	return nil, f.err
 }
 
-func (f *fakeGitHubErrorAPI) CreateReviewCommentReply(context.Context, int64, int64, string, int64) (*githubReviewComment, error) {
+func (f *fakeGitHubErrorAPI) CreateReviewCommentReply(
+	context.Context,
+	int64,
+	int64,
+	string,
+	int64,
+) (*githubReviewComment, error) {
 	return nil, f.err
 }
 

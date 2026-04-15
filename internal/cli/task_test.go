@@ -34,8 +34,17 @@ func TestTaskCreateAndUpdateRejectInvalidFlagCombos(t *testing.T) {
 			wantErr: "task update requires at least one change flag",
 		},
 		{
-			name:    "Should reject clear owner with owner mutation",
-			args:    []string{"task", "update", "task-1", "--clear-owner", "--owner-kind", "pool", "--owner-ref", "triage"},
+			name: "Should reject clear owner with owner mutation",
+			args: []string{
+				"task",
+				"update",
+				"task-1",
+				"--clear-owner",
+				"--owner-kind",
+				"pool",
+				"--owner-ref",
+				"triage",
+			},
 			wantErr: "--clear-owner cannot be combined with --owner-kind or --owner-ref",
 		},
 	}
@@ -44,7 +53,7 @@ func TestTaskCreateAndUpdateRejectInvalidFlagCombos(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, _, err := executeRootCommand(t, newTestDeps(t, stubClient{}), tt.args...)
+			_, _, err := executeRootCommand(t, newTestDeps(t, &stubClient{}), tt.args...)
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("executeRootCommand(%v) error = %v, want %q", tt.args, err, tt.wantErr)
 			}
@@ -65,7 +74,7 @@ func TestTaskCreateAndListCommandsParseTaskFields(t *testing.T) {
 				t.Helper()
 
 				var createRequest CreateTaskRequest
-				deps := newTestDeps(t, stubClient{
+				deps := newTestDeps(t, &stubClient{
 					createTaskFn: func(_ context.Context, got CreateTaskRequest) (TaskRecord, error) {
 						createRequest = got
 						return sampleTaskRecord(), nil
@@ -118,7 +127,7 @@ func TestTaskCreateAndListCommandsParseTaskFields(t *testing.T) {
 				t.Helper()
 
 				var listQuery TaskListQuery
-				deps := newTestDeps(t, stubClient{
+				deps := newTestDeps(t, &stubClient{
 					listTasksFn: func(_ context.Context, query TaskListQuery) ([]TaskSummaryRecord, error) {
 						listQuery = query
 						return []TaskSummaryRecord{sampleTaskSummaryRecord()}, nil
@@ -166,7 +175,6 @@ func TestTaskCreateAndListCommandsParseTaskFields(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			tc.run(t)
@@ -187,17 +195,33 @@ func TestTaskRunCommandsMapLifecycleRequests(t *testing.T) {
 				t.Helper()
 
 				var runListQuery TaskRunListQuery
-				deps := newTestDeps(t, stubClient{
+				deps := newTestDeps(t, &stubClient{
 					listTaskRunsFn: func(_ context.Context, _ string, query TaskRunListQuery) ([]TaskRunRecord, error) {
 						runListQuery = query
 						return []TaskRunRecord{sampleTaskRunRecord(taskpkg.TaskRunStatusRunning)}, nil
 					},
 				})
 
-				if _, _, err := executeRootCommand(t, deps, "task", "run", "list", "task-1", "--status", "running", "--session", "sess-1", "--last", "2", "-o", "json"); err != nil {
+				if _, _, err := executeRootCommand(
+					t,
+					deps,
+					"task",
+					"run",
+					"list",
+					"task-1",
+					"--status",
+					"running",
+					"--session",
+					"sess-1",
+					"--last",
+					"2",
+					"-o",
+					"json",
+				); err != nil {
 					t.Fatalf("task run list error = %v", err)
 				}
-				if runListQuery.Status != taskpkg.TaskRunStatusRunning || runListQuery.SessionID != "sess-1" || runListQuery.Limit != 2 {
+				if runListQuery.Status != taskpkg.TaskRunStatusRunning || runListQuery.SessionID != "sess-1" ||
+					runListQuery.Limit != 2 {
 					t.Fatalf("runListQuery = %#v, want parsed run filters", runListQuery)
 				}
 			},
@@ -208,14 +232,27 @@ func TestTaskRunCommandsMapLifecycleRequests(t *testing.T) {
 				t.Helper()
 
 				var enqueueRequest EnqueueTaskRunRequest
-				deps := newTestDeps(t, stubClient{
+				deps := newTestDeps(t, &stubClient{
 					enqueueTaskRunFn: func(_ context.Context, _ string, request EnqueueTaskRunRequest) (TaskRunRecord, error) {
 						enqueueRequest = request
 						return sampleTaskRunRecord(taskpkg.TaskRunStatusQueued), nil
 					},
 				})
 
-				if _, _, err := executeRootCommand(t, deps, "task", "run", "enqueue", "task-1", "--idempotency-key", "idem-1", "--channel", "builders", "-o", "json"); err != nil {
+				if _, _, err := executeRootCommand(
+					t,
+					deps,
+					"task",
+					"run",
+					"enqueue",
+					"task-1",
+					"--idempotency-key",
+					"idem-1",
+					"--channel",
+					"builders",
+					"-o",
+					"json",
+				); err != nil {
 					t.Fatalf("task run enqueue error = %v", err)
 				}
 				if enqueueRequest.IdempotencyKey != "idem-1" || enqueueRequest.NetworkChannel != "builders" {
@@ -229,14 +266,25 @@ func TestTaskRunCommandsMapLifecycleRequests(t *testing.T) {
 				t.Helper()
 
 				var claimRequest ClaimTaskRunRequest
-				deps := newTestDeps(t, stubClient{
+				deps := newTestDeps(t, &stubClient{
 					claimTaskRunFn: func(_ context.Context, _ string, request ClaimTaskRunRequest) (TaskRunRecord, error) {
 						claimRequest = request
 						return sampleTaskRunRecord(taskpkg.TaskRunStatusClaimed), nil
 					},
 				})
 
-				if _, _, err := executeRootCommand(t, deps, "task", "run", "claim", "run-1", "--idempotency-key", "idem-claim", "-o", "json"); err != nil {
+				if _, _, err := executeRootCommand(
+					t,
+					deps,
+					"task",
+					"run",
+					"claim",
+					"run-1",
+					"--idempotency-key",
+					"idem-claim",
+					"-o",
+					"json",
+				); err != nil {
 					t.Fatalf("task run claim error = %v", err)
 				}
 				if claimRequest.IdempotencyKey != "idem-claim" {
@@ -250,14 +298,25 @@ func TestTaskRunCommandsMapLifecycleRequests(t *testing.T) {
 				t.Helper()
 
 				var startRequest StartTaskRunRequest
-				deps := newTestDeps(t, stubClient{
+				deps := newTestDeps(t, &stubClient{
 					startTaskRunFn: func(_ context.Context, _ string, request StartTaskRunRequest) (TaskRunRecord, error) {
 						startRequest = request
 						return sampleTaskRunRecord(taskpkg.TaskRunStatusRunning), nil
 					},
 				})
 
-				if _, _, err := executeRootCommand(t, deps, "task", "run", "start", "run-1", "--idempotency-key", "idem-start", "-o", "json"); err != nil {
+				if _, _, err := executeRootCommand(
+					t,
+					deps,
+					"task",
+					"run",
+					"start",
+					"run-1",
+					"--idempotency-key",
+					"idem-start",
+					"-o",
+					"json",
+				); err != nil {
 					t.Fatalf("task run start error = %v", err)
 				}
 				if startRequest.IdempotencyKey != "idem-start" {
@@ -271,14 +330,25 @@ func TestTaskRunCommandsMapLifecycleRequests(t *testing.T) {
 				t.Helper()
 
 				var attachRequest AttachTaskRunSessionRequest
-				deps := newTestDeps(t, stubClient{
+				deps := newTestDeps(t, &stubClient{
 					attachTaskRunSessionFn: func(_ context.Context, _ string, request AttachTaskRunSessionRequest) (TaskRunRecord, error) {
 						attachRequest = request
 						return sampleTaskRunRecord(taskpkg.TaskRunStatusStarting), nil
 					},
 				})
 
-				if _, _, err := executeRootCommand(t, deps, "task", "run", "attach-session", "run-1", "--session", "sess-attach", "-o", "json"); err != nil {
+				if _, _, err := executeRootCommand(
+					t,
+					deps,
+					"task",
+					"run",
+					"attach-session",
+					"run-1",
+					"--session",
+					"sess-attach",
+					"-o",
+					"json",
+				); err != nil {
 					t.Fatalf("task run attach-session error = %v", err)
 				}
 				if attachRequest.SessionID != "sess-attach" {
@@ -292,14 +362,25 @@ func TestTaskRunCommandsMapLifecycleRequests(t *testing.T) {
 				t.Helper()
 
 				var completeRequest CompleteTaskRunRequest
-				deps := newTestDeps(t, stubClient{
+				deps := newTestDeps(t, &stubClient{
 					completeTaskRunFn: func(_ context.Context, _ string, request CompleteTaskRunRequest) (TaskRunRecord, error) {
 						completeRequest = request
 						return sampleTaskRunRecord(taskpkg.TaskRunStatusCompleted), nil
 					},
 				})
 
-				if _, _, err := executeRootCommand(t, deps, "task", "run", "complete", "run-1", "--result", `{"ok":true}`, "-o", "json"); err != nil {
+				if _, _, err := executeRootCommand(
+					t,
+					deps,
+					"task",
+					"run",
+					"complete",
+					"run-1",
+					"--result",
+					`{"ok":true}`,
+					"-o",
+					"json",
+				); err != nil {
 					t.Fatalf("task run complete error = %v", err)
 				}
 				if string(completeRequest.Result) != `{"ok":true}` {
@@ -313,14 +394,27 @@ func TestTaskRunCommandsMapLifecycleRequests(t *testing.T) {
 				t.Helper()
 
 				var failRequest FailTaskRunRequest
-				deps := newTestDeps(t, stubClient{
+				deps := newTestDeps(t, &stubClient{
 					failTaskRunFn: func(_ context.Context, _ string, request FailTaskRunRequest) (TaskRunRecord, error) {
 						failRequest = request
 						return sampleTaskRunRecord(taskpkg.TaskRunStatusFailed), nil
 					},
 				})
 
-				if _, _, err := executeRootCommand(t, deps, "task", "run", "fail", "run-1", "--error", "boom", "--metadata", `{"code":"E_TASK"}`, "-o", "json"); err != nil {
+				if _, _, err := executeRootCommand(
+					t,
+					deps,
+					"task",
+					"run",
+					"fail",
+					"run-1",
+					"--error",
+					"boom",
+					"--metadata",
+					`{"code":"E_TASK"}`,
+					"-o",
+					"json",
+				); err != nil {
 					t.Fatalf("task run fail error = %v", err)
 				}
 				if failRequest.Error != "boom" || string(failRequest.Metadata) != `{"code":"E_TASK"}` {
@@ -334,14 +428,27 @@ func TestTaskRunCommandsMapLifecycleRequests(t *testing.T) {
 				t.Helper()
 
 				var cancelRequest CancelTaskRunRequest
-				deps := newTestDeps(t, stubClient{
+				deps := newTestDeps(t, &stubClient{
 					cancelTaskRunFn: func(_ context.Context, _ string, request CancelTaskRunRequest) (TaskRunRecord, error) {
 						cancelRequest = request
-						return sampleTaskRunRecord(taskpkg.TaskRunStatusCancelled), nil
+						return sampleTaskRunRecord(taskpkg.TaskRunStatusCanceled), nil
 					},
 				})
 
-				if _, _, err := executeRootCommand(t, deps, "task", "run", "cancel", "run-1", "--reason", "operator-request", "--metadata", `{"source":"cli"}`, "-o", "json"); err != nil {
+				if _, _, err := executeRootCommand(
+					t,
+					deps,
+					"task",
+					"run",
+					"cancel",
+					"run-1",
+					"--reason",
+					"operator-request",
+					"--metadata",
+					`{"source":"cli"}`,
+					"-o",
+					"json",
+				); err != nil {
 					t.Fatalf("task run cancel error = %v", err)
 				}
 				if cancelRequest.Reason != "operator-request" || string(cancelRequest.Metadata) != `{"source":"cli"}` {
@@ -352,7 +459,6 @@ func TestTaskRunCommandsMapLifecycleRequests(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			tc.run(t)
@@ -376,7 +482,7 @@ func TestTaskMutationCommandsMapRequests(t *testing.T) {
 					updateTaskID  string
 					updateRequest UpdateTaskRequest
 				)
-				deps := newTestDeps(t, stubClient{
+				deps := newTestDeps(t, &stubClient{
 					updateTaskFn: func(_ context.Context, taskID string, request UpdateTaskRequest) (TaskRecord, error) {
 						updateTaskID = taskID
 						updateRequest = request
@@ -418,7 +524,7 @@ func TestTaskMutationCommandsMapRequests(t *testing.T) {
 					cancelTaskID  string
 					cancelRequest CancelTaskRequest
 				)
-				deps := newTestDeps(t, stubClient{
+				deps := newTestDeps(t, &stubClient{
 					cancelTaskFn: func(_ context.Context, taskID string, request CancelTaskRequest) (TaskRecord, error) {
 						cancelTaskID = taskID
 						cancelRequest = request
@@ -426,10 +532,23 @@ func TestTaskMutationCommandsMapRequests(t *testing.T) {
 					},
 				})
 
-				if _, _, err := executeRootCommand(t, deps, "task", "cancel", "task-1", "--reason", "operator-request", "--metadata", `{"source":"cli"}`, "-o", "json"); err != nil {
+				if _, _, err := executeRootCommand(
+					t,
+					deps,
+					"task",
+					"cancel",
+					"task-1",
+					"--reason",
+					"operator-request",
+					"--metadata",
+					`{"source":"cli"}`,
+					"-o",
+					"json",
+				); err != nil {
 					t.Fatalf("task cancel error = %v", err)
 				}
-				if cancelTaskID != "task-1" || cancelRequest.Reason != "operator-request" || string(cancelRequest.Metadata) != `{"source":"cli"}` {
+				if cancelTaskID != "task-1" || cancelRequest.Reason != "operator-request" ||
+					string(cancelRequest.Metadata) != `{"source":"cli"}` {
 					t.Fatalf("cancel request = %#v, want parsed cancel payload", cancelRequest)
 				}
 			},
@@ -443,7 +562,7 @@ func TestTaskMutationCommandsMapRequests(t *testing.T) {
 					childParentID      string
 					childCreateRequest CreateTaskChildRequest
 				)
-				deps := newTestDeps(t, stubClient{
+				deps := newTestDeps(t, &stubClient{
 					createChildTaskFn: func(_ context.Context, parentID string, request CreateTaskChildRequest) (TaskRecord, error) {
 						childParentID = parentID
 						childCreateRequest = request
@@ -492,7 +611,7 @@ func TestTaskMutationCommandsMapRequests(t *testing.T) {
 					dependencyTaskID  string
 					dependencyRequest AddTaskDependencyRequest
 				)
-				deps := newTestDeps(t, stubClient{
+				deps := newTestDeps(t, &stubClient{
 					addTaskDependencyFn: func(_ context.Context, taskID string, request AddTaskDependencyRequest) (TaskDetailRecord, error) {
 						dependencyTaskID = taskID
 						dependencyRequest = request
@@ -500,10 +619,24 @@ func TestTaskMutationCommandsMapRequests(t *testing.T) {
 					},
 				})
 
-				if _, _, err := executeRootCommand(t, deps, "task", "dependency", "add", "task-1", "--depends-on", "task-root", "--kind", "blocks", "-o", "json"); err != nil {
+				if _, _, err := executeRootCommand(
+					t,
+					deps,
+					"task",
+					"dependency",
+					"add",
+					"task-1",
+					"--depends-on",
+					"task-root",
+					"--kind",
+					"blocks",
+					"-o",
+					"json",
+				); err != nil {
 					t.Fatalf("task dependency add error = %v", err)
 				}
-				if dependencyTaskID != "task-1" || dependencyRequest.DependsOnTaskID != "task-root" || dependencyRequest.Kind != taskpkg.DependencyKindBlocks {
+				if dependencyTaskID != "task-1" || dependencyRequest.DependsOnTaskID != "task-root" ||
+					dependencyRequest.Kind != taskpkg.DependencyKindBlocks {
 					t.Fatalf("dependencyRequest = %#v, want dependency payload", dependencyRequest)
 				}
 			},
@@ -517,7 +650,7 @@ func TestTaskMutationCommandsMapRequests(t *testing.T) {
 					removeTaskID      string
 					removeDependsOnID string
 				)
-				deps := newTestDeps(t, stubClient{
+				deps := newTestDeps(t, &stubClient{
 					removeTaskDependencyFn: func(_ context.Context, taskID string, dependsOnID string) (TaskDetailRecord, error) {
 						removeTaskID = taskID
 						removeDependsOnID = dependsOnID
@@ -525,18 +658,31 @@ func TestTaskMutationCommandsMapRequests(t *testing.T) {
 					},
 				})
 
-				if _, _, err := executeRootCommand(t, deps, "task", "dependency", "remove", "task-1", "task-root", "-o", "json"); err != nil {
+				if _, _, err := executeRootCommand(
+					t,
+					deps,
+					"task",
+					"dependency",
+					"remove",
+					"task-1",
+					"task-root",
+					"-o",
+					"json",
+				); err != nil {
 					t.Fatalf("task dependency remove error = %v", err)
 				}
 				if removeTaskID != "task-1" || removeDependsOnID != "task-root" {
-					t.Fatalf("remove dependency args = (%q, %q), want task-1/task-root", removeTaskID, removeDependsOnID)
+					t.Fatalf(
+						"remove dependency args = (%q, %q), want task-1/task-root",
+						removeTaskID,
+						removeDependsOnID,
+					)
 				}
 			},
 		},
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			tc.run(t)
@@ -547,7 +693,7 @@ func TestTaskMutationCommandsMapRequests(t *testing.T) {
 func TestTaskCommandsSupportDetailAndToonOutput(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, stubClient{
+	deps := newTestDeps(t, &stubClient{
 		getTaskFn: func(context.Context, string) (TaskDetailRecord, error) {
 			return sampleTaskDetailRecord(), nil
 		},
@@ -560,7 +706,8 @@ func TestTaskCommandsSupportDetailAndToonOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("task get human error = %v", err)
 	}
-	if !strings.Contains(humanOut, "Task") || !strings.Contains(humanOut, "Dependencies") || !strings.Contains(humanOut, "Task Runs") {
+	if !strings.Contains(humanOut, "Task") || !strings.Contains(humanOut, "Dependencies") ||
+		!strings.Contains(humanOut, "Task Runs") {
 		t.Fatalf("task get human output = %q, want detail sections", humanOut)
 	}
 
@@ -568,7 +715,10 @@ func TestTaskCommandsSupportDetailAndToonOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("task list toon error = %v", err)
 	}
-	if !strings.Contains(toonOut, "tasks[1]{id,identifier,scope,workspace_id,parent_task_id,status,owner,network_channel,title}:") {
+	if !strings.Contains(
+		toonOut,
+		"tasks[1]{id,identifier,scope,workspace_id,parent_task_id,status,owner,network_channel,title}:",
+	) {
 		t.Fatalf("task list toon output = %q, want tasks TOON array", toonOut)
 	}
 }
@@ -583,7 +733,10 @@ func TestTaskBundlesRenderTaskRunAndDetailSections(t *testing.T) {
 	}
 	if !strings.Contains(detailToon, "task_children[1]{id,identifier,scope,workspace_id,status,owner,title}:") ||
 		!strings.Contains(detailToon, "task_dependencies[1]{task_id,depends_on_task_id,kind,created_at}:") ||
-		!strings.Contains(detailToon, "task_runs[1]{id,status,attempt,session_id,claimed_by,network_channel,queued_at,started_at,ended_at,error}:") ||
+		!strings.Contains(
+			detailToon,
+			"task_runs[1]{id,status,attempt,session_id,claimed_by,network_channel,queued_at,started_at,ended_at,error}:",
+		) ||
 		!strings.Contains(detailToon, "task_events[1]{id,event_type,run_id,actor,origin,timestamp}:") {
 		t.Fatalf("task detail toon output = %q, want child/dependency/run/event sections", detailToon)
 	}
@@ -592,7 +745,8 @@ func TestTaskBundlesRenderTaskRunAndDetailSections(t *testing.T) {
 	if err != nil {
 		t.Fatalf("taskRunBundle().human() error = %v", err)
 	}
-	if !strings.Contains(runHuman, "Task Run") || !strings.Contains(runHuman, "Idempotency Key") || !strings.Contains(runHuman, "Result") {
+	if !strings.Contains(runHuman, "Task Run") || !strings.Contains(runHuman, "Idempotency Key") ||
+		!strings.Contains(runHuman, "Result") {
 		t.Fatalf("task run human output = %q, want task run detail section", runHuman)
 	}
 
@@ -600,14 +754,20 @@ func TestTaskBundlesRenderTaskRunAndDetailSections(t *testing.T) {
 	if err != nil {
 		t.Fatalf("taskRunListBundle().toon() error = %v", err)
 	}
-	if !strings.Contains(runToon, "task_runs[1]{id,status,attempt,session_id,claimed_by,network_channel,queued_at,started_at,ended_at,error}:") {
+	if !strings.Contains(
+		runToon,
+		"task_runs[1]{id,status,attempt,session_id,claimed_by,network_channel,queued_at,started_at,ended_at,error}:",
+	) {
 		t.Fatalf("task run toon output = %q, want task run TOON array", runToon)
 	}
 
 	if kind, err := parseOptionalTaskDependencyKind("blocks"); err != nil || kind != taskpkg.DependencyKindBlocks {
 		t.Fatalf("parseOptionalTaskDependencyKind(blocks) = (%q, %v), want blocks", kind, err)
 	}
-	if _, err := parseOptionalTaskDependencyKind("relates"); err == nil || !strings.Contains(err.Error(), "unsupported value") {
+	if _, err := parseOptionalTaskDependencyKind(
+		"relates",
+	); err == nil ||
+		!strings.Contains(err.Error(), "unsupported value") {
 		t.Fatalf("parseOptionalTaskDependencyKind(relates) error = %v, want unsupported value validation", err)
 	}
 }
@@ -625,7 +785,6 @@ func TestParseTaskListFiltersRejectsHalfSpecifiedOwnerFilter(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -680,7 +839,7 @@ func timePointer(value time.Time) *time.Time {
 	return &cloned
 }
 
-func sampleTaskRunRecord(status taskpkg.TaskRunStatus) TaskRunRecord {
+func sampleTaskRunRecord(status taskpkg.RunStatus) TaskRunRecord {
 	record := TaskRunRecord{
 		ID:             "run-1",
 		TaskID:         "task-1",
@@ -724,7 +883,7 @@ func sampleTaskRunRecord(status taskpkg.TaskRunStatus) TaskRunRecord {
 		record.StartedAt = timePointer(startedAt)
 		record.EndedAt = timePointer(endedAt)
 		record.Error = "boom"
-	case taskpkg.TaskRunStatusCancelled:
+	case taskpkg.TaskRunStatusCanceled:
 		record.EndedAt = timePointer(endedAt)
 	}
 

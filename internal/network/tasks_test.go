@@ -11,42 +11,64 @@ import (
 )
 
 type fakeNetworkTaskService struct {
-	getTaskFn    func(context.Context, string, taskpkg.ActorContext) (*taskpkg.TaskView, error)
+	getTaskFn    func(context.Context, string, taskpkg.ActorContext) (*taskpkg.View, error)
 	createTaskFn func(context.Context, taskpkg.CreateTask, taskpkg.ActorContext) (*taskpkg.Task, error)
-	updateTaskFn func(context.Context, string, taskpkg.TaskPatch, taskpkg.ActorContext) (*taskpkg.Task, error)
+	updateTaskFn func(context.Context, string, taskpkg.Patch, taskpkg.ActorContext) (*taskpkg.Task, error)
 	cancelTaskFn func(context.Context, string, taskpkg.CancelTask, taskpkg.ActorContext) (*taskpkg.Task, error)
-	enqueueRunFn func(context.Context, taskpkg.EnqueueRun, taskpkg.ActorContext) (*taskpkg.TaskRun, error)
+	enqueueRunFn func(context.Context, taskpkg.EnqueueRun, taskpkg.ActorContext) (*taskpkg.Run, error)
 }
 
-func (f fakeNetworkTaskService) GetTask(ctx context.Context, id string, actor taskpkg.ActorContext) (*taskpkg.TaskView, error) {
+func (f fakeNetworkTaskService) GetTask(
+	ctx context.Context,
+	id string,
+	actor taskpkg.ActorContext,
+) (*taskpkg.View, error) {
 	if f.getTaskFn == nil {
 		return nil, errors.New("unexpected GetTask call")
 	}
 	return f.getTaskFn(ctx, id, actor)
 }
 
-func (f fakeNetworkTaskService) CreateTask(ctx context.Context, spec taskpkg.CreateTask, actor taskpkg.ActorContext) (*taskpkg.Task, error) {
+func (f fakeNetworkTaskService) CreateTask(
+	ctx context.Context,
+	spec taskpkg.CreateTask,
+	actor taskpkg.ActorContext,
+) (*taskpkg.Task, error) {
 	if f.createTaskFn == nil {
 		return nil, errors.New("unexpected CreateTask call")
 	}
 	return f.createTaskFn(ctx, spec, actor)
 }
 
-func (f fakeNetworkTaskService) UpdateTask(ctx context.Context, id string, patch taskpkg.TaskPatch, actor taskpkg.ActorContext) (*taskpkg.Task, error) {
+func (f fakeNetworkTaskService) UpdateTask(
+	ctx context.Context,
+	id string,
+	patch taskpkg.Patch,
+	actor taskpkg.ActorContext,
+) (*taskpkg.Task, error) {
 	if f.updateTaskFn == nil {
 		return nil, errors.New("unexpected UpdateTask call")
 	}
 	return f.updateTaskFn(ctx, id, patch, actor)
 }
 
-func (f fakeNetworkTaskService) CancelTask(ctx context.Context, id string, req taskpkg.CancelTask, actor taskpkg.ActorContext) (*taskpkg.Task, error) {
+func (f fakeNetworkTaskService) CancelTask(
+	ctx context.Context,
+	id string,
+	req taskpkg.CancelTask,
+	actor taskpkg.ActorContext,
+) (*taskpkg.Task, error) {
 	if f.cancelTaskFn == nil {
 		return nil, errors.New("unexpected CancelTask call")
 	}
 	return f.cancelTaskFn(ctx, id, req, actor)
 }
 
-func (f fakeNetworkTaskService) EnqueueRun(ctx context.Context, spec taskpkg.EnqueueRun, actor taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
+func (f fakeNetworkTaskService) EnqueueRun(
+	ctx context.Context,
+	spec taskpkg.EnqueueRun,
+	actor taskpkg.ActorContext,
+) (*taskpkg.Run, error) {
 	if f.enqueueRunFn == nil {
 		return nil, errors.New("unexpected EnqueueRun call")
 	}
@@ -104,9 +126,9 @@ func TestEnqueueRunFromPeerRejectsChannelMismatchAndAudits(t *testing.T) {
 		peers:   newRemotePeerRegistry(t, now, "ops", peerID, []string{networkTaskWriteCapability}),
 		auditor: auditor,
 		tasks: fakeNetworkTaskService{
-			getTaskFn: func(_ context.Context, id string, actor taskpkg.ActorContext) (*taskpkg.TaskView, error) {
+			getTaskFn: func(_ context.Context, id string, actor taskpkg.ActorContext) (*taskpkg.View, error) {
 				getActor = actor
-				return &taskpkg.TaskView{
+				return &taskpkg.View{
 					Task: taskpkg.Task{
 						ID:             id,
 						Scope:          taskpkg.ScopeGlobal,
@@ -115,7 +137,7 @@ func TestEnqueueRunFromPeerRejectsChannelMismatchAndAudits(t *testing.T) {
 					},
 				}, nil
 			},
-			enqueueRunFn: func(context.Context, taskpkg.EnqueueRun, taskpkg.ActorContext) (*taskpkg.TaskRun, error) {
+			enqueueRunFn: func(context.Context, taskpkg.EnqueueRun, taskpkg.ActorContext) (*taskpkg.Run, error) {
 				enqueueCalled = true
 				return nil, nil
 			},
@@ -242,8 +264,8 @@ func TestUpdateTaskFromPeerAllowsOnlyStaleChannelRepair(t *testing.T) {
 			peers:   newRemotePeerRegistry(t, now, "ops", peerID, []string{networkTaskWriteCapability}),
 			auditor: auditor,
 			tasks: fakeNetworkTaskService{
-				getTaskFn: func(_ context.Context, id string, _ taskpkg.ActorContext) (*taskpkg.TaskView, error) {
-					return &taskpkg.TaskView{
+				getTaskFn: func(_ context.Context, id string, _ taskpkg.ActorContext) (*taskpkg.View, error) {
+					return &taskpkg.View{
 						Task: taskpkg.Task{
 							ID:             id,
 							Scope:          taskpkg.ScopeGlobal,
@@ -252,7 +274,7 @@ func TestUpdateTaskFromPeerAllowsOnlyStaleChannelRepair(t *testing.T) {
 						},
 					}, nil
 				},
-				updateTaskFn: func(_ context.Context, id string, patch taskpkg.TaskPatch, _ taskpkg.ActorContext) (*taskpkg.Task, error) {
+				updateTaskFn: func(_ context.Context, id string, patch taskpkg.Patch, _ taskpkg.ActorContext) (*taskpkg.Task, error) {
 					updateCalled = true
 					if patch.NetworkChannel == nil || *patch.NetworkChannel != "" {
 						t.Fatalf("update patch network_channel = %#v, want explicit clear", patch.NetworkChannel)
@@ -266,12 +288,12 @@ func TestUpdateTaskFromPeerAllowsOnlyStaleChannelRepair(t *testing.T) {
 			},
 		}
 
-		clear := ""
+		clearChannel := ""
 		record, err := manager.UpdateTaskFromPeer(context.Background(), TaskIngressContext{
 			PeerID:    peerID,
 			Channel:   "ops",
 			RequestID: "req-update-clear",
-		}, "task-1", taskpkg.TaskPatch{NetworkChannel: &clear})
+		}, "task-1", taskpkg.Patch{NetworkChannel: &clearChannel})
 		if err != nil {
 			t.Fatalf("UpdateTaskFromPeer(clear stale channel) error = %v", err)
 		}
@@ -302,8 +324,8 @@ func TestUpdateTaskFromPeerAllowsOnlyStaleChannelRepair(t *testing.T) {
 			peers:   newRemotePeerRegistry(t, now, "ops", peerID, []string{networkTaskWriteCapability}),
 			auditor: auditor,
 			tasks: fakeNetworkTaskService{
-				getTaskFn: func(_ context.Context, id string, _ taskpkg.ActorContext) (*taskpkg.TaskView, error) {
-					return &taskpkg.TaskView{
+				getTaskFn: func(_ context.Context, id string, _ taskpkg.ActorContext) (*taskpkg.View, error) {
+					return &taskpkg.View{
 						Task: taskpkg.Task{
 							ID:             id,
 							Scope:          taskpkg.ScopeGlobal,
@@ -312,7 +334,7 @@ func TestUpdateTaskFromPeerAllowsOnlyStaleChannelRepair(t *testing.T) {
 						},
 					}, nil
 				},
-				updateTaskFn: func(context.Context, string, taskpkg.TaskPatch, taskpkg.ActorContext) (*taskpkg.Task, error) {
+				updateTaskFn: func(context.Context, string, taskpkg.Patch, taskpkg.ActorContext) (*taskpkg.Task, error) {
 					updateCalled = true
 					return nil, nil
 				},
@@ -324,7 +346,7 @@ func TestUpdateTaskFromPeerAllowsOnlyStaleChannelRepair(t *testing.T) {
 			PeerID:    peerID,
 			Channel:   "ops",
 			RequestID: "req-update-title",
-		}, "task-1", taskpkg.TaskPatch{Title: &title})
+		}, "task-1", taskpkg.Patch{Title: &title})
 		if !errors.Is(err, ErrTaskChannelStale) {
 			t.Fatalf("UpdateTaskFromPeer(unrelated stale update) error = %v, want %v", err, ErrTaskChannelStale)
 		}
@@ -439,7 +461,13 @@ func TestTaskIngressHelpersCoverValidationAndReasonMapping(t *testing.T) {
 	})
 }
 
-func newRemotePeerRegistry(t *testing.T, now time.Time, channel string, peerID string, capabilities []string) *PeerRegistry {
+func newRemotePeerRegistry(
+	t *testing.T,
+	now time.Time,
+	channel string,
+	peerID string,
+	capabilities []string,
+) *PeerRegistry {
 	t.Helper()
 
 	registry, err := NewPeerRegistry(10*time.Second, WithPeerRegistryClock(func() time.Time { return now }))

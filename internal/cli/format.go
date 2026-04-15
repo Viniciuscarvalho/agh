@@ -31,7 +31,16 @@ type outputBundle struct {
 	toon      func() (string, error)
 }
 
-func listBundle[T any](jsonValue any, items []T, humanTitle string, humanHeaders []string, toonName string, toonFields []string, humanRow func(T) []string, toonRow func(T) []string) outputBundle {
+func listBundle[T any](
+	jsonValue any,
+	items []T,
+	humanTitle string,
+	humanHeaders []string,
+	toonName string,
+	toonFields []string,
+	humanRow func(T) []string,
+	toonRow func(T) []string,
+) outputBundle {
 	return outputBundle{
 		jsonValue: jsonValue,
 		human: func() (string, error) {
@@ -254,10 +263,7 @@ func formatAge(now func() time.Time, then time.Time) string {
 	if now != nil {
 		current = now().UTC()
 	}
-	delta := current.Sub(then.UTC())
-	if delta < 0 {
-		delta = 0
-	}
+	delta := max(current.Sub(then.UTC()), 0)
 
 	switch {
 	case delta < time.Minute:

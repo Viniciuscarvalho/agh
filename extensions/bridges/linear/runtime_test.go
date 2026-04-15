@@ -43,12 +43,31 @@ func TestRuntimeInitializeStartsServerAndWritesMarkers(t *testing.T) {
 	}
 
 	managed := []subprocess.InitializeBridgeManagedInstance{
-		linearRuntimeManagedInstance(now, "brg-linear-comments", "org-comments", linearModeComments, linearAuthModeAPIKey, listenAddr),
-		linearRuntimeManagedInstance(now, "brg-linear-agent", "org-agent", linearModeAgentSessions, linearAuthModeOAuth, listenAddr),
+		linearRuntimeManagedInstance(
+			now,
+			"brg-linear-comments",
+			"org-comments",
+			linearModeComments,
+			linearAuthModeAPIKey,
+			listenAddr,
+		),
+		linearRuntimeManagedInstance(
+			now,
+			"brg-linear-agent",
+			"org-agent",
+			linearModeAgentSessions,
+			linearAuthModeOAuth,
+			listenAddr,
+		),
 	}
 	mustHandleLinearLifecycle(t, hostPeer, managed...)
 
-	if err := hostPeer.Call(context.Background(), "initialize", linearInitializeRequest(now, managed...), nil); err != nil {
+	if err := hostPeer.Call(
+		context.Background(),
+		"initialize",
+		linearInitializeRequest(now, managed...),
+		nil,
+	); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
 	}
 
@@ -62,7 +81,11 @@ func TestRuntimeInitializeStartsServerAndWritesMarkers(t *testing.T) {
 		t.Fatalf("len(ownership.Fetched) = %d, want %d", got, want)
 	}
 
-	states := waitForLinearJSONLinesFile[stateMarker](t, env.statePath, func(items []stateMarker) bool { return len(items) >= 2 })
+	states := waitForLinearJSONLinesFile[stateMarker](
+		t,
+		env.statePath,
+		func(items []stateMarker) bool { return len(items) >= 2 },
+	)
 	for _, state := range states[:2] {
 		if got, want := state.Status.Normalize(), bridgepkg.BridgeStatusReady; got != want {
 			t.Fatalf("state.Status = %q, want %q", got, want)
@@ -100,8 +123,22 @@ func TestWebhookIngressRejectsInvalidSignatureAndIngestsSupportedModes(t *testin
 	}
 
 	managed := []subprocess.InitializeBridgeManagedInstance{
-		linearRuntimeManagedInstance(now, "brg-linear-comments", "org-comments", linearModeComments, linearAuthModeAPIKey, listenAddr),
-		linearRuntimeManagedInstance(now, "brg-linear-agent", "org-agent", linearModeAgentSessions, linearAuthModeOAuth, listenAddr),
+		linearRuntimeManagedInstance(
+			now,
+			"brg-linear-comments",
+			"org-comments",
+			linearModeComments,
+			linearAuthModeAPIKey,
+			listenAddr,
+		),
+		linearRuntimeManagedInstance(
+			now,
+			"brg-linear-agent",
+			"org-agent",
+			linearModeAgentSessions,
+			linearAuthModeOAuth,
+			listenAddr,
+		),
 	}
 	mustHandleLinearLifecycle(t, hostPeer, managed...)
 
@@ -109,29 +146,39 @@ func TestWebhookIngressRejectsInvalidSignatureAndIngestsSupportedModes(t *testin
 		mu       sync.Mutex
 		ingested []bridgepkg.InboundMessageEnvelope
 	)
-	mustHandleLinear(t, hostPeer, string(extensionprotocol.HostAPIMethodBridgesMessagesIngest), func(_ context.Context, params json.RawMessage) (any, error) {
-		var envelope bridgepkg.InboundMessageEnvelope
-		if err := json.Unmarshal(params, &envelope); err != nil {
-			return nil, err
-		}
-		mu.Lock()
-		ingested = append(ingested, envelope)
-		mu.Unlock()
-		return extensioncontract.BridgesMessagesIngestResult{
-			SessionID:    "sess-" + envelope.BridgeInstanceID,
-			RouteCreated: true,
-			RoutingKey: bridgepkg.RoutingKey{
-				Scope:            envelope.Scope,
-				WorkspaceID:      envelope.WorkspaceID,
-				BridgeInstanceID: envelope.BridgeInstanceID,
-				PeerID:           envelope.PeerID,
-				ThreadID:         envelope.ThreadID,
-				GroupID:          envelope.GroupID,
-			},
-		}, nil
-	})
+	mustHandleLinear(
+		t,
+		hostPeer,
+		string(extensionprotocol.HostAPIMethodBridgesMessagesIngest),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var envelope bridgepkg.InboundMessageEnvelope
+			if err := json.Unmarshal(params, &envelope); err != nil {
+				return nil, err
+			}
+			mu.Lock()
+			ingested = append(ingested, envelope)
+			mu.Unlock()
+			return extensioncontract.BridgesMessagesIngestResult{
+				SessionID:    "sess-" + envelope.BridgeInstanceID,
+				RouteCreated: true,
+				RoutingKey: bridgepkg.RoutingKey{
+					Scope:            envelope.Scope,
+					WorkspaceID:      envelope.WorkspaceID,
+					BridgeInstanceID: envelope.BridgeInstanceID,
+					PeerID:           envelope.PeerID,
+					ThreadID:         envelope.ThreadID,
+					GroupID:          envelope.GroupID,
+				},
+			}, nil
+		},
+	)
 
-	if err := hostPeer.Call(context.Background(), "initialize", linearInitializeRequest(now, managed...), nil); err != nil {
+	if err := hostPeer.Call(
+		context.Background(),
+		"initialize",
+		linearInitializeRequest(now, managed...),
+		nil,
+	); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
 	}
 
@@ -143,35 +190,67 @@ func TestWebhookIngressRejectsInvalidSignatureAndIngestsSupportedModes(t *testin
 
 	webhookURL := "http://" + linearRuntimeServerAddr(runtime) + "/linear"
 
-	invalidPayload := linearCommentWebhookBodyForTest(now, "org-comments", "user-1", "reply-1", "root-comment", "Need a summary")
+	invalidPayload := linearCommentWebhookBodyForTest(
+		now,
+		"org-comments",
+		"user-1",
+		"reply-1",
+		"root-comment",
+		"Need a summary",
+	)
 	resp := postLinearTestWebhook(t, webhookURL, invalidPayload, "wrong-secret")
 	if got, want := resp.StatusCode, http.StatusUnauthorized; got != want {
 		t.Fatalf("invalid webhook status = %d, want %d", got, want)
 	}
 	_ = resp.Body.Close()
 
-	commentPayload := linearCommentWebhookBodyForTest(now, "org-comments", "user-1", "reply-1", "root-comment", "Need a summary")
+	commentPayload := linearCommentWebhookBodyForTest(
+		now,
+		"org-comments",
+		"user-1",
+		"reply-1",
+		"root-comment",
+		"Need a summary",
+	)
 	resp = postLinearTestWebhook(t, webhookURL, commentPayload, linearProviderWebhookSecretValue)
 	if got, want := resp.StatusCode, http.StatusOK; got != want {
 		t.Fatalf("comment webhook status = %d, want %d", got, want)
 	}
 	_ = resp.Body.Close()
 
-	agentPayload := linearAgentSessionWebhookBodyForTest(now, "org-agent", "session-123", "comment-root", "comment-source", "Prompt text")
+	agentPayload := linearAgentSessionWebhookBodyForTest(
+		now,
+		"org-agent",
+		"session-123",
+		"comment-root",
+		"comment-source",
+		"Prompt text",
+	)
 	resp = postLinearTestWebhook(t, webhookURL, agentPayload, linearProviderWebhookSecretValue)
 	if got, want := resp.StatusCode, http.StatusOK; got != want {
 		t.Fatalf("agent webhook status = %d, want %d", got, want)
 	}
 	_ = resp.Body.Close()
 
-	selfCommentPayload := linearCommentWebhookBodyForTest(now, "org-comments", "bot-comments", "reply-self", "root-comment", "Ignore me")
+	selfCommentPayload := linearCommentWebhookBodyForTest(
+		now,
+		"org-comments",
+		"bot-comments",
+		"reply-self",
+		"root-comment",
+		"Ignore me",
+	)
 	resp = postLinearTestWebhook(t, webhookURL, selfCommentPayload, linearProviderWebhookSecretValue)
 	if got, want := resp.StatusCode, http.StatusOK; got != want {
 		t.Fatalf("self comment webhook status = %d, want %d", got, want)
 	}
 	_ = resp.Body.Close()
 
-	records := waitForLinearJSONLinesFile[ingestMarker](t, env.ingestPath, func(items []ingestMarker) bool { return len(items) == 2 })
+	records := waitForLinearJSONLinesFile[ingestMarker](
+		t,
+		env.ingestPath,
+		func(items []ingestMarker) bool { return len(items) == 2 },
+	)
 	if got, want := records[0].Envelope.ThreadID, "linear:issue-comments:c:root-comment"; got != want {
 		t.Fatalf("comment thread id = %q, want %q", got, want)
 	}
@@ -216,12 +295,31 @@ func TestRuntimeDeliveriesRecordMarkersForSupportedModes(t *testing.T) {
 
 	now := time.Date(2026, 4, 15, 13, 10, 0, 0, time.UTC)
 	managed := []subprocess.InitializeBridgeManagedInstance{
-		linearRuntimeManagedInstance(now, "brg-linear-comments", "org-comments", linearModeComments, linearAuthModeAPIKey, listenAddr),
-		linearRuntimeManagedInstance(now, "brg-linear-agent", "org-agent", linearModeAgentSessions, linearAuthModeOAuth, listenAddr),
+		linearRuntimeManagedInstance(
+			now,
+			"brg-linear-comments",
+			"org-comments",
+			linearModeComments,
+			linearAuthModeAPIKey,
+			listenAddr,
+		),
+		linearRuntimeManagedInstance(
+			now,
+			"brg-linear-agent",
+			"org-agent",
+			linearModeAgentSessions,
+			linearAuthModeOAuth,
+			listenAddr,
+		),
 	}
 	mustHandleLinearLifecycle(t, hostPeer, managed...)
 
-	if err := hostPeer.Call(context.Background(), "initialize", linearInitializeRequest(now, managed...), nil); err != nil {
+	if err := hostPeer.Call(
+		context.Background(),
+		"initialize",
+		linearInitializeRequest(now, managed...),
+		nil,
+	); err != nil {
 		t.Fatalf("hostPeer.Call(initialize) error = %v", err)
 	}
 
@@ -230,10 +328,18 @@ func TestRuntimeDeliveriesRecordMarkersForSupportedModes(t *testing.T) {
 		return err == nil
 	})
 
-	commentStart := linearTestDeliveryRequest("brg-linear-comments", "delivery-comment", 1, bridgepkg.DeliveryEventTypeStart, linearThreadRef{
-		IssueID:       "issue-comments",
-		RootCommentID: "root-comment",
-	}, "hello", linearModeComments)
+	commentStart := linearTestDeliveryRequest(
+		"brg-linear-comments",
+		"delivery-comment",
+		1,
+		bridgepkg.DeliveryEventTypeStart,
+		linearThreadRef{
+			IssueID:       "issue-comments",
+			RootCommentID: "root-comment",
+		},
+		"hello",
+		linearModeComments,
+	)
 	var commentStartAck bridgepkg.DeliveryAck
 	if err := hostPeer.Call(context.Background(), "bridges/deliver", commentStart, &commentStartAck); err != nil {
 		t.Fatalf("hostPeer.Call(comment start) error = %v", err)
@@ -253,18 +359,28 @@ func TestRuntimeDeliveriesRecordMarkersForSupportedModes(t *testing.T) {
 	commentDelete.Event.Seq = 3
 	commentDelete.Event.EventType = bridgepkg.DeliveryEventTypeDelete
 	commentDelete.Event.Operation = bridgepkg.DeliveryOperationDelete
-	commentDelete.Event.Reference = &bridgepkg.DeliveryMessageReference{RemoteMessageID: commentFinalAck.RemoteMessageID}
+	commentDelete.Event.Reference = &bridgepkg.DeliveryMessageReference{
+		RemoteMessageID: commentFinalAck.RemoteMessageID,
+	}
 	commentDelete.Event.Content.Text = ""
 	var commentDeleteAck bridgepkg.DeliveryAck
 	if err := hostPeer.Call(context.Background(), "bridges/deliver", commentDelete, &commentDeleteAck); err != nil {
 		t.Fatalf("hostPeer.Call(comment delete) error = %v", err)
 	}
 
-	agentStart := linearTestDeliveryRequest("brg-linear-agent", "delivery-agent", 1, bridgepkg.DeliveryEventTypeStart, linearThreadRef{
-		IssueID:        "issue-agent",
-		RootCommentID:  "comment-root",
-		AgentSessionID: "session-123",
-	}, "hello", linearModeAgentSessions)
+	agentStart := linearTestDeliveryRequest(
+		"brg-linear-agent",
+		"delivery-agent",
+		1,
+		bridgepkg.DeliveryEventTypeStart,
+		linearThreadRef{
+			IssueID:        "issue-agent",
+			RootCommentID:  "comment-root",
+			AgentSessionID: "session-123",
+		},
+		"hello",
+		linearModeAgentSessions,
+	)
 	var agentStartAck bridgepkg.DeliveryAck
 	if err := hostPeer.Call(context.Background(), "bridges/deliver", agentStart, &agentStartAck); err != nil {
 		t.Fatalf("hostPeer.Call(agent start) error = %v", err)
@@ -280,7 +396,11 @@ func TestRuntimeDeliveriesRecordMarkersForSupportedModes(t *testing.T) {
 		t.Fatalf("hostPeer.Call(agent final) error = %v", err)
 	}
 
-	records := waitForLinearJSONLinesFile[deliveryMarker](t, env.deliveryPath, func(items []deliveryMarker) bool { return len(items) >= 5 })
+	records := waitForLinearJSONLinesFile[deliveryMarker](
+		t,
+		env.deliveryPath,
+		func(items []deliveryMarker) bool { return len(items) >= 5 },
+	)
 	if got, want := len(records), 5; got != want {
 		t.Fatalf("len(records) = %d, want %d", got, want)
 	}
@@ -346,7 +466,13 @@ func TestRetryWaitHealthAndHelperUtilities(t *testing.T) {
 	}
 	stopped.stop()
 	stopErr := subprocess.NewRPCError(rpcCodeNotInitialized, "Not initialized", nil)
-	if err := stopped.retryHostCall(context.Background(), func(context.Context) error { return stopErr }); !errors.Is(err, stopErr) {
+	if err := stopped.retryHostCall(
+		context.Background(),
+		func(context.Context) error { return stopErr },
+	); !errors.Is(
+		err,
+		stopErr,
+	) {
 		t.Fatalf("retryHostCall(stopped) error = %v, want %v", err, stopErr)
 	}
 
@@ -357,7 +483,12 @@ func TestRetryWaitHealthAndHelperUtilities(t *testing.T) {
 	go func() {
 		time.Sleep(20 * time.Millisecond)
 		waitProvider.mu.Lock()
-		waitProvider.routes["brg-1"] = resolvedInstanceConfig{instanceID: "brg-1", webhookPath: "/linear", organizationID: "org-1", mode: linearModeComments}
+		waitProvider.routes["brg-1"] = resolvedInstanceConfig{
+			instanceID:     "brg-1",
+			webhookPath:    "/linear",
+			organizationID: "org-1",
+			mode:           linearModeComments,
+		}
 		waitProvider.mu.Unlock()
 	}()
 	cfg, err := waitProvider.waitForInstanceConfig("brg-1", 200*time.Millisecond)
@@ -388,7 +519,11 @@ func TestRetryWaitHealthAndHelperUtilities(t *testing.T) {
 		t.Fatalf("healthCheck(clear) error = %v", err)
 	}
 
-	commentCfg := resolvedInstanceConfig{organizationID: "org-1", mode: linearModeComments, apiBaseURL: "https://linear.example"}
+	commentCfg := resolvedInstanceConfig{
+		organizationID: "org-1",
+		mode:           linearModeComments,
+		apiBaseURL:     "https://linear.example",
+	}
 	if got, want := commentCfg.ownershipKey(), "org-1|comments"; got != want {
 		t.Fatalf("ownershipKey() = %q, want %q", got, want)
 	}
@@ -400,7 +535,11 @@ func TestRetryWaitHealthAndHelperUtilities(t *testing.T) {
 	if err != nil || !ok || selected.organizationID != "org-1" {
 		t.Fatalf("selectLinearConfig() = (%#v, %v, %v), want selected org-1", selected, ok, err)
 	}
-	if _, _, err := selectLinearConfig([]resolvedInstanceConfig{commentCfg, commentCfg}, "org-1", linearModeComments); err == nil {
+	if _, _, err := selectLinearConfig(
+		[]resolvedInstanceConfig{commentCfg, commentCfg},
+		"org-1",
+		linearModeComments,
+	); err == nil {
 		t.Fatal("selectLinearConfig(duplicate) error = nil, want non-nil")
 	}
 
@@ -416,10 +555,32 @@ func TestRetryWaitHealthAndHelperUtilities(t *testing.T) {
 		t.Fatal("linearCommentIsSelf(other user) = true, want false")
 	}
 
-	if got, want := string(mustJSONMarshal(t, managedInstancesToInstances([]subprocess.InitializeBridgeManagedInstance{linearRuntimeManagedInstance(time.Now().UTC(), "brg-1", "org-1", linearModeComments, linearAuthModeAPIKey, "127.0.0.1:1")}))), `[{"id":"brg-1","scope":"workspace","workspace_id":"ws-linear"`; !strings.Contains(got, want) {
+	if got, want := string(
+		mustJSONMarshal(
+			t,
+			managedInstancesToInstances(
+				[]subprocess.InitializeBridgeManagedInstance{
+					linearRuntimeManagedInstance(
+						time.Now().UTC(),
+						"brg-1",
+						"org-1",
+						linearModeComments,
+						linearAuthModeAPIKey,
+						"127.0.0.1:1",
+					),
+				},
+			),
+		),
+	), `[{"id":"brg-1","scope":"workspace","workspace_id":"ws-linear"`; !strings.Contains(
+		got,
+		want,
+	) {
 		t.Fatalf("managedInstancesToInstances() payload = %q, want substring %q", got, want)
 	}
-	if clone := cloneDegradation(&bridgepkg.BridgeDegradation{Reason: bridgepkg.BridgeDegradationReasonAuthFailed, Message: "boom"}); clone == nil || clone.Message != "boom" {
+	if clone := cloneDegradation(
+		&bridgepkg.BridgeDegradation{Reason: bridgepkg.BridgeDegradationReasonAuthFailed, Message: "boom"},
+	); clone == nil ||
+		clone.Message != "boom" {
 		t.Fatalf("cloneDegradation() = %#v, want copied degradation", clone)
 	}
 	if got, want := deliveryStateKey("brg-1", "delivery-1"), "brg-1|delivery-1"; got != want {
@@ -431,11 +592,12 @@ func TestRetryWaitHealthAndHelperUtilities(t *testing.T) {
 	if got, want := actorName(&linearActor{Name: "Alice"}), "Alice"; got != want {
 		t.Fatalf("actorName() = %q, want %q", got, want)
 	}
-	if got, want := actorURL(&linearActor{URL: "https://linear.app/u/alice"}), "https://linear.app/u/alice"; got != want {
+	if got, want := actorURL(
+		&linearActor{URL: "https://linear.app/u/alice"},
+	), "https://linear.app/u/alice"; got != want {
 		t.Fatalf("actorURL() = %q, want %q", got, want)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "http://example.test/linear", nil)
 	rec := httptest.NewRecorder()
 	if err := writeWebhookText(rec, http.StatusAccepted, "queued"); err != nil {
 		t.Fatalf("writeWebhookText() error = %v", err)
@@ -449,7 +611,6 @@ func TestRetryWaitHealthAndHelperUtilities(t *testing.T) {
 	if err := classifyLinearTransportError(context.Canceled); !errors.Is(err, context.Canceled) {
 		t.Fatalf("classifyLinearTransportError(context.Canceled) = %v, want context.Canceled", err)
 	}
-	_ = req
 }
 
 func TestHandleShutdownAndHandleBridgesDeliverErrorPaths(t *testing.T) {
@@ -476,12 +637,20 @@ func TestHandleShutdownAndHandleBridgesDeliverErrorPaths(t *testing.T) {
 	if err == nil {
 		t.Fatal("handleBridgesDeliver(missing config) error = nil, want non-nil")
 	}
-	records := waitForLinearJSONLinesFile[deliveryMarker](t, env.deliveryPath, func(items []deliveryMarker) bool { return len(items) == 1 })
+	records := waitForLinearJSONLinesFile[deliveryMarker](
+		t,
+		env.deliveryPath,
+		func(items []deliveryMarker) bool { return len(items) == 1 },
+	)
 	if strings.TrimSpace(records[0].Error) == "" {
 		t.Fatalf("delivery marker = %#v, want recorded error", records[0])
 	}
 
-	if err := provider.handleShutdown(context.Background(), nil, subprocess.ShutdownRequest{DeadlineMS: 100}); err != nil {
+	if err := provider.handleShutdown(
+		context.Background(),
+		nil,
+		subprocess.ShutdownRequest{DeadlineMS: 100},
+	); err != nil {
 		t.Fatalf("handleShutdown() error = %v", err)
 	}
 	lines := waitForLinearNonEmptyLines(t, env.shutdownPath)
@@ -569,6 +738,14 @@ func TestHandleWebhookRequestBranchesAndThreadDecoding(t *testing.T) {
 		t.Fatalf("newLinearProvider() error = %v", err)
 	}
 
+	commentManaged := linearRuntimeManagedInstance(
+		time.Now().UTC(),
+		"brg-comments",
+		"org-comments",
+		linearModeComments,
+		linearAuthModeAPIKey,
+		"127.0.0.1:0",
+	)
 	commentCfg := resolvedInstanceConfig{
 		instanceID:      "brg-comments",
 		organizationID:  "org-comments",
@@ -578,8 +755,16 @@ func TestHandleWebhookRequestBranchesAndThreadDecoding(t *testing.T) {
 		botUserID:       "bot-comments",
 		dedup:           bridgesdk.NewDedupCache(5*time.Minute, 4000),
 		oauthTokenCache: &linearOAuthTokenCache{},
-		managed:         linearRuntimeManagedInstance(time.Now().UTC(), "brg-comments", "org-comments", linearModeComments, linearAuthModeAPIKey, "127.0.0.1:0"),
+		managed:         &commentManaged,
 	}
+	agentManaged := linearRuntimeManagedInstance(
+		time.Now().UTC(),
+		"brg-agent",
+		"org-agent",
+		linearModeAgentSessions,
+		linearAuthModeOAuth,
+		"127.0.0.1:0",
+	)
 	agentCfg := resolvedInstanceConfig{
 		instanceID:      "brg-agent",
 		organizationID:  "org-agent",
@@ -589,7 +774,7 @@ func TestHandleWebhookRequestBranchesAndThreadDecoding(t *testing.T) {
 		botUserID:       "bot-agent",
 		dedup:           bridgesdk.NewDedupCache(5*time.Minute, 4000),
 		oauthTokenCache: &linearOAuthTokenCache{},
-		managed:         linearRuntimeManagedInstance(time.Now().UTC(), "brg-agent", "org-agent", linearModeAgentSessions, linearAuthModeOAuth, "127.0.0.1:0"),
+		managed:         &agentManaged,
 	}
 
 	rec := httptest.NewRecorder()
@@ -609,7 +794,12 @@ func TestHandleWebhookRequestBranchesAndThreadDecoding(t *testing.T) {
 		"organizationId":   "org-comments",
 		"webhookTimestamp": now.UnixMilli(),
 	})
-	if err := provider.handleWebhookRequest(rec, nil, []resolvedInstanceConfig{commentCfg}, bridgesdk.WebhookRequest{Body: unknownBody, ReceivedAt: now}); err != nil {
+	if err := provider.handleWebhookRequest(
+		rec,
+		nil,
+		[]resolvedInstanceConfig{commentCfg},
+		bridgesdk.WebhookRequest{Body: unknownBody, ReceivedAt: now},
+	); err != nil {
 		t.Fatalf("handleWebhookRequest(unknown type) error = %v", err)
 	}
 	if got, want := strings.TrimSpace(rec.Body.String()), "ok"; got != want {
@@ -617,8 +807,16 @@ func TestHandleWebhookRequestBranchesAndThreadDecoding(t *testing.T) {
 	}
 
 	rec = httptest.NewRecorder()
-	ignoredBody := mustJSONMarshal(t, linearCommentWebhookBodyForTest(now, "other-org", "user-1", "reply-2", "root-comment", "ignored"))
-	if err := provider.handleWebhookRequest(rec, nil, []resolvedInstanceConfig{commentCfg}, bridgesdk.WebhookRequest{Body: ignoredBody, ReceivedAt: now}); err != nil {
+	ignoredBody := mustJSONMarshal(
+		t,
+		linearCommentWebhookBodyForTest(now, "other-org", "user-1", "reply-2", "root-comment", "ignored"),
+	)
+	if err := provider.handleWebhookRequest(
+		rec,
+		nil,
+		[]resolvedInstanceConfig{commentCfg},
+		bridgesdk.WebhookRequest{Body: ignoredBody, ReceivedAt: now},
+	); err != nil {
 		t.Fatalf("handleWebhookRequest(ignored org) error = %v", err)
 	}
 	if got, want := strings.TrimSpace(rec.Body.String()), "ignored"; got != want {
@@ -626,10 +824,22 @@ func TestHandleWebhookRequestBranchesAndThreadDecoding(t *testing.T) {
 	}
 
 	rec = httptest.NewRecorder()
-	commentUpdate := linearCommentWebhookBodyForTest(now, "org-comments", "user-1", "reply-3", "root-comment", "updated")
+	commentUpdate := linearCommentWebhookBodyForTest(
+		now,
+		"org-comments",
+		"user-1",
+		"reply-3",
+		"root-comment",
+		"updated",
+	)
 	commentUpdate["action"] = "update"
 	updateBody := mustJSONMarshal(t, commentUpdate)
-	if err := provider.handleWebhookRequest(rec, nil, []resolvedInstanceConfig{commentCfg}, bridgesdk.WebhookRequest{Body: updateBody, ReceivedAt: now}); err != nil {
+	if err := provider.handleWebhookRequest(
+		rec,
+		nil,
+		[]resolvedInstanceConfig{commentCfg},
+		bridgesdk.WebhookRequest{Body: updateBody, ReceivedAt: now},
+	); err != nil {
 		t.Fatalf("handleWebhookRequest(comment update) error = %v", err)
 	}
 	if got, want := strings.TrimSpace(rec.Body.String()), "ok"; got != want {
@@ -648,15 +858,26 @@ func TestHandleWebhookRequestBranchesAndThreadDecoding(t *testing.T) {
 			"commentId": "comment-1",
 		},
 	})
-	err = provider.handleWebhookRequest(rec, nil, []resolvedInstanceConfig{agentCfg}, bridgesdk.WebhookRequest{Body: agentInvalid, ReceivedAt: now})
+	err = provider.handleWebhookRequest(
+		rec,
+		nil,
+		[]resolvedInstanceConfig{agentCfg},
+		bridgesdk.WebhookRequest{Body: agentInvalid, ReceivedAt: now},
+	)
 	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusBadRequest {
 		t.Fatalf("handleWebhookRequest(invalid agent payload) error = %#v, want 400 http error", err)
 	}
 
-	if got, err := decodeLinearThreadID("linear:issue-1:s:session-1"); err != nil || got.IssueID != "issue-1" || got.AgentSessionID != "session-1" {
+	if got, err := decodeLinearThreadID(
+		"linear:issue-1:s:session-1",
+	); err != nil || got.IssueID != "issue-1" ||
+		got.AgentSessionID != "session-1" {
 		t.Fatalf("decodeLinearThreadID(issue-session) = (%#v, %v), want issue-1/session-1", got, err)
 	}
-	if got, err := decodeLinearThreadID("linear:issue-1"); err != nil || got.IssueID != "issue-1" || got.RootCommentID != "" || got.AgentSessionID != "" {
+	if got, err := decodeLinearThreadID(
+		"linear:issue-1",
+	); err != nil || got.IssueID != "issue-1" || got.RootCommentID != "" ||
+		got.AgentSessionID != "" {
 		t.Fatalf("decodeLinearThreadID(issue) = (%#v, %v), want issue only", got, err)
 	}
 	if _, err := decodeLinearThreadID("nope"); err == nil {
@@ -721,12 +942,26 @@ func TestExecuteLinearDeliveryEdgeCasesAndClassifiers(t *testing.T) {
 		},
 	}
 
-	commentReq := linearTestDeliveryRequest("brg-linear-comments", "delivery-comment-edge", 1, bridgepkg.DeliveryEventTypeResume, linearThreadRef{
-		IssueID:       "issue-comments",
-		RootCommentID: "root-comment",
-	}, "", linearModeComments)
+	commentReq := linearTestDeliveryRequest(
+		"brg-linear-comments",
+		"delivery-comment-edge",
+		1,
+		bridgepkg.DeliveryEventTypeResume,
+		linearThreadRef{
+			IssueID:       "issue-comments",
+			RootCommentID: "root-comment",
+		},
+		"",
+		linearModeComments,
+	)
 	commentReq.Event.Reference = &bridgepkg.DeliveryMessageReference{RemoteMessageID: "remote-comment"}
-	ack, state, err := executeLinearDelivery(context.Background(), api, resolvedInstanceConfig{mode: linearModeComments}, commentReq, deliveryState{})
+	ack, state, err := executeLinearDelivery(
+		context.Background(),
+		api,
+		resolvedInstanceConfig{mode: linearModeComments},
+		commentReq,
+		deliveryState{},
+	)
 	if err != nil {
 		t.Fatalf("executeLinearDelivery(comment resume) error = %v", err)
 	}
@@ -741,24 +976,56 @@ func TestExecuteLinearDeliveryEdgeCasesAndClassifiers(t *testing.T) {
 	deleteReq.Event.EventType = bridgepkg.DeliveryEventTypeDelete
 	deleteReq.Event.Operation = bridgepkg.DeliveryOperationDelete
 	deleteReq.Event.Reference = nil
-	if _, _, err := executeLinearDelivery(context.Background(), api, resolvedInstanceConfig{mode: linearModeComments}, deleteReq, deliveryState{}); err == nil {
+	if _, _, err := executeLinearDelivery(
+		context.Background(),
+		api,
+		resolvedInstanceConfig{mode: linearModeComments},
+		deleteReq,
+		deliveryState{},
+	); err == nil {
 		t.Fatal("executeLinearDelivery(comment delete missing remote id) error = nil, want non-nil")
 	}
 
-	if _, _, err := executeLinearDelivery(context.Background(), api, resolvedInstanceConfig{mode: "unsupported"}, commentReq, deliveryState{}); err == nil {
+	if _, _, err := executeLinearDelivery(
+		context.Background(),
+		api,
+		resolvedInstanceConfig{mode: "unsupported"},
+		commentReq,
+		deliveryState{},
+	); err == nil {
 		t.Fatal("executeLinearDelivery(unsupported mode) error = nil, want non-nil")
 	}
-	if _, _, err := executeLinearDelivery(context.Background(), api, resolvedInstanceConfig{mode: linearModeComments}, commentReq, deliveryState{LastSeq: 2}); err == nil {
+	if _, _, err := executeLinearDelivery(
+		context.Background(),
+		api,
+		resolvedInstanceConfig{mode: linearModeComments},
+		commentReq,
+		deliveryState{LastSeq: 2},
+	); err == nil {
 		t.Fatal("executeLinearDelivery(out of order) error = nil, want non-nil")
 	}
 
-	agentReq := linearTestDeliveryRequest("brg-linear-agent", "delivery-agent-edge", 1, bridgepkg.DeliveryEventTypeResume, linearThreadRef{
-		IssueID:        "issue-agent",
-		RootCommentID:  "comment-root",
-		AgentSessionID: "session-123",
-	}, "hello", linearModeAgentSessions)
+	agentReq := linearTestDeliveryRequest(
+		"brg-linear-agent",
+		"delivery-agent-edge",
+		1,
+		bridgepkg.DeliveryEventTypeResume,
+		linearThreadRef{
+			IssueID:        "issue-agent",
+			RootCommentID:  "comment-root",
+			AgentSessionID: "session-123",
+		},
+		"hello",
+		linearModeAgentSessions,
+	)
 	agentReq.Event.Reference = &bridgepkg.DeliveryMessageReference{RemoteMessageID: "remote-agent"}
-	ack, state, err = executeLinearDelivery(context.Background(), api, resolvedInstanceConfig{mode: linearModeAgentSessions}, agentReq, deliveryState{})
+	ack, state, err = executeLinearDelivery(
+		context.Background(),
+		api,
+		resolvedInstanceConfig{mode: linearModeAgentSessions},
+		agentReq,
+		deliveryState{},
+	)
 	if err != nil {
 		t.Fatalf("executeLinearDelivery(agent resume) error = %v", err)
 	}
@@ -771,7 +1038,13 @@ func TestExecuteLinearDeliveryEdgeCasesAndClassifiers(t *testing.T) {
 
 	agentEdit := agentReq
 	agentEdit.Event.Operation = bridgepkg.DeliveryOperationEdit
-	if _, _, err := executeLinearDelivery(context.Background(), api, resolvedInstanceConfig{mode: linearModeAgentSessions}, agentEdit, deliveryState{}); err == nil {
+	if _, _, err := executeLinearDelivery(
+		context.Background(),
+		api,
+		resolvedInstanceConfig{mode: linearModeAgentSessions},
+		agentEdit,
+		deliveryState{},
+	); err == nil {
 		t.Fatal("executeLinearDelivery(agent edit) error = nil, want non-nil")
 	}
 
@@ -790,7 +1063,8 @@ func TestExecuteLinearDeliveryEdgeCasesAndClassifiers(t *testing.T) {
 	if _, ok := classifyLinearHTTPError(http.StatusBadRequest, []byte("bad request")).(*bridgesdk.PermanentError); !ok {
 		t.Fatalf("classifyLinearHTTPError(400) did not return permanent error")
 	}
-	if httpErr, ok := classifyLinearHTTPError(http.StatusRequestTimeout, nil).(*bridgesdk.HTTPError); !ok || httpErr.StatusCode != http.StatusRequestTimeout {
+	if httpErr, ok := classifyLinearHTTPError(http.StatusRequestTimeout, nil).(*bridgesdk.HTTPError); !ok ||
+		httpErr.StatusCode != http.StatusRequestTimeout {
 		t.Fatalf("classifyLinearHTTPError(408) = %#v, want request-timeout http error", httpErr)
 	}
 	if _, ok := classifyLinearTransportError(context.DeadlineExceeded).(*bridgesdk.HTTPError); !ok {
@@ -895,7 +1169,12 @@ func TestNewLinearProviderDefaultsAndNotFoundWebhook(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "http://example.test/not-linear", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://example.test/not-linear",
+		http.NoBody,
+	)
 	provider.serveWebhookHTTP(rec, req)
 	if got, want := rec.Code, http.StatusNotFound; got != want {
 		t.Fatalf("serveWebhookHTTP(not found) status = %d, want %d", got, want)
@@ -934,7 +1213,7 @@ func newLinearRuntimePeerPair(t *testing.T) (*linearProvider, *bridgesdk.Peer, f
 			}
 			_ = hostConn.Close()
 			_ = runtimeConn.Close()
-			for i := 0; i < 2; i++ {
+			for range 2 {
 				err := <-errCh
 				if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, net.ErrClosed) {
 					continue
@@ -958,43 +1237,62 @@ func mustHandleLinear(t *testing.T, peer *bridgesdk.Peer, method string, handler
 	}
 }
 
-func mustHandleLinearLifecycle(t *testing.T, peer *bridgesdk.Peer, managed ...subprocess.InitializeBridgeManagedInstance) {
+func mustHandleLinearLifecycle(
+	t *testing.T,
+	peer *bridgesdk.Peer,
+	managed ...subprocess.InitializeBridgeManagedInstance,
+) {
 	t.Helper()
 
-	mustHandleLinear(t, peer, string(extensionprotocol.HostAPIMethodBridgesInstancesList), func(context.Context, json.RawMessage) (any, error) {
-		instances := make([]bridgepkg.BridgeInstance, 0, len(managed))
-		for _, item := range managed {
-			instances = append(instances, item.Instance)
-		}
-		return instances, nil
-	})
-	mustHandleLinear(t, peer, string(extensionprotocol.HostAPIMethodBridgesInstancesGet), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgeInstanceTargetParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		for _, item := range managed {
-			if item.Instance.ID == payload.BridgeInstanceID {
-				return item.Instance, nil
+	mustHandleLinear(
+		t,
+		peer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesList),
+		func(context.Context, json.RawMessage) (any, error) {
+			instances := make([]bridgepkg.BridgeInstance, 0, len(managed))
+			for _, item := range managed {
+				instances = append(instances, item.Instance)
 			}
-		}
-		return nil, errors.New("unexpected instance")
-	})
-	mustHandleLinear(t, peer, string(extensionprotocol.HostAPIMethodBridgesInstancesReportState), func(_ context.Context, params json.RawMessage) (any, error) {
-		var payload extensioncontract.BridgesInstancesReportStateParams
-		if err := json.Unmarshal(params, &payload); err != nil {
-			return nil, err
-		}
-		for _, item := range managed {
-			if item.Instance.ID == payload.BridgeInstanceID {
-				instance := item.Instance
-				instance.Status = payload.Status
-				instance.Degradation = payload.Degradation
-				return instance, nil
+			return instances, nil
+		},
+	)
+	mustHandleLinear(
+		t,
+		peer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesGet),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgeInstanceTargetParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
 			}
-		}
-		return nil, errors.New("unexpected state instance")
-	})
+			for _, item := range managed {
+				if item.Instance.ID == payload.BridgeInstanceID {
+					return item.Instance, nil
+				}
+			}
+			return nil, errors.New("unexpected instance")
+		},
+	)
+	mustHandleLinear(
+		t,
+		peer,
+		string(extensionprotocol.HostAPIMethodBridgesInstancesReportState),
+		func(_ context.Context, params json.RawMessage) (any, error) {
+			var payload extensioncontract.BridgesInstancesReportStateParams
+			if err := json.Unmarshal(params, &payload); err != nil {
+				return nil, err
+			}
+			for _, item := range managed {
+				if item.Instance.ID == payload.BridgeInstanceID {
+					instance := item.Instance
+					instance.Status = payload.Status
+					instance.Degradation = payload.Degradation
+					return instance, nil
+				}
+			}
+			return nil, errors.New("unexpected state instance")
+		},
+	)
 }
 
 func linearRuntimeManagedInstance(
@@ -1020,11 +1318,19 @@ func linearRuntimeManagedInstance(
 	}
 	switch authMode {
 	case linearAuthModeAPIKey:
-		secrets = append(secrets, subprocess.InitializeBridgeBoundSecret{BindingName: "api_key", Kind: "token", Value: "linear-api-key"})
+		secrets = append(
+			secrets,
+			subprocess.InitializeBridgeBoundSecret{BindingName: "api_key", Kind: "token", Value: "linear-api-key"},
+		)
 	case linearAuthModeOAuth:
-		secrets = append(secrets,
+		secrets = append(
+			secrets,
 			subprocess.InitializeBridgeBoundSecret{BindingName: "client_id", Kind: "token", Value: "linear-client-id"},
-			subprocess.InitializeBridgeBoundSecret{BindingName: "client_secret", Kind: "token", Value: "linear-client-secret"},
+			subprocess.InitializeBridgeBoundSecret{
+				BindingName: "client_secret",
+				Kind:        "token",
+				Value:       "linear-client-secret",
+			},
 		)
 	}
 
@@ -1048,7 +1354,10 @@ func linearRuntimeManagedInstance(
 	}
 }
 
-func linearInitializeRequest(now time.Time, managed ...subprocess.InitializeBridgeManagedInstance) subprocess.InitializeRequest {
+func linearInitializeRequest(
+	_ time.Time,
+	managed ...subprocess.InitializeBridgeManagedInstance,
+) subprocess.InitializeRequest {
 	return subprocess.InitializeRequest{
 		ProtocolVersion:          "1",
 		SupportedProtocolVersion: []string{"1"},
@@ -1116,9 +1425,10 @@ func setLinearProviderTestEnv(t *testing.T) markerEnv {
 func reserveLinearListenAddr(t *testing.T) string {
 	t.Helper()
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	var listenConfig net.ListenConfig
+	ln, err := listenConfig.Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("net.Listen() error = %v", err)
+		t.Fatalf("ListenConfig.Listen() error = %v", err)
 	}
 	addr := ln.Addr().String()
 	if err := ln.Close(); err != nil {
@@ -1133,7 +1443,14 @@ func linearRuntimeServerAddr(runtime *linearProvider) string {
 	return runtime.serverAddr
 }
 
-func linearCommentWebhookBodyForTest(now time.Time, organizationID string, userID string, commentID string, parentID string, body string) map[string]any {
+func linearCommentWebhookBodyForTest(
+	now time.Time,
+	organizationID string,
+	userID string,
+	commentID string,
+	parentID string,
+	body string,
+) map[string]any {
 	return map[string]any{
 		"type":             "Comment",
 		"action":           "create",
@@ -1208,9 +1525,14 @@ func postLinearTestWebhook(t *testing.T, webhookURL string, payload map[string]a
 	if err != nil {
 		t.Fatalf("json.Marshal(payload) error = %v", err)
 	}
-	req, err := http.NewRequest(http.MethodPost, webhookURL, strings.NewReader(string(body)))
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		webhookURL,
+		strings.NewReader(string(body)),
+	)
 	if err != nil {
-		t.Fatalf("http.NewRequest() error = %v", err)
+		t.Fatalf("http.NewRequestWithContext() error = %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("linear-signature", linearSignature(secret, body))

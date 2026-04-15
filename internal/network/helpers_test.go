@@ -11,7 +11,6 @@ func TestEnumValidationAndBodyKindHelpers(t *testing.T) {
 
 	validKinds := []Kind{KindGreet, KindWhois, KindSay, KindDirect, KindRecipe, KindReceipt, KindTrace}
 	for _, kind := range validKinds {
-		kind := kind
 		t.Run("ShouldValidateKnownKind"+string(kind), func(t *testing.T) {
 			t.Parallel()
 
@@ -33,7 +32,6 @@ func TestEnumValidationAndBodyKindHelpers(t *testing.T) {
 		ReceiptStatusCanceled,
 	}
 	for _, status := range validReceiptStatuses {
-		status := status
 		t.Run("ShouldValidateKnownReceiptStatus"+string(status), func(t *testing.T) {
 			t.Parallel()
 
@@ -127,7 +125,13 @@ func TestValidateEnvelopeAndDecodeBodyErrors(t *testing.T) {
 		t.Fatalf("DecodeBody(invalid kind) error = %v, want ErrInvalidKind", err)
 	}
 
-	if _, err := DecodeBody(KindSay, mustRawJSON(t, []string{"not", "an", "object"})); !errors.Is(err, ErrInvalidField) {
+	if _, err := DecodeBody(
+		KindSay,
+		mustRawJSON(t, []string{"not", "an", "object"}),
+	); !errors.Is(
+		err,
+		ErrInvalidField,
+	) {
 		t.Fatalf("DecodeBody(non-object) error = %v, want ErrInvalidField", err)
 	}
 }
@@ -224,7 +228,6 @@ func TestInteractionValidationAndTraceMatrix(t *testing.T) {
 	}
 
 	for _, tc := range matrix {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -273,7 +276,13 @@ func TestAdditionalEnvelopeAndLifecycleBranches(t *testing.T) {
 			"status": "accepted",
 		}),
 	}
-	if _, err := NormalizeEnvelope(receiptMissingInteraction, ValidateOptions{Now: now}); !errors.Is(err, ErrMissingField) {
+	if _, err := NormalizeEnvelope(
+		receiptMissingInteraction,
+		ValidateOptions{Now: now},
+	); !errors.Is(
+		err,
+		ErrMissingField,
+	) {
 		t.Fatalf("NormalizeEnvelope(receipt missing interaction_id) error = %v, want ErrMissingField", err)
 	}
 

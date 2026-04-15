@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"path"
 	"path/filepath"
 	"slices"
@@ -51,12 +52,8 @@ func mergedSkillList(globalSkills, workspaceSkills map[string]*Skill) []*Skill {
 	}
 
 	merged := make(map[string]*Skill, len(globalSkills)+len(workspaceSkills))
-	for name, skill := range globalSkills {
-		merged[name] = skill
-	}
-	for name, skill := range workspaceSkills {
-		merged[name] = skill
-	}
+	maps.Copy(merged, globalSkills)
+	maps.Copy(merged, workspaceSkills)
 
 	names := make([]string, 0, len(merged))
 	for name := range merged {
@@ -157,9 +154,7 @@ func cloneStringMap(input map[string]string) map[string]string {
 	}
 
 	clone := make(map[string]string, len(input))
-	for key, value := range input {
-		clone[key] = value
-	}
+	maps.Copy(clone, input)
 
 	return clone
 }

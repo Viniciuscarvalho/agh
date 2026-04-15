@@ -4,16 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	bridgepkg "github.com/pedronauck/agh/internal/bridges"
-	"github.com/pedronauck/agh/internal/store"
-	"github.com/pedronauck/agh/internal/store/globaldb"
 	"github.com/pedronauck/agh/internal/testutil"
-	aghworkspace "github.com/pedronauck/agh/internal/workspace"
 )
 
 type stubRegistryStore struct {
@@ -69,18 +66,160 @@ func (s stubRegistryStore) PutBridgeRoute(ctx context.Context, route bridgepkg.B
 	return nil
 }
 
-func (s stubRegistryStore) ResolveBridgeRoute(ctx context.Context, key bridgepkg.RoutingKey) (bridgepkg.BridgeRoute, error) {
+func (s stubRegistryStore) ResolveBridgeRoute(
+	ctx context.Context,
+	key bridgepkg.RoutingKey,
+) (bridgepkg.BridgeRoute, error) {
 	if s.resolveBridgeRouteFn != nil {
 		return s.resolveBridgeRouteFn(ctx, key)
 	}
 	return bridgepkg.BridgeRoute{}, bridgepkg.ErrBridgeRouteNotFound
 }
 
-func (s stubRegistryStore) ListBridgeRoutes(ctx context.Context, bridgeInstanceID string) ([]bridgepkg.BridgeRoute, error) {
+func (s stubRegistryStore) ListBridgeRoutes(
+	ctx context.Context,
+	bridgeInstanceID string,
+) ([]bridgepkg.BridgeRoute, error) {
 	if s.listBridgeRoutesFn != nil {
 		return s.listBridgeRoutesFn(ctx, bridgeInstanceID)
 	}
 	return nil, nil
+}
+
+type memoryRegistryStore struct {
+	mu         sync.RWMutex
+	instances  map[string]bridgepkg.BridgeInstance
+	routes     map[string]bridgepkg.BridgeRoute
+	workspaces map[string]struct{}
+}
+
+func newMemoryRegistryStore() *memoryRegistryStore {
+	return &memoryRegistryStore{
+		instances:  make(map[string]bridgepkg.BridgeInstance),
+		routes:     make(map[string]bridgepkg.BridgeRoute),
+		workspaces: make(map[string]struct{}),
+	}
+}
+
+func (s *memoryRegistryStore) InsertBridgeInstance(_ context.Context, instance bridgepkg.BridgeInstance) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := s.ensureWorkspaceLocked(instance.Scope, instance.WorkspaceID); err != nil {
+		return err
+	}
+	s.instances[instance.ID] = cloneBridgeInstanceForTest(instance)
+	return nil
+}
+
+func (s *memoryRegistryStore) UpdateBridgeInstance(_ context.Context, instance bridgepkg.BridgeInstance) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := s.ensureWorkspaceLocked(instance.Scope, instance.WorkspaceID); err != nil {
+		return err
+	}
+	if _, ok := s.instances[instance.ID]; !ok {
+		return bridgepkg.ErrBridgeInstanceNotFound
+	}
+	s.instances[instance.ID] = cloneBridgeInstanceForTest(instance)
+	return nil
+}
+
+func (s *memoryRegistryStore) GetBridgeInstance(_ context.Context, id string) (bridgepkg.BridgeInstance, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	instance, ok := s.instances[id]
+	if !ok {
+		return bridgepkg.BridgeInstance{}, bridgepkg.ErrBridgeInstanceNotFound
+	}
+	return cloneBridgeInstanceForTest(instance), nil
+}
+
+func (s *memoryRegistryStore) ListBridgeInstances(_ context.Context) ([]bridgepkg.BridgeInstance, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	instances := make([]bridgepkg.BridgeInstance, 0, len(s.instances))
+	for _, instance := range s.instances {
+		instances = append(instances, cloneBridgeInstanceForTest(instance))
+	}
+	return instances, nil
+}
+
+func (s *memoryRegistryStore) PutBridgeRoute(_ context.Context, route bridgepkg.BridgeRoute) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.routes[route.RoutingKeyHash] = cloneBridgeRouteForTest(route)
+	return nil
+}
+
+func (s *memoryRegistryStore) ResolveBridgeRoute(
+	_ context.Context,
+	key bridgepkg.RoutingKey,
+) (bridgepkg.BridgeRoute, error) {
+	hash, err := key.Hash()
+	if err != nil {
+		return bridgepkg.BridgeRoute{}, err
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	route, ok := s.routes[hash]
+	if !ok {
+		return bridgepkg.BridgeRoute{}, bridgepkg.ErrBridgeRouteNotFound
+	}
+	return cloneBridgeRouteForTest(route), nil
+}
+
+func (s *memoryRegistryStore) ListBridgeRoutes(
+	_ context.Context,
+	bridgeInstanceID string,
+) ([]bridgepkg.BridgeRoute, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	routes := make([]bridgepkg.BridgeRoute, 0, len(s.routes))
+	for _, route := range s.routes {
+		if route.BridgeInstanceID == bridgeInstanceID {
+			routes = append(routes, cloneBridgeRouteForTest(route))
+		}
+	}
+	return routes, nil
+}
+
+func (s *memoryRegistryStore) InsertWorkspace(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.workspaces[id] = struct{}{}
+}
+
+func (s *memoryRegistryStore) ensureWorkspaceLocked(scope bridgepkg.Scope, workspaceID string) error {
+	if scope != bridgepkg.ScopeWorkspace {
+		return nil
+	}
+	if _, ok := s.workspaces[workspaceID]; !ok {
+		return errors.New("workspace not found")
+	}
+	return nil
+}
+
+func cloneBridgeInstanceForTest(instance bridgepkg.BridgeInstance) bridgepkg.BridgeInstance {
+	cloned := instance
+	cloned.ProviderConfig = append(json.RawMessage(nil), instance.ProviderConfig...)
+	cloned.DeliveryDefaults = append(json.RawMessage(nil), instance.DeliveryDefaults...)
+	if instance.Degradation != nil {
+		degradation := *instance.Degradation
+		cloned.Degradation = &degradation
+	}
+	return cloned
+}
+
+func cloneBridgeRouteForTest(route bridgepkg.BridgeRoute) bridgepkg.BridgeRoute {
+	return route
 }
 
 func TestBuildRoutingKeyAppliesPeerOnlyPolicy(t *testing.T) {
@@ -130,11 +269,17 @@ func TestBuildRoutingKeySeparatesThreadsWhenPolicyIncludesThread(t *testing.T) {
 		RoutingPolicy: bridgepkg.RoutingPolicy{IncludePeer: true, IncludeThread: true},
 	}
 
-	first, err := bridgepkg.BuildRoutingKey(instance, bridgepkg.RoutingDimensions{PeerID: "peer-1", ThreadID: "thread-a"})
+	first, err := bridgepkg.BuildRoutingKey(
+		instance,
+		bridgepkg.RoutingDimensions{PeerID: "peer-1", ThreadID: "thread-a"},
+	)
 	if err != nil {
 		t.Fatalf("BuildRoutingKey(first) error = %v", err)
 	}
-	second, err := bridgepkg.BuildRoutingKey(instance, bridgepkg.RoutingDimensions{PeerID: "peer-1", ThreadID: "thread-b"})
+	second, err := bridgepkg.BuildRoutingKey(
+		instance,
+		bridgepkg.RoutingDimensions{PeerID: "peer-1", ThreadID: "thread-b"},
+	)
 	if err != nil {
 		t.Fatalf("BuildRoutingKey(second) error = %v", err)
 	}
@@ -223,7 +368,6 @@ func TestBuildRoutingKeyRequiresConfiguredDimensions(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -372,7 +516,6 @@ func TestValidateInstanceStateTransitionAllowedPaths(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -889,26 +1032,20 @@ func TestRegistryGuardClauses(t *testing.T) {
 	}
 }
 
-func newRegistryTestHarness(t *testing.T) (*bridgepkg.Service, *globaldb.GlobalDB) {
+func newRegistryTestHarness(t *testing.T) (*bridgepkg.Service, *memoryRegistryStore) {
 	t.Helper()
 
-	dbPath := filepath.Join(t.TempDir(), store.GlobalDatabaseName)
-	db, err := globaldb.OpenGlobalDB(testutil.Context(t), dbPath)
-	if err != nil {
-		t.Fatalf("OpenGlobalDB() error = %v", err)
-	}
-	t.Cleanup(func() {
-		if err := db.Close(testutil.Context(t)); err != nil {
-			t.Fatalf("Close() error = %v", err)
-		}
-	})
-
+	store := newMemoryRegistryStore()
 	now := time.Date(2026, 4, 10, 16, 0, 0, 0, time.UTC)
-	registry := bridgepkg.NewRegistry(db, bridgepkg.WithNow(func() time.Time { return now }))
-	return registry, db
+	registry := bridgepkg.NewRegistry(store, bridgepkg.WithNow(func() time.Time { return now }))
+	return registry, store
 }
 
-func createTestBridgeInstance(t *testing.T, registry *bridgepkg.Service, req bridgepkg.CreateInstanceRequest) *bridgepkg.BridgeInstance {
+func createTestBridgeInstance(
+	t *testing.T,
+	registry *bridgepkg.Service,
+	req bridgepkg.CreateInstanceRequest,
+) *bridgepkg.BridgeInstance {
 	t.Helper()
 
 	instance, err := registry.CreateInstance(testutil.Context(t), req)
@@ -918,20 +1055,11 @@ func createTestBridgeInstance(t *testing.T, registry *bridgepkg.Service, req bri
 	return instance
 }
 
-func registerWorkspaceForBridgesTests(t *testing.T, db *globaldb.GlobalDB, id string, name string) string {
+func registerWorkspaceForBridgesTests(t *testing.T, store *memoryRegistryStore, id string, _ string) string {
 	t.Helper()
 
-	workspace := aghworkspace.Workspace{
-		ID:        id,
-		RootDir:   filepath.Join(t.TempDir(), name),
-		Name:      name,
-		CreatedAt: time.Date(2026, 4, 10, 12, 0, 0, 0, time.UTC),
-		UpdatedAt: time.Date(2026, 4, 10, 12, 0, 0, 0, time.UTC),
-	}
-	if err := db.InsertWorkspace(testutil.Context(t), workspace); err != nil {
-		t.Fatalf("InsertWorkspace() error = %v", err)
-	}
-	return workspace.ID
+	store.InsertWorkspace(id)
+	return id
 }
 
 func nilContextForBridgesTests() context.Context {
