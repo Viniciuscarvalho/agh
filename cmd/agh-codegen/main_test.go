@@ -78,7 +78,11 @@ func TestFormatTypeScript(t *testing.T) {
 	t.Run("ShouldMatchRepositoryFormatter", func(t *testing.T) {
 		t.Parallel()
 
-		formatted, err := formatTypeScript(context.Background(), "sdk/typescript/src/generated/contracts.ts", []byte("export type Value =\n  | \"a\"\n  | \"b\";\n"))
+		formatted, err := formatTypeScript(
+			context.Background(),
+			"sdk/typescript/src/generated/contracts.ts",
+			[]byte("export type Value =\n  | \"a\"\n  | \"b\";\n"),
+		)
 		if err != nil {
 			t.Fatalf("formatTypeScript() error = %v", err)
 		}
@@ -93,7 +97,11 @@ func TestFormatTypeScript(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		_, err := formatTypeScript(ctx, "sdk/typescript/src/generated/contracts.ts", []byte("export type Value = \"a\";\n"))
+		_, err := formatTypeScript(
+			ctx,
+			"sdk/typescript/src/generated/contracts.ts",
+			[]byte("export type Value = \"a\";\n"),
+		)
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("formatTypeScript() error = %v, want context.Canceled", err)
 		}

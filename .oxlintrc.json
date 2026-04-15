@@ -1,6 +1,10 @@
 {
     "$schema": "./node_modules/oxlint/configuration_schema.json",
     "plugins": ["unicorn", "typescript", "oxc"],
+    "jsPlugins": [
+        "./lint-plugins/react-component-complexity.mjs",
+        "./lint-plugins/react-hooks-separation.mjs"
+    ],
     "categories": {},
     "rules": {
         "no-unassigned-vars": "warn",
@@ -95,15 +99,41 @@
     },
     "overrides": [
         {
+            "files": ["web/src/**/*.tsx"],
+            "rules": {
+                "compozy-react/max-component-complexity": [
+                    "error",
+                    {
+                        "maxHooks": 5,
+                        "maxHandlers": 3,
+                        "maxTotal": 7
+                    }
+                ],
+                "compozy-react-hooks/no-mixed-hooks-and-components": "warn"
+            }
+        },
+        {
+            "files": ["web/src/**/*.{ts,tsx}"],
+            "rules": {
+                "compozy-react-hooks/hooks-in-hooks-folder": "warn"
+            }
+        },
+        {
             "files": [
                 "**/*_test.{js,ts,tsx}",
                 "**/*.test.{js,ts,tsx}",
                 "**/test/**/*.{js,ts,tsx}",
                 "**/tests/*.{js,ts,tsx}",
-                "**/__tests__/**/*.{js,ts,tsx}"
+                "**/__tests__/**/*.{js,ts,tsx}",
+                "**/*.stories.{ts,tsx}"
             ],
             "rules": {
-                "eslint/max-lines-per-function": "off"
+                "eslint/max-lines-per-function": "off",
+                "compozy-react/max-component-complexity": "off",
+                "compozy-react-hooks/no-mixed-hooks-and-components": "off",
+                "compozy-react-hooks/hooks-in-hooks-folder": "off",
+                "typescript/unbound-method": "off",
+                "typescript/await-thenable": "off"
             }
         }
     ],

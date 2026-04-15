@@ -1,15 +1,129 @@
 version: "2"
 
 run:
-  timeout: 3m
+  build-tags:
+    - ""
+  issues-exit-code: 1
+  tests: true
+  timeout: 5m
 
 linters:
+  default: none
   enable:
+    - bodyclose
+    - dogsled
     - errcheck
+    - funlen
+    - gochecknoinits
+    - goconst
+    - gocritic
+    - gocyclo
+    - gosec
     - govet
     - ineffassign
+    - lll
+    - misspell
+    - nakedret
+    - noctx
+    - nolintlint
+    - revive
     - staticcheck
+    - unconvert
+    - unparam
     - unused
+    - whitespace
+  settings:
+    depguard:
+      rules:
+        main:
+          allow:
+            - $all
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+    funlen:
+      lines: 50
+      statements: 40
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    gocritic:
+      enabled-tags:
+        - performance
+        - style
+        - experimental
+        - diagnostic
+      disabled-tags:
+        - opinionated
+    gocyclo:
+      min-complexity: 15
+    lll:
+      line-length: 120
+    misspell:
+      locale: US
+    unparam:
+      check-exported: false
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - dupl
+          - errcheck
+          - funlen
+          - gocyclo
+          - gosec
+          - lll
+          - unparam
+        path: _test\.go
+      - linters:
+          - gochecknoinits
+          - goconst
+        path: _test\.go
+      - linters:
+          - gocritic
+        text: unnecessaryDefer
+      - linters:
+          - lll
+        source: "//\t@"
+      - linters:
+          - lll
+        source: "`.*`"
+      - linters:
+          - lll
+        source: "^// @"
+      - linters:
+          - errcheck
+        path: mock_.*\.go$
+    paths:
+      - third_party$
+      - builtin$
+      - \.old_project
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+    - golines
+  settings:
+    gofmt:
+      rewrite-rules:
+        - pattern: "interface{}"
+          replacement: "any"
+    golines:
+      max-len: 120
+
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - \.old_project
+
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0

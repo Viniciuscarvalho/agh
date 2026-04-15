@@ -49,11 +49,27 @@ func Lint() error {
 	if err := ensureWebBundle(); err != nil {
 		return err
 	}
-	return sh.RunV(
+	if err := sh.RunV(
 		"go",
 		"run",
 		"github.com/golangci/golangci-lint/v2/cmd/golangci-lint@"+golangciLintVersion,
 		"run",
+		"--fix",
+		"--allow-parallel-runners",
+		"./...",
+	); err != nil {
+		return err
+	}
+	return Modernize()
+}
+
+// Modernize runs gopls' modernize analyzer to apply min/max/slices idiom suggestions.
+func Modernize() error {
+	return sh.RunV(
+		"go",
+		"run",
+		"golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest",
+		"-fix",
 		"./...",
 	)
 }
