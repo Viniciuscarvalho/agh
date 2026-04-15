@@ -18,6 +18,7 @@ export type HostAPIMethod =
   | "automation/triggers/runs"
   | "automation/triggers/update"
   | "bridges/instances/get"
+  | "bridges/instances/list"
   | "bridges/instances/report_state"
   | "bridges/messages/ingest"
   | "memory/forget"
@@ -448,10 +449,19 @@ export type BridgeInstanceSource = string;
 
 export type BridgeStatus = string;
 
+export type BridgeDMPolicy = string;
+
 export interface RoutingPolicy {
   include_peer: boolean;
   include_thread: boolean;
   include_group: boolean;
+}
+
+export type BridgeDegradationReason = string;
+
+export interface BridgeDegradation {
+  reason: BridgeDegradationReason;
+  message?: string;
 }
 
 export interface BridgeInstance {
@@ -464,14 +474,24 @@ export interface BridgeInstance {
   source?: BridgeInstanceSource;
   enabled: boolean;
   status: BridgeStatus;
+  dm_policy?: BridgeDMPolicy;
   routing_policy: RoutingPolicy;
+  provider_config?: JSONValue;
   delivery_defaults?: JSONValue;
+  degradation?: BridgeDegradation;
   created_at: ISODateTime;
   updated_at: ISODateTime;
 }
 
+export interface BridgeInstanceTargetParams {
+  bridge_instance_id: string;
+}
+
 export interface BridgesInstancesReportStateParams {
+  bridge_instance_id: string;
   status: BridgeStatus;
+  degradation?: BridgeDegradation;
+  clear_degradation?: boolean;
 }
 
 export interface RoutingKey {
@@ -591,6 +611,10 @@ export interface DeliveryAck {
   replace_remote_message_id?: string;
 }
 
+export interface DeliveryErrorDetail {
+  message: string;
+}
+
 export type DeliveryMode = string;
 
 export interface DeliveryTarget {
@@ -605,6 +629,17 @@ export interface MessageContent {
   text?: string;
 }
 
+export type DeliveryOperation = string;
+
+export interface DeliveryMessageReference {
+  delivery_id?: string;
+  remote_message_id?: string;
+}
+
+export interface DeliveryResumeState {
+  latest_event_type: string;
+}
+
 export interface DeliveryEvent {
   delivery_id: string;
   bridge_instance_id: string;
@@ -614,7 +649,11 @@ export interface DeliveryEvent {
   event_type: string;
   content: MessageContent;
   final: boolean;
-  metadata?: JSONValue;
+  operation?: DeliveryOperation;
+  reference?: DeliveryMessageReference;
+  error?: DeliveryErrorDetail;
+  resume?: DeliveryResumeState;
+  provider_metadata?: JSONValue;
 }
 
 export interface DeliverySnapshot {
@@ -627,6 +666,9 @@ export interface DeliverySnapshot {
   latest_seq: number;
   latest_event_type: string;
   current_content?: MessageContent;
+  operation?: DeliveryOperation;
+  reference?: DeliveryMessageReference;
+  provider_metadata?: JSONValue;
   last_sent_seq?: number;
   last_acked_seq?: number;
   remote_message_id?: string;
@@ -769,6 +811,21 @@ export type HookRunOutcome = "applied" | "denied" | "failed" | "skipped" | "drop
 
 export type HookSkillSource = "bundled" | "marketplace" | "user" | "additional" | "workspace";
 
+export interface InboundAction {
+  action_id: string;
+  message_id?: string;
+  value?: string;
+  trigger_id?: string;
+}
+
+export interface InboundCommand {
+  command: string;
+  text?: string;
+  trigger_id?: string;
+}
+
+export type InboundEventFamily = string;
+
 export interface MessageSender {
   id?: string;
   username?: string;
@@ -780,6 +837,13 @@ export interface MessageAttachment {
   name?: string;
   mime_type?: string;
   url?: string;
+}
+
+export interface InboundReaction {
+  message_id: string;
+  emoji: string;
+  raw_emoji?: string;
+  added: boolean;
 }
 
 export interface InboundMessageEnvelope {
@@ -794,6 +858,11 @@ export interface InboundMessageEnvelope {
   sender: MessageSender;
   content: MessageContent;
   attachments?: MessageAttachment[];
+  event_family: InboundEventFamily;
+  command?: InboundCommand;
+  action?: InboundAction;
+  reaction?: InboundReaction;
+  provider_metadata?: JSONValue;
   idempotency_key: string;
 }
 
@@ -803,9 +872,16 @@ export interface InitializeBridgeBoundSecret {
   value: string;
 }
 
-export interface InitializeBridgeRuntime {
+export interface InitializeBridgeManagedInstance {
   instance: BridgeInstance;
   bound_secrets?: InitializeBridgeBoundSecret[];
+}
+
+export interface InitializeBridgeRuntime {
+  runtime_version: string;
+  provider: string;
+  platform: string;
+  managed_instances?: InitializeBridgeManagedInstance[];
 }
 
 export interface InitializeCapabilities {
@@ -2233,12 +2309,16 @@ export interface HostAPIMethodMap {
     params: TaskRunCancelParams;
     result: TaskRun;
   };
+  "bridges/instances/list": {
+    params: undefined;
+    result: BridgeInstance[];
+  };
   "bridges/messages/ingest": {
     params: InboundMessageEnvelope;
     result: BridgesMessagesIngestResult;
   };
   "bridges/instances/get": {
-    params: undefined;
+    params: BridgeInstanceTargetParams;
     result: BridgeInstance;
   };
   "bridges/instances/report_state": {

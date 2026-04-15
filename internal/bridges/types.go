@@ -14,6 +14,9 @@ var (
 	ErrBridgeInstanceNotFound = errors.New("bridges: bridge instance not found")
 	// ErrBridgeInstanceUnavailable reports that the instance exists but cannot currently accept routing work.
 	ErrBridgeInstanceUnavailable = errors.New("bridges: bridge instance unavailable")
+	// ErrInvalidBridgeSecretBinding reports that a bridge secret binding payload
+	// is malformed or unsupported by the active daemon secret backend.
+	ErrInvalidBridgeSecretBinding = errors.New("bridges: invalid bridge secret binding")
 	// ErrBridgeSecretBindingNotFound reports that no persisted secret binding matched the lookup.
 	ErrBridgeSecretBindingNotFound = errors.New("bridges: bridge secret binding not found")
 	// ErrBridgeRouteNotFound reports that no persisted route matched the lookup.
@@ -143,6 +146,139 @@ func (s BridgeStatus) Validate() error {
 	}
 }
 
+// BridgeDMPolicy controls how direct messages from unpaired senders are handled.
+type BridgeDMPolicy string
+
+const (
+	// BridgeDMPolicyOpen accepts direct messages from any sender.
+	BridgeDMPolicyOpen BridgeDMPolicy = "open"
+	// BridgeDMPolicyAllowlist accepts direct messages only from approved senders.
+	BridgeDMPolicyAllowlist BridgeDMPolicy = "allowlist"
+	// BridgeDMPolicyPairing requires an explicit pairing flow before accepting direct messages.
+	BridgeDMPolicyPairing BridgeDMPolicy = "pairing"
+)
+
+// Normalize returns the normalized representation of the DM policy.
+func (p BridgeDMPolicy) Normalize() BridgeDMPolicy {
+	return BridgeDMPolicy(strings.ToLower(strings.TrimSpace(string(p))))
+}
+
+// Validate reports whether the DM policy belongs to the supported bridge v1 set.
+func (p BridgeDMPolicy) Validate() error {
+	switch p.Normalize() {
+	case "", BridgeDMPolicyOpen, BridgeDMPolicyAllowlist, BridgeDMPolicyPairing:
+		return nil
+	default:
+		return fmt.Errorf("bridges: unsupported dm policy %q", p)
+	}
+}
+
+// BridgeDegradationReason reports the structured operational cause for a degraded bridge instance.
+type BridgeDegradationReason string
+
+const (
+	BridgeDegradationReasonAuthFailed          BridgeDegradationReason = "auth_failed"
+	BridgeDegradationReasonRateLimited         BridgeDegradationReason = "rate_limited"
+	BridgeDegradationReasonWebhookInvalid      BridgeDegradationReason = "webhook_invalid"
+	BridgeDegradationReasonProviderTimeout     BridgeDegradationReason = "provider_timeout"
+	BridgeDegradationReasonTenantConfigInvalid BridgeDegradationReason = "tenant_config_invalid"
+)
+
+// Normalize returns the normalized representation of the degradation reason.
+func (r BridgeDegradationReason) Normalize() BridgeDegradationReason {
+	return BridgeDegradationReason(strings.ToLower(strings.TrimSpace(string(r))))
+}
+
+// Validate reports whether the degradation reason belongs to the supported bridge v1 set.
+func (r BridgeDegradationReason) Validate() error {
+	switch r.Normalize() {
+	case BridgeDegradationReasonAuthFailed,
+		BridgeDegradationReasonRateLimited,
+		BridgeDegradationReasonWebhookInvalid,
+		BridgeDegradationReasonProviderTimeout,
+		BridgeDegradationReasonTenantConfigInvalid:
+		return nil
+	case "":
+		return errors.New("bridges: bridge degradation reason is required")
+	default:
+		return fmt.Errorf("bridges: unsupported bridge degradation reason %q", r)
+	}
+}
+
+// BridgeDegradation captures the structured degradation metadata persisted for a bridge instance.
+type BridgeDegradation struct {
+	Reason  BridgeDegradationReason `toml:"reason" json:"reason"`
+	Message string                  `toml:"message,omitempty" json:"message,omitempty"`
+}
+
+// IsZero reports whether the degradation payload carries any values.
+func (d BridgeDegradation) IsZero() bool {
+	normalized := d.normalize()
+	return normalized.Reason == "" && normalized.Message == ""
+}
+
+// Validate reports whether the degradation payload is internally consistent.
+func (d BridgeDegradation) Validate() error {
+	normalized := d.normalize()
+	if normalized.IsZero() {
+		return nil
+	}
+	if err := normalized.Reason.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// BridgeSecretSlot describes one provider-declared secret requirement.
+type BridgeSecretSlot struct {
+	Name        string `toml:"name" json:"name"`
+	Description string `toml:"description,omitempty" json:"description,omitempty"`
+	Required    bool   `toml:"required,omitempty" json:"required,omitempty"`
+}
+
+// Normalize returns the normalized representation of the secret slot.
+func (s BridgeSecretSlot) Normalize() BridgeSecretSlot {
+	return s.normalize()
+}
+
+// Validate reports whether the secret slot metadata is complete.
+func (s BridgeSecretSlot) Validate() error {
+	normalized := s.normalize()
+	if err := requireField(normalized.Name, "bridge secret slot name"); err != nil {
+		return err
+	}
+	return nil
+}
+
+// BridgeProviderConfigSchema captures static provider config schema hints from provider manifests.
+type BridgeProviderConfigSchema struct {
+	Schema  string `toml:"schema,omitempty" json:"schema,omitempty"`
+	Version string `toml:"version,omitempty" json:"version,omitempty"`
+}
+
+// Normalize returns the normalized representation of the config schema hint.
+func (h BridgeProviderConfigSchema) Normalize() BridgeProviderConfigSchema {
+	return h.normalize()
+}
+
+// IsZero reports whether the schema hint carries any values.
+func (h BridgeProviderConfigSchema) IsZero() bool {
+	normalized := h.normalize()
+	return normalized.Schema == "" && normalized.Version == ""
+}
+
+// Validate reports whether the config schema hint is internally consistent.
+func (h BridgeProviderConfigSchema) Validate() error {
+	normalized := h.normalize()
+	if normalized.IsZero() {
+		return nil
+	}
+	if normalized.Schema == "" && normalized.Version == "" {
+		return errors.New("bridges: bridge provider config schema hint requires schema or version")
+	}
+	return nil
+}
+
 // RoutingPolicy controls which platform identity dimensions participate in routing.
 type RoutingPolicy struct {
 	IncludePeer   bool `json:"include_peer"`
@@ -161,14 +297,16 @@ func (p RoutingPolicy) Validate() error {
 // BridgeProvider describes one installed bridge-capable extension that can be
 // selected when creating a bridge instance.
 type BridgeProvider struct {
-	Platform      string `json:"platform"`
-	ExtensionName string `json:"extension_name"`
-	DisplayName   string `json:"display_name"`
-	Description   string `json:"description,omitempty"`
-	Enabled       bool   `json:"enabled"`
-	State         string `json:"state"`
-	Health        string `json:"health"`
-	HealthMessage string `json:"health_message,omitempty"`
+	Platform      string                      `json:"platform"`
+	ExtensionName string                      `json:"extension_name"`
+	DisplayName   string                      `json:"display_name"`
+	Description   string                      `json:"description,omitempty"`
+	SecretSlots   []BridgeSecretSlot          `json:"secret_slots,omitempty"`
+	ConfigSchema  *BridgeProviderConfigSchema `json:"config_schema,omitempty"`
+	Enabled       bool                        `json:"enabled"`
+	State         string                      `json:"state"`
+	Health        string                      `json:"health"`
+	HealthMessage string                      `json:"health_message,omitempty"`
 }
 
 // BridgeInstance is the authoritative persisted configuration for one bridge adapter instance.
@@ -182,10 +320,18 @@ type BridgeInstance struct {
 	Source           BridgeInstanceSource `json:"source,omitempty"`
 	Enabled          bool                 `json:"enabled"`
 	Status           BridgeStatus         `json:"status"`
+	DMPolicy         BridgeDMPolicy       `json:"dm_policy,omitempty"`
 	RoutingPolicy    RoutingPolicy        `json:"routing_policy"`
+	ProviderConfig   json.RawMessage      `json:"provider_config,omitempty"`
 	DeliveryDefaults json.RawMessage      `json:"delivery_defaults,omitempty"`
+	Degradation      *BridgeDegradation   `json:"degradation,omitempty"`
 	CreatedAt        time.Time            `json:"created_at"`
 	UpdatedAt        time.Time            `json:"updated_at"`
+}
+
+// Normalized returns the canonical representation of the bridge instance.
+func (i BridgeInstance) Normalized() BridgeInstance {
+	return i.normalize()
 }
 
 // Validate reports whether the persisted bridge instance shape is complete and valid.
@@ -215,11 +361,27 @@ func (i BridgeInstance) Validate() error {
 	if err := validateInstanceLifecycle(normalized.Enabled, normalized.Status); err != nil {
 		return err
 	}
+	if err := normalized.DMPolicy.Validate(); err != nil {
+		return err
+	}
 	if err := normalized.RoutingPolicy.Validate(); err != nil {
+		return err
+	}
+	if _, err := normalizeRawJSON(normalized.ProviderConfig, "bridge instance provider config"); err != nil {
 		return err
 	}
 	if _, err := normalizeRawJSON(normalized.DeliveryDefaults, "bridge instance delivery defaults"); err != nil {
 		return err
+	}
+	if normalized.Degradation != nil {
+		if err := normalized.Degradation.Validate(); err != nil {
+			return err
+		}
+		if normalized.Status.Normalize() != BridgeStatusDegraded &&
+			normalized.Status.Normalize() != BridgeStatusAuthRequired &&
+			normalized.Status.Normalize() != BridgeStatusError {
+			return errors.New("bridges: bridge degradation requires degraded, auth_required, or error status")
+		}
 	}
 	return nil
 }
@@ -321,6 +483,81 @@ type MessageAttachment struct {
 	URL      string `json:"url,omitempty"`
 }
 
+// InboundEventFamily identifies the typed inbound bridge event family.
+type InboundEventFamily string
+
+const (
+	// InboundEventFamilyMessage identifies a text-and-attachment message event.
+	InboundEventFamilyMessage InboundEventFamily = "message"
+	// InboundEventFamilyCommand identifies a typed slash-command style event.
+	InboundEventFamilyCommand InboundEventFamily = "command"
+	// InboundEventFamilyAction identifies a typed button/action event.
+	InboundEventFamilyAction InboundEventFamily = "action"
+	// InboundEventFamilyReaction identifies a typed reaction add/remove event.
+	InboundEventFamilyReaction InboundEventFamily = "reaction"
+)
+
+// Normalize returns the canonical inbound event-family representation.
+func (f InboundEventFamily) Normalize() InboundEventFamily {
+	return InboundEventFamily(strings.ToLower(strings.TrimSpace(string(f))))
+}
+
+// Validate reports whether the inbound event family belongs to the supported set.
+func (f InboundEventFamily) Validate() error {
+	switch f.Normalize() {
+	case InboundEventFamilyMessage,
+		InboundEventFamilyCommand,
+		InboundEventFamilyAction,
+		InboundEventFamilyReaction:
+		return nil
+	case "":
+		return errors.New("bridges: inbound event family is required")
+	default:
+		return fmt.Errorf("bridges: unsupported inbound event family %q", strings.TrimSpace(string(f)))
+	}
+}
+
+// InboundCommand captures a typed slash-command style inbound interaction.
+type InboundCommand struct {
+	Command   string `json:"command"`
+	Text      string `json:"text,omitempty"`
+	TriggerID string `json:"trigger_id,omitempty"`
+}
+
+// Validate reports whether the command payload contains the required identity.
+func (c InboundCommand) Validate() error {
+	return requireField(strings.TrimSpace(c.Command), "inbound command")
+}
+
+// InboundAction captures a typed button/action inbound interaction.
+type InboundAction struct {
+	ActionID  string `json:"action_id"`
+	MessageID string `json:"message_id,omitempty"`
+	Value     string `json:"value,omitempty"`
+	TriggerID string `json:"trigger_id,omitempty"`
+}
+
+// Validate reports whether the action payload contains the required identity.
+func (a InboundAction) Validate() error {
+	return requireField(strings.TrimSpace(a.ActionID), "inbound action id")
+}
+
+// InboundReaction captures a typed reaction add/remove inbound interaction.
+type InboundReaction struct {
+	MessageID string `json:"message_id"`
+	Emoji     string `json:"emoji"`
+	RawEmoji  string `json:"raw_emoji,omitempty"`
+	Added     bool   `json:"added"`
+}
+
+// Validate reports whether the reaction payload contains the required identity.
+func (r InboundReaction) Validate() error {
+	if err := requireField(strings.TrimSpace(r.MessageID), "inbound reaction message id"); err != nil {
+		return err
+	}
+	return requireField(strings.TrimSpace(r.Emoji), "inbound reaction emoji")
+}
+
 // InboundMessageEnvelope is the normalized bridge ingest payload delivered by adapters.
 type InboundMessageEnvelope struct {
 	BridgeInstanceID  string              `json:"bridge_instance_id"`
@@ -334,6 +571,11 @@ type InboundMessageEnvelope struct {
 	Sender            MessageSender       `json:"sender"`
 	Content           MessageContent      `json:"content"`
 	Attachments       []MessageAttachment `json:"attachments,omitempty"`
+	EventFamily       InboundEventFamily  `json:"event_family"`
+	Command           *InboundCommand     `json:"command,omitempty"`
+	Action            *InboundAction      `json:"action,omitempty"`
+	Reaction          *InboundReaction    `json:"reaction,omitempty"`
+	ProviderMetadata  json.RawMessage     `json:"provider_metadata,omitempty"`
 	IdempotencyKey    string              `json:"idempotency_key"`
 }
 
@@ -346,29 +588,109 @@ func (e InboundMessageEnvelope) Validate() error {
 	if err := ValidateScopeWorkspaceID(normalized.Scope, normalized.WorkspaceID); err != nil {
 		return err
 	}
-	if err := requireField(normalized.PlatformMessageID, "inbound message platform message id"); err != nil {
-		return err
-	}
 	if normalized.ReceivedAt.IsZero() {
 		return errors.New("bridges: inbound message received at is required")
 	}
+	if err := normalized.EventFamily.Validate(); err != nil {
+		return err
+	}
+	if _, err := normalizeRawJSON(normalized.ProviderMetadata, "inbound provider metadata"); err != nil {
+		return err
+	}
 	if err := requireField(normalized.IdempotencyKey, "inbound message idempotency key"); err != nil {
+		return err
+	}
+	if err := normalized.validatePayload(); err != nil {
 		return err
 	}
 	return nil
 }
 
+// DeliveryOperation identifies whether the outbound delivery is posting new text,
+// editing an existing remote message, or deleting one.
+type DeliveryOperation string
+
+const (
+	// DeliveryOperationPost creates or continues a new daemon-owned delivery.
+	DeliveryOperationPost DeliveryOperation = "post"
+	// DeliveryOperationEdit updates a previously delivered message in-place.
+	DeliveryOperationEdit DeliveryOperation = "edit"
+	// DeliveryOperationDelete removes a previously delivered message.
+	DeliveryOperationDelete DeliveryOperation = "delete"
+)
+
+// Normalize returns the canonical delivery-operation representation.
+func (o DeliveryOperation) Normalize() DeliveryOperation {
+	return DeliveryOperation(strings.ToLower(strings.TrimSpace(string(o))))
+}
+
+// Validate reports whether the delivery operation belongs to the supported set.
+func (o DeliveryOperation) Validate() error {
+	switch o.Normalize() {
+	case "", DeliveryOperationPost, DeliveryOperationEdit, DeliveryOperationDelete:
+		return nil
+	default:
+		return fmt.Errorf("bridges: unsupported delivery operation %q", strings.TrimSpace(string(o)))
+	}
+}
+
+// DeliveryMessageReference identifies one previously delivered message.
+type DeliveryMessageReference struct {
+	DeliveryID      string `json:"delivery_id,omitempty"`
+	RemoteMessageID string `json:"remote_message_id,omitempty"`
+}
+
+// Validate reports whether the reference identifies at least one prior message handle.
+func (r DeliveryMessageReference) Validate() error {
+	normalized := r.normalize()
+	if normalized.DeliveryID == "" && normalized.RemoteMessageID == "" {
+		return errors.New("bridges: delivery reference requires delivery id or remote message id")
+	}
+	return nil
+}
+
+// DeliveryErrorDetail captures one typed delivery failure payload.
+type DeliveryErrorDetail struct {
+	Message string `json:"message"`
+}
+
+// Validate reports whether the error detail carries a message.
+func (d DeliveryErrorDetail) Validate() error {
+	return requireField(strings.TrimSpace(d.Message), "delivery error message")
+}
+
+// DeliveryResumeState captures the typed resumable delivery phase.
+type DeliveryResumeState struct {
+	LatestEventType string `json:"latest_event_type"`
+}
+
+// Validate reports whether the resume state references a supported prior event type.
+func (s DeliveryResumeState) Validate() error {
+	normalized := s.normalize()
+	if normalized.LatestEventType == "" {
+		return errors.New("bridges: delivery resume latest event type is required")
+	}
+	if normalized.LatestEventType == DeliveryEventTypeResume {
+		return errors.New("bridges: delivery resume latest event type cannot itself be resume")
+	}
+	return validateDeliveryEventType(normalized.LatestEventType, isTerminalDeliveryEventType(normalized.LatestEventType))
+}
+
 // DeliveryEvent is the daemon-owned outbound projection sent to a bridge adapter.
 type DeliveryEvent struct {
-	DeliveryID       string          `json:"delivery_id"`
-	BridgeInstanceID string          `json:"bridge_instance_id"`
-	RoutingKey       RoutingKey      `json:"routing_key"`
-	DeliveryTarget   DeliveryTarget  `json:"delivery_target"`
-	Seq              int64           `json:"seq"`
-	EventType        string          `json:"event_type"`
-	Content          MessageContent  `json:"content"`
-	Final            bool            `json:"final"`
-	Metadata         json.RawMessage `json:"metadata,omitempty"`
+	DeliveryID       string                    `json:"delivery_id"`
+	BridgeInstanceID string                    `json:"bridge_instance_id"`
+	RoutingKey       RoutingKey                `json:"routing_key"`
+	DeliveryTarget   DeliveryTarget            `json:"delivery_target"`
+	Seq              int64                     `json:"seq"`
+	EventType        string                    `json:"event_type"`
+	Content          MessageContent            `json:"content"`
+	Final            bool                      `json:"final"`
+	Operation        DeliveryOperation         `json:"operation,omitempty"`
+	Reference        *DeliveryMessageReference `json:"reference,omitempty"`
+	Error            *DeliveryErrorDetail      `json:"error,omitempty"`
+	Resume           *DeliveryResumeState      `json:"resume,omitempty"`
+	ProviderMetadata json.RawMessage           `json:"provider_metadata,omitempty"`
 }
 
 // Validate reports whether the delivery event contains the required identifiers.
@@ -397,10 +719,19 @@ func (e DeliveryEvent) Validate() error {
 	if normalized.Seq < 0 {
 		return fmt.Errorf("bridges: invalid delivery event sequence %d", normalized.Seq)
 	}
+	if err := normalized.Operation.Validate(); err != nil {
+		return err
+	}
 	if err := validateDeliveryEventType(normalized.EventType, normalized.Final); err != nil {
 		return err
 	}
-	if _, err := normalizeRawJSON(normalized.Metadata, "delivery event metadata"); err != nil {
+	if _, err := normalizeRawJSON(normalized.ProviderMetadata, "delivery event provider metadata"); err != nil {
+		return err
+	}
+	if err := normalized.validateOperation(); err != nil {
+		return err
+	}
+	if err := normalized.validateTypedFields(); err != nil {
 		return err
 	}
 	return nil
@@ -448,7 +779,41 @@ func (i BridgeInstance) normalize() BridgeInstance {
 		normalized.Source = BridgeInstanceSourceDynamic
 	}
 	normalized.Status = normalized.Status.Normalize()
+	normalized.DMPolicy = normalized.DMPolicy.Normalize()
+	if normalized.DMPolicy == "" {
+		normalized.DMPolicy = BridgeDMPolicyOpen
+	}
+	normalized.ProviderConfig = bytes.TrimSpace(normalized.ProviderConfig)
 	normalized.DeliveryDefaults = bytes.TrimSpace(normalized.DeliveryDefaults)
+	if normalized.Degradation != nil {
+		degradation := normalized.Degradation.normalize()
+		if degradation.IsZero() {
+			normalized.Degradation = nil
+		} else {
+			normalized.Degradation = &degradation
+		}
+	}
+	return normalized
+}
+
+func (d BridgeDegradation) normalize() BridgeDegradation {
+	normalized := d
+	normalized.Reason = normalized.Reason.Normalize()
+	normalized.Message = strings.TrimSpace(normalized.Message)
+	return normalized
+}
+
+func (s BridgeSecretSlot) normalize() BridgeSecretSlot {
+	normalized := s
+	normalized.Name = strings.TrimSpace(normalized.Name)
+	normalized.Description = strings.TrimSpace(normalized.Description)
+	return normalized
+}
+
+func (h BridgeProviderConfigSchema) normalize() BridgeProviderConfigSchema {
+	normalized := h
+	normalized.Schema = strings.TrimSpace(normalized.Schema)
+	normalized.Version = strings.TrimSpace(normalized.Version)
 	return normalized
 }
 
@@ -489,7 +854,12 @@ func (e InboundMessageEnvelope) normalize() InboundMessageEnvelope {
 		DisplayName: strings.TrimSpace(normalized.Sender.DisplayName),
 	}
 	normalized.Content = MessageContent{Text: strings.TrimSpace(normalized.Content.Text)}
+	normalized.EventFamily = normalized.EventFamily.Normalize()
+	if normalized.EventFamily == "" && normalized.Command == nil && normalized.Action == nil && normalized.Reaction == nil {
+		normalized.EventFamily = InboundEventFamilyMessage
+	}
 	normalized.IdempotencyKey = strings.TrimSpace(normalized.IdempotencyKey)
+	normalized.ProviderMetadata = bytes.TrimSpace(normalized.ProviderMetadata)
 	for idx := range normalized.Attachments {
 		normalized.Attachments[idx] = MessageAttachment{
 			ID:       strings.TrimSpace(normalized.Attachments[idx].ID),
@@ -497,6 +867,18 @@ func (e InboundMessageEnvelope) normalize() InboundMessageEnvelope {
 			MIMEType: strings.TrimSpace(normalized.Attachments[idx].MIMEType),
 			URL:      strings.TrimSpace(normalized.Attachments[idx].URL),
 		}
+	}
+	if normalized.Command != nil {
+		command := normalized.Command.normalize()
+		normalized.Command = &command
+	}
+	if normalized.Action != nil {
+		action := normalized.Action.normalize()
+		normalized.Action = &action
+	}
+	if normalized.Reaction != nil {
+		reaction := normalized.Reaction.normalize()
+		normalized.Reaction = &reaction
 	}
 	return normalized
 }
@@ -509,7 +891,23 @@ func (e DeliveryEvent) normalize() DeliveryEvent {
 	normalized.DeliveryTarget = normalized.DeliveryTarget.normalize()
 	normalized.EventType = normalizeDeliveryEventType(normalized.EventType)
 	normalized.Content = MessageContent{Text: strings.TrimSpace(normalized.Content.Text)}
-	normalized.Metadata = bytes.TrimSpace(normalized.Metadata)
+	normalized.Operation = normalized.Operation.Normalize()
+	if normalized.Operation == "" {
+		normalized.Operation = DeliveryOperationPost
+	}
+	normalized.ProviderMetadata = bytes.TrimSpace(normalized.ProviderMetadata)
+	if normalized.Reference != nil {
+		reference := normalized.Reference.normalize()
+		normalized.Reference = &reference
+	}
+	if normalized.Error != nil {
+		errorDetail := normalized.Error.normalize()
+		normalized.Error = &errorDetail
+	}
+	if normalized.Resume != nil {
+		resume := normalized.Resume.normalize()
+		normalized.Resume = &resume
+	}
 	return normalized
 }
 
@@ -542,4 +940,153 @@ func normalizeRawJSON(value json.RawMessage, label string) (json.RawMessage, err
 	}
 
 	return compacted.Bytes(), nil
+}
+
+func (c InboundCommand) normalize() InboundCommand {
+	return InboundCommand{
+		Command:   strings.TrimSpace(c.Command),
+		Text:      strings.TrimSpace(c.Text),
+		TriggerID: strings.TrimSpace(c.TriggerID),
+	}
+}
+
+func (a InboundAction) normalize() InboundAction {
+	return InboundAction{
+		ActionID:  strings.TrimSpace(a.ActionID),
+		MessageID: strings.TrimSpace(a.MessageID),
+		Value:     strings.TrimSpace(a.Value),
+		TriggerID: strings.TrimSpace(a.TriggerID),
+	}
+}
+
+func (r InboundReaction) normalize() InboundReaction {
+	return InboundReaction{
+		MessageID: strings.TrimSpace(r.MessageID),
+		Emoji:     strings.TrimSpace(r.Emoji),
+		RawEmoji:  strings.TrimSpace(r.RawEmoji),
+		Added:     r.Added,
+	}
+}
+
+func (e InboundMessageEnvelope) validatePayload() error {
+	switch e.EventFamily {
+	case InboundEventFamilyMessage:
+		if e.Command != nil || e.Action != nil || e.Reaction != nil {
+			return errors.New("bridges: inbound message family cannot include command, action, or reaction payloads")
+		}
+		return requireField(e.PlatformMessageID, "inbound message platform message id")
+	case InboundEventFamilyCommand:
+		if e.Command == nil {
+			return errors.New("bridges: inbound command family requires command payload")
+		}
+		if e.Action != nil || e.Reaction != nil {
+			return errors.New("bridges: inbound command family cannot include action or reaction payloads")
+		}
+		if e.PlatformMessageID != "" || strings.TrimSpace(e.Content.Text) != "" || len(e.Attachments) > 0 {
+			return errors.New("bridges: inbound command family cannot include message payload fields")
+		}
+		return e.Command.Validate()
+	case InboundEventFamilyAction:
+		if e.Action == nil {
+			return errors.New("bridges: inbound action family requires action payload")
+		}
+		if e.Command != nil || e.Reaction != nil {
+			return errors.New("bridges: inbound action family cannot include command or reaction payloads")
+		}
+		if e.PlatformMessageID != "" || strings.TrimSpace(e.Content.Text) != "" || len(e.Attachments) > 0 {
+			return errors.New("bridges: inbound action family cannot include message payload fields")
+		}
+		return e.Action.Validate()
+	case InboundEventFamilyReaction:
+		if e.Reaction == nil {
+			return errors.New("bridges: inbound reaction family requires reaction payload")
+		}
+		if e.Command != nil || e.Action != nil {
+			return errors.New("bridges: inbound reaction family cannot include command or action payloads")
+		}
+		if e.PlatformMessageID != "" || strings.TrimSpace(e.Content.Text) != "" || len(e.Attachments) > 0 {
+			return errors.New("bridges: inbound reaction family cannot include message payload fields")
+		}
+		return e.Reaction.Validate()
+	default:
+		return errors.New("bridges: inbound event family is required")
+	}
+}
+
+func (r DeliveryMessageReference) normalize() DeliveryMessageReference {
+	return DeliveryMessageReference{
+		DeliveryID:      strings.TrimSpace(r.DeliveryID),
+		RemoteMessageID: strings.TrimSpace(r.RemoteMessageID),
+	}
+}
+
+func (d DeliveryErrorDetail) normalize() DeliveryErrorDetail {
+	return DeliveryErrorDetail{Message: strings.TrimSpace(d.Message)}
+}
+
+func (s DeliveryResumeState) normalize() DeliveryResumeState {
+	return DeliveryResumeState{LatestEventType: normalizeDeliveryEventType(s.LatestEventType)}
+}
+
+func (e DeliveryEvent) validateOperation() error {
+	switch e.Operation {
+	case DeliveryOperationPost:
+		if e.Reference != nil {
+			return errors.New("bridges: delivery post operation cannot include a reference")
+		}
+	case DeliveryOperationEdit, DeliveryOperationDelete:
+		if e.Reference == nil {
+			return fmt.Errorf("bridges: delivery %s operation requires a reference", e.Operation)
+		}
+		if err := e.Reference.Validate(); err != nil {
+			return err
+		}
+	}
+	if e.EventType == DeliveryEventTypeDelete && e.Operation != DeliveryOperationDelete {
+		return errors.New("bridges: delete delivery events must use delete operation")
+	}
+	if e.EventType != DeliveryEventTypeDelete && e.Operation == DeliveryOperationDelete {
+		return errors.New("bridges: delete operation requires delete event type")
+	}
+	return nil
+}
+
+func (e DeliveryEvent) validateTypedFields() error {
+	switch e.EventType {
+	case DeliveryEventTypeError:
+		if e.Error == nil {
+			return errors.New("bridges: delivery error events require an error payload")
+		}
+		if err := e.Error.Validate(); err != nil {
+			return err
+		}
+		if e.Resume != nil {
+			return errors.New("bridges: delivery error events cannot include resume payload")
+		}
+	case DeliveryEventTypeResume:
+		if e.Resume == nil {
+			return errors.New("bridges: delivery resume events require a resume payload")
+		}
+		if err := e.Resume.Validate(); err != nil {
+			return err
+		}
+		if e.Error != nil {
+			return errors.New("bridges: delivery resume events cannot include error payload")
+		}
+	case DeliveryEventTypeDelete:
+		if strings.TrimSpace(e.Content.Text) != "" {
+			return errors.New("bridges: delivery delete events cannot include message content")
+		}
+		if e.Error != nil || e.Resume != nil {
+			return errors.New("bridges: delivery delete events cannot include error or resume payloads")
+		}
+	default:
+		if e.Error != nil {
+			return errors.New("bridges: only delivery error events may include error payload")
+		}
+		if e.Resume != nil {
+			return errors.New("bridges: only delivery resume events may include resume payload")
+		}
+	}
+	return nil
 }

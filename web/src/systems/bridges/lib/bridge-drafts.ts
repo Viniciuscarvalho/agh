@@ -1,14 +1,23 @@
 import {
   buildBridgeProviderKey,
+  compactBridgeDeliveryDefaults,
+  formatBridgeProviderConfig,
   isBridgeProviderSelectable,
   normalizeBridgeDeliveryDefaults,
 } from "@/systems/bridges/lib/bridge-formatters";
 
 import type {
   BridgeCreateDraft,
+  BridgeDmPolicy,
+  BridgeSecretBinding,
+  BridgeProviderConfig,
   BridgeProvider,
   BridgeSummary,
+  BridgeUpdateDraft,
+  CreateBridgeRequest,
+  PutBridgeSecretBindingRequest,
   BridgeTestDeliveryDraft,
+  UpdateBridgeRequest,
 } from "@/systems/bridges/types";
 
 export const DEFAULT_BRIDGE_ROUTING_POLICY = {
@@ -16,6 +25,44 @@ export const DEFAULT_BRIDGE_ROUTING_POLICY = {
   include_peer: true,
   include_thread: true,
 } as const;
+
+interface BridgeCreateRequestProviderRef {
+  extension_name: string;
+  platform: string;
+}
+
+type BuildBridgeCreateRequestResult =
+  | {
+      data: CreateBridgeRequest;
+      ok: true;
+    }
+  | {
+      error: string;
+      ok: false;
+    };
+
+type BuildBridgeUpdateRequestResult =
+  | {
+      data: UpdateBridgeRequest;
+      ok: true;
+    }
+  | {
+      error: string;
+      ok: false;
+    };
+
+type BuildBridgeSecretBindingRequestResult =
+  | {
+      data: PutBridgeSecretBindingRequest;
+      ok: true;
+    }
+  | {
+      error: string;
+      ok: false;
+    };
+
+const DM_POLICIES = new Set<BridgeDmPolicy>(["allowlist", "open", "pairing"]);
+const BRIDGE_SECRET_ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export function createBridgeCreateDraft(
   providers: BridgeProvider[],
@@ -25,7 +72,9 @@ export function createBridgeCreateDraft(
 
   return {
     deliveryDefaults: {},
+    dmPolicy: "",
     displayName: preferredProvider?.display_name ?? "",
+    providerConfigText: "",
     routingPolicy: { ...DEFAULT_BRIDGE_ROUTING_POLICY },
     scope: activeWorkspaceId ? "workspace" : "global",
     selectedProviderKey: preferredProvider ? buildBridgeProviderKey(preferredProvider) : "",
@@ -38,5 +87,146 @@ export function createBridgeTestDeliveryDraft(
   return {
     message: "",
     target: normalizeBridgeDeliveryDefaults(bridge?.delivery_defaults),
+  };
+}
+
+export function createBridgeUpdateDraft(
+  bridge?: Pick<
+    BridgeSummary,
+    "delivery_defaults" | "display_name" | "dm_policy" | "provider_config" | "routing_policy"
+  >
+): BridgeUpdateDraft {
+  return {
+    deliveryDefaults: normalizeBridgeDeliveryDefaults(bridge?.delivery_defaults),
+    dmPolicy: bridge?.dm_policy ?? "",
+    displayName: bridge?.display_name ?? "",
+    providerConfigText: formatBridgeProviderConfig(bridge?.provider_config),
+    routingPolicy: bridge?.routing_policy ?? { ...DEFAULT_BRIDGE_ROUTING_POLICY },
+  };
+}
+
+export function parseBridgeDmPolicy(value: string): BridgeDmPolicy | undefined {
+  if (DM_POLICIES.has(value as BridgeDmPolicy)) {
+    return value as BridgeDmPolicy;
+  }
+
+  return undefined;
+}
+
+export function parseBridgeProviderConfig(value: string): {
+  error?: string;
+  value?: BridgeProviderConfig;
+} {
+  const normalized = value.trim();
+  if (normalized === "") {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(normalized) as unknown;
+
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {
+        error: "Provider configuration must be a JSON object.",
+      };
+    }
+
+    const providerConfig = parsed as BridgeProviderConfig;
+
+    if (Object.keys(providerConfig).length === 0) {
+      return {};
+    }
+
+    return { value: providerConfig };
+  } catch {
+    return {
+      error: "Provider configuration must be valid JSON.",
+    };
+  }
+}
+
+export function buildBridgeCreateRequest(
+  draft: BridgeCreateDraft,
+  provider: BridgeCreateRequestProviderRef,
+  activeWorkspaceId?: string | null
+): BuildBridgeCreateRequestResult {
+  const providerConfigResult = parseBridgeProviderConfig(draft.providerConfigText);
+  if (providerConfigResult.error) {
+    return {
+      error: providerConfigResult.error,
+      ok: false,
+    };
+  }
+
+  const scope = draft.scope;
+
+  return {
+    data: {
+      delivery_defaults: compactBridgeDeliveryDefaults(draft.deliveryDefaults),
+      display_name: draft.displayName.trim(),
+      dm_policy: parseBridgeDmPolicy(draft.dmPolicy),
+      enabled: true,
+      extension_name: provider.extension_name,
+      platform: provider.platform,
+      provider_config: providerConfigResult.value,
+      routing_policy: draft.routingPolicy,
+      scope,
+      status: "starting",
+      workspace_id: scope === "workspace" ? (activeWorkspaceId ?? undefined) : undefined,
+    },
+    ok: true,
+  };
+}
+
+export function buildBridgeUpdateRequest(draft: BridgeUpdateDraft): BuildBridgeUpdateRequestResult {
+  const providerConfigResult = parseBridgeProviderConfig(draft.providerConfigText);
+  if (providerConfigResult.error) {
+    return {
+      error: providerConfigResult.error,
+      ok: false,
+    };
+  }
+
+  return {
+    data: {
+      delivery_defaults: compactBridgeDeliveryDefaults(draft.deliveryDefaults) ?? null,
+      display_name: draft.displayName.trim(),
+      dm_policy: parseBridgeDmPolicy(draft.dmPolicy),
+      provider_config: providerConfigResult.value ?? null,
+      routing_policy: draft.routingPolicy,
+    },
+    ok: true,
+  };
+}
+
+export function bridgeSecretBindingEnvName(
+  binding?: Pick<BridgeSecretBinding, "vault_ref"> | null
+): string {
+  const vaultRef = binding?.vault_ref?.trim();
+  if (!vaultRef?.startsWith("env:")) {
+    return "";
+  }
+
+  return vaultRef.slice(4);
+}
+
+export function buildBridgeSecretBindingRequest(
+  envName: string,
+  kind: string
+): BuildBridgeSecretBindingRequestResult {
+  const normalizedEnvName = envName.trim().replace(/^env:/, "").trim();
+  if (!BRIDGE_SECRET_ENV_NAME.test(normalizedEnvName)) {
+    return {
+      error: "Secret binding must reference an environment variable name like AGH_BRIDGE_TOKEN.",
+      ok: false,
+    };
+  }
+
+  return {
+    data: {
+      kind,
+      vault_ref: `env:${normalizedEnvName}`,
+    },
+    ok: true,
   };
 }

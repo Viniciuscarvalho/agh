@@ -625,6 +625,62 @@ func Operations() []OperationSpec {
 			},
 		},
 		{
+			Method:      "GET",
+			Path:        "/api/bridges/{id}/secret-bindings",
+			OperationID: "listBridgeSecretBindings",
+			Summary:     "List persisted secret bindings for a bridge instance",
+			Tags:        []string{"bridges"},
+			Transports:  []Transport{TransportHTTP, TransportUDS},
+			Parameters: []ParameterSpec{
+				pathParam("id", "Bridge instance id"),
+			},
+			Responses: []ResponseSpec{
+				{Status: 200, Description: "OK", Body: contract.BridgeSecretBindingsResponse{}},
+				{Status: 404, Description: "Bridge instance not found", Body: contract.ErrorPayload{}},
+				{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
+				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+			},
+		},
+		{
+			Method:      "PUT",
+			Path:        "/api/bridges/{id}/secret-bindings/{binding_name}",
+			OperationID: "putBridgeSecretBinding",
+			Summary:     "Create or update one bridge secret binding",
+			Tags:        []string{"bridges"},
+			Transports:  []Transport{TransportHTTP, TransportUDS},
+			Parameters: []ParameterSpec{
+				pathParam("id", "Bridge instance id"),
+				pathParam("binding_name", "Bridge provider secret slot name"),
+			},
+			RequestBody: contract.PutBridgeSecretBindingRequest{},
+			Responses: []ResponseSpec{
+				{Status: 200, Description: "OK", Body: contract.BridgeSecretBindingResponse{}},
+				{Status: 400, Description: "Invalid bridge secret binding request", Body: contract.ErrorPayload{}},
+				{Status: 404, Description: "Bridge instance not found", Body: contract.ErrorPayload{}},
+				{Status: 409, Description: "Bridge secret binding conflict", Body: contract.ErrorPayload{}},
+				{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
+				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+			},
+		},
+		{
+			Method:      "DELETE",
+			Path:        "/api/bridges/{id}/secret-bindings/{binding_name}",
+			OperationID: "deleteBridgeSecretBinding",
+			Summary:     "Delete one bridge secret binding",
+			Tags:        []string{"bridges"},
+			Transports:  []Transport{TransportHTTP, TransportUDS},
+			Parameters: []ParameterSpec{
+				pathParam("id", "Bridge instance id"),
+				pathParam("binding_name", "Bridge provider secret slot name"),
+			},
+			Responses: []ResponseSpec{
+				{Status: 204, Description: "No Content"},
+				{Status: 404, Description: "Bridge instance or secret binding not found", Body: contract.ErrorPayload{}},
+				{Status: 503, Description: "Bridge service is not configured", Body: contract.ErrorPayload{}},
+				{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+			},
+		},
+		{
 			Method:      "POST",
 			Path:        "/api/bridges/{id}/test-delivery",
 			OperationID: "testBridgeDelivery",
@@ -1930,11 +1986,26 @@ func schemaCustomizer(_ string, t reflect.Type, _ reflect.StructTag, schema *ope
 	case reflect.TypeOf(bridgepkg.Scope("")):
 		setStringEnum(schema, bridgeScopeValues())
 		return nil
+	case reflect.TypeOf(bridgepkg.BridgeInstanceSource("")):
+		setStringEnum(schema, bridgeInstanceSourceValues())
+		return nil
 	case reflect.TypeOf(bridgepkg.BridgeStatus("")):
 		setStringEnum(schema, bridgeStatusValues())
 		return nil
+	case reflect.TypeOf(bridgepkg.BridgeDMPolicy("")):
+		setStringEnum(schema, bridgeDMPolicyValues())
+		return nil
+	case reflect.TypeOf(bridgepkg.BridgeDegradationReason("")):
+		setStringEnum(schema, bridgeDegradationReasonValues())
+		return nil
 	case reflect.TypeOf(bridgepkg.DeliveryMode("")):
 		setStringEnum(schema, deliveryModeValues())
+		return nil
+	case reflect.TypeOf(contract.BridgeProviderConfigPayload{}):
+		*schema = *bridgeProviderConfigSchema()
+		return nil
+	case reflect.TypeOf(contract.BridgeDeliveryDefaultsPayload{}):
+		*schema = *bridgeDeliveryDefaultsSchema()
 		return nil
 	case reflect.TypeOf(session.SessionState("")):
 		setStringEnum(schema, sessionStateValues())
@@ -2066,6 +2137,14 @@ func setStringEnum(schema *openapi3.Schema, values []string) {
 	for _, value := range values {
 		schema.Enum = append(schema.Enum, value)
 	}
+}
+
+func enumAsAny(values []string) []any {
+	converted := make([]any, 0, len(values))
+	for _, value := range values {
+		converted = append(converted, value)
+	}
+	return converted
 }
 
 func pathParam(name string, description string) ParameterSpec {
@@ -2323,6 +2402,13 @@ func bridgeScopeValues() []string {
 	return []string{string(bridgepkg.ScopeGlobal), string(bridgepkg.ScopeWorkspace)}
 }
 
+func bridgeInstanceSourceValues() []string {
+	return []string{
+		string(bridgepkg.BridgeInstanceSourceDynamic),
+		string(bridgepkg.BridgeInstanceSourcePackage),
+	}
+}
+
 func bridgeStatusValues() []string {
 	return []string{
 		string(bridgepkg.BridgeStatusAuthRequired),
@@ -2331,6 +2417,24 @@ func bridgeStatusValues() []string {
 		string(bridgepkg.BridgeStatusError),
 		string(bridgepkg.BridgeStatusReady),
 		string(bridgepkg.BridgeStatusStarting),
+	}
+}
+
+func bridgeDMPolicyValues() []string {
+	return []string{
+		string(bridgepkg.BridgeDMPolicyOpen),
+		string(bridgepkg.BridgeDMPolicyAllowlist),
+		string(bridgepkg.BridgeDMPolicyPairing),
+	}
+}
+
+func bridgeDegradationReasonValues() []string {
+	return []string{
+		string(bridgepkg.BridgeDegradationReasonAuthFailed),
+		string(bridgepkg.BridgeDegradationReasonRateLimited),
+		string(bridgepkg.BridgeDegradationReasonWebhookInvalid),
+		string(bridgepkg.BridgeDegradationReasonProviderTimeout),
+		string(bridgepkg.BridgeDegradationReasonTenantConfigInvalid),
 	}
 }
 
@@ -2363,6 +2467,22 @@ func stopReasonValues() []string {
 		string(store.StopHookStopped),
 		string(store.StopShutdown),
 	}
+}
+
+func bridgeProviderConfigSchema() *openapi3.Schema {
+	return openapi3.NewObjectSchema().
+		WithNullable().
+		WithAdditionalProperties(openapi3.NewSchema())
+}
+
+func bridgeDeliveryDefaultsSchema() *openapi3.Schema {
+	return openapi3.NewObjectSchema().
+		WithNullable().
+		WithProperty("peer_id", openapi3.NewStringSchema()).
+		WithProperty("thread_id", openapi3.NewStringSchema()).
+		WithProperty("group_id", openapi3.NewStringSchema()).
+		WithProperty("mode", openapi3.NewStringSchema().WithEnum(enumAsAny(deliveryModeValues())...)).
+		WithoutAdditionalProperties()
 }
 
 func toolSourceValues() []string {

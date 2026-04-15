@@ -2,11 +2,14 @@ package extensiontest
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	bridgepkg "github.com/pedronauck/agh/internal/bridges"
+	extensioncontract "github.com/pedronauck/agh/internal/extension/contract"
 	extensionprotocol "github.com/pedronauck/agh/internal/extension/protocol"
 	observepkg "github.com/pedronauck/agh/internal/observe"
 	"github.com/pedronauck/agh/internal/subprocess"
@@ -16,12 +19,18 @@ func TestValidateConformanceAcceptsHealthyOrderedReport(t *testing.T) {
 	report := validConformanceReport()
 
 	if err := ValidateConformance(report, ConformanceExpectation{
-		InstanceID:          "brg-telegram-reference",
-		ExtensionName:       "telegram-reference",
-		BoundSecretNames:    []string{"bot_token"},
-		RequireStateReport:  true,
-		RequireDelivery:     true,
-		ExpectedFinalStatus: bridgepkg.BridgeStatusReady,
+		Provider:                  "telegram-reference",
+		Platform:                  "telegram",
+		RequireOwnedInstanceList:  true,
+		RequireOwnedInstanceFetch: true,
+		RequireStateReport:        true,
+		RequireDelivery:           true,
+		ManagedInstances: []ManagedInstanceExpectation{{
+			InstanceID:          "brg-telegram-reference",
+			ExtensionName:       "telegram-reference",
+			BoundSecretNames:    []string{"bot_token"},
+			ExpectedFinalStatus: bridgepkg.BridgeStatusReady,
+		}},
 	}); err != nil {
 		t.Fatalf("ValidateConformance() error = %v, want nil", err)
 	}
@@ -58,7 +67,76 @@ func TestValidateConformanceFlagsMissingStateReporting(t *testing.T) {
 	report := validConformanceReport()
 	report.States = nil
 
-	assertConformanceIssue(t, report, ConformanceExpectation{RequireStateReport: true}, "missing_state_report")
+	assertConformanceIssue(t, report, ConformanceExpectation{
+		RequireStateReport: true,
+		ManagedInstances: []ManagedInstanceExpectation{{
+			InstanceID: "brg-telegram-reference",
+		}},
+	}, "missing_state_report")
+}
+
+func TestValidateConformanceRejectsMissingProviderScopedBridgeContext(t *testing.T) {
+	report := validConformanceReport()
+	report.Handshake.Request.Runtime.Bridge = nil
+
+	assertConformanceIssue(t, report, ConformanceExpectation{
+		ManagedInstances: []ManagedInstanceExpectation{{
+			InstanceID: "brg-telegram-reference",
+		}},
+	}, "missing_bridge_runtime")
+}
+
+func TestValidateConformanceRejectsUnexpectedOwnedInstanceDelivery(t *testing.T) {
+	report := validConformanceReport()
+	report.Deliveries[0].Request.Event.BridgeInstanceID = "brg-unowned"
+	report.Deliveries[0].Request.Event.DeliveryTarget.BridgeInstanceID = "brg-unowned"
+
+	assertConformanceIssue(t, report, ConformanceExpectation{
+		RequireDelivery: true,
+		ManagedInstances: []ManagedInstanceExpectation{{
+			InstanceID: "brg-telegram-reference",
+		}},
+	}, "unexpected_delivery_instance")
+}
+
+func TestHarnessHelperCloningAndMarkerParsingSupportManyManagedInstances(t *testing.T) {
+	managed := []subprocess.InitializeBridgeManagedInstance{
+		{
+			Instance:     testBridgeInstanceWithID("brg-1"),
+			BoundSecrets: []subprocess.InitializeBridgeBoundSecret{{BindingName: "bot_token", Kind: "token", Value: "token-1"}},
+		},
+		{
+			Instance:     testBridgeInstanceWithID("brg-2"),
+			BoundSecrets: []subprocess.InitializeBridgeBoundSecret{{BindingName: "bot_token", Kind: "token", Value: "token-2"}},
+		},
+	}
+	cloned := cloneManagedRuntime(managed)
+	cloned[0].Instance.ID = "brg-mutated"
+	cloned[0].BoundSecrets[0].Value = "mutated"
+
+	if got, want := managed[0].Instance.ID, "brg-1"; got != want {
+		t.Fatalf("managed[0].Instance.ID = %q, want %q", got, want)
+	}
+	if got, want := managed[0].BoundSecrets[0].Value, "token-1"; got != want {
+		t.Fatalf("managed[0].BoundSecrets[0].Value = %q, want %q", got, want)
+	}
+
+	root := t.TempDir()
+	ownershipPath := root + "/ownership.json"
+	appendJSONLine(t, ownershipPath, OwnershipRecord{
+		Listed:  []bridgepkg.BridgeInstance{testBridgeInstanceWithID("brg-1"), testBridgeInstanceWithID("brg-2")},
+		Fetched: []bridgepkg.BridgeInstance{testBridgeInstanceWithID("brg-1"), testBridgeInstanceWithID("brg-2")},
+	})
+	records, err := readJSONLinesFile[OwnershipRecord](ownershipPath)
+	if err != nil {
+		t.Fatalf("readJSONLinesFile(ownership) error = %v", err)
+	}
+	if got, want := len(records), 1; got != want {
+		t.Fatalf("len(records) = %d, want %d", got, want)
+	}
+	if got, want := len(records[0].Fetched), 2; got != want {
+		t.Fatalf("len(records[0].Fetched) = %d, want %d", got, want)
+	}
 }
 
 func TestHarnessHelperUtilities(t *testing.T) {
@@ -123,6 +201,75 @@ func TestHarnessHelperUtilities(t *testing.T) {
 	}
 }
 
+func TestRecordHostStateTransitionCapturesReportedState(t *testing.T) {
+	path := t.TempDir() + "/states.jsonl"
+	params, err := json.Marshal(extensioncontract.BridgesInstancesReportStateParams{
+		BridgeInstanceID: "brg-1",
+		Status:           bridgepkg.BridgeStatusDegraded,
+		Degradation: &bridgepkg.BridgeDegradation{
+			Reason: bridgepkg.BridgeDegradationReasonRateLimited,
+		},
+	})
+	if err != nil {
+		t.Fatalf("json.Marshal(params) error = %v", err)
+	}
+
+	recordHostStateTransition(t, path, params, &bridgepkg.BridgeInstance{
+		ID:     "brg-1",
+		Status: bridgepkg.BridgeStatusDegraded,
+		Degradation: &bridgepkg.BridgeDegradation{
+			Reason: bridgepkg.BridgeDegradationReasonRateLimited,
+		},
+	}, nil)
+
+	records, err := readJSONLinesFile[StateRecord](path)
+	if err != nil {
+		t.Fatalf("readJSONLinesFile(states) error = %v", err)
+	}
+	if got, want := len(records), 1; got != want {
+		t.Fatalf("len(records) = %d, want %d", got, want)
+	}
+	if got, want := records[0].BridgeInstanceID, "brg-1"; got != want {
+		t.Fatalf("records[0].BridgeInstanceID = %q, want %q", got, want)
+	}
+	if got, want := records[0].Status.Normalize(), bridgepkg.BridgeStatusDegraded; got != want {
+		t.Fatalf("records[0].Status = %q, want %q", got, want)
+	}
+	if records[0].Instance.Degradation == nil || records[0].Instance.Degradation.Reason != bridgepkg.BridgeDegradationReasonRateLimited {
+		t.Fatalf("records[0].Instance.Degradation = %#v, want rate limited", records[0].Instance.Degradation)
+	}
+}
+
+func TestRecordHostStateTransitionCapturesHostErrors(t *testing.T) {
+	path := t.TempDir() + "/states.jsonl"
+	params, err := json.Marshal(extensioncontract.BridgesInstancesReportStateParams{
+		BridgeInstanceID: "brg-err",
+		Status:           bridgepkg.BridgeStatusAuthRequired,
+	})
+	if err != nil {
+		t.Fatalf("json.Marshal(params) error = %v", err)
+	}
+
+	recordHostStateTransition(t, path, params, nil, errors.New("host failed"))
+
+	records, err := readJSONLinesFile[StateRecord](path)
+	if err != nil {
+		t.Fatalf("readJSONLinesFile(states) error = %v", err)
+	}
+	if got, want := len(records), 1; got != want {
+		t.Fatalf("len(records) = %d, want %d", got, want)
+	}
+	if got, want := records[0].BridgeInstanceID, "brg-err"; got != want {
+		t.Fatalf("records[0].BridgeInstanceID = %q, want %q", got, want)
+	}
+	if got, want := records[0].Status.Normalize(), bridgepkg.BridgeStatusAuthRequired; got != want {
+		t.Fatalf("records[0].Status = %q, want %q", got, want)
+	}
+	if got, want := records[0].Error, "host failed"; got != want {
+		t.Fatalf("records[0].Error = %q, want %q", got, want)
+	}
+}
+
 func assertConformanceIssue(
 	t *testing.T,
 	report ConformanceReport,
@@ -164,6 +311,7 @@ func validConformanceReport() ConformanceReport {
 				Capabilities: subprocess.InitializeCapabilities{
 					Provides: []string{"bridge.adapter"},
 					GrantedActions: []extensionprotocol.HostAPIMethod{
+						extensionprotocol.HostAPIMethodBridgesInstancesList,
 						extensionprotocol.HostAPIMethodBridgesMessagesIngest,
 						extensionprotocol.HostAPIMethodBridgesInstancesGet,
 						extensionprotocol.HostAPIMethodBridgesInstancesReportState,
@@ -179,31 +327,28 @@ func validConformanceReport() ConformanceReport {
 					ShutdownTimeoutMS:     10_000,
 					DefaultHookTimeoutMS:  5_000,
 					Bridge: &subprocess.InitializeBridgeRuntime{
-						Instance: testBridgeInstance(),
-						BoundSecrets: []subprocess.InitializeBridgeBoundSecret{
-							{BindingName: "bot_token", Kind: "token", Value: "telegram-token"},
-						},
+						RuntimeVersion: subprocess.InitializeBridgeRuntimeVersion1,
+						Provider:       "telegram-reference",
+						Platform:       "telegram",
+						ManagedInstances: []subprocess.InitializeBridgeManagedInstance{{
+							Instance: testBridgeInstance(),
+							BoundSecrets: []subprocess.InitializeBridgeBoundSecret{
+								{BindingName: "bot_token", Kind: "token", Value: "telegram-token"},
+							},
+						}},
 					},
 				},
 			},
 		},
-		Instance: &bridgepkg.BridgeInstance{
-			ID:            "brg-telegram-reference",
-			Scope:         bridgepkg.ScopeWorkspace,
-			WorkspaceID:   "ws-telegram",
-			Platform:      "telegram",
-			ExtensionName: "telegram-reference",
-			DisplayName:   "Telegram Reference",
-			Enabled:       true,
-			Status:        bridgepkg.BridgeStatusReady,
-			RoutingPolicy: bridgepkg.RoutingPolicy{IncludePeer: true, IncludeThread: true},
-			CreatedAt:     time.Date(2026, 4, 11, 5, 0, 0, 0, time.UTC),
-			UpdatedAt:     time.Date(2026, 4, 11, 5, 0, 0, 0, time.UTC),
+		Ownership: &OwnershipRecord{
+			Listed:  []bridgepkg.BridgeInstance{testBridgeInstance()},
+			Fetched: []bridgepkg.BridgeInstance{testBridgeInstance()},
 		},
 		States: []StateRecord{
 			{
-				Status:   bridgepkg.BridgeStatusReady,
-				Instance: testBridgeInstance(),
+				BridgeInstanceID: "brg-telegram-reference",
+				Status:           bridgepkg.BridgeStatusReady,
+				Instance:         testBridgeInstance(),
 			},
 		},
 		Deliveries: []DeliveryRecord{
@@ -224,9 +369,13 @@ func validConformanceReport() ConformanceReport {
 }
 
 func testBridgeInstance() bridgepkg.BridgeInstance {
+	return testBridgeInstanceWithID("brg-telegram-reference")
+}
+
+func testBridgeInstanceWithID(instanceID string) bridgepkg.BridgeInstance {
 	now := time.Date(2026, 4, 11, 5, 0, 0, 0, time.UTC)
 	return bridgepkg.BridgeInstance{
-		ID:            "brg-telegram-reference",
+		ID:            instanceID,
 		Scope:         bridgepkg.ScopeWorkspace,
 		WorkspaceID:   "ws-telegram",
 		Platform:      "telegram",

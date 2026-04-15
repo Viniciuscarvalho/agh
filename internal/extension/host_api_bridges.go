@@ -36,13 +36,39 @@ type hostAPIBridgeDedupStore interface {
 
 const hostAPIBusyRetryAttempts = 3
 
-func (h *HostAPIHandler) handleBridgesInstancesGet(ctx context.Context, raw json.RawMessage) (any, error) {
+func (h *HostAPIHandler) handleBridgesInstancesList(ctx context.Context, raw json.RawMessage) (any, error) {
+	if h.bridges == nil {
+		return nil, unavailableRPCError(errors.New("bridge registry is not configured"))
+	}
+
 	var params struct{}
 	if err := decodeHostAPIParams(raw, &params); err != nil {
 		return nil, err
 	}
 
-	_, instance, err := h.authorizedBridgeInstance(ctx)
+	_, instances, err := h.authorizedBridgeInstances(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return instances, nil
+}
+
+func (h *HostAPIHandler) handleBridgesInstancesGet(ctx context.Context, raw json.RawMessage) (any, error) {
+	if h.bridges == nil {
+		return nil, unavailableRPCError(errors.New("bridge registry is not configured"))
+	}
+
+	var params hostAPIBridgeInstanceTargetParams
+	if err := decodeHostAPIParams(raw, &params); err != nil {
+		return nil, err
+	}
+
+	instanceID, err := requireBridgeInstanceID(params.BridgeInstanceID)
+	if err != nil {
+		return nil, err
+	}
+
+	_, instance, err := h.authorizedBridgeInstance(ctx, instanceID)
 	if err != nil {
 		return nil, err
 	}
@@ -58,23 +84,37 @@ func (h *HostAPIHandler) handleBridgesInstancesReportState(ctx context.Context, 
 	if err := decodeHostAPIParams(raw, &params); err != nil {
 		return nil, err
 	}
+	instanceID, err := requireBridgeInstanceID(params.BridgeInstanceID)
+	if err != nil {
+		return nil, err
+	}
 	if err := params.Status.Validate(); err != nil {
 		return nil, invalidParamsRPCError(err)
 	}
 	if params.Status.Normalize() == bridgepkg.BridgeStatusDisabled {
 		return nil, invalidParamsRPCError(errors.New("bridge status disabled is operator-controlled"))
 	}
+	if params.ClearDegradation && params.Degradation != nil && !params.Degradation.IsZero() {
+		return nil, invalidParamsRPCError(errors.New("bridge degradation cannot be cleared and set together"))
+	}
+	if params.Degradation != nil {
+		if err := params.Degradation.Validate(); err != nil {
+			return nil, invalidParamsRPCError(err)
+		}
+	}
 
-	_, instance, err := h.authorizedBridgeInstance(ctx)
+	_, instance, err := h.authorizedBridgeInstance(ctx, instanceID)
 	if err != nil {
 		return nil, err
 	}
 
 	updated, err := h.bridges.UpdateInstanceState(ctx, bridgepkg.UpdateInstanceStateRequest{
-		ID:        instance.ID,
-		Enabled:   instance.Enabled,
-		Status:    params.Status,
-		UpdatedAt: h.now(),
+		ID:               instance.ID,
+		Enabled:          instance.Enabled,
+		Status:           params.Status,
+		Degradation:      params.Degradation,
+		ClearDegradation: params.ClearDegradation,
+		UpdatedAt:        h.now(),
 	})
 	if err != nil {
 		return nil, mapBridgeStateUpdateError(instance.ID, err)
@@ -109,16 +149,9 @@ func (h *HostAPIHandler) handleBridgesMessagesIngest(ctx context.Context, raw js
 		return nil, invalidParamsRPCError(err)
 	}
 
-	_, instance, err := h.authorizedBridgeInstance(ctx)
+	_, instance, err := h.authorizedBridgeInstance(ctx, params.BridgeInstanceID)
 	if err != nil {
 		return nil, err
-	}
-	if strings.TrimSpace(params.BridgeInstanceID) != instance.ID {
-		return nil, notFoundRPCError(
-			"bridge_instance",
-			strings.TrimSpace(params.BridgeInstanceID),
-			fmt.Errorf("bridge instance %q is not assigned to this extension", strings.TrimSpace(params.BridgeInstanceID)),
-		)
 	}
 	if err := validateBridgeIngressInstance(*instance); err != nil {
 		return nil, err
@@ -180,30 +213,87 @@ func (h *HostAPIHandler) handleBridgesMessagesIngest(ctx context.Context, raw js
 	}, nil
 }
 
-func (h *HostAPIHandler) authorizedBridgeInstance(ctx context.Context) (*subprocess.InitializeBridgeRuntime, *bridgepkg.BridgeInstance, error) {
-	if h.bridges == nil {
-		return nil, nil, unavailableRPCError(errors.New("bridge registry is not configured"))
+func (h *HostAPIHandler) authorizedBridgeInstances(
+	ctx context.Context,
+) (*subprocess.InitializeBridgeRuntime, []bridgepkg.BridgeInstance, error) {
+	runtime, extName, err := h.authorizedBridgeRuntime(ctx)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	runtime := hostAPIBridgeRuntimeFromContext(ctx)
-	if runtime == nil {
-		return nil, nil, unavailableRPCError(errors.New("bridge runtime is not configured"))
+	managedIDs := runtime.ManagedBridgeInstanceIDs()
+	if len(managedIDs) == 0 {
+		return runtime, nil, nil
 	}
 
-	extName := hostAPIExtensionNameFromContext(ctx)
-	if extName == "" {
-		return nil, nil, unavailableRPCError(errors.New("bridge extension name is not available"))
+	instances := make([]bridgepkg.BridgeInstance, 0, len(managedIDs))
+	for _, instanceID := range managedIDs {
+		managed, ok := runtime.ManagedInstance(instanceID)
+		if !ok {
+			return nil, nil, notFoundRPCError(
+				"bridge_instance",
+				instanceID,
+				fmt.Errorf("bridge instance %q is not assigned to this extension", instanceID),
+			)
+		}
+		if strings.TrimSpace(managed.Instance.ExtensionName) != extName {
+			return nil, nil, notFoundRPCError(
+				"bridge_instance",
+				instanceID,
+				fmt.Errorf("bridge runtime instance belongs to extension %q", strings.TrimSpace(managed.Instance.ExtensionName)),
+			)
+		}
+
+		instance, err := h.bridges.GetInstance(ctx, instanceID)
+		if err != nil {
+			return nil, nil, mapBridgeLookupError(instanceID, err)
+		}
+		if strings.TrimSpace(instance.ExtensionName) != extName {
+			return nil, nil, notFoundRPCError(
+				"bridge_instance",
+				instance.ID,
+				fmt.Errorf("bridge instance %q is not owned by extension %q", instance.ID, extName),
+			)
+		}
+
+		instances = append(instances, *instance)
 	}
 
-	instanceID := strings.TrimSpace(runtime.Instance.ID)
+	return runtime, instances, nil
+}
+
+func (h *HostAPIHandler) authorizedBridgeInstance(
+	ctx context.Context,
+	bridgeInstanceID string,
+) (*subprocess.InitializeBridgeRuntime, *bridgepkg.BridgeInstance, error) {
+	runtime, extName, err := h.authorizedBridgeRuntime(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	trimmedID, err := requireBridgeInstanceID(bridgeInstanceID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	managed, ok := runtime.ManagedInstance(trimmedID)
+	if !ok {
+		return nil, nil, notFoundRPCError(
+			"bridge_instance",
+			trimmedID,
+			fmt.Errorf("bridge instance %q is not assigned to this extension", trimmedID),
+		)
+	}
+
+	instanceID := strings.TrimSpace(managed.Instance.ID)
 	if instanceID == "" {
 		return nil, nil, unavailableRPCError(errors.New("bridge runtime instance id is required"))
 	}
-	if strings.TrimSpace(runtime.Instance.ExtensionName) != extName {
+	if strings.TrimSpace(managed.Instance.ExtensionName) != extName {
 		return nil, nil, notFoundRPCError(
 			"bridge_instance",
 			instanceID,
-			fmt.Errorf("bridge runtime instance belongs to extension %q", strings.TrimSpace(runtime.Instance.ExtensionName)),
+			fmt.Errorf("bridge runtime instance belongs to extension %q", strings.TrimSpace(managed.Instance.ExtensionName)),
 		)
 	}
 
@@ -220,6 +310,34 @@ func (h *HostAPIHandler) authorizedBridgeInstance(ctx context.Context) (*subproc
 	}
 
 	return runtime, instance, nil
+}
+
+func (h *HostAPIHandler) authorizedBridgeRuntime(
+	ctx context.Context,
+) (*subprocess.InitializeBridgeRuntime, string, error) {
+	if h.bridges == nil {
+		return nil, "", unavailableRPCError(errors.New("bridge registry is not configured"))
+	}
+
+	runtime := hostAPIBridgeRuntimeFromContext(ctx)
+	if runtime == nil {
+		return nil, "", unavailableRPCError(errors.New("bridge runtime is not configured"))
+	}
+
+	extName := hostAPIExtensionNameFromContext(ctx)
+	if extName == "" {
+		return nil, "", unavailableRPCError(errors.New("bridge extension name is not available"))
+	}
+
+	return runtime, extName, nil
+}
+
+func requireBridgeInstanceID(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", invalidParamsRPCError(errors.New("bridge_instance_id is required"))
+	}
+	return trimmed, nil
 }
 
 func (h *HostAPIHandler) maybeCleanupBridgeIngestDedup(ctx context.Context) error {
@@ -608,9 +726,49 @@ func bridgeRouteForRoutingKey(
 
 func renderInboundMessagePrompt(envelope bridgepkg.InboundMessageEnvelope) string {
 	var lines []string
+	family := envelope.EventFamily.Normalize()
+	if family == "" {
+		family = bridgepkg.InboundEventFamilyMessage
+	}
 
-	lines = append(lines, "Inbound bridge message")
-	lines = append(lines, "Platform message ID: "+strings.TrimSpace(envelope.PlatformMessageID))
+	switch family {
+	case bridgepkg.InboundEventFamilyCommand:
+		lines = append(lines, "Inbound bridge command")
+		lines = append(lines, "Command: "+strings.TrimSpace(envelope.Command.Command))
+		if text := strings.TrimSpace(envelope.Command.Text); text != "" {
+			lines = append(lines, "Arguments: "+text)
+		}
+		if triggerID := strings.TrimSpace(envelope.Command.TriggerID); triggerID != "" {
+			lines = append(lines, "Trigger ID: "+triggerID)
+		}
+	case bridgepkg.InboundEventFamilyAction:
+		lines = append(lines, "Inbound bridge action")
+		lines = append(lines, "Action ID: "+strings.TrimSpace(envelope.Action.ActionID))
+		if messageID := strings.TrimSpace(envelope.Action.MessageID); messageID != "" {
+			lines = append(lines, "Message ID: "+messageID)
+		}
+		if value := strings.TrimSpace(envelope.Action.Value); value != "" {
+			lines = append(lines, "Value: "+value)
+		}
+		if triggerID := strings.TrimSpace(envelope.Action.TriggerID); triggerID != "" {
+			lines = append(lines, "Trigger ID: "+triggerID)
+		}
+	case bridgepkg.InboundEventFamilyReaction:
+		lines = append(lines, "Inbound bridge reaction")
+		lines = append(lines, "Message ID: "+strings.TrimSpace(envelope.Reaction.MessageID))
+		lines = append(lines, "Emoji: "+strings.TrimSpace(envelope.Reaction.Emoji))
+		if rawEmoji := strings.TrimSpace(envelope.Reaction.RawEmoji); rawEmoji != "" {
+			lines = append(lines, "Raw emoji: "+rawEmoji)
+		}
+		if envelope.Reaction.Added {
+			lines = append(lines, "Change: added")
+		} else {
+			lines = append(lines, "Change: removed")
+		}
+	default:
+		lines = append(lines, "Inbound bridge message")
+		lines = append(lines, "Platform message ID: "+strings.TrimSpace(envelope.PlatformMessageID))
+	}
 	if !envelope.ReceivedAt.IsZero() {
 		lines = append(lines, "Received at: "+envelope.ReceivedAt.UTC().Format(time.RFC3339Nano))
 	}
@@ -627,16 +785,18 @@ func renderInboundMessagePrompt(envelope bridgepkg.InboundMessageEnvelope) strin
 		lines = append(lines, "Group ID: "+groupID)
 	}
 
-	body := strings.TrimSpace(envelope.Content.Text)
-	if body == "" {
-		body = "[No text body]"
-	}
-	lines = append(lines, "", body)
+	if family == bridgepkg.InboundEventFamilyMessage {
+		body := strings.TrimSpace(envelope.Content.Text)
+		if body == "" {
+			body = "[No text body]"
+		}
+		lines = append(lines, "", body)
 
-	if len(envelope.Attachments) > 0 {
-		lines = append(lines, "", "Attachments:")
-		for _, attachment := range envelope.Attachments {
-			lines = append(lines, "- "+summarizeInboundAttachment(attachment))
+		if len(envelope.Attachments) > 0 {
+			lines = append(lines, "", "Attachments:")
+			for _, attachment := range envelope.Attachments {
+				lines = append(lines, "- "+summarizeInboundAttachment(attachment))
+			}
 		}
 	}
 

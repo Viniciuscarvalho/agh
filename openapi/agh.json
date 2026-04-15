@@ -3500,6 +3500,26 @@
                                                     "bridge_instance_id": {
                                                         "type": "string"
                                                     },
+                                                    "degradation": {
+                                                        "nullable": true,
+                                                        "properties": {
+                                                            "message": {
+                                                                "type": "string"
+                                                            },
+                                                            "reason": {
+                                                                "enum": [
+                                                                    "auth_failed",
+                                                                    "rate_limited",
+                                                                    "webhook_invalid",
+                                                                    "provider_timeout",
+                                                                    "tenant_config_invalid"
+                                                                ],
+                                                                "type": "string"
+                                                            }
+                                                        },
+                                                        "required": ["reason"],
+                                                        "type": "object"
+                                                    },
                                                     "delivery_backlog": {
                                                         "type": "integer"
                                                     },
@@ -3563,8 +3583,51 @@
                                                         "format": "date-time",
                                                         "type": "string"
                                                     },
-                                                    "delivery_defaults": {},
+                                                    "degradation": {
+                                                        "nullable": true,
+                                                        "properties": {
+                                                            "message": {
+                                                                "type": "string"
+                                                            },
+                                                            "reason": {
+                                                                "enum": [
+                                                                    "auth_failed",
+                                                                    "rate_limited",
+                                                                    "webhook_invalid",
+                                                                    "provider_timeout",
+                                                                    "tenant_config_invalid"
+                                                                ],
+                                                                "type": "string"
+                                                            }
+                                                        },
+                                                        "required": ["reason"],
+                                                        "type": "object"
+                                                    },
+                                                    "delivery_defaults": {
+                                                        "additionalProperties": false,
+                                                        "nullable": true,
+                                                        "properties": {
+                                                            "group_id": {
+                                                                "type": "string"
+                                                            },
+                                                            "mode": {
+                                                                "enum": ["direct-send", "reply"],
+                                                                "type": "string"
+                                                            },
+                                                            "peer_id": {
+                                                                "type": "string"
+                                                            },
+                                                            "thread_id": {
+                                                                "type": "string"
+                                                            }
+                                                        },
+                                                        "type": "object"
+                                                    },
                                                     "display_name": {
+                                                        "type": "string"
+                                                    },
+                                                    "dm_policy": {
+                                                        "enum": ["open", "allowlist", "pairing"],
                                                         "type": "string"
                                                     },
                                                     "enabled": {
@@ -3578,6 +3641,11 @@
                                                     },
                                                     "platform": {
                                                         "type": "string"
+                                                    },
+                                                    "provider_config": {
+                                                        "additionalProperties": {},
+                                                        "nullable": true,
+                                                        "type": "object"
                                                     },
                                                     "routing_policy": {
                                                         "properties": {
@@ -3603,6 +3671,7 @@
                                                         "type": "string"
                                                     },
                                                     "source": {
+                                                        "enum": ["dynamic", "package"],
                                                         "type": "string"
                                                     },
                                                     "status": {
@@ -3695,8 +3764,51 @@
                         "application/json": {
                             "schema": {
                                 "properties": {
-                                    "delivery_defaults": {},
+                                    "degradation": {
+                                        "nullable": true,
+                                        "properties": {
+                                            "message": {
+                                                "type": "string"
+                                            },
+                                            "reason": {
+                                                "enum": [
+                                                    "auth_failed",
+                                                    "rate_limited",
+                                                    "webhook_invalid",
+                                                    "provider_timeout",
+                                                    "tenant_config_invalid"
+                                                ],
+                                                "type": "string"
+                                            }
+                                        },
+                                        "required": ["reason"],
+                                        "type": "object"
+                                    },
+                                    "delivery_defaults": {
+                                        "additionalProperties": false,
+                                        "nullable": true,
+                                        "properties": {
+                                            "group_id": {
+                                                "type": "string"
+                                            },
+                                            "mode": {
+                                                "enum": ["direct-send", "reply"],
+                                                "type": "string"
+                                            },
+                                            "peer_id": {
+                                                "type": "string"
+                                            },
+                                            "thread_id": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "type": "object"
+                                    },
                                     "display_name": {
+                                        "type": "string"
+                                    },
+                                    "dm_policy": {
+                                        "enum": ["open", "allowlist", "pairing"],
                                         "type": "string"
                                     },
                                     "enabled": {
@@ -3707,6 +3819,11 @@
                                     },
                                     "platform": {
                                         "type": "string"
+                                    },
+                                    "provider_config": {
+                                        "additionalProperties": {},
+                                        "nullable": true,
+                                        "type": "object"
                                     },
                                     "routing_policy": {
                                         "properties": {
@@ -3774,8 +3891,51 @@
                                                     "format": "date-time",
                                                     "type": "string"
                                                 },
-                                                "delivery_defaults": {},
+                                                "degradation": {
+                                                    "nullable": true,
+                                                    "properties": {
+                                                        "message": {
+                                                            "type": "string"
+                                                        },
+                                                        "reason": {
+                                                            "enum": [
+                                                                "auth_failed",
+                                                                "rate_limited",
+                                                                "webhook_invalid",
+                                                                "provider_timeout",
+                                                                "tenant_config_invalid"
+                                                            ],
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "required": ["reason"],
+                                                    "type": "object"
+                                                },
+                                                "delivery_defaults": {
+                                                    "additionalProperties": false,
+                                                    "nullable": true,
+                                                    "properties": {
+                                                        "group_id": {
+                                                            "type": "string"
+                                                        },
+                                                        "mode": {
+                                                            "enum": ["direct-send", "reply"],
+                                                            "type": "string"
+                                                        },
+                                                        "peer_id": {
+                                                            "type": "string"
+                                                        },
+                                                        "thread_id": {
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "type": "object"
+                                                },
                                                 "display_name": {
+                                                    "type": "string"
+                                                },
+                                                "dm_policy": {
+                                                    "enum": ["open", "allowlist", "pairing"],
                                                     "type": "string"
                                                 },
                                                 "enabled": {
@@ -3789,6 +3949,11 @@
                                                 },
                                                 "platform": {
                                                     "type": "string"
+                                                },
+                                                "provider_config": {
+                                                    "additionalProperties": {},
+                                                    "nullable": true,
+                                                    "type": "object"
                                                 },
                                                 "routing_policy": {
                                                     "properties": {
@@ -3814,6 +3979,7 @@
                                                     "type": "string"
                                                 },
                                                 "source": {
+                                                    "enum": ["dynamic", "package"],
                                                     "type": "string"
                                                 },
                                                 "status": {
@@ -3856,6 +4022,26 @@
                                                 },
                                                 "bridge_instance_id": {
                                                     "type": "string"
+                                                },
+                                                "degradation": {
+                                                    "nullable": true,
+                                                    "properties": {
+                                                        "message": {
+                                                            "type": "string"
+                                                        },
+                                                        "reason": {
+                                                            "enum": [
+                                                                "auth_failed",
+                                                                "rate_limited",
+                                                                "webhook_invalid",
+                                                                "provider_timeout",
+                                                                "tenant_config_invalid"
+                                                            ],
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "required": ["reason"],
+                                                    "type": "object"
                                                 },
                                                 "delivery_backlog": {
                                                     "type": "integer"
@@ -4004,6 +4190,18 @@
                                         "providers": {
                                             "items": {
                                                 "properties": {
+                                                    "config_schema": {
+                                                        "nullable": true,
+                                                        "properties": {
+                                                            "schema": {
+                                                                "type": "string"
+                                                            },
+                                                            "version": {
+                                                                "type": "string"
+                                                            }
+                                                        },
+                                                        "type": "object"
+                                                    },
                                                     "description": {
                                                         "type": "string"
                                                     },
@@ -4024,6 +4222,24 @@
                                                     },
                                                     "platform": {
                                                         "type": "string"
+                                                    },
+                                                    "secret_slots": {
+                                                        "items": {
+                                                            "properties": {
+                                                                "description": {
+                                                                    "type": "string"
+                                                                },
+                                                                "name": {
+                                                                    "type": "string"
+                                                                },
+                                                                "required": {
+                                                                    "type": "boolean"
+                                                                }
+                                                            },
+                                                            "required": ["name"],
+                                                            "type": "object"
+                                                        },
+                                                        "type": "array"
                                                     },
                                                     "state": {
                                                         "type": "string"
@@ -4116,8 +4332,51 @@
                                                     "format": "date-time",
                                                     "type": "string"
                                                 },
-                                                "delivery_defaults": {},
+                                                "degradation": {
+                                                    "nullable": true,
+                                                    "properties": {
+                                                        "message": {
+                                                            "type": "string"
+                                                        },
+                                                        "reason": {
+                                                            "enum": [
+                                                                "auth_failed",
+                                                                "rate_limited",
+                                                                "webhook_invalid",
+                                                                "provider_timeout",
+                                                                "tenant_config_invalid"
+                                                            ],
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "required": ["reason"],
+                                                    "type": "object"
+                                                },
+                                                "delivery_defaults": {
+                                                    "additionalProperties": false,
+                                                    "nullable": true,
+                                                    "properties": {
+                                                        "group_id": {
+                                                            "type": "string"
+                                                        },
+                                                        "mode": {
+                                                            "enum": ["direct-send", "reply"],
+                                                            "type": "string"
+                                                        },
+                                                        "peer_id": {
+                                                            "type": "string"
+                                                        },
+                                                        "thread_id": {
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "type": "object"
+                                                },
                                                 "display_name": {
+                                                    "type": "string"
+                                                },
+                                                "dm_policy": {
+                                                    "enum": ["open", "allowlist", "pairing"],
                                                     "type": "string"
                                                 },
                                                 "enabled": {
@@ -4131,6 +4390,11 @@
                                                 },
                                                 "platform": {
                                                     "type": "string"
+                                                },
+                                                "provider_config": {
+                                                    "additionalProperties": {},
+                                                    "nullable": true,
+                                                    "type": "object"
                                                 },
                                                 "routing_policy": {
                                                     "properties": {
@@ -4156,6 +4420,7 @@
                                                     "type": "string"
                                                 },
                                                 "source": {
+                                                    "enum": ["dynamic", "package"],
                                                     "type": "string"
                                                 },
                                                 "status": {
@@ -4198,6 +4463,26 @@
                                                 },
                                                 "bridge_instance_id": {
                                                     "type": "string"
+                                                },
+                                                "degradation": {
+                                                    "nullable": true,
+                                                    "properties": {
+                                                        "message": {
+                                                            "type": "string"
+                                                        },
+                                                        "reason": {
+                                                            "enum": [
+                                                                "auth_failed",
+                                                                "rate_limited",
+                                                                "webhook_invalid",
+                                                                "provider_timeout",
+                                                                "tenant_config_invalid"
+                                                            ],
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "required": ["reason"],
+                                                    "type": "object"
                                                 },
                                                 "delivery_backlog": {
                                                     "type": "integer"
@@ -4335,10 +4620,61 @@
                         "application/json": {
                             "schema": {
                                 "properties": {
-                                    "delivery_defaults": {},
+                                    "clear_degradation": {
+                                        "type": "boolean"
+                                    },
+                                    "degradation": {
+                                        "nullable": true,
+                                        "properties": {
+                                            "message": {
+                                                "type": "string"
+                                            },
+                                            "reason": {
+                                                "enum": [
+                                                    "auth_failed",
+                                                    "rate_limited",
+                                                    "webhook_invalid",
+                                                    "provider_timeout",
+                                                    "tenant_config_invalid"
+                                                ],
+                                                "type": "string"
+                                            }
+                                        },
+                                        "required": ["reason"],
+                                        "type": "object"
+                                    },
+                                    "delivery_defaults": {
+                                        "additionalProperties": false,
+                                        "nullable": true,
+                                        "properties": {
+                                            "group_id": {
+                                                "type": "string"
+                                            },
+                                            "mode": {
+                                                "enum": ["direct-send", "reply"],
+                                                "type": "string"
+                                            },
+                                            "peer_id": {
+                                                "type": "string"
+                                            },
+                                            "thread_id": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "type": "object"
+                                    },
                                     "display_name": {
                                         "nullable": true,
                                         "type": "string"
+                                    },
+                                    "dm_policy": {
+                                        "enum": ["open", "allowlist", "pairing"],
+                                        "type": "string"
+                                    },
+                                    "provider_config": {
+                                        "additionalProperties": {},
+                                        "nullable": true,
+                                        "type": "object"
                                     },
                                     "routing_policy": {
                                         "nullable": true,
@@ -4380,8 +4716,51 @@
                                                     "format": "date-time",
                                                     "type": "string"
                                                 },
-                                                "delivery_defaults": {},
+                                                "degradation": {
+                                                    "nullable": true,
+                                                    "properties": {
+                                                        "message": {
+                                                            "type": "string"
+                                                        },
+                                                        "reason": {
+                                                            "enum": [
+                                                                "auth_failed",
+                                                                "rate_limited",
+                                                                "webhook_invalid",
+                                                                "provider_timeout",
+                                                                "tenant_config_invalid"
+                                                            ],
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "required": ["reason"],
+                                                    "type": "object"
+                                                },
+                                                "delivery_defaults": {
+                                                    "additionalProperties": false,
+                                                    "nullable": true,
+                                                    "properties": {
+                                                        "group_id": {
+                                                            "type": "string"
+                                                        },
+                                                        "mode": {
+                                                            "enum": ["direct-send", "reply"],
+                                                            "type": "string"
+                                                        },
+                                                        "peer_id": {
+                                                            "type": "string"
+                                                        },
+                                                        "thread_id": {
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "type": "object"
+                                                },
                                                 "display_name": {
+                                                    "type": "string"
+                                                },
+                                                "dm_policy": {
+                                                    "enum": ["open", "allowlist", "pairing"],
                                                     "type": "string"
                                                 },
                                                 "enabled": {
@@ -4395,6 +4774,11 @@
                                                 },
                                                 "platform": {
                                                     "type": "string"
+                                                },
+                                                "provider_config": {
+                                                    "additionalProperties": {},
+                                                    "nullable": true,
+                                                    "type": "object"
                                                 },
                                                 "routing_policy": {
                                                     "properties": {
@@ -4420,6 +4804,7 @@
                                                     "type": "string"
                                                 },
                                                 "source": {
+                                                    "enum": ["dynamic", "package"],
                                                     "type": "string"
                                                 },
                                                 "status": {
@@ -4462,6 +4847,26 @@
                                                 },
                                                 "bridge_instance_id": {
                                                     "type": "string"
+                                                },
+                                                "degradation": {
+                                                    "nullable": true,
+                                                    "properties": {
+                                                        "message": {
+                                                            "type": "string"
+                                                        },
+                                                        "reason": {
+                                                            "enum": [
+                                                                "auth_failed",
+                                                                "rate_limited",
+                                                                "webhook_invalid",
+                                                                "provider_timeout",
+                                                                "tenant_config_invalid"
+                                                            ],
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "required": ["reason"],
+                                                    "type": "object"
                                                 },
                                                 "delivery_backlog": {
                                                     "type": "integer"
@@ -4624,8 +5029,51 @@
                                                     "format": "date-time",
                                                     "type": "string"
                                                 },
-                                                "delivery_defaults": {},
+                                                "degradation": {
+                                                    "nullable": true,
+                                                    "properties": {
+                                                        "message": {
+                                                            "type": "string"
+                                                        },
+                                                        "reason": {
+                                                            "enum": [
+                                                                "auth_failed",
+                                                                "rate_limited",
+                                                                "webhook_invalid",
+                                                                "provider_timeout",
+                                                                "tenant_config_invalid"
+                                                            ],
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "required": ["reason"],
+                                                    "type": "object"
+                                                },
+                                                "delivery_defaults": {
+                                                    "additionalProperties": false,
+                                                    "nullable": true,
+                                                    "properties": {
+                                                        "group_id": {
+                                                            "type": "string"
+                                                        },
+                                                        "mode": {
+                                                            "enum": ["direct-send", "reply"],
+                                                            "type": "string"
+                                                        },
+                                                        "peer_id": {
+                                                            "type": "string"
+                                                        },
+                                                        "thread_id": {
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "type": "object"
+                                                },
                                                 "display_name": {
+                                                    "type": "string"
+                                                },
+                                                "dm_policy": {
+                                                    "enum": ["open", "allowlist", "pairing"],
                                                     "type": "string"
                                                 },
                                                 "enabled": {
@@ -4639,6 +5087,11 @@
                                                 },
                                                 "platform": {
                                                     "type": "string"
+                                                },
+                                                "provider_config": {
+                                                    "additionalProperties": {},
+                                                    "nullable": true,
+                                                    "type": "object"
                                                 },
                                                 "routing_policy": {
                                                     "properties": {
@@ -4664,6 +5117,7 @@
                                                     "type": "string"
                                                 },
                                                 "source": {
+                                                    "enum": ["dynamic", "package"],
                                                     "type": "string"
                                                 },
                                                 "status": {
@@ -4706,6 +5160,26 @@
                                                 },
                                                 "bridge_instance_id": {
                                                     "type": "string"
+                                                },
+                                                "degradation": {
+                                                    "nullable": true,
+                                                    "properties": {
+                                                        "message": {
+                                                            "type": "string"
+                                                        },
+                                                        "reason": {
+                                                            "enum": [
+                                                                "auth_failed",
+                                                                "rate_limited",
+                                                                "webhook_invalid",
+                                                                "provider_timeout",
+                                                                "tenant_config_invalid"
+                                                            ],
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "required": ["reason"],
+                                                    "type": "object"
                                                 },
                                                 "delivery_backlog": {
                                                     "type": "integer"
@@ -4868,8 +5342,51 @@
                                                     "format": "date-time",
                                                     "type": "string"
                                                 },
-                                                "delivery_defaults": {},
+                                                "degradation": {
+                                                    "nullable": true,
+                                                    "properties": {
+                                                        "message": {
+                                                            "type": "string"
+                                                        },
+                                                        "reason": {
+                                                            "enum": [
+                                                                "auth_failed",
+                                                                "rate_limited",
+                                                                "webhook_invalid",
+                                                                "provider_timeout",
+                                                                "tenant_config_invalid"
+                                                            ],
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "required": ["reason"],
+                                                    "type": "object"
+                                                },
+                                                "delivery_defaults": {
+                                                    "additionalProperties": false,
+                                                    "nullable": true,
+                                                    "properties": {
+                                                        "group_id": {
+                                                            "type": "string"
+                                                        },
+                                                        "mode": {
+                                                            "enum": ["direct-send", "reply"],
+                                                            "type": "string"
+                                                        },
+                                                        "peer_id": {
+                                                            "type": "string"
+                                                        },
+                                                        "thread_id": {
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "type": "object"
+                                                },
                                                 "display_name": {
+                                                    "type": "string"
+                                                },
+                                                "dm_policy": {
+                                                    "enum": ["open", "allowlist", "pairing"],
                                                     "type": "string"
                                                 },
                                                 "enabled": {
@@ -4883,6 +5400,11 @@
                                                 },
                                                 "platform": {
                                                     "type": "string"
+                                                },
+                                                "provider_config": {
+                                                    "additionalProperties": {},
+                                                    "nullable": true,
+                                                    "type": "object"
                                                 },
                                                 "routing_policy": {
                                                     "properties": {
@@ -4908,6 +5430,7 @@
                                                     "type": "string"
                                                 },
                                                 "source": {
+                                                    "enum": ["dynamic", "package"],
                                                     "type": "string"
                                                 },
                                                 "status": {
@@ -4950,6 +5473,26 @@
                                                 },
                                                 "bridge_instance_id": {
                                                     "type": "string"
+                                                },
+                                                "degradation": {
+                                                    "nullable": true,
+                                                    "properties": {
+                                                        "message": {
+                                                            "type": "string"
+                                                        },
+                                                        "reason": {
+                                                            "enum": [
+                                                                "auth_failed",
+                                                                "rate_limited",
+                                                                "webhook_invalid",
+                                                                "provider_timeout",
+                                                                "tenant_config_invalid"
+                                                            ],
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "required": ["reason"],
+                                                    "type": "object"
                                                 },
                                                 "delivery_backlog": {
                                                     "type": "integer"
@@ -5112,8 +5655,51 @@
                                                     "format": "date-time",
                                                     "type": "string"
                                                 },
-                                                "delivery_defaults": {},
+                                                "degradation": {
+                                                    "nullable": true,
+                                                    "properties": {
+                                                        "message": {
+                                                            "type": "string"
+                                                        },
+                                                        "reason": {
+                                                            "enum": [
+                                                                "auth_failed",
+                                                                "rate_limited",
+                                                                "webhook_invalid",
+                                                                "provider_timeout",
+                                                                "tenant_config_invalid"
+                                                            ],
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "required": ["reason"],
+                                                    "type": "object"
+                                                },
+                                                "delivery_defaults": {
+                                                    "additionalProperties": false,
+                                                    "nullable": true,
+                                                    "properties": {
+                                                        "group_id": {
+                                                            "type": "string"
+                                                        },
+                                                        "mode": {
+                                                            "enum": ["direct-send", "reply"],
+                                                            "type": "string"
+                                                        },
+                                                        "peer_id": {
+                                                            "type": "string"
+                                                        },
+                                                        "thread_id": {
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "type": "object"
+                                                },
                                                 "display_name": {
+                                                    "type": "string"
+                                                },
+                                                "dm_policy": {
+                                                    "enum": ["open", "allowlist", "pairing"],
                                                     "type": "string"
                                                 },
                                                 "enabled": {
@@ -5127,6 +5713,11 @@
                                                 },
                                                 "platform": {
                                                     "type": "string"
+                                                },
+                                                "provider_config": {
+                                                    "additionalProperties": {},
+                                                    "nullable": true,
+                                                    "type": "object"
                                                 },
                                                 "routing_policy": {
                                                     "properties": {
@@ -5152,6 +5743,7 @@
                                                     "type": "string"
                                                 },
                                                 "source": {
+                                                    "enum": ["dynamic", "package"],
                                                     "type": "string"
                                                 },
                                                 "status": {
@@ -5194,6 +5786,26 @@
                                                 },
                                                 "bridge_instance_id": {
                                                     "type": "string"
+                                                },
+                                                "degradation": {
+                                                    "nullable": true,
+                                                    "properties": {
+                                                        "message": {
+                                                            "type": "string"
+                                                        },
+                                                        "reason": {
+                                                            "enum": [
+                                                                "auth_failed",
+                                                                "rate_limited",
+                                                                "webhook_invalid",
+                                                                "provider_timeout",
+                                                                "tenant_config_invalid"
+                                                            ],
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "required": ["reason"],
+                                                    "type": "object"
                                                 },
                                                 "delivery_backlog": {
                                                     "type": "integer"
@@ -5469,6 +6081,388 @@
                     }
                 },
                 "summary": "List routes owned by a bridge instance",
+                "tags": ["bridges"],
+                "x-agh-transports": ["http", "uds"]
+            }
+        },
+        "/api/bridges/{id}/secret-bindings": {
+            "get": {
+                "operationId": "listBridgeSecretBindings",
+                "parameters": [
+                    {
+                        "description": "Bridge instance id",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "bindings": {
+                                            "items": {
+                                                "properties": {
+                                                    "binding_name": {
+                                                        "type": "string"
+                                                    },
+                                                    "bridge_instance_id": {
+                                                        "type": "string"
+                                                    },
+                                                    "created_at": {
+                                                        "format": "date-time",
+                                                        "type": "string"
+                                                    },
+                                                    "kind": {
+                                                        "type": "string"
+                                                    },
+                                                    "updated_at": {
+                                                        "format": "date-time",
+                                                        "type": "string"
+                                                    },
+                                                    "vault_ref": {
+                                                        "type": "string"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "binding_name",
+                                                    "bridge_instance_id",
+                                                    "created_at",
+                                                    "kind",
+                                                    "updated_at",
+                                                    "vault_ref"
+                                                ],
+                                                "type": "object"
+                                            },
+                                            "type": "array"
+                                        }
+                                    },
+                                    "required": ["bindings"],
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": ["error"],
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Bridge instance not found"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": ["error"],
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Internal server error"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": ["error"],
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Bridge service is not configured"
+                    },
+                    "default": {
+                        "description": ""
+                    }
+                },
+                "summary": "List persisted secret bindings for a bridge instance",
+                "tags": ["bridges"],
+                "x-agh-transports": ["http", "uds"]
+            }
+        },
+        "/api/bridges/{id}/secret-bindings/{binding_name}": {
+            "delete": {
+                "operationId": "deleteBridgeSecretBinding",
+                "parameters": [
+                    {
+                        "description": "Bridge instance id",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Bridge provider secret slot name",
+                        "in": "path",
+                        "name": "binding_name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": ["error"],
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Bridge instance or secret binding not found"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": ["error"],
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Internal server error"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": ["error"],
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Bridge service is not configured"
+                    },
+                    "default": {
+                        "description": ""
+                    }
+                },
+                "summary": "Delete one bridge secret binding",
+                "tags": ["bridges"],
+                "x-agh-transports": ["http", "uds"]
+            },
+            "put": {
+                "operationId": "putBridgeSecretBinding",
+                "parameters": [
+                    {
+                        "description": "Bridge instance id",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Bridge provider secret slot name",
+                        "in": "path",
+                        "name": "binding_name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "kind": {
+                                        "type": "string"
+                                    },
+                                    "vault_ref": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": ["kind", "vault_ref"],
+                                "type": "object"
+                            }
+                        }
+                    },
+                    "description": "JSON request body",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "binding": {
+                                            "properties": {
+                                                "binding_name": {
+                                                    "type": "string"
+                                                },
+                                                "bridge_instance_id": {
+                                                    "type": "string"
+                                                },
+                                                "created_at": {
+                                                    "format": "date-time",
+                                                    "type": "string"
+                                                },
+                                                "kind": {
+                                                    "type": "string"
+                                                },
+                                                "updated_at": {
+                                                    "format": "date-time",
+                                                    "type": "string"
+                                                },
+                                                "vault_ref": {
+                                                    "type": "string"
+                                                }
+                                            },
+                                            "required": [
+                                                "binding_name",
+                                                "bridge_instance_id",
+                                                "created_at",
+                                                "kind",
+                                                "updated_at",
+                                                "vault_ref"
+                                            ],
+                                            "type": "object"
+                                        }
+                                    },
+                                    "required": ["binding"],
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": ["error"],
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Invalid bridge secret binding request"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": ["error"],
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Bridge instance not found"
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": ["error"],
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Bridge secret binding conflict"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": ["error"],
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Internal server error"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": ["error"],
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Bridge service is not configured"
+                    },
+                    "default": {
+                        "description": ""
+                    }
+                },
+                "summary": "Create or update one bridge secret binding",
                 "tags": ["bridges"],
                 "x-agh-transports": ["http", "uds"]
             }

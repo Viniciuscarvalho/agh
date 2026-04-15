@@ -12,6 +12,51 @@ import (
 
 var _ managedInstallRegistry = (*recordingManagedInstallRegistry)(nil)
 
+type managedInstallRegistryStub struct {
+	getFn     func(string) (*ExtensionInfo, error)
+	installFn func(*Manifest, string, string, ...InstallOption) error
+}
+
+func (s managedInstallRegistryStub) Get(name string) (*ExtensionInfo, error) {
+	if s.getFn != nil {
+		return s.getFn(name)
+	}
+	return nil, ErrExtensionNotFound
+}
+
+func (s managedInstallRegistryStub) Install(manifest *Manifest, path string, checksum string, opts ...InstallOption) error {
+	if s.installFn != nil {
+		return s.installFn(manifest, path, checksum, opts...)
+	}
+	return nil
+}
+
+func TestManagedInstallHelpers(t *testing.T) {
+	t.Parallel()
+
+	homePaths, err := aghconfig.ResolveHomePathsFrom(t.TempDir())
+	if err != nil {
+		t.Fatalf("ResolveHomePathsFrom() error = %v", err)
+	}
+	if got := ManagedInstallRoot(homePaths); got == "" {
+		t.Fatal("ManagedInstallRoot() returned empty path")
+	}
+	if got, want := ManagedInstallPath(homePaths, " test-ext "), filepath.Join(homePaths.HomeDir, managedInstallDirName, "test-ext"); got != want {
+		t.Fatalf("ManagedInstallPath() = %q, want %q", got, want)
+	}
+
+	stagingDir, err := NewManagedInstallStagingDir(homePaths)
+	if err != nil {
+		t.Fatalf("NewManagedInstallStagingDir() error = %v", err)
+	}
+	if _, err := os.Stat(stagingDir); err != nil {
+		t.Fatalf("os.Stat(stagingDir) error = %v", err)
+	}
+	if err := os.RemoveAll(stagingDir); err != nil {
+		t.Fatalf("os.RemoveAll(stagingDir) error = %v", err)
+	}
+}
+
 func TestCopyInstallTreeMaterializesSymlinkTargets(t *testing.T) {
 	t.Parallel()
 
@@ -81,6 +126,94 @@ func TestCopyInstallTreeMaterializesSymlinkTargets(t *testing.T) {
 	}
 	if string(content) != "#!/usr/bin/env node\n" {
 		t.Fatalf("copied tsc content = %q, want script payload", string(content))
+	}
+}
+
+func TestCopyInstallTreeCopiesDeclaredRuntimeNodeModulesOnly(t *testing.T) {
+	t.Parallel()
+
+	sourceDir := filepath.Join(t.TempDir(), "source")
+	if err := os.MkdirAll(filepath.Join(sourceDir, "node_modules", "@agh"), 0o755); err != nil {
+		t.Fatalf("os.MkdirAll(source node_modules) error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(sourceDir, "node_modules", "@types"), 0o755); err != nil {
+		t.Fatalf("os.MkdirAll(source @types) error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(sourceDir, "node_modules", ".bin"), 0o755); err != nil {
+		t.Fatalf("os.MkdirAll(source .bin) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "package.json"), []byte("{\"dependencies\":{\"@agh/extension-sdk\":\"workspace:*\"},\"devDependencies\":{\"@types/node\":\"^25.5.2\",\"typescript\":\"^6.0.2\"}}\n"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile(source package.json) error = %v", err)
+	}
+
+	runtimePackageDir := filepath.Join(t.TempDir(), "extension-sdk")
+	if err := os.MkdirAll(filepath.Join(runtimePackageDir, "dist"), 0o755); err != nil {
+		t.Fatalf("os.MkdirAll(runtime package) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(runtimePackageDir, "package.json"), []byte("{\"name\":\"@agh/extension-sdk\",\"main\":\"./dist/index.js\"}\n"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile(runtime package.json) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(runtimePackageDir, "dist", "index.js"), []byte("export const runtime = true;\n"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile(runtime dist) error = %v", err)
+	}
+
+	typescriptDir := filepath.Join(t.TempDir(), "typescript")
+	if err := os.MkdirAll(filepath.Join(typescriptDir, "bin"), 0o755); err != nil {
+		t.Fatalf("os.MkdirAll(typescript) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(typescriptDir, "bin", "tsc"), []byte("#!/usr/bin/env node\n"), 0o755); err != nil {
+		t.Fatalf("os.WriteFile(tsc) error = %v", err)
+	}
+
+	nodeTypesDir := filepath.Join(t.TempDir(), "node-types")
+	if err := os.MkdirAll(nodeTypesDir, 0o755); err != nil {
+		t.Fatalf("os.MkdirAll(node types) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(nodeTypesDir, "index.d.ts"), []byte("export {};\n"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile(node types) error = %v", err)
+	}
+
+	if err := os.Symlink(runtimePackageDir, filepath.Join(sourceDir, "node_modules", "@agh", "extension-sdk")); err != nil {
+		t.Skipf("os.Symlink(runtime dependency) unavailable: %v", err)
+	}
+	if err := os.Symlink(typescriptDir, filepath.Join(sourceDir, "node_modules", "typescript")); err != nil {
+		t.Skipf("os.Symlink(dev dependency) unavailable: %v", err)
+	}
+	if err := os.Symlink(nodeTypesDir, filepath.Join(sourceDir, "node_modules", "@types", "node")); err != nil {
+		t.Skipf("os.Symlink(dev dependency) unavailable: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(typescriptDir, "bin", "tsc"), filepath.Join(sourceDir, "node_modules", ".bin", "tsc")); err != nil {
+		t.Skipf("os.Symlink(dev binary) unavailable: %v", err)
+	}
+
+	targetDir := filepath.Join(t.TempDir(), "target")
+	if err := copyInstallTree(sourceDir, targetDir); err != nil {
+		t.Fatalf("copyInstallTree() error = %v", err)
+	}
+
+	copiedRuntimeDir := filepath.Join(targetDir, "node_modules", "@agh", "extension-sdk")
+	info, err := os.Lstat(copiedRuntimeDir)
+	if err != nil {
+		t.Fatalf("os.Lstat(%q) error = %v", copiedRuntimeDir, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("copied runtime dir mode = %v, want materialized directory", info.Mode())
+	}
+	if _, err := os.Stat(filepath.Join(copiedRuntimeDir, "package.json")); err != nil {
+		t.Fatalf("os.Stat(copied runtime package.json) error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(copiedRuntimeDir, "dist", "index.js")); err != nil {
+		t.Fatalf("os.Stat(copied runtime dist) error = %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(targetDir, "node_modules", "typescript")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("os.Stat(copied dev dependency) error = %v, want not exists", err)
+	}
+	if _, err := os.Stat(filepath.Join(targetDir, "node_modules", "@types")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("os.Stat(copied dev types) error = %v, want not exists", err)
+	}
+	if _, err := os.Stat(filepath.Join(targetDir, "node_modules", ".bin")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("os.Stat(copied dev bin) error = %v, want not exists", err)
 	}
 }
 
@@ -157,6 +290,60 @@ func TestInstallLocalManagedNormalizesProvidedChecksum(t *testing.T) {
 
 	if err := InstallLocalManaged(homePaths, registry, manifest, sourceDir, "  "+strings.ToUpper(sourceChecksum)+"  "); err != nil {
 		t.Fatalf("InstallLocalManaged(normalized checksum) error = %v", err)
+	}
+}
+
+func TestInstallLocalManagedRejectsExistingOrFailedInstall(t *testing.T) {
+	t.Parallel()
+
+	homePaths, err := aghconfig.ResolveHomePathsFrom(t.TempDir())
+	if err != nil {
+		t.Fatalf("ResolveHomePathsFrom() error = %v", err)
+	}
+
+	existingSourceDir := filepath.Join(t.TempDir(), "existing-source")
+	if err := os.MkdirAll(existingSourceDir, 0o755); err != nil {
+		t.Fatalf("os.MkdirAll(existing source) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(existingSourceDir, "extension.toml"), []byte("name = \"existing-ext\"\nversion = \"1.0.0\"\nmin_agh_version = \"0.1.0\"\n"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile(existing extension.toml) error = %v", err)
+	}
+
+	err = InstallLocalManaged(homePaths, managedInstallRegistryStub{
+		getFn: func(string) (*ExtensionInfo, error) {
+			return &ExtensionInfo{Name: "existing-ext"}, nil
+		},
+	}, &Manifest{Name: "existing-ext"}, existingSourceDir, "checksum-ignored")
+	if err == nil {
+		t.Fatal("InstallLocalManaged(existing) error = nil, want non-nil")
+	}
+
+	failingSourceDir := filepath.Join(t.TempDir(), "failing-source")
+	if err := os.MkdirAll(failingSourceDir, 0o755); err != nil {
+		t.Fatalf("os.MkdirAll(failing source) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(failingSourceDir, "extension.toml"), []byte("name = \"failing-ext\"\nversion = \"1.0.0\"\nmin_agh_version = \"0.1.0\"\n"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile(failing extension.toml) error = %v", err)
+	}
+	sourceChecksum, err := ComputeDirectoryChecksum(failingSourceDir)
+	if err != nil {
+		t.Fatalf("ComputeDirectoryChecksum(failing source) error = %v", err)
+	}
+
+	installErr := errors.New("install failed")
+	err = InstallLocalManaged(homePaths, managedInstallRegistryStub{
+		getFn: func(string) (*ExtensionInfo, error) {
+			return nil, ErrExtensionNotFound
+		},
+		installFn: func(*Manifest, string, string, ...InstallOption) error {
+			return installErr
+		},
+	}, &Manifest{Name: "failing-ext"}, failingSourceDir, sourceChecksum)
+	if !errors.Is(err, installErr) {
+		t.Fatalf("InstallLocalManaged(failing) error = %v, want %v", err, installErr)
+	}
+	if _, statErr := os.Stat(ManagedInstallPath(homePaths, "failing-ext")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("failed install path stat error = %v, want not exists", statErr)
 	}
 }
 

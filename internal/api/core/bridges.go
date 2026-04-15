@@ -2,10 +2,14 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"net/http"
+	"reflect"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pedronauck/agh/internal/api/contract"
@@ -32,7 +36,19 @@ func (h *BaseHandlers) ListBridges(c *gin.Context) {
 		h.respondError(c, http.StatusInternalServerError, err)
 		return
 	}
-	c.JSON(http.StatusOK, contract.BridgesResponse{Bridges: instances, BridgeHealth: bridgeHealth})
+
+	payloads := make([]contract.BridgePayload, 0, len(instances))
+	for _, instance := range instances {
+		payloads = append(payloads, BridgePayloadFromBridgeInstance(instance))
+		if bridgeHealth != nil {
+			key := strings.TrimSpace(instance.ID)
+			health := bridgeHealth[key]
+			health.Degradation = cloneBridgeDegradation(instance.Degradation)
+			bridgeHealth[key] = health
+		}
+	}
+
+	c.JSON(http.StatusOK, contract.BridgesResponse{Bridges: payloads, BridgeHealth: bridgeHealth})
 }
 
 // ListBridgeProviders returns installed bridge-capable providers.
@@ -48,7 +64,12 @@ func (h *BaseHandlers) ListBridgeProviders(c *gin.Context) {
 		h.respondError(c, StatusForBridgeError(err), err)
 		return
 	}
-	c.JSON(http.StatusOK, contract.BridgeProvidersResponse{Providers: providers})
+
+	payloads := make([]contract.BridgeProviderPayload, 0, len(providers))
+	for _, provider := range providers {
+		payloads = append(payloads, BridgeProviderPayloadFromBridgeProvider(provider))
+	}
+	c.JSON(http.StatusOK, contract.BridgeProvidersResponse{Providers: payloads})
 }
 
 // CreateBridge persists a new bridge instance.
@@ -136,6 +157,65 @@ func (h *BaseHandlers) DisableBridge(c *gin.Context) {
 // RestartBridge restarts one bridge instance while preserving route ownership.
 func (h *BaseHandlers) RestartBridge(c *gin.Context) {
 	h.transitionBridge(c, (*BaseHandlers).restartBridge)
+}
+
+// StreamBridgeHealth streams bridge health snapshots over SSE.
+func (h *BaseHandlers) StreamBridgeHealth(c *gin.Context) {
+	if _, ok := h.bridgeService(); !ok {
+		h.respondError(c, http.StatusServiceUnavailable, errBridgeServiceUnavailable)
+		return
+	}
+
+	snapshot, err := h.bridgeHealthStreamSnapshot(c.Request.Context())
+	if err != nil {
+		h.respondError(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	writer, err := PrepareSSE(c)
+	if err != nil {
+		h.respondError(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	if err := h.writeBridgeHealthSnapshot(writer, snapshot); err != nil {
+		if h.Logger != nil {
+			h.Logger.Warn("api: failed to emit initial bridge health snapshot", "error", err)
+		}
+		return
+	}
+	lastSnapshot := snapshot.BridgeHealth
+
+	ticker := time.NewTicker(h.PollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-c.Request.Context().Done():
+			return
+		case <-h.StreamDoneChannel():
+			return
+		case <-ticker.C:
+			nextSnapshot, pollErr := h.bridgeHealthStreamSnapshot(c.Request.Context())
+			if pollErr != nil {
+				_ = WriteSSE(writer, SSEMessage{
+					Name: "error",
+					Data: contract.ErrorPayload{Error: pollErr.Error()},
+				})
+				return
+			}
+			if reflect.DeepEqual(nextSnapshot.BridgeHealth, lastSnapshot) {
+				continue
+			}
+			if err := h.writeBridgeHealthSnapshot(writer, nextSnapshot); err != nil {
+				if h.Logger != nil {
+					h.Logger.Warn("api: failed to emit bridge health snapshot", "error", err)
+				}
+				return
+			}
+			lastSnapshot = nextSnapshot.BridgeHealth
+		}
+	}
 }
 
 // ListBridgeRoutes returns the persisted routes owned by one bridge instance.
@@ -319,8 +399,12 @@ func (h *BaseHandlers) respondBridge(c *gin.Context, status int, instance bridge
 			)
 		}
 		c.JSON(status, contract.BridgeResponse{
-			Bridge: instance,
-			Health: contract.BridgeHealthPayload{},
+			Bridge: BridgePayloadFromBridgeInstance(instance),
+			Health: contract.BridgeHealthPayload{
+				BridgeInstanceID: strings.TrimSpace(instance.ID),
+				Status:           instance.Status,
+				Degradation:      cloneBridgeDegradation(instance.Degradation),
+			},
 		})
 		return
 	}
@@ -332,10 +416,46 @@ func (h *BaseHandlers) bridgeResponse(ctx context.Context, instance bridgepkg.Br
 	if err != nil {
 		return nil, err
 	}
+	health.Degradation = cloneBridgeDegradation(instance.Degradation)
 	return &contract.BridgeResponse{
-		Bridge: instance,
+		Bridge: BridgePayloadFromBridgeInstance(instance),
 		Health: health,
 	}, nil
+}
+
+func (h *BaseHandlers) bridgeHealthStreamSnapshot(ctx context.Context) (contract.BridgeHealthStreamPayload, error) {
+	health, err := h.bridgeHealthMap(ctx)
+	if err != nil {
+		return contract.BridgeHealthStreamPayload{}, err
+	}
+	if health == nil {
+		health = map[string]contract.BridgeHealthPayload{}
+	}
+
+	return contract.BridgeHealthStreamPayload{
+		GeneratedAt:  h.Now().UTC(),
+		BridgeHealth: health,
+	}, nil
+}
+
+func (h *BaseHandlers) writeBridgeHealthSnapshot(writer FlushWriter, snapshot contract.BridgeHealthStreamPayload) error {
+	return WriteSSE(writer, SSEMessage{
+		ID:   bridgeHealthSnapshotID(snapshot),
+		Name: "snapshot",
+		Data: snapshot,
+	})
+}
+
+func bridgeHealthSnapshotID(snapshot contract.BridgeHealthStreamPayload) string {
+	timestamp := snapshot.GeneratedAt.UTC().Format(time.RFC3339Nano)
+	payload, err := json.Marshal(snapshot.BridgeHealth)
+	if err != nil {
+		return timestamp
+	}
+
+	hasher := fnv.New64a()
+	_, _ = hasher.Write(payload)
+	return fmt.Sprintf("%s|%016x", timestamp, hasher.Sum64())
 }
 
 func (h *BaseHandlers) bridgeHealthMap(ctx context.Context) (map[string]contract.BridgeHealthPayload, error) {
