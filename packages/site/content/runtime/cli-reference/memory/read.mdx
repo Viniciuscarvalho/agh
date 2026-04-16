@@ -1,0 +1,35 @@
+---
+title: "agh memory read"
+description: "Read a persistent memory file"
+---
+
+## agh memory read
+
+Read a persistent memory file
+
+```
+agh memory read <filename> [flags]
+```
+
+### Examples
+
+```
+  # Read a workspace memory file
+  agh memory read runtime-notes.md --scope workspace
+
+  # Read a global memory file as JSON
+  agh memory read review-style.md --scope global -o json
+```
+
+### Options
+
+```
+  -h, --help           help for read
+      --scope string   Memory scope: global or workspace
+```
+
+### Options inherited from parent commands
+
+```
+  -o, --output string   Output format: human, json, or toon (default "human")
+```

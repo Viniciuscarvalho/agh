@@ -1,0 +1,32 @@
+---
+title: "agh memory delete"
+description: "Delete a persistent memory file"
+---
+
+## agh memory delete
+
+Delete a persistent memory file
+
+```
+agh memory delete <filename> [flags]
+```
+
+### Examples
+
+```
+  # Delete a workspace memory file
+  agh memory delete runtime-notes.md --scope workspace
+```
+
+### Options
+
+```
+  -h, --help           help for delete
+      --scope string   Memory scope: global or workspace
+```
+
+### Options inherited from parent commands
+
+```
+  -o, --output string   Output format: human, json, or toon (default "human")
+```

@@ -1,0 +1,35 @@
+---
+title: "agh memory list"
+description: "List persistent memories"
+---
+
+## agh memory list
+
+List persistent memories
+
+```
+agh memory list [flags]
+```
+
+### Examples
+
+```
+  # List global and workspace memories visible from the current directory
+  agh memory list
+
+  # List only workspace-scoped memories
+  agh memory list --scope workspace
+```
+
+### Options
+
+```
+  -h, --help           help for list
+      --scope string   Memory scope: global or workspace
+```
+
+### Options inherited from parent commands
+
+```
+  -o, --output string   Output format: human, json, or toon (default "human")
+```

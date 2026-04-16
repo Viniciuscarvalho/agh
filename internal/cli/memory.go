@@ -41,6 +41,16 @@ type memoryMutationView struct {
 	Reason   string       `json:"reason,omitempty"`
 }
 
+var memoryWriteExample = strings.Join([]string{
+	"  # Write workspace-scoped project memory from a flag",
+	`  agh memory write runtime-notes.md --type project --description "Runtime docs live in the site package" ` +
+		`--content "Runtime docs are authored under packages/site/content/runtime."`,
+	"",
+	"  # Write global user memory from stdin",
+	`  printf "Prefer concise PR summaries.\n" | agh memory write review-style.md --type user ` +
+		`--description "User wants concise PR summaries"`,
+}, "\n")
+
 type memoryLocation struct {
 	Scope     memory.Scope
 	Workspace string
@@ -67,7 +77,12 @@ func newMemoryListCommand(deps commandDeps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List persistent memories",
-		Args:  cobra.NoArgs,
+		Example: `  # List global and workspace memories visible from the current directory
+  agh memory list
+
+  # List only workspace-scoped memories
+  agh memory list --scope workspace`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			client, err := clientFromDeps(deps)
 			if err != nil {
@@ -91,7 +106,12 @@ func newMemoryReadCommand(deps commandDeps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "read <filename>",
 		Short: "Read a persistent memory file",
-		Args:  cobra.ExactArgs(1),
+		Example: `  # Read a workspace memory file
+  agh memory read runtime-notes.md --scope workspace
+
+  # Read a global memory file as JSON
+  agh memory read review-style.md --scope global -o json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := clientFromDeps(deps)
 			if err != nil {
@@ -128,9 +148,10 @@ func newMemoryWriteCommand(deps commandDeps) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "write <filename> --type <type> --description <description>",
-		Short: "Write or update a persistent memory file",
-		Args:  cobra.ExactArgs(1),
+		Use:     "write <filename> --type <type> --description <description>",
+		Short:   "Write or update a persistent memory file",
+		Example: memoryWriteExample,
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := clientFromDeps(deps)
 			if err != nil {
@@ -200,7 +221,9 @@ func newMemoryDeleteCommand(deps commandDeps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <filename>",
 		Short: "Delete a persistent memory file",
-		Args:  cobra.ExactArgs(1),
+		Example: `  # Delete a workspace memory file
+  agh memory delete runtime-notes.md --scope workspace`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := clientFromDeps(deps)
 			if err != nil {
@@ -236,7 +259,9 @@ func newMemoryConsolidateCommand(deps commandDeps) *cobra.Command {
 	return &cobra.Command{
 		Use:   "consolidate",
 		Short: "Trigger manual memory consolidation",
-		Args:  cobra.NoArgs,
+		Example: `  # Ask the daemon to consolidate memory for the current workspace
+  agh memory consolidate`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			client, err := clientFromDeps(deps)
 			if err != nil {

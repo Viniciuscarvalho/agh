@@ -1,0 +1,10 @@
+export { Hero } from "./hero";
+export { FeaturesSection } from "./features-section";
+export { SupportedAgents } from "./supported-agents";
+export { NetworkSection } from "./network-section";
+export { RuntimeSection } from "./runtime-section";
+export { BridgesSection } from "./bridges-section";
+export { ExtensibilitySection } from "./extensibility-section";
+export { InstallSection } from "./install-section";
+export { Comparison } from "./comparison";
+export { FinalCta } from "./final-cta";

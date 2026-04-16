@@ -1,0 +1,31 @@
+{
+    "title": "CLI Reference",
+    "icon": "Terminal",
+    "root": true,
+    "pages": [
+        "index",
+        "agh",
+        "---Agents & Sessions---",
+        "agent",
+        "session",
+        "task",
+        "---Automation---",
+        "automation",
+        "hooks",
+        "---Workspaces & Extensions---",
+        "workspace",
+        "extension",
+        "skill",
+        "---Runtime---",
+        "daemon",
+        "memory",
+        "network",
+        "observe",
+        "bridge",
+        "---System---",
+        "install",
+        "whoami",
+        "version",
+        "completion"
+    ]
+}

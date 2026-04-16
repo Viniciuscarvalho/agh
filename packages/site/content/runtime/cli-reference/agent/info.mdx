@@ -1,0 +1,34 @@
+---
+title: "agh agent info"
+description: "Show one agent definition"
+---
+
+## agh agent info
+
+Show one agent definition
+
+```
+agh agent info <name> [flags]
+```
+
+### Examples
+
+```
+  # Inspect the default bootstrap agent
+  agh agent info general
+
+  # Inspect an agent definition as JSON
+  agh agent info reviewer -o json
+```
+
+### Options
+
+```
+  -h, --help   help for info
+```
+
+### Options inherited from parent commands
+
+```
+  -o, --output string   Output format: human, json, or toon (default "human")
+```

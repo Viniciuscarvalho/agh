@@ -2,6 +2,7 @@ package bridges_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -204,6 +205,54 @@ func TestManagedSyncerWrapsStoreErrors(t *testing.T) {
 	}
 }
 
+func TestManagedSyncerIgnoresEquivalentDeliveryDefaultsFormatting(t *testing.T) {
+	t.Parallel()
+
+	store := stubRegistryStore{
+		listBridgeInstancesFn: func(_ context.Context) ([]bridgepkg.BridgeInstance, error) {
+			return []bridgepkg.BridgeInstance{{
+				ID:               "brg-existing",
+				Scope:            bridgepkg.ScopeGlobal,
+				Platform:         "telegram",
+				ExtensionName:    "telegram-adapter",
+				DisplayName:      "Marketing Bot",
+				Source:           bridgepkg.BridgeInstanceSourcePackage,
+				Status:           bridgepkg.BridgeStatusDisabled,
+				RoutingPolicy:    bridgepkg.RoutingPolicy{IncludePeer: true},
+				DeliveryDefaults: json.RawMessage(`{"parse_mode":"markdown","thread_id":"marketing"}`),
+			}}, nil
+		},
+	}
+
+	updateCalls := 0
+	store.updateBridgeInstanceFn = func(_ context.Context, _ bridgepkg.BridgeInstance) error {
+		updateCalls++
+		return nil
+	}
+
+	syncer := bridgepkg.NewManagedSyncer(store)
+	_, err := syncer.SyncManagedInstances(
+		testutil.Context(t),
+		bridgepkg.BridgeInstanceSourcePackage,
+		[]bridgepkg.BridgeInstance{{
+			ID:               "brg-existing",
+			Scope:            bridgepkg.ScopeGlobal,
+			Platform:         "telegram",
+			ExtensionName:    "telegram-adapter",
+			DisplayName:      "Marketing Bot",
+			Status:           bridgepkg.BridgeStatusDisabled,
+			RoutingPolicy:    bridgepkg.RoutingPolicy{IncludePeer: true},
+			DeliveryDefaults: json.RawMessage("{\n  \"parse_mode\": \"markdown\",\n  \"thread_id\": \"marketing\"\n}"),
+		}},
+	)
+	if err != nil {
+		t.Fatalf("SyncManagedInstances() error = %v", err)
+	}
+	if got, want := updateCalls, 0; got != want {
+		t.Fatalf("update calls = %d, want %d when delivery defaults only change formatting", got, want)
+	}
+}
+
 func TestManagedSyncerRejectsDuplicateDesiredIDs(t *testing.T) {
 	t.Parallel()
 
@@ -248,6 +297,17 @@ func TestManagedSyncerReturnsExplicitErrorForNilStoreConstruction(t *testing.T) 
 	_, err := syncer.SyncManagedInstances(testutil.Context(t), bridgepkg.BridgeInstanceSourcePackage, nil)
 	if err == nil || !containsText(err, "managed sync store is required") {
 		t.Fatalf("SyncManagedInstances(nil store) error = %v, want explicit missing-store failure", err)
+	}
+}
+
+func TestManagedSyncerWrapsSourceValidationErrors(t *testing.T) {
+	t.Parallel()
+
+	syncer := bridgepkg.NewManagedSyncer(stubRegistryStore{})
+	_, err := syncer.SyncManagedInstances(testutil.Context(t), "", nil)
+	if err == nil ||
+		!containsText(err, `bridges: validate managed sync source "": bridges: bridge instance source is required`) {
+		t.Fatalf("SyncManagedInstances(invalid source) error = %v, want wrapped source validation failure", err)
 	}
 }
 

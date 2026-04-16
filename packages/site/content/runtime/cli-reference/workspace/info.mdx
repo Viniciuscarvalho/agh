@@ -1,0 +1,34 @@
+---
+title: "agh workspace info"
+description: "Show one workspace with resolved details"
+---
+
+## agh workspace info
+
+Show one workspace with resolved details
+
+```
+agh workspace info <name-or-id> [flags]
+```
+
+### Examples
+
+```
+  # Show workspace paths, agents, and skills by name
+  agh workspace info checkout-api
+
+  # Emit resolved workspace details as JSON
+  agh workspace info ws_1234 -o json
+```
+
+### Options
+
+```
+  -h, --help   help for info
+```
+
+### Options inherited from parent commands
+
+```
+  -o, --output string   Output format: human, json, or toon (default "human")
+```

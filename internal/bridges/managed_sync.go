@@ -1,6 +1,7 @@
 package bridges
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -123,7 +124,7 @@ func (s *ManagedSyncService) validateSyncInputs(
 	}
 	normalizedSource := source.Normalize()
 	if err := normalizedSource.Validate(); err != nil {
-		return "", err
+		return "", fmt.Errorf("bridges: validate managed sync source %q: %w", normalizedSource, err)
 	}
 	if s.store == nil {
 		return "", errors.New("bridges: managed sync store is required")
@@ -269,5 +270,10 @@ func sameManagedInstance(left BridgeInstance, right BridgeInstance) bool {
 }
 
 func managedSyncJSONEqual(left json.RawMessage, right json.RawMessage) bool {
-	return strings.TrimSpace(string(left)) == strings.TrimSpace(string(right))
+	leftNormalized, leftErr := normalizeRawJSON(left, "bridge instance delivery defaults")
+	rightNormalized, rightErr := normalizeRawJSON(right, "bridge instance delivery defaults")
+	if leftErr != nil || rightErr != nil {
+		return strings.TrimSpace(string(left)) == strings.TrimSpace(string(right))
+	}
+	return bytes.Equal(leftNormalized, rightNormalized)
 }

@@ -1,0 +1,35 @@
+---
+title: "agh skill list"
+description: "List locally available skills"
+---
+
+## agh skill list
+
+List locally available skills
+
+```
+agh skill list [flags]
+```
+
+### Examples
+
+```
+  # List every skill visible in the current workspace
+  agh skill list
+
+  # Show only bundled skills
+  agh skill list --source bundled
+```
+
+### Options
+
+```
+  -h, --help            help for list
+      --source string   Filter by source: bundled, marketplace, user, additional (or agents/.agents), or workspace
+```
+
+### Options inherited from parent commands
+
+```
+  -o, --output string   Output format: human, json, or toon (default "human")
+```

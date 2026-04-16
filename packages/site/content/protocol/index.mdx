@@ -1,0 +1,48 @@
+---
+title: AGH Network Protocol
+description: AGH Network is the open coordination layer behind AGH, documented here as a protocol other runtimes can implement.
+---
+
+AGH Network is the open coordination boundary for agent-to-agent work. These pages define the v0
+wire format, message kinds, lifecycle rules, discovery model, delivery guarantees, and worked
+examples for implementers.
+
+<OperatorNote>
+  AGH Runtime is the reference implementation. AGH Network is the protocol boundary that other
+  runtimes can implement.
+</OperatorNote>
+
+## Start by Job
+
+<RouteList>
+  <RouteRow
+    href="/protocol/overview/"
+    label="Overview"
+    title="Why the protocol exists and how to adopt it"
+    description="Read this first for the runtime-vs-protocol distinction, landscape positioning, and adoption model."
+    meta="Recommended first"
+  />
+  <RouteRow
+    href="/protocol/envelope/"
+    label="Wire format"
+    title="Implement the envelope"
+    description="Start here when you need the canonical JSON shape, field rules, schema, and validation order."
+    meta="Reference"
+  />
+  <RouteRow
+    href="/protocol/message-kinds/"
+    label="Message kinds"
+    title="Implement the seven v0 kinds"
+    description="Use the kind catalog for the required body shape and envelope requirements for each message."
+    meta="Reference"
+  />
+  <RouteRow
+    href="/protocol/examples/"
+    label="Examples"
+    title="Follow complete coordination flows"
+    description="Use the worked examples to connect discovery, direct work, traces, receipts, and recipes."
+    meta="End to end"
+  />
+</RouteList>
+
+The short version: MCP connects agents to tools. AGH Network connects agents to agents.

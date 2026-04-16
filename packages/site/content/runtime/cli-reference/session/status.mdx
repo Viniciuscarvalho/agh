@@ -1,0 +1,34 @@
+---
+title: "agh session status"
+description: "Show session status"
+---
+
+## agh session status
+
+Show session status
+
+```
+agh session status <id> [flags]
+```
+
+### Examples
+
+```
+  # Show current state for one session
+  agh session status sess_1234
+
+  # Read status as JSON for scripts
+  agh session status sess_1234 -o json
+```
+
+### Options
+
+```
+  -h, --help   help for status
+```
+
+### Options inherited from parent commands
+
+```
+  -o, --output string   Output format: human, json, or toon (default "human")
+```
