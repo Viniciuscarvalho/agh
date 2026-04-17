@@ -10,11 +10,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/magefile/mage/sh"
+	"github.com/pedronauck/agh/internal/e2elane"
 )
 
 const (
@@ -25,6 +27,8 @@ const (
 	openAPISpecPath     = "openapi/agh.json"
 	webOpenAPITypePath  = "web/src/generated/agh-openapi.d.ts"
 	webDistIndex        = "web/dist/index.html"
+	daemonBinaryEnvVar  = "AGH_TEST_DAEMON_BIN"
+	driverBinaryEnvVar  = "AGH_TEST_ACPMOCK_DRIVER_BIN"
 )
 
 var Default = Verify
@@ -90,6 +94,26 @@ func TestIntegration() error {
 	}
 	return sh.RunV("go", "run", "gotest.tools/gotestsum@latest",
 		"--format", "pkgname", "--", "-race", "-parallel=4", "-tags", "integration", "./...")
+}
+
+// TestE2ERuntime runs the PR-required daemon/runtime E2E lane without sweeping every integration package.
+func TestE2ERuntime() error {
+	return runE2ELane(e2elane.LaneRuntime)
+}
+
+// TestE2EWeb runs the daemon-served Playwright E2E lane for shipped browser workflows.
+func TestE2EWeb() error {
+	return runE2ELane(e2elane.LaneWeb)
+}
+
+// TestE2E runs the default PR-required runtime and browser E2E lanes.
+func TestE2E() error {
+	return runE2ELane(e2elane.LaneCombined)
+}
+
+// TestE2ENightly runs the combined E2E lane plus credentialed nightly coverage.
+func TestE2ENightly() error {
+	return runE2ELane(e2elane.LaneNightly)
 }
 
 func Build() error {
@@ -338,13 +362,169 @@ func ensureWebBundle() error {
 	return WebBuild()
 }
 
+func runE2ELane(lane e2elane.Lane) error {
+	plan, err := e2elane.PlanForLane(lane)
+	if err != nil {
+		return err
+	}
+
+	if shouldEnsureWebBundle(plan) {
+		if err := ensureWebBundle(); err != nil {
+			return err
+		}
+	}
+
+	laneEnv, err := prepareE2ELaneEnv()
+	if err != nil {
+		return err
+	}
+
+	for _, suite := range plan.GoSuites {
+		if err := runIntegrationSuite(suite, laneEnv); err != nil {
+			return err
+		}
+	}
+
+	for _, suite := range plan.ScriptSuites {
+		if err := runCommandInDirWithEnv(suite.Dir, laneEnv, "bun", "run", suite.Script); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func shouldEnsureWebBundle(plan e2elane.Plan) bool {
+	return len(plan.GoSuites) > 0 || plan.RequiresDaemonServedBrowser
+}
+
+func prepareE2ELaneEnv() (map[string]string, error) {
+	daemonPath, err := resolveOrBuildLaneBinary(daemonBinaryEnvVar, func(outputPath string) error {
+		return runCommandInDir(
+			".",
+			"go",
+			"build",
+			"-ldflags",
+			buildLDFlags(),
+			"-o",
+			outputPath,
+			"./cmd/agh",
+		)
+	}, cliBinary)
+	if err != nil {
+		return nil, err
+	}
+
+	driverPath, err := resolveOrBuildLaneBinary(driverBinaryEnvVar, func(outputPath string) error {
+		return runCommandInDir(
+			".",
+			"go",
+			"build",
+			"-o",
+			outputPath,
+			"./internal/testutil/acpmock/cmd/acpmock-driver",
+		)
+	}, "acpmock-driver")
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]string{
+		daemonBinaryEnvVar: daemonPath,
+		driverBinaryEnvVar: driverPath,
+	}, nil
+}
+
+func resolveOrBuildLaneBinary(
+	envVar string,
+	build func(string) error,
+	name string,
+) (string, error) {
+	if override := strings.TrimSpace(os.Getenv(envVar)); override != "" {
+		if filepath.IsAbs(override) {
+			return override, nil
+		}
+		absPath, err := filepath.Abs(override)
+		if err != nil {
+			return "", err
+		}
+		return absPath, nil
+	}
+
+	buildDir, err := os.MkdirTemp("", "agh-e2e-lane-")
+	if err != nil {
+		return "", err
+	}
+	outputPath := filepath.Join(buildDir, laneBinaryName(name))
+	if err := build(outputPath); err != nil {
+		return "", err
+	}
+	return outputPath, nil
+}
+
+func laneBinaryName(name string) string {
+	if strings.EqualFold(filepath.Ext(name), ".exe") {
+		return name
+	}
+	if runtime.GOOS == "windows" {
+		return name + ".exe"
+	}
+	return name
+}
+
+func runIntegrationSuite(suite e2elane.GoSuite, env map[string]string) error {
+	args := []string{
+		"run",
+		"gotest.tools/gotestsum@latest",
+		"--format",
+		"pkgname",
+		"--",
+		"-race",
+		"-parallel=4",
+		"-count=1",
+		"-tags",
+		"integration",
+	}
+	if strings.TrimSpace(suite.Run) != "" {
+		args = append(args, "-run", suite.Run)
+	}
+	args = append(args, suite.Packages...)
+	return runCommandInDirWithEnv(".", env, "go", args...)
+}
+
 func runCommandInDir(dir string, name string, args ...string) error {
+	return runCommandInDirWithEnv(dir, nil, name, args...)
+}
+
+func runCommandInDirWithEnv(dir string, env map[string]string, name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Env = os.Environ()
+	cmd.Env = mergeCommandEnv(env)
 	return cmd.Run()
+}
+
+func mergeCommandEnv(overrides map[string]string) []string {
+	env := append([]string(nil), os.Environ()...)
+	if len(overrides) == 0 {
+		return env
+	}
+	for key, value := range overrides {
+		prefix := key + "="
+		replaced := false
+		for idx, current := range env {
+			if strings.HasPrefix(current, prefix) {
+				env[idx] = prefix + value
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			env = append(env, prefix+value)
+		}
+	}
+	return env
 }
 
 func checkGeneratedFile(path string, want []byte) error {

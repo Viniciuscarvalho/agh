@@ -61,6 +61,11 @@ type tokenUsagePayload struct {
 	Timestamp        string   `json:"timestamp,omitempty"`
 }
 
+type promptFinishPayload struct {
+	Type         string `json:"type"`
+	FinishReason string `json:"finishReason,omitempty"`
+}
+
 type promptStreamState struct {
 	now              func() string
 	messageID        string
@@ -405,16 +410,31 @@ func (s *promptStreamState) finish(writer core.FlushWriter, event acp.AgentEvent
 	}
 	s.finished = true
 
+	finishPayload := promptFinishPayload{Type: "finish"}
+	if finishReason := aiSDKFinishReason(event.StopReason); finishReason != "" {
+		finishPayload.FinishReason = finishReason
+	}
+
 	if err := core.WriteSSE(writer, core.SSEMessage{
 		Name: "done",
-		Data: map[string]any{
-			"type":       "finish",
-			"stopReason": strings.TrimSpace(event.StopReason),
-		},
+		Data: finishPayload,
 	}); err != nil {
 		return err
 	}
 	return core.WriteSSERaw(writer, "", "[DONE]")
+}
+
+func aiSDKFinishReason(stopReason string) string {
+	switch strings.TrimSpace(stopReason) {
+	case "", "end_turn":
+		return "stop"
+	case "max_tokens":
+		return "length"
+	case "canceled", "max_turn_requests", "refusal":
+		return "other"
+	default:
+		return "other"
+	}
 }
 
 func agentEventPayloadFromEvent(event acp.AgentEvent) agentEventPayload {

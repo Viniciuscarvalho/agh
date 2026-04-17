@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { AnchorHTMLAttributes } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AutomationJob, AutomationRun, AutomationTrigger } from "@/systems/automation";
@@ -51,10 +52,23 @@ let mockCreateTriggerPending = false;
 let mockUpdateTriggerPending = false;
 let mockDeleteTriggerPending = false;
 
+interface MockLinkParams {
+  id?: string;
+}
+
+interface MockLinkProps extends AnchorHTMLAttributes<HTMLAnchorElement> {
+  params?: MockLinkParams;
+}
+
 vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => (opts: { component: () => React.ReactNode }) => ({
     component: opts.component,
   }),
+  Link: ({ children, params, ...props }: MockLinkProps) => (
+    <a href={`/session/${params?.id ?? ""}`} {...props}>
+      {children}
+    </a>
+  ),
 }));
 
 vi.mock("sonner", () => ({

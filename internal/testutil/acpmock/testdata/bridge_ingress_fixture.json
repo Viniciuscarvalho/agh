@@ -1,0 +1,39 @@
+{
+    "version": 2,
+    "agents": [
+        {
+            "name": "bridge-runner",
+            "provider": "claude",
+            "permissions": "approve-all",
+            "prompt": "You answer runtime bridge ingress prompts in daemon E2E tests.",
+            "turns": [
+                {
+                    "name": "initial-bridge-summary",
+                    "match": {
+                        "turn_source": "user",
+                        "occurrence": 1
+                    },
+                    "steps": [
+                        {
+                            "kind": "assistant",
+                            "chunks": ["Bridge summary: ", "initial route handled."]
+                        }
+                    ]
+                },
+                {
+                    "name": "follow-up-bridge-summary",
+                    "match": {
+                        "turn_source": "user",
+                        "occurrence": 2
+                    },
+                    "steps": [
+                        {
+                            "kind": "assistant",
+                            "chunks": ["Bridge summary: ", "follow-up reused the existing session."]
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

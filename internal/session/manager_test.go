@@ -893,11 +893,68 @@ func TestPromptWithOptsTracksTurnSourceAndClearsAfterPrompt(t *testing.T) {
 	}
 	_ = collectEvents(t, secondEvents)
 
-	if !slices.Equal(seenSources, []TurnSource{TurnSourceUser, TurnSourceNetwork}) {
-		t.Fatalf("seen turn sources = %#v, want %#v", seenSources, []TurnSource{TurnSourceUser, TurnSourceNetwork})
+	if got, want := len(h.driver.promptCalls), 2; got != want {
+		t.Fatalf("len(promptCalls) = %d, want %d", got, want)
+	}
+	if got, want := h.driver.promptCalls[0].Meta.TurnSource, acp.PromptTurnSourceUser; got != want {
+		t.Fatalf("promptCalls[0].Meta.TurnSource = %q, want %q", got, want)
+	}
+	networkMeta := acp.PromptNetworkMeta{
+		MessageID: "msg-1",
+		Kind:      "direct",
+		Channel:   "builders",
+		From:      "ops.peer",
+	}
+	thirdEvents, err := h.manager.PromptNetwork(testutil.Context(t), session.ID, "network prompt", networkMeta)
+	if err != nil {
+		t.Fatalf("PromptNetwork(with meta) error = %v", err)
+	}
+	_ = collectEvents(t, thirdEvents)
+	if got, want := h.driver.promptCalls[2].Meta.TurnSource, acp.PromptTurnSourceNetwork; got != want {
+		t.Fatalf("promptCalls[2].Meta.TurnSource = %q, want %q", got, want)
+	}
+	if h.driver.promptCalls[2].Meta.Network == nil {
+		t.Fatal("promptCalls[2].Meta.Network = nil, want populated metadata")
+	}
+	if got, want := h.driver.promptCalls[2].Meta.Network.MessageID, networkMeta.MessageID; got != want {
+		t.Fatalf("promptCalls[2].Meta.Network.MessageID = %q, want %q", got, want)
+	}
+	if !slices.Equal(seenSources, []TurnSource{TurnSourceUser, TurnSourceNetwork, TurnSourceNetwork}) {
+		t.Fatalf(
+			"seen turn sources = %#v, want %#v",
+			seenSources,
+			[]TurnSource{TurnSourceUser, TurnSourceNetwork, TurnSourceNetwork},
+		)
 	}
 	if got := session.CurrentTurnSource(); got != "" {
 		t.Fatalf("CurrentTurnSource() after prompts = %q, want empty", got)
+	}
+}
+
+func TestPromptNetworkRejectsMultipleMetadataValues(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	session := createSession(t, h)
+	t.Cleanup(func() {
+		_ = h.manager.Stop(testutil.Context(t), session.ID)
+	})
+
+	_, err := h.manager.PromptNetwork(
+		testutil.Context(t),
+		session.ID,
+		"network prompt",
+		acp.PromptNetworkMeta{MessageID: "msg-1", Kind: "direct"},
+		acp.PromptNetworkMeta{MessageID: "msg-2", Kind: "direct"},
+	)
+	if err == nil {
+		t.Fatal("PromptNetwork(multiple meta) error = nil, want validation failure")
+	}
+	if !strings.Contains(err.Error(), "at most one metadata value") {
+		t.Fatalf("PromptNetwork(multiple meta) error = %v, want multiple-metadata validation", err)
+	}
+	if got := len(h.driver.promptCalls); got != 0 {
+		t.Fatalf("len(promptCalls) = %d, want 0 when PromptNetwork validation fails", got)
 	}
 }
 

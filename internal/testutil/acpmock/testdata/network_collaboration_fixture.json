@@ -1,0 +1,252 @@
+{
+    "version": 2,
+    "agents": [
+        {
+            "name": "ops-coordinator",
+            "provider": "claude",
+            "permissions": "approve-all",
+            "prompt": "You coordinate direct network collaboration tests.",
+            "turns": [
+                {
+                    "name": "self-say-delivery",
+                    "match": {
+                        "turn_source": "network",
+                        "occurrence": 1,
+                        "network": {
+                            "message_id": "msg_say_01",
+                            "kind": "say"
+                        }
+                    },
+                    "steps": [
+                        {
+                            "kind": "assistant",
+                            "text": "Saw the builders request."
+                        }
+                    ]
+                },
+                {
+                    "name": "accept-direct-request",
+                    "match": {
+                        "turn_source": "network",
+                        "occurrence": 2,
+                        "network": {
+                            "message_id": "msg_direct_01",
+                            "kind": "direct",
+                            "reply_to": "msg_say_01",
+                            "trace_id": "trace_ops_patch_42",
+                            "causation_id": "msg_say_01"
+                        }
+                    },
+                    "steps": [
+                        {
+                            "kind": "assistant",
+                            "text": "Direct request received."
+                        }
+                    ]
+                },
+                {
+                    "name": "trace-follow-up",
+                    "match": {
+                        "turn_source": "network",
+                        "occurrence": 3,
+                        "network": {
+                            "message_id": "msg_trace_02",
+                            "kind": "trace",
+                            "reply_to": "msg_receipt_01",
+                            "trace_id": "trace_ops_patch_42"
+                        }
+                    },
+                    "steps": [
+                        {
+                            "kind": "assistant",
+                            "text": "Trace update recorded."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "patch-worker",
+            "provider": "claude",
+            "permissions": "approve-all",
+            "prompt": "You respond to directed network requests in tests.",
+            "turns": [
+                {
+                    "name": "reply-to-builders-say",
+                    "match": {
+                        "turn_source": "network",
+                        "occurrence": 1,
+                        "network": {
+                            "message_id": "msg_say_01",
+                            "kind": "say"
+                        }
+                    },
+                    "steps": [
+                        {
+                            "kind": "assistant",
+                            "text": "Saw the builders request."
+                        }
+                    ]
+                },
+                {
+                    "name": "send-trace-after-acceptance",
+                    "match": {
+                        "turn_source": "network",
+                        "occurrence": 2,
+                        "network": {
+                            "message_id": "msg_receipt_01",
+                            "kind": "receipt",
+                            "reply_to": "msg_direct_01"
+                        }
+                    },
+                    "steps": [
+                        {
+                            "kind": "assistant",
+                            "text": "Receipt accepted."
+                        }
+                    ]
+                },
+                {
+                    "name": "observe-duplicate-receipt",
+                    "match": {
+                        "turn_source": "network",
+                        "occurrence": 3,
+                        "network": {
+                            "kind": "receipt"
+                        }
+                    },
+                    "steps": [
+                        {
+                            "kind": "assistant",
+                            "text": "Duplicate receipt noted."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "release-bot",
+            "provider": "claude",
+            "permissions": "approve-all",
+            "prompt": "You run recipe discovery and follow-up tests.",
+            "turns": [
+                {
+                    "name": "observe-own-say",
+                    "match": {
+                        "turn_source": "network",
+                        "occurrence": 1,
+                        "network": {
+                            "message_id": "msg_recipe_say_01",
+                            "kind": "say"
+                        }
+                    },
+                    "steps": [
+                        {
+                            "kind": "assistant",
+                            "text": "Discovery request posted."
+                        }
+                    ]
+                },
+                {
+                    "name": "observe-whois-response",
+                    "match": {
+                        "turn_source": "network",
+                        "occurrence": 2,
+                        "network": {
+                            "kind": "whois",
+                            "reply_to": "msg_whois_01"
+                        }
+                    },
+                    "steps": [
+                        {
+                            "kind": "assistant",
+                            "text": "Peer discovery response captured."
+                        }
+                    ]
+                },
+                {
+                    "name": "request-recipe-help",
+                    "match": {
+                        "turn_source": "network",
+                        "occurrence": 3,
+                        "network": {
+                            "message_id": "msg_recipe_01",
+                            "kind": "recipe",
+                            "trace_id": "trace_recipe_apply_7"
+                        }
+                    },
+                    "steps": [
+                        {
+                            "kind": "assistant",
+                            "text": "Recipe artifact observed."
+                        }
+                    ]
+                },
+                {
+                    "name": "observe-recipe-trace",
+                    "match": {
+                        "turn_source": "network",
+                        "occurrence": 4,
+                        "network": {
+                            "message_id": "msg_trace_21",
+                            "kind": "trace",
+                            "reply_to": "msg_direct_20",
+                            "trace_id": "trace_recipe_apply_7"
+                        }
+                    },
+                    "steps": [
+                        {
+                            "kind": "assistant",
+                            "text": "Recipe trace update received."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "recipe-curator",
+            "provider": "claude",
+            "permissions": "approve-all",
+            "prompt": "You advertise repair recipes and answer targeted follow-up requests.",
+            "turns": [
+                {
+                    "name": "observe-own-recipe",
+                    "match": {
+                        "turn_source": "network",
+                        "occurrence": 1,
+                        "network": {
+                            "message_id": "msg_recipe_01",
+                            "kind": "recipe",
+                            "trace_id": "trace_recipe_apply_7"
+                        }
+                    },
+                    "steps": [
+                        {
+                            "kind": "assistant",
+                            "text": "Recipe published to the channel."
+                        }
+                    ]
+                },
+                {
+                    "name": "reply-with-trace-guidance",
+                    "match": {
+                        "turn_source": "network",
+                        "occurrence": 2,
+                        "network": {
+                            "message_id": "msg_direct_20",
+                            "kind": "direct",
+                            "reply_to": "msg_recipe_01",
+                            "trace_id": "trace_recipe_apply_7"
+                        }
+                    },
+                    "steps": [
+                        {
+                            "kind": "assistant",
+                            "text": "Direct recipe request received."
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
