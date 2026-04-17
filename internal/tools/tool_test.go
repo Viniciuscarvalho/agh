@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 )
 
@@ -15,6 +16,26 @@ var _ ToolProvider = staticProvider{}
 
 func (p staticProvider) Tools(_ context.Context) ([]Tool, error) {
 	return p.tools, p.err
+}
+
+func assertToolEqual(t *testing.T, got, want Tool) {
+	t.Helper()
+
+	if got.Name != want.Name {
+		t.Fatalf("Tool.Name = %q, want %q", got.Name, want.Name)
+	}
+	if got.Description != want.Description {
+		t.Fatalf("Tool.Description = %q, want %q", got.Description, want.Description)
+	}
+	if string(got.InputSchema) != string(want.InputSchema) {
+		t.Fatalf("Tool.InputSchema = %s, want %s", string(got.InputSchema), string(want.InputSchema))
+	}
+	if got.ReadOnly != want.ReadOnly {
+		t.Fatalf("Tool.ReadOnly = %t, want %t", got.ReadOnly, want.ReadOnly)
+	}
+	if got.Source != want.Source {
+		t.Fatalf("Tool.Source = %v, want %v", got.Source, want.Source)
+	}
 }
 
 func TestToolMarshalJSONCanonical(t *testing.T) {
@@ -93,21 +114,7 @@ func TestToolUnmarshalJSONCanonicalAndHookCompatible(t *testing.T) {
 				t.Fatalf("json.Unmarshal(Tool) error = %v", err)
 			}
 
-			if got.Name != tt.want.Name {
-				t.Fatalf("Tool.Name = %q, want %q", got.Name, tt.want.Name)
-			}
-			if got.Description != tt.want.Description {
-				t.Fatalf("Tool.Description = %q, want %q", got.Description, tt.want.Description)
-			}
-			if string(got.InputSchema) != string(tt.want.InputSchema) {
-				t.Fatalf("Tool.InputSchema = %s, want %s", string(got.InputSchema), string(tt.want.InputSchema))
-			}
-			if got.ReadOnly != tt.want.ReadOnly {
-				t.Fatalf("Tool.ReadOnly = %t, want %t", got.ReadOnly, tt.want.ReadOnly)
-			}
-			if got.Source != tt.want.Source {
-				t.Fatalf("Tool.Source = %v, want %v", got.Source, tt.want.Source)
-			}
+			assertToolEqual(t, got, tt.want)
 		})
 	}
 }
@@ -157,13 +164,19 @@ func TestToolSourceInvalid(t *testing.T) {
 	}
 	if err := ToolSource(42).Validate(); err == nil {
 		t.Fatal("ToolSource(42).Validate() error = nil, want non-nil")
+	} else if !errors.Is(err, ErrInvalidToolSource) {
+		t.Fatalf("ToolSource(42).Validate() error = %v, want ErrInvalidToolSource", err)
 	}
 	if _, err := ToolSource(42).MarshalText(); err == nil {
 		t.Fatal("ToolSource(42).MarshalText() error = nil, want non-nil")
+	} else if !errors.Is(err, ErrInvalidToolSource) {
+		t.Fatalf("ToolSource(42).MarshalText() error = %v, want ErrInvalidToolSource", err)
 	}
 
 	var decoded ToolSource
 	if err := json.Unmarshal([]byte(`"remote"`), &decoded); err == nil {
 		t.Fatal("json.Unmarshal(invalid ToolSource) error = nil, want non-nil")
+	} else if !errors.Is(err, ErrInvalidToolSource) {
+		t.Fatalf("json.Unmarshal(invalid ToolSource) error = %v, want ErrInvalidToolSource", err)
 	}
 }

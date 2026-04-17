@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -43,6 +44,25 @@ func (f *failingFlusher) Write(p []byte) (int, error) {
 }
 
 func (*failingFlusher) Flush() {}
+
+type failNthWriteFlusher struct {
+	writes int
+	failAt int
+	err    error
+}
+
+func (f *failNthWriteFlusher) Write(p []byte) (int, error) {
+	f.writes++
+	if f.writes == f.failAt {
+		if f.err != nil {
+			return 0, f.err
+		}
+		return 0, io.ErrClosedPipe
+	}
+	return len(p), nil
+}
+
+func (*failNthWriteFlusher) Flush() {}
 
 func TestObserveAndSSEHelpers(t *testing.T) {
 	t.Parallel()
@@ -102,6 +122,37 @@ func TestObserveAndSSEHelpers(t *testing.T) {
 	}
 }
 
+func TestWriteSSERawWrapsStepFailuresWithContext(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		failAt int
+		want   string
+	}{
+		{name: "ShouldWrapIDPrefixFailure", failAt: 1, want: "write sse id prefix"},
+		{name: "ShouldWrapEventPrefixFailure", failAt: 4, want: "write sse event prefix"},
+		{name: "ShouldWrapDataPrefixFailure", failAt: 7, want: "write sse data prefix"},
+		{name: "ShouldWrapPayloadFailure", failAt: 8, want: "write sse data payload"},
+		{name: "ShouldWrapTerminatorFailure", failAt: 9, want: "write sse message terminator"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			writer := &failNthWriteFlusher{failAt: tt.failAt, err: io.ErrClosedPipe}
+			err := core.WriteSSERaw(writer, "msg-1", `"raw"`, "done")
+			if !errors.Is(err, io.ErrClosedPipe) {
+				t.Fatalf("WriteSSERaw() error = %v, want %v", err, io.ErrClosedPipe)
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("WriteSSERaw() error = %v, want context %q", err, tt.want)
+			}
+		})
+	}
+}
+
 func TestConversionAndStatusHelpers(t *testing.T) {
 	t.Parallel()
 
@@ -120,6 +171,13 @@ func TestConversionAndStatusHelpers(t *testing.T) {
 	})
 	if agentEvent.Type != acp.EventTypePermission || agentEvent.Usage == nil || agentEvent.Usage.InputTokens == nil {
 		t.Fatalf("agent event payload = %#v", agentEvent)
+	}
+	if got := string(agentEvent.Raw); got != `{"ok":true}` {
+		t.Fatalf("agent event raw payload = %s, want valid JSON passthrough", got)
+	}
+	plainRawEvent := core.AgentEventPayloadFromEvent(acp.AgentEvent{Raw: []byte("plain-text")})
+	if got := string(plainRawEvent.Raw); got != `"plain-text"` {
+		t.Fatalf("plain raw payload = %s, want quoted string", got)
 	}
 	if payload := core.PayloadJSON("plain-text"); string(payload) == "plain-text" {
 		t.Fatalf("PayloadJSON() = %s, want quoted JSON", string(payload))

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	workspacepkg "github.com/pedronauck/agh/internal/workspace"
 )
@@ -109,12 +110,20 @@ func BuildCatalog(skills []*Skill) string {
 }
 
 func truncateCatalogDescription(description string) string {
-	runes := []rune(description)
-	if len(runes) <= catalogDescriptionLimit {
+	if utf8.RuneCountInString(description) <= catalogDescriptionLimit {
 		return description
 	}
 
-	return string(runes[:catalogDescriptionLimit-len(catalogEllipsis)]) + catalogEllipsis
+	truncationLimit := catalogDescriptionLimit - len(catalogEllipsis)
+	runeCount := 0
+	for idx := range description {
+		if runeCount == truncationLimit {
+			return description[:idx] + catalogEllipsis
+		}
+		runeCount++
+	}
+
+	return description
 }
 
 func escapeCatalogText(value string) string {

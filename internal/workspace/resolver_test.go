@@ -785,6 +785,40 @@ func TestResolveOrRegisterReturnsConcurrentWinnerWhenPathTaken(t *testing.T) {
 	}
 }
 
+func TestCancellationRollbackUsesBoundedDetachedDeleteContext(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		workspaceID string
+		run         func(context.Context, *Resolver, string) error
+	}{
+		{
+			name:        "Should roll back Register with a bounded detached delete context",
+			workspaceID: "ws_cancel_register",
+			run: func(ctx context.Context, resolver *Resolver, root string) error {
+				_, err := resolver.Register(ctx, RegisterOptions{RootDir: root, Name: "repo"})
+				return err
+			},
+		},
+		{
+			name:        "Should roll back ResolveOrRegister with a bounded detached delete context",
+			workspaceID: "ws_cancel_autoreg",
+			run: func(ctx context.Context, resolver *Resolver, root string) error {
+				_, err := resolver.ResolveOrRegister(ctx, root)
+				return err
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assertResolveCancellationRollback(t, tt.workspaceID, tt.run)
+		})
+	}
+}
+
 func TestListReturnsClonedWorkspaces(t *testing.T) {
 	t.Parallel()
 
@@ -1158,6 +1192,14 @@ type concurrentPathStore struct {
 	getByPathCalls int
 }
 
+type cancelOnInsertStore struct {
+	*mockWorkspaceStore
+	cancel context.CancelFunc
+
+	deleteCtxErr      error
+	deleteHasDeadline bool
+}
+
 func (s *concurrentPathStore) InsertWorkspace(context.Context, Workspace) error {
 	return ErrWorkspacePathTaken
 }
@@ -1196,6 +1238,22 @@ func (s *concurrentPathStore) ListWorkspaces(context.Context) ([]Workspace, erro
 	return nil, nil
 }
 
+func (s *cancelOnInsertStore) InsertWorkspace(ctx context.Context, ws Workspace) error {
+	if err := s.mockWorkspaceStore.InsertWorkspace(ctx, ws); err != nil {
+		return err
+	}
+	if s.cancel != nil {
+		s.cancel()
+	}
+	return nil
+}
+
+func (s *cancelOnInsertStore) DeleteWorkspace(ctx context.Context, id string) error {
+	s.deleteCtxErr = ctx.Err()
+	_, s.deleteHasDeadline = ctx.Deadline()
+	return s.mockWorkspaceStore.DeleteWorkspace(ctx, id)
+}
+
 func (l *countingConfigLoader) Load(root string) (aghconfig.Config, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -1220,26 +1278,26 @@ func (l *countingConfigLoader) LastRoot() string {
 	return l.roots[len(l.roots)-1]
 }
 
-func newTestResolver(t *testing.T, store Store, opts ...Option) *Resolver {
-	t.Helper()
+func newTestResolver(tb testing.TB, store Store, opts ...Option) *Resolver {
+	tb.Helper()
 
 	opts = append([]Option{WithLogger(discardLogger())}, opts...)
 	resolver, err := NewResolver(store, opts...)
 	if err != nil {
-		t.Fatalf("NewResolver() error = %v", err)
+		tb.Fatalf("NewResolver() error = %v", err)
 	}
 	return resolver
 }
 
-func newTestHomePaths(t *testing.T) aghconfig.HomePaths {
-	t.Helper()
+func newTestHomePaths(tb testing.TB) aghconfig.HomePaths {
+	tb.Helper()
 
-	homePaths, err := aghconfig.ResolveHomePathsFrom(filepath.Join(t.TempDir(), "home"))
+	homePaths, err := aghconfig.ResolveHomePathsFrom(filepath.Join(tb.TempDir(), "home"))
 	if err != nil {
-		t.Fatalf("ResolveHomePathsFrom() error = %v", err)
+		tb.Fatalf("ResolveHomePathsFrom() error = %v", err)
 	}
 	if err := aghconfig.EnsureHomeLayout(homePaths); err != nil {
-		t.Fatalf("EnsureHomeLayout() error = %v", err)
+		tb.Fatalf("EnsureHomeLayout() error = %v", err)
 	}
 	return homePaths
 }
@@ -1264,9 +1322,9 @@ func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-func writeAgentDef(t *testing.T, path string, name string, model string) {
-	t.Helper()
-	writeFile(t, path, strings.Join([]string{
+func writeAgentDef(tb testing.TB, path string, name string, model string) {
+	tb.Helper()
+	writeFile(tb, path, strings.Join([]string{
 		"---",
 		"name: " + name,
 		"provider: claude",
@@ -1278,9 +1336,9 @@ func writeAgentDef(t *testing.T, path string, name string, model string) {
 	}, "\n"))
 }
 
-func writeSkill(t *testing.T, dir string) {
-	t.Helper()
-	writeFile(t, filepath.Join(dir, skillDefinitionFile), strings.Join([]string{
+func writeSkill(tb testing.TB, dir string) {
+	tb.Helper()
+	writeFile(tb, filepath.Join(dir, skillDefinitionFile), strings.Join([]string{
 		"---",
 		"name: " + filepath.Base(dir),
 		"description: test skill",
@@ -1291,13 +1349,13 @@ func writeSkill(t *testing.T, dir string) {
 	}, "\n"))
 }
 
-func writeFile(t *testing.T, path string, contents string) {
-	t.Helper()
+func writeFile(tb testing.TB, path string, contents string) {
+	tb.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) error = %v", filepath.Dir(path), err)
+		tb.Fatalf("MkdirAll(%q) error = %v", filepath.Dir(path), err)
 	}
 	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
-		t.Fatalf("WriteFile(%q) error = %v", path, err)
+		tb.Fatalf("WriteFile(%q) error = %v", path, err)
 	}
 }
 
@@ -1341,4 +1399,41 @@ func skillNames(skills []SkillPath) []string {
 
 func nilTestContext() context.Context {
 	return nil
+}
+
+func assertResolveCancellationRollback(
+	t *testing.T,
+	workspaceID string,
+	run func(context.Context, *Resolver, string) error,
+) {
+	t.Helper()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	homePaths := newTestHomePaths(t)
+	root := t.TempDir()
+	store := &cancelOnInsertStore{
+		mockWorkspaceStore: newMockWorkspaceStore(),
+		cancel:             cancel,
+	}
+
+	resolver := newTestResolver(t, store,
+		WithHomePaths(homePaths),
+		WithIDGenerator(func(string) string { return workspaceID }),
+	)
+
+	if err := run(ctx, resolver, root); !errors.Is(err, context.Canceled) {
+		t.Fatalf("run() error = %v, want %v", err, context.Canceled)
+	}
+	if got := len(store.deleteCalls); got != 1 {
+		t.Fatalf("DeleteWorkspace() calls = %d, want 1", got)
+	}
+	if store.deleteCtxErr != nil {
+		t.Fatalf("DeleteWorkspace() context error = %v, want nil", store.deleteCtxErr)
+	}
+	if !store.deleteHasDeadline {
+		t.Fatal("DeleteWorkspace() context deadline missing, want bounded rollback timeout")
+	}
+	if _, err := store.GetWorkspace(context.Background(), workspaceID); !errors.Is(err, ErrWorkspaceNotFound) {
+		t.Fatalf("GetWorkspace(rolled back after cancellation) error = %v, want %v", err, ErrWorkspaceNotFound)
+	}
 }
