@@ -18,3 +18,19 @@ Query global observability state
 ```
   -o, --output string   Output format: human, json, or toon (default "human")
 ```
+
+## Output Formats
+
+Every AGH command supports `-o, --output`:
+
+- `human` for interactive terminal use
+- `json` for scripts and other machine-readable consumers
+- `toon` for compact agent-readable summaries
+
+
+## Subcommands
+
+| Command | Description |
+| ------- | ----------- |
+| [agh observe events](/runtime/cli-reference/observe/events) | Read cross-session observability events |
+| [agh observe health](/runtime/cli-reference/observe/health) | Show observability health |

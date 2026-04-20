@@ -28,3 +28,23 @@ agh automation runs [flags]
 ```
   -o, --output string   Output format: human, json, or toon (default "human")
 ```
+
+## Output Formats
+
+Every AGH command supports `-o, --output`:
+
+- `human` for interactive terminal use
+- `json` for scripts and other machine-readable consumers
+- `toon` for compact agent-readable summaries
+
+Example:
+
+```bash
+agh automation runs -o json
+```
+
+## Subcommands
+
+| Command | Description |
+| ------- | ----------- |
+| [agh automation runs get](/runtime/cli-reference/automation/runs/get) | Show one automation run |

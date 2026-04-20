@@ -28,3 +28,39 @@ agh [flags]
   -h, --help            help for agh
   -o, --output string   Output format: human, json, or toon (default "human")
 ```
+
+## Output Formats
+
+Every AGH command supports `-o, --output`:
+
+- `human` for interactive terminal use
+- `json` for scripts and other machine-readable consumers
+- `toon` for compact agent-readable summaries
+
+Example:
+
+```bash
+agh -o json
+```
+
+## Subcommands
+
+| Command | Description |
+| ------- | ----------- |
+| [agh agent](/runtime/cli-reference/agent) | Inspect AGH agent definitions |
+| [agh automation](/runtime/cli-reference/automation) | Manage automation jobs, triggers, and runs |
+| [agh bridge](/runtime/cli-reference/bridge) | Manage bridge instances |
+| [agh completion](/runtime/cli-reference/completion) | Generate the autocompletion script for the specified shell |
+| [agh daemon](/runtime/cli-reference/daemon) | Manage the AGH daemon |
+| [agh extension](/runtime/cli-reference/extension) | Manage AGH extensions |
+| [agh hooks](/runtime/cli-reference/hooks) | Inspect configured and executed hooks |
+| [agh install](/runtime/cli-reference/install) | Bootstrap AGH and create the default general agent |
+| [agh memory](/runtime/cli-reference/memory) | Manage persistent cross-session memories |
+| [agh network](/runtime/cli-reference/network) | Operate the daemon-owned network runtime |
+| [agh observe](/runtime/cli-reference/observe) | Query global observability state |
+| [agh session](/runtime/cli-reference/session) | Manage AGH sessions |
+| [agh skill](/runtime/cli-reference/skill) | Manage local AgentSkills |
+| [agh task](/runtime/cli-reference/task) | Manage tasks and task runs |
+| [agh version](/runtime/cli-reference/version) | Print the AGH version |
+| [agh whoami](/runtime/cli-reference/whoami) | Print the current AGH agent identity from environment variables |
+| [agh workspace](/runtime/cli-reference/workspace) | Manage registered workspaces |

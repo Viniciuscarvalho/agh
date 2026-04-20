@@ -22,3 +22,23 @@ agh task child [flags]
 ```
   -o, --output string   Output format: human, json, or toon (default "human")
 ```
+
+## Output Formats
+
+Every AGH command supports `-o, --output`:
+
+- `human` for interactive terminal use
+- `json` for scripts and other machine-readable consumers
+- `toon` for compact agent-readable summaries
+
+Example:
+
+```bash
+agh task child -o json
+```
+
+## Subcommands
+
+| Command | Description |
+| ------- | ----------- |
+| [agh task child create](/runtime/cli-reference/task/child/create) | Create a child task beneath a parent |

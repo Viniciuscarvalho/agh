@@ -1,4 +1,4 @@
 {
     "title": "Memory",
-    "pages": ["index", "consolidate", "delete", "list", "read", "write"]
+    "pages": ["index", "consolidate", "delete", "list", "read", "reindex", "search", "write"]
 }

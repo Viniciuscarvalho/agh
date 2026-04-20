@@ -1,184 +1,103 @@
 ---
 title: Your First Custom Agent
-description: Create a custom agent with its own system prompt, provider configuration, and tool permissions using an AGENT.md definition file.
+description: Create one minimal AGENT.md definition, store it in the correct runtime path, and verify that AGH resolves it for the current workspace.
 ---
 
-In the [Quick Start](/runtime/core/getting-started/quick-start), you used the built-in `general` agent. In this tutorial, you will create a custom agent with a focused system prompt, specific tools, and its own provider settings. By the end, you will have a working `code-reviewer` agent that you can use in any session.
+In [Quick Start](/runtime/core/getting-started/quick-start), you used the built-in `general` agent.
+In this tutorial, you will create a second agent with its own system prompt and permission mode,
+store it in the correct runtime path, and launch a session with it.
 
-**Before you begin:** Make sure the daemon is running (`agh daemon start`).
+**Before you begin:** Run these steps from the repository root where you want the agent to be
+visible. The current AGH runtime uses `<workspace>/.agh/agents/<name>/AGENT.md` for workspace-local
+agents. The draft `.agents/<name>/` path appears in RFC material, but it is not the runtime path to
+use today.
 
-## How agents work in AGH
-
-An agent in AGH is a directory containing an `AGENT.md` file. The file has YAML frontmatter that declares the agent's configuration, and a Markdown body that becomes the agent's system prompt. AGH reads this definition when you create a session and uses it to spawn and configure the agent subprocess.
-
-Agents are stored in two locations:
-
-| Location                | Scope                                      | Example                 |
-| ----------------------- | ------------------------------------------ | ----------------------- |
-| `~/.agh/agents/<name>/` | Global — available everywhere              | User-wide agents        |
-| `.agents/<name>/`       | Workspace — available in this project only | Project-specific agents |
-
-## Create the agent directory
-
-Create a new agent called `code-reviewer`:
+## 1. Create the workspace-local agent directory
 
 ```bash
-mkdir -p ~/.agh/agents/code-reviewer
+mkdir -p .agh/agents/code-reviewer
 ```
 
-## Write the AGENT.md file
+## 2. Write the AGENT.md file
 
-Create `~/.agh/agents/code-reviewer/AGENT.md` with the following content:
+Create `.agh/agents/code-reviewer/AGENT.md` with this minimal example:
 
 ```yaml
 ---
 name: code-reviewer
 provider: claude
-model: claude-sonnet-4-20250514
-tools: [read, glob, grep]
 permissions: approve-reads
 ---
 
-You are a senior code reviewer. When given a file or directory, you:
+You are a focused code reviewer.
 
-1. Read the code carefully
-2. Identify bugs, security issues, and style problems
-3. Suggest concrete improvements with code examples
-4. Prioritize issues by severity (critical, warning, suggestion)
-
-Be direct. Skip praise. Focus on what needs to change.
+- Read the relevant files before answering.
+- Put bugs, regressions, and missing tests first.
+- Cite files and symbols when you can.
+- Keep the final response concise and actionable.
 ```
 
-The frontmatter fields:
+This tutorial intentionally keeps the file small. The important pieces are:
 
-| Field         | Value                      | Purpose                                                                     |
-| ------------- | -------------------------- | --------------------------------------------------------------------------- |
-| `name`        | `code-reviewer`            | Unique identifier for this agent                                            |
-| `provider`    | `claude`                   | Which provider to use (must match a `[providers.*]` section in your config) |
-| `model`       | `claude-sonnet-4-20250514` | Model to use for this agent                                                 |
-| `tools`       | `[read, glob, grep]`       | Restrict the agent to read-only file tools — no writes, no bash             |
-| `permissions` | `approve-reads`            | Automatically approve read operations, prompt for anything else             |
+| Field | Why it matters in this tutorial |
+| ----- | ------------------------------- |
+| `name` | The identifier AGH uses for discovery and selection. |
+| `provider` | Tells AGH which provider configuration to resolve for this agent. |
+| `permissions` | This is the enforced session boundary today. `approve-reads` auto-allows read operations and prompts for the rest. |
+| Markdown body | Becomes the agent's startup prompt. |
 
-The Markdown body after the `---` becomes the system prompt that shapes the agent's behavior.
+For the full implemented schema, use [AGENT.md Reference](/runtime/core/configuration/agent-md).
 
-> **Tip:** If you want the agent to use whatever provider and model you configured during `agh install`, omit the `provider` and `model` fields. AGH falls back to your defaults in `~/.agh/config.toml`.
-
-## Verify the agent is registered
-
-Check that AGH can see your new agent:
+## 3. Verify that AGH can see the agent
 
 ```bash
 agh agent list
 ```
 
-```
-NAME            PROVIDER  MODEL
-general         claude    claude-sonnet-4-20250514
-code-reviewer   claude    claude-sonnet-4-20250514
-```
-
-Get the full details:
+Inspect the resolved definition:
 
 ```bash
 agh agent info code-reviewer
 ```
 
-```
-name:        code-reviewer
-provider:    claude
-model:       claude-sonnet-4-20250514
-tools:       read, glob, grep
-permissions: approve-reads
-prompt:      You are a senior code reviewer. When given a file...
-```
+This is the right moment to catch path mistakes. If the agent does not appear here, AGH will not be
+able to start a session with it.
 
-## Run a session with the custom agent
-
-Create a session that uses your new agent:
+## 4. Start a session with the custom agent
 
 ```bash
-agh session new --agent code-reviewer
+agh session new --cwd "$PWD" --agent code-reviewer
 ```
 
-```
-session created
-  id:        e5f6g7h8
-  agent:     code-reviewer
-  workspace: ~/projects/myapp
-  state:     active
-```
-
-Send it a review task:
+Then send it a focused task:
 
 ```bash
-agh session prompt e5f6g7h8 "Review the main.go file in this project"
+agh session prompt sess_1234 "Review the changes in this repository and tell me the highest-risk issue first."
 ```
 
-The agent reads the file using its allowed tools (`read`, `glob`, `grep`) and responds with a code review. Because `permissions` is set to `approve-reads`, file reads happen automatically without prompting you for approval.
+Because the agent uses `approve-reads`, read operations can proceed automatically, while write or
+terminal operations still require approval.
 
-## Add MCP servers to an agent
+## 5. Know what this tutorial does not claim
 
-Agents can declare MCP (Model Context Protocol) servers that provide additional tools. For example, to give your code-reviewer access to a GitHub server:
+Two field families are easy to overread:
 
-```yaml
----
-name: code-reviewer
-provider: claude
-model: claude-sonnet-4-20250514
-tools: [read, glob, grep]
-permissions: approve-reads
-mcp_servers:
-  - name: github
-    command: npx
-    args: ["-y", "@modelcontextprotocol/server-github"]
-    env:
-      GITHUB_TOKEN: "${GITHUB_TOKEN}"
----
-You are a senior code reviewer...
-```
+- `permissions` is enforced by the runtime and matters immediately.
+- `tools` and `model` are useful metadata, but you should treat the full field behavior according to
+  the current reference docs, not as a separate enforcement layer introduced by this tutorial.
 
-AGH spawns the MCP server alongside the agent session and makes its tools available.
+That distinction is important when you start designing stricter agents.
 
-You can also place an `mcp.json` file in the agent directory instead of declaring servers inline:
+## 6. Add more later
 
-```
-~/.agh/agents/code-reviewer/
-├── AGENT.md
-└── mcp.json
-```
+When you are ready to go beyond the minimal example:
 
-## Create a workspace-scoped agent
+- use [Agent Providers](/runtime/core/agents/providers) for provider resolution behavior
+- use [Agent Spawning](/runtime/core/agents/spawning) for the startup path
+- use [AGENT.md Reference](/runtime/core/configuration/agent-md) for the full field contract
+- use [mcp.json Reference](/runtime/core/configuration/mcp-json) when you want MCP sidecars
 
-For agents specific to a single project, use the `.agents/` directory in your project root:
+## Next Step
 
-```bash
-mkdir -p .agents/my-project-helper
-```
-
-Create `.agents/my-project-helper/AGENT.md`:
-
-```yaml
----
-name: my-project-helper
-provider: claude
-tools: ["*"]
-permissions: approve-all
----
-You are a development assistant for this project.
-You have full access to read, write, and execute code.
-Always run tests after making changes.
-```
-
-This agent only appears when you create sessions within this workspace.
-
-## Stop the session
-
-When you are done:
-
-```bash
-agh session stop e5f6g7h8
-```
-
-## Next steps
-
-You now have a custom agent tailored to a specific task. Next, explore the [Web UI](/runtime/core/getting-started/web-ui) to manage your sessions and watch agent activity in real time through a browser interface.
+Open the [Web UI](/runtime/core/getting-started/web-ui) and inspect the same runtime state in the
+browser.

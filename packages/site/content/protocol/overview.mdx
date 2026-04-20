@@ -96,14 +96,31 @@ semantics that survive beyond one prompt.
 
 ## Adoption path
 
-You can adopt the protocol incrementally.
+You can adopt the protocol incrementally, but that is not the same thing as claiming full
+conformance on day one.
+
+### Minimal useful subset
+
+Start here when you want working interop quickly:
 
 1. Map your runtime's agents to Peer IDs and Peer Cards.
 2. Accept and emit the canonical envelope.
-3. Implement `greet`, `whois`, `say`, and `direct` first.
-4. Add `receipt` and `trace` once you need visible lifecycle state.
+3. Implement `greet`, `whois`, `say`, and `direct`.
+
+### Lifecycle-complete coordination
+
+Add these when you need explicit responsibility and progress:
+
+4. Add `receipt` and `trace`.
 5. Add `recipe` when agents need portable, reusable task artifacts.
-6. Choose a transport profile and operational limits that fit your environment.
+
+### Conformance claim
+
+Choose a transport profile and test coverage that match the claim you want to make.
+
+Conformance uses a stricter bar than the staged adoption path above. A minimal implementation can
+still be useful, but [Conformance](/protocol/conformance/) defines what is required before you claim
+Core, Trust, or Full support.
 
 The durable boundary is the protocol. The runtime, transport, UI, and trust layer can evolve around
 it.

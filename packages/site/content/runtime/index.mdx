@@ -1,49 +1,79 @@
 ---
 title: Runtime Documentation
-description: Install, run, and govern real agent CLIs with durable sessions, replayable history, and one operator surface.
+description: Install AGH, run your first durable session, understand the operating model, and then drill into the exact CLI or API contracts.
 ---
 
-AGH Runtime is the local-first control plane for real agent work. It lets you run Claude Code,
-Codex, Gemini CLI, and other agent CLIs as durable sessions with replayable history,
-workspace-aware memory, automation, and observability.
+AGH Runtime docs are organized by the job you are trying to do right now: get AGH running on one
+machine, understand how the runtime behaves, or inspect the exact contract of one operator surface.
 
 <OperatorNote>
-  Runtime docs are organized by operator job, not by internal package boundary. Start in Core
-  Concepts for the operating model, then use CLI Reference or API Reference when you need the exact
-  live contract for one surface.
+  New to AGH? Start with Installation, then Quick Start. Come back to Core Concepts when you want
+  the operating model, and use CLI Reference or API Reference when you need exact contracts.
 </OperatorNote>
 
 ## Start by Job
 
 <RouteList>
   <RouteRow
+    href="/runtime/core/getting-started/installation"
+    label="Start Here"
+    title="Install AGH and bootstrap the runtime"
+    description="Use this when you are setting up AGH on a machine for the first time and want the shortest path to a verified install."
+    meta="Recommended first"
+  />
+  <RouteRow
+    href="/runtime/core/getting-started/quick-start"
+    label="First Session"
+    title="Run one durable session end to end"
+    description="Follow this tutorial to start the daemon, create a real session for the current repository, follow events, stop it, and resume it."
+    meta="Hands-on tutorial"
+  />
+  <RouteRow
     href="/runtime/core"
     label="Core Concepts"
-    title="Operating model, setup flow, and runtime capabilities"
-    description="Use this when you need to understand durability, replay, memory, permissions, automation, extensions, and the day-two model behind AGH Runtime."
-    meta="Recommended first"
+    title="Understand sessions, memory, permissions, automation, and day-two operations"
+    description="Use Core Concepts when you want the runtime operating model instead of one specific command or endpoint."
+    meta="Mental model"
   />
   <RouteRow
     href="/runtime/cli-reference"
     label="CLI Reference"
-    title="Every `agh` command, grouped by operator workflow"
-    description="Reach for this when you need an exact command surface for sessions, automation, bridges, workspaces, extensions, skills, hooks, memory, and daemon control."
-    meta="Generated reference"
+    title="Exact `agh` commands, flags, and command-family entry points"
+    description="Reach for the CLI reference when you already understand the runtime model and now need exact operator commands."
+    meta="Exact contract"
   />
   <RouteRow
     href="/runtime/api-reference"
-    label="API Reference"
-    title="HTTP and SSE surfaces exposed by the daemon"
-    description="Use the API docs for automation, integrations, and any client that needs to talk to the runtime programmatically."
+    label="API Surface"
+    title="Current HTTP and SSE route map for automation and integrations"
+    description="Use this page to understand the daemon API families and streaming endpoints that back the web UI, automation, and external clients."
     meta="Integration surface"
   />
 </RouteList>
 
-## Working model
+## Recommended Reading Paths
 
-- **Core Concepts** explains how AGH behaves as a runtime you operate.
-- **CLI Reference** tells you exactly what the command surface looks like.
-- **API Reference** mirrors the machine-facing contract behind the same control plane.
+### First machine, first session
 
-The intended flow is simple: learn the model once in Core Concepts, then use whichever runtime
-surface fits the job.
+1. [Installation](/runtime/core/getting-started/installation)
+2. [Quick Start](/runtime/core/getting-started/quick-start)
+3. [Your First Custom Agent](/runtime/core/getting-started/first-agent)
+4. [Web UI](/runtime/core/getting-started/web-ui)
+
+### Evaluate the operating model
+
+1. [What is AGH](/runtime/core/overview/what-is-agh)
+2. [Sessions](/runtime/core/sessions/lifecycle)
+3. [Agents](/runtime/core/agents/definitions)
+4. [Memory](/runtime/core/memory/system)
+5. [Operations](/runtime/core/operations/daemon)
+
+### Build automation or integrations
+
+1. [CLI Reference](/runtime/cli-reference)
+2. [API Reference](/runtime/api-reference)
+3. [Automation](/runtime/core/automation/jobs)
+4. [Bridges](/runtime/core/bridges/overview)
+
+AGH is easiest to learn in that order: install one runtime, run one durable session, understand the
+model, then specialize into the surface that matches the job.

@@ -1,98 +1,92 @@
 ---
 title: Installation
-description: Install the AGH binary on your machine using Go, Homebrew, or a pre-built binary download, then verify the installation is working.
+description: Install the AGH binary, verify it works, and bootstrap the local runtime before you start the daemon.
 ---
 
-This page walks you through installing AGH and verifying it works. By the end, you will have the `agh` binary on your path and ready to use.
+This page gets AGH onto one machine and prepares the local runtime for real work. By the end, you
+will have a working `agh` binary, a bootstrapped `~/.agh` home, and the prerequisites needed for
+your first durable session.
 
-## Prerequisites
+## Before You Begin
 
-Before installing AGH, make sure you have:
+Make sure you have:
 
-- **Go 1.25 or later** — AGH is written in Go and the primary install method uses `go install`. Check your version with `go version`.
-- **macOS or Linux** — AGH runs on macOS (ARM and Intel) and Linux (x86_64 and ARM64). Windows support is not yet available.
-- **An ACP-compatible agent** — You need at least one agent CLI installed. [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://github.com/openai/codex), or [Gemini CLI](https://github.com/google-gemini/gemini-cli) all work.
-- **An API key** for your chosen agent provider (e.g. `ANTHROPIC_API_KEY` for Claude, `OPENAI_API_KEY` for Codex, `GEMINI_API_KEY` for Gemini).
+- **macOS or Linux**. AGH currently targets local-first Unix-like environments.
+- **Go 1.25 or later** if you are installing from source.
+- **At least one supported agent CLI** such as Claude Code, Codex, Gemini CLI, or another
+  ACP-compatible agent runtime you already use.
+- **Provider credentials exported in the shell that will start the daemon**. The daemon passes its
+  environment down to managed agent subprocesses, so export any required API key before
+  `agh daemon start`.
 
-## Install with Go
+Example:
 
-The recommended install method. This compiles the binary from source and places it in your `$GOPATH/bin` directory.
+```bash
+export OPENAI_API_KEY="..."
+```
+
+## Install the Binary
+
+### Option 1: `go install`
+
+This is the shortest path when you already have Go installed.
 
 ```bash
 go install github.com/compozy/agh/cmd/agh@latest
 ```
 
-Make sure `$GOPATH/bin` is in your `PATH`. If you are not sure, run:
+Make sure the Go bin directory is on your `PATH`:
 
 ```bash
 export PATH="$PATH:$(go env GOPATH)/bin"
 ```
 
-## Install with Homebrew
+### Option 2: build from a repository checkout
 
-If you are on macOS and prefer Homebrew:
-
-```bash
-brew install compozy/tap/agh
-```
-
-## Install from binary
-
-Download a pre-built binary from the [GitHub releases page](https://github.com/compozy/agh/releases). Pick the archive that matches your OS and architecture, extract it, and move the binary to a directory on your `PATH`:
+Use this when you are already working from the AGH source tree or want a local build artifact you
+control explicitly.
 
 ```bash
-# Example for macOS ARM (Apple Silicon)
-tar -xzf agh_darwin_arm64.tar.gz
-sudo mv agh /usr/local/bin/
+git clone https://github.com/compozy/agh
+cd agh
+go build -o ./bin/agh ./cmd/agh
+export PATH="$PWD/bin:$PATH"
 ```
 
-## Verify the installation
+## Verify the Install
 
-Run the version command to confirm AGH is installed:
+Confirm that the binary is available:
 
 ```bash
 agh version
 ```
 
-You should see output like:
+If your shell reports `command not found`, fix `PATH` first. Do that before you continue.
 
-```
-agh version 0.1.0 (commit abc1234)
-```
+## Bootstrap the AGH Home
 
-If you see `command not found`, the `agh` binary is not on your `PATH`. Double-check the install steps above and make sure the directory containing `agh` is included in your shell's `PATH`.
-
-## Bootstrap AGH
-
-Run the interactive setup wizard to create your configuration and default agent:
+Run the interactive bootstrap once:
 
 ```bash
 agh install
 ```
 
-The wizard walks you through:
+This creates or updates:
 
-1. **Provider selection** — Choose your default provider (Claude, Codex, or Gemini).
-2. **Model selection** — Pick a default model for the chosen provider.
-3. **Configuration** — Writes `~/.agh/config.toml` with your choices.
-4. **Default agent** — Creates the `general` agent at `~/.agh/agents/general/AGENT.md`.
+- `~/.agh/config.toml`
+- `~/.agh/agents/general/AGENT.md`
 
-After the wizard finishes, your AGH home directory is ready:
+The bootstrap flow lets you pick a default provider and model for the built-in `general` agent.
 
-```
-~/.agh/
-├── config.toml           # Your configuration
-├── agents/
-│   └── general/
-│       └── AGENT.md      # Default agent definition
-├── memory/
-├── skills/
-├── sessions/
-└── logs/
-```
+## Sanity Check the Runtime Inputs
 
-> **Tip:** You can re-run `agh install` at any time to reconfigure. It is idempotent — it updates your config without destroying existing agents or sessions.
+Before moving to Quick Start, verify these three things:
 
-## Next steps
+1. `agh version` succeeds.
+2. `agh install` completed and created `~/.agh/config.toml`.
+3. Your provider credential is exported in the shell you will use to start the daemon.
 
-AGH is installed and configured. Head to the [Quick Start](/runtime/core/getting-started/quick-start) to start the daemon and create your first session.
+## Next Step
+
+Continue to [Quick Start](/runtime/core/getting-started/quick-start). That tutorial assumes the
+binary works, `~/.agh` exists, and your provider environment is already available to the daemon.

@@ -211,6 +211,79 @@ agh session list [flags]
 	}
 }
 
+func TestRenderOutputFormatsSection(t *testing.T) {
+	t.Parallel()
+
+	body := `---
+title: "agh daemon status"
+description: "Show daemon status"
+---
+
+## agh daemon status
+
+Show daemon status
+
+` + "```" + `
+agh daemon status [flags]
+` + "```" + `
+
+### Options inherited from parent commands
+
+` + "```" + `
+  -o, --output string   Output format: human, json, or toon (default "human")
+` + "```" + `
+`
+
+	result := renderOutputFormatsSection(body)
+
+	if !strings.Contains(result, "## Output Formats") {
+		t.Fatal("expected output formats section heading")
+	}
+	if !strings.Contains(result, "agh daemon status -o json") {
+		t.Fatal("expected JSON usage example")
+	}
+}
+
+func TestRenderSubcommandsSection(t *testing.T) {
+	t.Parallel()
+
+	inputs := []input{
+		{
+			fileName: "agh_task.md",
+			baseName: "agh_task",
+			segments: []string{"task"},
+			raw:      "## agh task\n\nManage tasks and task runs\n\n",
+		},
+		{
+			fileName: "agh_task_create.md",
+			baseName: "agh_task_create",
+			segments: []string{"task", "create"},
+			raw:      "## agh task create\n\nCreate a task\n\n",
+		},
+		{
+			fileName: "agh_task_list.md",
+			baseName: "agh_task_list",
+			segments: []string{"task", "list"},
+			raw:      "## agh task list\n\nList tasks\n\n",
+		},
+	}
+
+	targets := map[string]string{
+		"agh_task":        "/runtime/cli-reference/task",
+		"agh_task_create": "/runtime/cli-reference/task/create",
+		"agh_task_list":   "/runtime/cli-reference/task/list",
+	}
+
+	result := renderSubcommandsSection(inputs[0], inputs, targets)
+
+	if !strings.Contains(result, "| [agh task create](/runtime/cli-reference/task/create) | Create a task |") {
+		t.Fatal("expected create subcommand row")
+	}
+	if !strings.Contains(result, "| [agh task list](/runtime/cli-reference/task/list) | List tasks |") {
+		t.Fatal("expected list subcommand row")
+	}
+}
+
 func TestEscapeJSX(t *testing.T) {
 	t.Parallel()
 
@@ -835,6 +908,60 @@ func TestProcessAllowsRerunIntoGeneratedOutputDir(t *testing.T) {
 	}
 	if err := Process(context.Background(), srcDir, dstDir); err != nil {
 		t.Fatalf("rerun Process() error = %v", err)
+	}
+}
+
+func TestProcessAllowsManagedRootFilesAndDirs(t *testing.T) {
+	t.Parallel()
+
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(srcDir, "agh.md"), []byte("## agh\n\nAGH agent OS\n"), 0o644); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(dstDir, "index.mdx"),
+		[]byte("---\ntitle: CLI Reference\n---\n"),
+		0o600,
+	); err != nil {
+		t.Fatalf("write editorial index: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(dstDir, "meta.json"),
+		[]byte(`{"title":"CLI Reference","pages":["index"]}`),
+		0o600,
+	); err != nil {
+		t.Fatalf("write editorial meta: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dstDir, "agh.mdx"), []byte("old root"), 0o600); err != nil {
+		t.Fatalf("write generated root: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dstDir, "install.mdx"), []byte("old leaf"), 0o600); err != nil {
+		t.Fatalf("write generated leaf: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(dstDir, "session"), 0o755); err != nil {
+		t.Fatalf("mkdir generated subdir: %v", err)
+	}
+
+	if err := Process(context.Background(), srcDir, dstDir); err != nil {
+		t.Fatalf("Process() should allow managed root files and dirs: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dstDir, "index.mdx")); err != nil {
+		t.Fatalf("editorial index should be preserved: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dstDir, "meta.json")); err != nil {
+		t.Fatalf("editorial meta should be preserved: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dstDir, "agh.mdx")); err != nil {
+		t.Fatalf("generated root should be rewritten: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dstDir, "install.mdx")); !os.IsNotExist(err) {
+		t.Fatalf("stale generated root leaf should be removed, stat err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dstDir, "session")); !os.IsNotExist(err) {
+		t.Fatalf("stale generated subdir should be removed, stat err = %v", err)
 	}
 }
 

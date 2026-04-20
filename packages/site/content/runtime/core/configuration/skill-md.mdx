@@ -265,9 +265,13 @@ and blocks marketplace skills whose stored hash does not match.
 | Maximum scan depth               | 4 directories below each scan root                                         |
 | Maximum candidates per scan root | 300                                                                        |
 | Skipped directories              | `.git`, `node_modules`, and hidden directories except `.agh` and `.agents` |
-| Source precedence                | Bundled, marketplace, user, additional root, workspace                     |
+| Filesystem source precedence     | Bundled, marketplace, user, additional root, workspace                     |
 
 Higher-precedence skills with the same `name` override lower-precedence skills.
+
+Live runtime-registered skills from enabled extensions are an additional overlay layer, but they are
+not discovered from scan roots. Use [Skills Overview](/runtime/core/skills/overview) for the full
+active-registry precedence model.
 
 ## RFC 002 Drift
 

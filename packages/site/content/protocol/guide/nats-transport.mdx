@@ -131,7 +131,6 @@ func main() {
 		"type":  "request",
 		"query": echoID,
 	})
-	request.InteractionID = &interactionID
 
 	msg, err := requestEnvelope(ctx, sender, directSubject(channel, echoID), request)
 	if err != nil {
@@ -191,7 +190,6 @@ func subscribeEchoPeer(conn *nats.Conn, channel string, peerID string) error {
 			},
 		})
 		response.ReplyTo = &req.ID
-		response.InteractionID = req.InteractionID
 		_ = publish(conn, msg.Reply, response)
 	})
 	if err != nil {

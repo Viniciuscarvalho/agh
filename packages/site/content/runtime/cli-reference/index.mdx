@@ -57,11 +57,25 @@ caption="The CLI groups commands by the runtime surface they operate: daemon pro
 
 <RouteList>
   <RouteRow
+    href="/runtime/cli-reference/agent"
+    label="Agents"
+    title="Inspect resolved agent definitions"
+    description="Use this group to list available agents and inspect one resolved definition by name."
+    meta="Discovery"
+  />
+  <RouteRow
     href="/runtime/cli-reference/session"
     label="Sessions"
     title="Create, resume, prompt, wait on, and inspect sessions"
     description="Use this group for durable agent work: `new`, `list`, `resume`, `events`, `history`, `status`, `prompt`, `wait`, and `stop`."
     meta="Core workflow"
+  />
+  <RouteRow
+    href="/runtime/cli-reference/task"
+    label="Tasks"
+    title="Create tasks and operate task runs"
+    description="Use this group for queued work, dependencies, child tasks, approvals, and run lifecycle."
+    meta="Durable work"
   />
   <RouteRow
     href="/runtime/cli-reference/workspace"
@@ -85,6 +99,13 @@ caption="The CLI groups commands by the runtime surface they operate: daemon pro
     meta="Queued work"
   />
   <RouteRow
+    href="/runtime/cli-reference/hooks"
+    label="Hooks"
+    title="Inspect hook catalog, events, and run history"
+    description="Use this group when you need to understand what lifecycle hooks exist and how they executed."
+    meta="Policy"
+  />
+  <RouteRow
     href="/runtime/cli-reference/bridge"
     label="Bridges"
     title="Manage platform bridge instances"
@@ -99,6 +120,13 @@ caption="The CLI groups commands by the runtime surface they operate: daemon pro
     meta="Agent capability"
   />
   <RouteRow
+    href="/runtime/cli-reference/memory"
+    label="Memory"
+    title="Read, write, search, and consolidate memory files"
+    description="Use this group for persistent global or workspace memory and dream consolidation."
+    meta="Durable context"
+  />
+  <RouteRow
     href="/runtime/cli-reference/extension"
     label="Extensions"
     title="Install, enable, disable, update, and inspect extensions"
@@ -106,11 +134,46 @@ caption="The CLI groups commands by the runtime surface they operate: daemon pro
     meta="Runtime plugins"
   />
   <RouteRow
+    href="/runtime/cli-reference/network"
+    label="Network"
+    title="Inspect peers, channels, inboxes, and send envelopes"
+    description="Use this group when a session participates in AGH Network coordination."
+    meta="Coordination"
+  />
+  <RouteRow
+    href="/runtime/cli-reference/observe"
+    label="Observe"
+    title="Query health and global observability streams"
+    description="Use this group for daemon health, global event history, and observability views."
+    meta="Observability"
+  />
+  <RouteRow
     href="/runtime/cli-reference/completion"
     label="Completion"
     title="Generate shell completion scripts"
     description="Use this group to install Bash, Zsh, Fish, or PowerShell completion for `agh`."
     meta="Shell setup"
+  />
+  <RouteRow
+    href="/runtime/cli-reference/install"
+    label="Bootstrap"
+    title="Initialize ~/.agh and the default general agent"
+    description="Use this command when you are setting up AGH on one machine for the first time."
+    meta="First run"
+  />
+  <RouteRow
+    href="/runtime/cli-reference/whoami"
+    label="Identity"
+    title="Inspect the agent identity exported into the current environment"
+    description="Use this command inside managed sessions or automation when you need the current AGH identity envelope."
+    meta="Environment"
+  />
+  <RouteRow
+    href="/runtime/cli-reference/version"
+    label="Version"
+    title="Inspect the installed AGH build"
+    description="Use this command to confirm the binary version before debugging or filing issues."
+    meta="Build info"
   />
 </RouteList>
 

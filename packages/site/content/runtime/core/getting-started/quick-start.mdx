@@ -1,157 +1,140 @@
 ---
 title: Quick Start
-description: Start the AGH daemon, create your first agent session, send a prompt, and watch events stream back — all in under five minutes.
+description: Start the AGH daemon, create a real session for the current repository, follow live events, stop it, and resume it.
 ---
 
-This tutorial takes you from a fresh AGH install to a running agent session in under five minutes. You will start the daemon, create a session, send a prompt, and observe the events it generates.
+This tutorial takes you from a bootstrapped AGH install to one durable session you can inspect,
+stop, and resume. It is intentionally repository-aware: you will create the session from the
+project you actually want AGH to manage.
 
-**Before you begin:** Make sure you have completed the [Installation](/runtime/core/getting-started/installation) page, including running `agh install` to bootstrap your configuration.
+**Before you begin:** Complete [Installation](/runtime/core/getting-started/installation), export
+your provider API key in the current shell, and `cd` into a repository you want the session to use.
 
-## Start the daemon
-
-AGH runs as a background daemon. Start it with:
+## 1. Start the daemon
 
 ```bash
 agh daemon start
 ```
 
-The daemon detaches to the background and prints a confirmation:
+If you want to watch the daemon logs in the current terminal instead of detaching, use:
 
+```bash
+agh daemon start --foreground
 ```
-daemon started (pid 48201)
-http server listening on localhost:2123
-```
 
-> **Tip:** If you want to see the daemon logs in your terminal instead of running in the background, use `agh daemon start --foreground`. Press `Ctrl+C` to stop it.
-
-Verify the daemon is running:
+Verify that the daemon is available:
 
 ```bash
 agh daemon status
 ```
 
-```
-daemon: running (pid 48201)
-uptime: 12s
-http:   localhost:2123
-socket: ~/.agh/daemon.sock
-```
+## 2. Register the current repository as a workspace
 
-## Create a session
-
-A session is an active agent conversation managed by AGH. Create one using the default `general` agent:
+AGH can use the current directory directly, but registering the workspace gives you a stable name
+you can reuse in later commands.
 
 ```bash
-agh session new
+agh workspace add "$PWD" --name current
 ```
 
-AGH spawns the agent subprocess, establishes a JSON-RPC connection, and returns the session details:
-
-```
-session created
-  id:        a1b2c3d4
-  agent:     general
-  workspace: ~/projects/myapp
-  state:     active
-```
-
-The session is now `active` and waiting for input.
-
-## Send a prompt
-
-Send a message to your session:
+Confirm the registration:
 
 ```bash
-agh session prompt a1b2c3d4 "What is 2 + 2?"
+agh workspace info current
 ```
 
-Replace `a1b2c3d4` with the session ID from the previous step. The agent processes your prompt and AGH records every event — your message, the agent's response, any tool calls, and token usage.
+## 3. Create your first session
 
-```
-[user_message] What is 2 + 2?
-[agent_message] 2 + 2 equals 4.
-[usage] tokens: 24 input, 12 output
-```
-
-## Stream events in real time
-
-For longer-running interactions, you can follow events as they happen:
+Create a session for the workspace you just registered:
 
 ```bash
-agh session events a1b2c3d4 --follow
+agh session new --workspace current --agent general --name first-run
 ```
 
-This opens a live stream. As the agent works — thinking, calling tools, generating responses — each event appears in your terminal. Press `Ctrl+C` to stop following.
-
-You can also query past events without following:
+If you prefer not to register a workspace first, use:
 
 ```bash
-# Show the last 20 events
-agh session events a1b2c3d4 --last 20
-
-# Show events since a specific time
-agh session events a1b2c3d4 --since 5m
+agh session new --cwd "$PWD" --agent general
 ```
 
-## Check your sessions
+The key point is explicit workspace context. That keeps the first session tied to the repository
+you expect, instead of relying on an implicit working directory.
 
-List all active sessions:
+## 4. Find the session ID
+
+List sessions and note the ID:
 
 ```bash
 agh session list
 ```
 
-```
-ID        AGENT    STATE   WORKSPACE          AGE
-a1b2c3d4  general  active  ~/projects/myapp   3m
-```
-
-Get details about a specific session:
+For scripts or copy-paste into later commands, JSON is often easier:
 
 ```bash
-agh session status a1b2c3d4
+agh session list -o json
 ```
 
-## Stop the session
+The examples below use `sess_1234` as a placeholder for your real session ID.
 
-When you are done, stop the session:
+## 5. Send a repository-aware prompt
+
+Use a prompt that makes the workspace matter:
 
 ```bash
-agh session stop a1b2c3d4
+agh session prompt sess_1234 "Summarize the top-level structure of this repository and tell me what I should read first."
 ```
 
-```
-session a1b2c3d4 stopped
-```
+AGH records the prompt, the agent response, tool calls, permission decisions, and usage events in
+the per-session event store.
 
-The session's events are preserved in its SQLite database at `~/.agh/sessions/a1b2c3d4/events.db`. You can resume it later with `agh session resume a1b2c3d4`.
-
-## Stop the daemon
-
-When you are finished for the day:
+## 6. Follow the live event stream
 
 ```bash
-agh daemon stop
+agh session events sess_1234 --follow
 ```
 
+This is the fastest way to see what AGH means by a durable session: every important step appears as
+an event instead of disappearing into one terminal transcript.
+
+When you are done following, press `Ctrl+C`.
+
+## 7. Stop the session
+
+```bash
+agh session stop sess_1234
 ```
-daemon stopped
+
+The session keeps its history in `~/.agh/sessions/sess_1234/events.db`. Stopping ends live work; it
+does not delete the durable record.
+
+## 8. Resume the same session
+
+```bash
+agh session resume sess_1234
 ```
 
-This gracefully shuts down all active sessions, persists state, and releases the daemon lock.
+Then inspect the stored history:
 
-## What just happened
+```bash
+agh session history sess_1234
+```
 
-In the steps above, you:
+This is the core AGH promise in one loop: the session is durable, inspectable, and resumable.
 
-1. Started the AGH daemon as a background process
-2. Created a session that spawned an agent subprocess via ACP
-3. Sent a prompt through AGH to the agent and received a response
-4. Observed events recorded by AGH's persistence layer
-5. Stopped the session (preserving its history) and the daemon
+## What You Just Proved
 
-Every event — messages, tool calls, token usage, permission decisions — was recorded in a per-session SQLite database. The daemon tracked it all through its global catalog.
+You verified that AGH can:
 
-## Next steps
+1. run a local daemon
+2. attach work to one explicit repository
+3. persist session events durably
+4. stop live work without losing history
+5. resume the same session later
 
-You used the built-in `general` agent. In the next tutorial, you will [create a custom agent](/runtime/core/getting-started/first-agent) with its own system prompt, provider, and tool configuration.
+## Next Steps
+
+- [Your First Custom Agent](/runtime/core/getting-started/first-agent) shows how to add a
+  workspace-scoped `AGENT.md`.
+- [Web UI](/runtime/core/getting-started/web-ui) shows how to inspect the same daemon state in the
+  browser.
+- [Session Lifecycle](/runtime/core/sessions/lifecycle) explains what AGH is storing and why.

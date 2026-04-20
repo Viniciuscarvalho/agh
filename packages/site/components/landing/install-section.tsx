@@ -7,49 +7,44 @@ import { CodeBlock } from "./primitives/code-block";
 import { SectionFrame } from "./primitives/section-frame";
 import { SectionHeader } from "./primitives/section-header";
 
-type TabId = "brew" | "go" | "binary";
+type TabId = "go" | "source";
 
 const INSTALL_TABS: { id: TabId; label: string; command: string; note: string }[] = [
-  {
-    id: "brew",
-    label: "Homebrew",
-    command: "brew install compozy/tap/agh",
-    note: "macOS · recommended",
-  },
   {
     id: "go",
     label: "go install",
     command: "go install github.com/compozy/agh/cmd/agh@latest",
-    note: "Linux + macOS · Go 1.25+",
+    note: "Recommended · macOS + Linux · Go 1.25+",
   },
   {
-    id: "binary",
-    label: "Binary",
-    command: "curl -fsSL https://get.agh.compozy.com | sh",
-    note: "Linux + macOS · prebuilt",
+    id: "source",
+    label: "Build from source",
+    command:
+      "git clone https://github.com/compozy/agh && cd agh && go build -o ./bin/agh ./cmd/agh",
+    note: "Repository checkout · useful when you are already in the source tree",
   },
 ];
 
 const STEPS = [
   {
     step: "01",
-    title: "Start the daemon",
-    description: "One local process, detaches to background, logs to $AGH_HOME/logs/agh.log.",
-    code: "agh daemon start",
+    title: "Bootstrap your AGH home",
+    description:
+      "Create ~/.agh/config.toml and the default general agent before you start the daemon.",
+    code: "agh install",
   },
   {
     step: "02",
-    title: "Launch a session",
-    description: "Spawn an ACP agent as a managed subprocess. Events start streaming immediately.",
-    code: "agh session new --agent coder --provider claude",
+    title: "Start the daemon",
+    description: "One local process, detached by default, exposing CLI, HTTP/SSE, and the web UI.",
+    code: "agh daemon start",
   },
   {
     step: "03",
-    title: "Discover peers",
+    title: "Launch a real session",
     description:
-      "The network runtime starts alongside the daemon. Other AGH peers on the same channel appear here.",
-    code: "agh network peers",
-    live: true,
+      "Create the session from the repository you want AGH to manage so workspace resolution is explicit.",
+    code: 'agh session new --cwd "$PWD" --agent general',
   },
 ];
 
@@ -62,7 +57,7 @@ function getPanelId(id: TabId) {
 }
 
 export function InstallSection() {
-  const [tab, setTab] = useState<TabId>("brew");
+  const [tab, setTab] = useState<TabId>("go");
 
   function selectTab(next: TabId) {
     setTab(next);
@@ -107,7 +102,7 @@ export function InstallSection() {
         align="center"
         eyebrow="Getting started"
         title="Three commands. First session in under a minute."
-        description="macOS and Linux today. Homebrew, go install, or a prebuilt binary — pick one."
+        description="macOS and Linux today. Install with go, or build from a source checkout if you are already inside the repository."
       />
 
       <div className="mx-auto mt-10 w-full max-w-[760px]">
@@ -168,12 +163,7 @@ export function InstallSection() {
                   {item.step}
                 </span>
                 <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-medium text-(--color-text-primary)">
-                      {item.title}
-                    </h3>
-                    {item.live ? <OnlinePulse /> : null}
-                  </div>
+                  <h3 className="text-lg font-medium text-(--color-text-primary)">{item.title}</h3>
                   <p className="mt-2 max-w-[52ch] text-sm leading-relaxed text-(--color-text-secondary)">
                     {item.description}
                   </p>
@@ -187,17 +177,5 @@ export function InstallSection() {
         </div>
       </div>
     </SectionFrame>
-  );
-}
-
-function OnlinePulse() {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-[6px] bg-(--color-success-tint) px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-(--tracking-mono) text-(--color-success)">
-      <span className="relative inline-flex h-1.5 w-1.5">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-(--color-success) opacity-60" />
-        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-(--color-success)" />
-      </span>
-      online
-    </span>
   );
 }

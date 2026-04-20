@@ -15,15 +15,16 @@ To load completions in your current shell session:
 
 ```
 agh completion fish | source
-```
 
+```
 To load completions for every new session, execute once:
 
 ```
 agh completion fish > ~/.config/fish/completions/agh.fish
-```
 
+```
 You will need to start a new shell for this setup to take effect.
+
 
 ```
 agh completion fish [flags]
@@ -40,4 +41,18 @@ agh completion fish [flags]
 
 ```
   -o, --output string   Output format: human, json, or toon (default "human")
+```
+
+## Output Formats
+
+Every AGH command supports `-o, --output`:
+
+- `human` for interactive terminal use
+- `json` for scripts and other machine-readable consumers
+- `toon` for compact agent-readable summaries
+
+Example:
+
+```bash
+agh completion fish | source -o json
 ```

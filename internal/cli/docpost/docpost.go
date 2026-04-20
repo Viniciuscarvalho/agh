@@ -66,6 +66,7 @@ func Process(ctx context.Context, srcDir, dstDir string) error {
 		cmdName := strings.ReplaceAll(in.baseName, "_", " ")
 		body := TransformMarkdown(in.raw, cmdName)
 		body = remapLinks(body, targets)
+		body = enrichDocument(body, in, inputs, targets)
 
 		outRel := outPath(in, hasChildren)
 		dst := filepath.Join(dstDir, filepath.FromSlash(outRel))
@@ -137,6 +138,9 @@ func isManagedOutputDir(dstDir string) (bool, error) {
 		case "agh.mdx":
 			hasGeneratedRoot = true
 		default:
+			if strings.HasSuffix(entry.Name(), ".mdx") {
+				continue
+			}
 			return false, nil
 		}
 	}
@@ -398,6 +402,29 @@ func TransformMarkdown(raw, cmdName string) string {
 	return b.String()
 }
 
+func enrichDocument(
+	body string,
+	current input,
+	inputs []input,
+	targets map[string]string,
+) string {
+	body = strings.TrimSpace(body)
+
+	var sections []string
+	if section := renderOutputFormatsSection(body); section != "" {
+		sections = append(sections, section)
+	}
+	if section := renderSubcommandsSection(current, inputs, targets); section != "" {
+		sections = append(sections, section)
+	}
+
+	if len(sections) == 0 {
+		return body + "\n"
+	}
+
+	return body + "\n\n" + strings.Join(sections, "\n\n") + "\n"
+}
+
 // filenameToCommand converts a Cobra-generated filename to a command name.
 // e.g. "agh_session_list.md" → "agh session list"
 func filenameToCommand(filename string) string {
@@ -432,6 +459,109 @@ func extractDescription(raw string) string {
 	}
 
 	return ""
+}
+
+func renderOutputFormatsSection(body string) string {
+	if !strings.Contains(body, "--output string") {
+		return ""
+	}
+	if strings.Contains(body, "## Output Formats") {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString("## Output Formats\n\n")
+	b.WriteString("Every AGH command supports `-o, --output`:\n\n")
+	b.WriteString("- `human` for interactive terminal use\n")
+	b.WriteString("- `json` for scripts and other machine-readable consumers\n")
+	b.WriteString("- `toon` for compact agent-readable summaries\n")
+
+	if usage := extractUsageLine(body); usage != "" {
+		b.WriteString("\nExample:\n\n```bash\n")
+		b.WriteString(outputExampleCommand(usage))
+		b.WriteString("\n```")
+	}
+
+	return b.String()
+}
+
+func extractUsageLine(body string) string {
+	lines := strings.Split(body, "\n")
+	inFence := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") {
+			inFence = !inFence
+			continue
+		}
+		if !inFence {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "agh ") {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func outputExampleCommand(usage string) string {
+	usage = strings.ReplaceAll(usage, "[flags]", "")
+	usage = strings.Join(strings.Fields(usage), " ")
+	usage = strings.TrimSpace(usage)
+	if usage == "" {
+		return ""
+	}
+	return usage + " -o json"
+}
+
+func renderSubcommandsSection(current input, inputs []input, targets map[string]string) string {
+	children := directChildren(current, inputs)
+	if len(children) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString("## Subcommands\n\n")
+	b.WriteString("| Command | Description |\n")
+	b.WriteString("| ------- | ----------- |\n")
+	for _, child := range children {
+		cmd := strings.ReplaceAll(child.baseName, "_", " ")
+		desc := strings.TrimSpace(extractDescription(child.raw))
+		if desc == "" {
+			desc = "See command reference."
+		}
+		desc = strings.ReplaceAll(desc, "|", "\\|")
+		target := targets[child.baseName]
+		fmt.Fprintf(&b, "| [%s](%s) | %s |\n", cmd, target, desc)
+	}
+
+	return strings.TrimSpace(b.String())
+}
+
+func directChildren(parent input, inputs []input) []input {
+	children := make([]input, 0, 4)
+	for _, candidate := range inputs {
+		if len(candidate.segments) != len(parent.segments)+1 {
+			continue
+		}
+		match := true
+		for i := range parent.segments {
+			if candidate.segments[i] != parent.segments[i] {
+				match = false
+				break
+			}
+		}
+		if match {
+			children = append(children, candidate)
+		}
+	}
+
+	sort.Slice(children, func(i, j int) bool {
+		return strings.ReplaceAll(children[i].baseName, "_", " ") <
+			strings.ReplaceAll(children[j].baseName, "_", " ")
+	})
+
+	return children
 }
 
 // stripBoilerplate removes Cobra auto-generated artifacts:

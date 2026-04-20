@@ -1,46 +1,71 @@
 ---
 title: Core Concepts
-description: The AGH Runtime operating model, from first install through sessions, memory, automation, extensions, and day-two operations.
+description: The AGH Runtime operating model, organized for onboarding, day-to-day operation, and runtime extension work.
 ---
 
-Core Concepts is the fastest path to understanding how AGH works in practice: install it, launch
-durable sessions, learn how replay and memory behave, and then move through the runtime
-capabilities that matter once AGH is part of normal work.
+Core Concepts is where you build durable operator intuition for AGH. The sections below are grouped
+by the stage of adoption you are in, not by internal package layout.
 
 <OperatorNote>
-  Treat Core Concepts as the place to build operator intuition. It is ordered from mental model, to
-  first-run setup, to the runtime systems you manage after AGH becomes part of day-to-day work.
+  If you are new, do not read this section front to back. Start with Getting Started, then use the
+  other lanes as your work becomes more operational or more advanced.
 </OperatorNote>
 
-## Sections
+## Start Running AGH
+
+<RouteList>
+  <RouteRow
+    href="/runtime/core/getting-started/installation"
+    label="Getting Started"
+    title="Install AGH and bootstrap the runtime"
+    description="Put the `agh` binary on your path, bootstrap `~/.agh`, and verify the install before you start the daemon."
+    meta="First machine"
+  />
+  <RouteRow
+    href="/runtime/core/getting-started/quick-start"
+    label="Getting Started"
+    title="Run your first durable session"
+    description="Start the daemon, create one real session for the current repository, follow the event stream, stop it, and resume it."
+    meta="Hands-on"
+  />
+  <RouteRow
+    href="/runtime/core/getting-started/first-agent"
+    label="Getting Started"
+    title="Create a custom AGENT.md definition"
+    description="Author one minimal custom agent and verify that AGH resolves it from the correct workspace or global path."
+    meta="Next tutorial"
+  />
+  <RouteRow
+    href="/runtime/core/getting-started/web-ui"
+    label="Getting Started"
+    title="Inspect the same session in the web UI"
+    description="Open the browser surface backed by the same daemon state and compare it with the CLI session you already created."
+    meta="Browser workflow"
+  />
+</RouteList>
+
+## Understand the Runtime Model
 
 <RouteList>
   <RouteRow
     href="/runtime/core/overview/what-is-agh"
     label="Overview"
-    title="What AGH is and the runtime shape it chooses"
-    description="Use the overview pages for positioning, architecture, and the specific operational model behind AGH Runtime."
-    meta="Mental model"
-  />
-  <RouteRow
-    href="/runtime/core/getting-started/installation"
-    label="Getting Started"
-    title="Install AGH and launch the first durable session"
-    description="Move from binary install, to daemon startup, to your first managed run and the web UI."
-    meta="First run"
+    title="What AGH is and why the runtime exists"
+    description="Use the overview pages when you need the product model, architecture summary, and adoption framing."
+    meta="Orientation"
   />
   <RouteRow
     href="/runtime/core/sessions/lifecycle"
     label="Sessions"
     title="Lifecycle, replay, events, and approvals"
-    description="Understand the durable unit AGH actually creates, stores, resumes, and audits."
-    meta="Runtime contract"
+    description="Understand the durable unit AGH creates, stores, resumes, and audits."
+    meta="Core contract"
   />
   <RouteRow
     href="/runtime/core/agents/definitions"
     label="Agents"
     title="Definitions, providers, and spawning behavior"
-    description="Use this section when you need to understand how AGH resolves agent configuration and turns it into running ACP sessions."
+    description="Read this when you need to understand how AGH resolves agent configuration and turns it into running ACP sessions."
     meta="Execution model"
   />
   <RouteRow
@@ -51,25 +76,23 @@ capabilities that matter once AGH is part of normal work.
     meta="Durable context"
   />
   <RouteRow
-    href="/runtime/core/skills/overview"
-    label="Skills"
-    title="Catalog behavior, SKILL.md, bundled skills, and marketplace flow"
-    description="Reach for this when you need the runtime rules for skill discovery, registration, precedence, and packaging."
-    meta="Capabilities"
-  />
-  <RouteRow
     href="/runtime/core/workspaces/resolver"
     label="Workspaces"
     title="Resolver, overlays, and multi-root behavior"
-    description="Use this section when AGH needs to understand a project root, workspace config, or additional directories."
+    description="Use this section when AGH needs to understand a project root, workspace config, or registered additional directories."
     meta="Project context"
   />
+</RouteList>
+
+## Operate and Extend the Runtime
+
+<RouteList>
   <RouteRow
     href="/runtime/core/automation/jobs"
     label="Automation"
     title="Jobs, triggers, and webhooks"
     description="Read this when you are shaping scheduled or event-driven work around AGH Runtime."
-    meta="Operational flow"
+    meta="Operations"
   />
   <RouteRow
     href="/runtime/core/bridges/overview"
@@ -86,6 +109,13 @@ capabilities that matter once AGH is part of normal work.
     meta="Lifecycle controls"
   />
   <RouteRow
+    href="/runtime/core/skills/overview"
+    label="Skills"
+    title="Catalog behavior, SKILL.md, bundled skills, and marketplace flow"
+    description="Reach for this when you need the runtime rules for skill discovery, registration, precedence, and packaging."
+    meta="Capabilities"
+  />
+  <RouteRow
     href="/runtime/core/extensions/install"
     label="Extensions"
     title="Installable runtime packages and their operating model"
@@ -93,18 +123,18 @@ capabilities that matter once AGH is part of normal work.
     meta="Extensibility"
   />
   <RouteRow
+    href="/runtime/core/configuration"
+    label="Configuration"
+    title="Decide which file or overlay should change"
+    description="Use this section when the runtime needs to be shaped for one machine, one workspace, one agent, or one skill."
+    meta="System setup"
+  />
+  <RouteRow
     href="/runtime/core/operations/daemon"
     label="Operations"
     title="Daemon behavior, backups, troubleshooting, and production readiness"
     description="Use this section for day-two operation of the runtime on real machines and environments."
     meta="Day two"
-  />
-  <RouteRow
-    href="/runtime/core/configuration"
-    label="Configuration"
-    title="Config files, agent and skill formats, environment, and file locations"
-    description="Use this section when the runtime needs to be shaped for a machine, workspace, or team default."
-    meta="System setup"
   />
 </RouteList>
 

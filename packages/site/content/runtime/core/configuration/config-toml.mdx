@@ -182,15 +182,17 @@ max_retries = 3
 base_delay = "2s"
 
 [[automation.triggers]]
-scope = "global"
-name = "permission-audit"
+scope = "workspace"
+workspace = "workspace-id-or-path"
+name = "failed-session-summary"
 agent = "general"
-prompt = "Summarize permission decisions from {{ .Kind }}."
-event = "permission.resolved"
+prompt = "Summarize why session {{ index .Data \"session_id\" }} stopped."
+event = "session.stopped"
 enabled = true
 
 [automation.triggers.filter]
-kind = "permission"
+kind = "session.stopped"
+data.stop_reason = "error"
 
 [[hooks.declarations]]
 name = "record-session-start"

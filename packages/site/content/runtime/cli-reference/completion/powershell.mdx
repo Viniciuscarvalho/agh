@@ -15,10 +15,11 @@ To load completions in your current shell session:
 
 ```
 agh completion powershell | Out-String | Invoke-Expression
-```
 
+```
 To load completions for every new session, add the output of the above command
 to your powershell profile.
+
 
 ```
 agh completion powershell [flags]
@@ -35,4 +36,18 @@ agh completion powershell [flags]
 
 ```
   -o, --output string   Output format: human, json, or toon (default "human")
+```
+
+## Output Formats
+
+Every AGH command supports `-o, --output`:
+
+- `human` for interactive terminal use
+- `json` for scripts and other machine-readable consumers
+- `toon` for compact agent-readable summaries
+
+Example:
+
+```bash
+agh completion powershell | Out-String | Invoke-Expression -o json
 ```

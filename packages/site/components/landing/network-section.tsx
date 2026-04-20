@@ -7,11 +7,14 @@ import { SectionFrame } from "./primitives/section-frame";
 import { SectionHeader } from "./primitives/section-header";
 
 const NETWORK_CODE = `agh network status
-agh network peers
-agh network send reviewer \\
+agh network peers builders
+agh network send \\
+  --session <session-id> \\
+  --channel builders \\
+  --to reviewer.session-19 \\
   --kind direct \\
-  --body '{"task":"review PR #482"}'
-agh network inbox --follow`;
+  --body '{"text":"Review PR #482","intent":"request"}'
+agh network inbox --session <session-id>`;
 
 export function NetworkSection() {
   return (
@@ -38,7 +41,7 @@ export function NetworkSection() {
             <code className="font-mono text-(--color-accent)">recipe</code>,{" "}
             <code className="font-mono text-(--color-accent)">receipt</code>,{" "}
             <code className="font-mono text-(--color-accent)">trace</code>. Your agent discovers a
-            peer by capability and hands off work in one command.
+            peer, selects a channel, and hands off work with an explicit target and message kind.
           </>
         }
       />

@@ -38,7 +38,7 @@ not implement both directions.
 | Deduplicate by `id` within a bounded replay window                 | SHOULD | SHOULD | SHOULD |
 | Preserve lifecycle terminal-state rules                            | MUST   | MUST   | MUST   |
 | Ignore unknown `ext` keys                                          | MUST   | MUST   | MUST   |
-| Require v1 namechannel-style `ext` keys                            | SHOULD | MUST   | MUST   |
+| Require v1 namespaced `ext` keys                                   | SHOULD | MUST   | MUST   |
 | Surface trust state as `verified`, `unverified`, or `rejected`     | MUST   | MUST   | MUST   |
 | Verify Ed25519 + JCS baseline proofs                               | MAY    | MUST   | MUST   |
 | Reject proof-stripped verified handles                             | MAY    | MUST   | MUST   |
@@ -74,7 +74,7 @@ A Core Receiver MUST:
 - honor expiration semantics
 - tolerate duplicate delivery semantics at the application level
 - surface trust state as `verified`, `unverified`, or `rejected`
-- ignore unknown extension namechannels rather than failing the whole message
+- ignore unknown namespaced extension keys rather than failing the whole message
 - avoid applying extension-specific behavior before core validation succeeds
 
 ### Core Peer
@@ -176,7 +176,7 @@ A conformance suite SHOULD be fixture-driven and transport-agnostic at the core 
 | Message kind fixtures | All seven message kinds, required body fields, invalid body shapes, broadcast versus directed constraints.                   |
 | Lifecycle fixtures    | Opening interactions, receipts, traces, terminal states, invalid state regressions, actor ownership.                         |
 | Delivery fixtures     | Duplicate IDs, expired messages, unsupported kinds, reason codes, receipt behavior.                                          |
-| Extension fixtures    | Unknown extension keys, namechannel validation, extension processing after core validation.                                  |
+| Extension fixtures    | Unknown extension keys, extension namespace validation, extension processing after core validation.                           |
 | Trust fixtures        | Valid Ed25519 + JCS example, malformed proofs, key mismatches, fingerprint mismatches, proof stripping.                      |
 | NATS fixtures         | Broadcast subjects, direct subjects, verified route tokens, unverified route tokens, request-reply correlation preservation. |
 | JetStream fixtures    | Optional replay and redelivery tests that prove core deduplication and receipts remain authoritative.                        |

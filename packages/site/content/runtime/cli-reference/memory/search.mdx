@@ -1,30 +1,31 @@
 ---
-title: "agh memory read"
-description: "Read a persistent memory file"
+title: "agh memory search"
+description: "Search durable memory"
 ---
 
-## agh memory read
+## agh memory search
 
-Read a persistent memory file
+Search durable memory
 
 ```
-agh memory read <filename> [flags]
+agh memory search <terms...> [flags]
 ```
 
 ### Examples
 
 ```
-  # Read a workspace memory file
-  agh memory read runtime-notes.md --scope workspace
+  # Search global and current-workspace memories
+  agh memory search auth rewrite
 
-  # Read a global memory file as JSON
-  agh memory read review-style.md --scope global -o json
+  # Search only workspace-scoped memories
+  agh memory search release plan --scope workspace --limit 5
 ```
 
 ### Options
 
 ```
-  -h, --help           help for read
+  -h, --help           help for search
+      --limit int      Maximum number of results to return (default 10)
       --scope string   Memory scope: global or workspace
 ```
 
@@ -45,5 +46,5 @@ Every AGH command supports `-o, --output`:
 Example:
 
 ```bash
-agh memory read <filename> -o json
+agh memory search <terms...> -o json
 ```

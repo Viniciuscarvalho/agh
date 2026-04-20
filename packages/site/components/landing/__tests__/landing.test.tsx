@@ -96,7 +96,7 @@ describe("RuntimeSection", () => {
       "Durable sessions in SQLite",
       "Replayable event stream",
       "Three operator surfaces, one daemon",
-      "Permissioned tools per agent",
+      "Permission modes with an audit trail",
     ];
     for (const title of expected) {
       expect(screen.getByText(title)).toBeDefined();
@@ -171,38 +171,36 @@ describe("NetworkSection", () => {
 describe("InstallSection", () => {
   it("renders three install tabs and the three CLI steps", () => {
     render(<InstallSection />);
-    expect(screen.getByRole("tab", { name: "Homebrew" })).toBeDefined();
     expect(screen.getByRole("tab", { name: "go install" })).toBeDefined();
-    expect(screen.getByRole("tab", { name: "Binary" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "Build from source" })).toBeDefined();
+    expect(screen.getByText("Bootstrap your AGH home")).toBeDefined();
     expect(screen.getByText("Start the daemon")).toBeDefined();
-    expect(screen.getByText("Launch a session")).toBeDefined();
-    expect(screen.getByText("Discover peers")).toBeDefined();
+    expect(screen.getByText("Launch a real session")).toBeDefined();
   });
 
   it("wires tab roles, panels, and keyboard navigation", () => {
     render(<InstallSection />);
 
-    const homebrew = screen.getByRole("tab", { name: "Homebrew" });
     const goInstall = screen.getByRole("tab", { name: "go install" });
-    const binary = screen.getByRole("tab", { name: "Binary" });
+    const source = screen.getByRole("tab", { name: "Build from source" });
 
-    expect(homebrew.getAttribute("id")).toBe("install-tab-brew");
-    expect(homebrew.getAttribute("aria-controls")).toBe("install-panel-brew");
-    expect(homebrew.getAttribute("tabindex")).toBe("0");
-    expect(goInstall.getAttribute("tabindex")).toBe("-1");
+    expect(goInstall.getAttribute("id")).toBe("install-tab-go");
+    expect(goInstall.getAttribute("aria-controls")).toBe("install-panel-go");
+    expect(goInstall.getAttribute("tabindex")).toBe("0");
+    expect(source.getAttribute("tabindex")).toBe("-1");
 
-    fireEvent.keyDown(homebrew, { key: "ArrowRight" });
+    fireEvent.keyDown(goInstall, { key: "ArrowRight" });
+
+    expect(source.getAttribute("aria-selected")).toBe("true");
+    let panel = screen.getByRole("tabpanel");
+    expect(panel.getAttribute("id")).toBe("install-panel-source");
+    expect(panel.getAttribute("aria-labelledby")).toBe("install-tab-source");
+
+    fireEvent.keyDown(source, { key: "Home" });
 
     expect(goInstall.getAttribute("aria-selected")).toBe("true");
-    let panel = screen.getByRole("tabpanel");
-    expect(panel.getAttribute("id")).toBe("install-panel-go");
-    expect(panel.getAttribute("aria-labelledby")).toBe("install-tab-go");
-
-    fireEvent.keyDown(goInstall, { key: "End" });
-
-    expect(binary.getAttribute("aria-selected")).toBe("true");
     panel = screen.getByRole("tabpanel");
-    expect(panel.getAttribute("id")).toBe("install-panel-binary");
+    expect(panel.getAttribute("id")).toBe("install-panel-go");
   });
 });
 

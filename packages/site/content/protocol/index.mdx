@@ -1,15 +1,14 @@
 ---
 title: AGH Network Protocol
-description: AGH Network is the open coordination layer behind AGH, documented here as a protocol other runtimes can implement.
+description: Understand the protocol model, build a peer, and evaluate conformance without confusing the protocol boundary with the AGH Runtime implementation.
 ---
 
-AGH Network is the open coordination boundary for agent-to-agent work. These pages define the v0
-wire format, message kinds, lifecycle rules, discovery model, delivery guarantees, and worked
-examples for implementers.
+AGH Network is the protocol boundary for agent-to-agent coordination. These pages are organized by
+implementer job: understand the model, build a peer, or evaluate conformance.
 
 <OperatorNote>
-  AGH Runtime is the reference implementation. AGH Network is the protocol boundary that other
-  runtimes can implement.
+  AGH Runtime is the reference implementation. The protocol docs focus on the wire contract another
+  runtime, bridge, or test harness can implement without importing AGH internals.
 </OperatorNote>
 
 ## Start by Job
@@ -17,32 +16,51 @@ examples for implementers.
 <RouteList>
   <RouteRow
     href="/protocol/overview/"
-    label="Overview"
-    title="Why the protocol exists and how to adopt it"
-    description="Read this first for the runtime-vs-protocol distinction, landscape positioning, and adoption model."
+    label="Understand"
+    title="Why the protocol exists and where it fits"
+    description="Read this first when you need the runtime-vs-protocol distinction, the core concepts, and the adoption model."
     meta="Recommended first"
   />
   <RouteRow
-    href="/protocol/envelope/"
-    label="Wire format"
-    title="Implement the envelope"
-    description="Start here when you need the canonical JSON shape, field rules, schema, and validation order."
-    meta="Reference"
+    href="/protocol/guide/minimal-sender/"
+    label="Build"
+    title="Implement the first working peer"
+    description="Use the guides when you want a constrained implementation path instead of reading the full reference first."
+    meta="Hands-on"
   />
   <RouteRow
-    href="/protocol/message-kinds/"
-    label="Message kinds"
-    title="Implement the seven v0 kinds"
-    description="Use the kind catalog for the required body shape and envelope requirements for each message."
-    meta="Reference"
+    href="/protocol/envelope/"
+    label="Reference"
+    title="Implement the canonical envelope"
+    description="Start here when you need the exact JSON shape, field rules, validation order, and extension behavior."
+    meta="Normative"
+  />
+  <RouteRow
+    href="/protocol/conformance/"
+    label="Validate"
+    title="Check conformance levels and test coverage"
+    description="Use this page when you need to know what a Core, Trust, or Full claim actually requires."
+    meta="Conformance"
   />
   <RouteRow
     href="/protocol/examples/"
     label="Examples"
-    title="Follow complete coordination flows"
-    description="Use the worked examples to connect discovery, direct work, traces, receipts, and recipes."
-    meta="End to end"
+    title="Follow worked coordination flows"
+    description="Use the scenario pages to connect discovery, direct work, receipts, traces, and recipe exchange."
+    meta="Worked flows"
   />
 </RouteList>
 
-The short version: MCP connects agents to tools. AGH Network connects agents to agents.
+## Recommended Reading Order
+
+1. [Overview](/protocol/overview/)
+2. [Minimal Sender](/protocol/guide/minimal-sender/)
+3. [Envelope](/protocol/envelope/), [Message Kinds](/protocol/message-kinds/), and
+   [Interactions](/protocol/interactions/)
+4. [Peer Discovery](/protocol/peer-discovery/), [Recipes](/protocol/recipes/), and
+   [Delivery](/protocol/delivery/)
+5. [Conformance](/protocol/conformance/), [Ed25519 + JCS](/protocol/ed25519-jcs/), and
+   [NATS](/protocol/nats/)
+
+The short version is still true: MCP connects agents to tools. AGH Network connects agents to
+agents.

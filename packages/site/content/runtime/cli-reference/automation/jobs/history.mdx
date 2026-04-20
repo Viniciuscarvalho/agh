@@ -26,3 +26,17 @@ agh automation jobs history <id> [flags]
 ```
   -o, --output string   Output format: human, json, or toon (default "human")
 ```
+
+## Output Formats
+
+Every AGH command supports `-o, --output`:
+
+- `human` for interactive terminal use
+- `json` for scripts and other machine-readable consumers
+- `toon` for compact agent-readable summaries
+
+Example:
+
+```bash
+agh automation jobs history <id> -o json
+```

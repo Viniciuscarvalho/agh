@@ -35,15 +35,15 @@ const FEATURES = [
   {
     icon: <ShieldCheck className="h-4 w-4" />,
     eyebrow: "Permissions",
-    title: "Permissioned tools per agent",
+    title: "Permission modes with an audit trail",
     description:
-      "Allowlists, workspace scoping, and MCP server wiring live in config.toml. The audit log records every decision.",
+      "AGH enforces session permission modes, keeps workspace boundaries intact, and records every approval decision.",
     cite: { href: "/runtime/core/overview/what-is-agh", label: "permissions" },
   },
 ];
 
 const RUNTIME_CODE = `agh daemon start
-agh session new --agent coder --provider claude
+agh session new --cwd "$PWD" --agent general
 agh session events <session-id> --follow
 agh session resume <session-id>`;
 
@@ -60,9 +60,9 @@ export function RuntimeSection() {
               A daemon built for sessions, not chats.
             </h2>
             <p className="mt-4 max-w-[50ch] text-sm leading-relaxed text-(--color-text-secondary)">
-              Start <code className="font-mono text-(--color-text-primary)">agh daemon</code>. Every
-              agent run becomes a session with a durable event log, an SSE stream, resumable state,
-              and a web UI — for humans and automation alike.
+              Start <code className="font-mono text-(--color-text-primary)">agh daemon start</code>.
+              Every agent run becomes a session with a durable event log, an SSE stream, resumable
+              state, and one operator surface shared by the CLI, API, and web UI.
             </p>
           </div>
           <div className="hidden lg:block">

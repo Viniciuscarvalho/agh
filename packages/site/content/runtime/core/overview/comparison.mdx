@@ -1,34 +1,33 @@
 ---
 title: Why AGH
-description: How AGH compares with OpenClaw, OpenFang, GoClaw, agent frameworks, and raw MCP.
+description: How to decide whether AGH is the right runtime model for your team, compared with assistant surfaces, agent frameworks, and protocol-only layers.
 ---
 
-The AI agent ecosystem is no longer short on products. What matters is understanding which operating
-model each one is optimizing for and why AGH exists as a different surface.
+The AI agent ecosystem is crowded. The useful question is not “which project exists,” but “which
+operating model are you actually buying into?”
 
 ## The short version
 
 AGH is the local-first runtime for durable agent work, plus **AGH Network** for interoperable
-agent-to-agent coordination. That is different from selling a personal assistant, an autonomous
-all-in-one OS, a multi-tenant gateway, or a framework for building agent logic from scratch.
+agent-to-agent coordination. That is a different lane from a channel-native assistant, a hosted
+gateway, or a framework for building custom orchestration from scratch.
 
-## Named comparison
+## Compare by operating model
 
-| Product                | What it sells best                                                                                 | Where AGH differs                                                                                                       |
-| ---------------------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| **OpenClaw**           | A personal assistant and gateway that lives across the channels you already use.                   | AGH focuses on durable runtime governance and an open agent network, not one assistant surface.                         |
-| **OpenFang**           | An autonomous agent OS with deep built-ins, broad feature coverage, and a strong all-in-one story. | AGH focuses on orchestrating the real agent CLIs teams already use and giving them an interoperable coordination layer. |
-| **GoClaw**             | A multi-tenant AI gateway and platform for teams that want a larger hosted-style control surface.  | AGH stays local-first and lighter to operate while still delivering durable sessions, replay, and open coordination.    |
-| **LangChain / CrewAI** | Frameworks for building custom agent logic from scratch.                                           | AGH manages agents that already exist as real CLIs instead of asking you to rebuild their reasoning loop.               |
-| **Raw MCP**            | A tool-layer protocol that helps one agent talk to tools and data sources.                         | AGH manages runtime behavior and durable sessions; AGH Network handles agent-to-agent coordination.                     |
+| Operating model | Best fit | Where AGH differs |
+| --------------- | -------- | ----------------- |
+| Personal assistant or channel-native helper | You want one assistant surface that lives inside chat tools and user-facing channels. | AGH focuses on durable runtime governance and an open agent network, not on being one assistant persona everywhere. |
+| Hosted or multi-tenant gateway | You need a centralized control plane, shared tenancy, and platform-style operations. | AGH stays local-first and self-hosted on the machine doing the work. |
+| Agent framework | You want to design custom reasoning loops, graphs, or orchestration logic from scratch. | AGH manages real agent CLIs you already use instead of asking you to rebuild them as a framework abstraction. |
+| Tool protocol only | You need one agent to talk to tools and resources. | AGH covers runtime behavior and durable sessions; AGH Network covers agent-to-agent coordination. |
+| Durable agent runtime | You want local sessions, replay, memory, automation, and operational control around real agent CLIs. | This is AGH’s primary lane. |
 
 ## The core difference
 
-Most alternatives pick one lane:
+Most alternatives optimize for one of these lanes:
 
 - assistant surface
-- autonomous built-ins
-- multi-tenant gateway
+- hosted gateway
 - framework for custom orchestration
 - protocol for tool access
 
@@ -51,11 +50,10 @@ AGH is a strong fit when you:
 
 ## When another lane may fit better
 
-- Choose **OpenClaw** if the main job is a channel-native assistant experience.
-- Choose **OpenFang** if you want an all-in autonomous system with maximum built-in breadth.
-- Choose **GoClaw** if you need a larger multi-tenant platform model.
-- Choose **LangChain / CrewAI** if you want to design custom agent logic from the ground up.
-- Choose **raw MCP** if the problem is only tool connectivity, not runtime control or coordination.
+- Choose a channel-native assistant product if the main job is user-facing help inside chat tools.
+- Choose a hosted gateway if the main job is centralized multi-tenant operations.
+- Choose an agent framework if the main job is building custom orchestration logic from the ground up.
+- Choose a protocol-only layer if the problem is tool connectivity, not runtime control or coordination.
 
 AGH exists for the gap between those categories: durable runtime governance for real agent work,
 paired with an open coordination layer that does not have to stay AGH-only.

@@ -18,23 +18,24 @@ To load completions in your current shell session:
 
 ```
 source <(agh completion bash)
-```
 
+```
 To load completions for every new session, execute once:
 
 #### Linux:
 
 ```
 agh completion bash > /etc/bash_completion.d/agh
-```
 
+```
 #### macOS:
 
 ```
 agh completion bash > $(brew --prefix)/etc/bash_completion.d/agh
-```
 
+```
 You will need to start a new shell for this setup to take effect.
+
 
 ```
 agh completion bash
@@ -51,4 +52,18 @@ agh completion bash
 
 ```
   -o, --output string   Output format: human, json, or toon (default "human")
+```
+
+## Output Formats
+
+Every AGH command supports `-o, --output`:
+
+- `human` for interactive terminal use
+- `json` for scripts and other machine-readable consumers
+- `toon` for compact agent-readable summaries
+
+Example:
+
+```bash
+agh completion bash > /etc/bash_completion.d/agh -o json
 ```
