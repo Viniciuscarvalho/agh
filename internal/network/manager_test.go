@@ -8,6 +8,8 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -16,11 +18,26 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/pedronauck/agh/internal/acp"
 	aghconfig "github.com/pedronauck/agh/internal/config"
+	sessionpkg "github.com/pedronauck/agh/internal/session"
 )
 
 func nilTestContext() context.Context {
 	var ctx context.Context
 	return ctx
+}
+
+func testJoinRequest(
+	sessionID string,
+	peerID string,
+	channel string,
+	capabilities ...sessionpkg.NetworkPeerCapability,
+) sessionpkg.NetworkPeerJoin {
+	return sessionpkg.NetworkPeerJoin{
+		SessionID:    sessionID,
+		PeerID:       peerID,
+		Channel:      channel,
+		Capabilities: append([]sessionpkg.NetworkPeerCapability(nil), capabilities...),
+	}
 }
 
 func waitForCondition(ctx context.Context, t *testing.T, condition func() bool, description string) {
@@ -170,7 +187,7 @@ func TestManagerJoinSendStatusAndLeave(t *testing.T) {
 		t.Parallel()
 
 		ctx, manager, prompter := newManagerHarness(t)
-		if err := manager.JoinChannel(ctx, "sess-a", "coder.sess-a", "builders"); err != nil {
+		if err := manager.JoinChannel(ctx, testJoinRequest("sess-a", "coder.sess-a", "builders")); err != nil {
 			t.Fatalf("JoinChannel() error = %v", err)
 		}
 
@@ -219,7 +236,7 @@ func TestManagerJoinSendStatusAndLeave(t *testing.T) {
 		t.Parallel()
 
 		ctx, manager, _ := newManagerHarness(t)
-		if err := manager.JoinChannel(ctx, "sess-a", "coder.sess-a", "builders"); err != nil {
+		if err := manager.JoinChannel(ctx, testJoinRequest("sess-a", "coder.sess-a", "builders")); err != nil {
 			t.Fatalf("JoinChannel() error = %v", err)
 		}
 		if err := manager.LeaveChannel(ctx, "sess-a"); err != nil {
@@ -235,6 +252,116 @@ func TestManagerJoinSendStatusAndLeave(t *testing.T) {
 		}
 		if status.LocalPeers != 0 || status.Channels != 0 {
 			t.Fatalf("Status(left) = %#v, want zero local peers and channels", status)
+		}
+	})
+}
+
+func TestPrepareJoinLocalPeerUsesCapabilityAwareRuntimeInput(t *testing.T) {
+	t.Parallel()
+
+	peers, err := NewPeerRegistry(time.Second)
+	if err != nil {
+		t.Fatalf("NewPeerRegistry() error = %v", err)
+	}
+	now := time.Date(2026, 4, 19, 3, 0, 0, 0, time.UTC)
+	manager := &Manager{
+		peers:    peers,
+		sessions: make(map[string]*managedSession),
+		now: func() time.Time {
+			return now
+		},
+	}
+
+	t.Run("Should build local peer card from capability-aware runtime input", func(t *testing.T) {
+		capabilities := []sessionpkg.NetworkPeerCapability{{
+			ID:                "review-pr",
+			Summary:           "Review pull requests",
+			Outcome:           "Actionable review findings",
+			ContextNeeded:     []string{"pull request link"},
+			ArtifactsExpected: []string{"review summary"},
+		}}
+		local, alreadyJoined, err := manager.prepareJoinLocalPeer(context.Background(), joinChannelRequest{
+			sessionID:    "sess-capabilities",
+			peerID:       "reviewer.sess-capabilities",
+			channel:      "builders",
+			capabilities: capabilities,
+		})
+		if err != nil {
+			t.Fatalf("prepareJoinLocalPeer() error = %v", err)
+		}
+		if alreadyJoined {
+			t.Fatal("prepareJoinLocalPeer() alreadyJoined = true, want false")
+		}
+		if got, want := local.PeerCard.Capabilities, []string{"review-pr"}; !slices.Equal(got, want) {
+			t.Fatalf("local peer capabilities = %#v, want %#v", got, want)
+		}
+		if !reflect.DeepEqual(local.CapabilityCatalog, capabilities) {
+			t.Fatalf("local capability catalog = %#v, want %#v", local.CapabilityCatalog, capabilities)
+		}
+		if got := decodeCapabilityBriefPayload(
+			t,
+			local.PeerCard.Ext[capabilityBriefExtKey],
+		); !slices.Equal(
+			got,
+			[]capabilityBrief{{
+				ID:      "review-pr",
+				Summary: "Review pull requests",
+			}},
+		) {
+			t.Fatalf("local peer capability brief = %#v, want review-pr brief entry", got)
+		}
+
+		stored, ok := manager.peers.LocalBySession("sess-capabilities")
+		if !ok {
+			t.Fatal("LocalBySession() = missing, want registered local peer")
+		}
+		if got, want := stored.PeerCard.Capabilities, []string{"review-pr"}; !slices.Equal(got, want) {
+			t.Fatalf("stored peer capabilities = %#v, want %#v", got, want)
+		}
+		if !reflect.DeepEqual(stored.CapabilityCatalog, capabilities) {
+			t.Fatalf("stored capability catalog = %#v, want %#v", stored.CapabilityCatalog, capabilities)
+		}
+		if got := decodeCapabilityBriefPayload(
+			t,
+			stored.PeerCard.Ext[capabilityBriefExtKey],
+		); !slices.Equal(
+			got,
+			[]capabilityBrief{{
+				ID:      "review-pr",
+				Summary: "Review pull requests",
+			}},
+		) {
+			t.Fatalf("stored peer capability brief = %#v, want review-pr brief entry", got)
+		}
+	})
+
+	t.Run("Should keep empty capability projection non-nil when runtime supplied none", func(t *testing.T) {
+		local, alreadyJoined, err := manager.prepareJoinLocalPeer(context.Background(), joinChannelRequest{
+			sessionID:    "sess-empty-capabilities",
+			peerID:       "reviewer.sess-empty-capabilities",
+			channel:      "builders",
+			capabilities: []sessionpkg.NetworkPeerCapability{},
+		})
+		if err != nil {
+			t.Fatalf("prepareJoinLocalPeer() error = %v", err)
+		}
+		if alreadyJoined {
+			t.Fatal("prepareJoinLocalPeer() alreadyJoined = true, want false")
+		}
+		if local.PeerCard.Capabilities == nil {
+			t.Fatal("local peer capabilities = nil, want empty-but-valid slice")
+		}
+		if got := len(local.PeerCard.Capabilities); got != 0 {
+			t.Fatalf("local peer capabilities len = %d, want 0", got)
+		}
+		if local.PeerCard.Ext != nil && local.PeerCard.Ext[capabilityBriefExtKey] != nil {
+			t.Fatalf("local peer ext = %#v, want omitted capability brief key", local.PeerCard.Ext)
+		}
+		if local.CapabilityCatalog == nil {
+			t.Fatal("local capability catalog = nil, want deterministic empty slice")
+		}
+		if got := len(local.CapabilityCatalog); got != 0 {
+			t.Fatalf("local capability catalog len = %d, want 0", got)
 		}
 	})
 }
@@ -266,7 +393,7 @@ func TestManagerQueuesBusyDeliveriesTracksDisconnectsAndShutsDownIdempotently(t 
 			}
 		})
 
-		if err := manager.JoinChannel(ctx, "sess-busy", "reviewer.sess-busy", "builders"); err != nil {
+		if err := manager.JoinChannel(ctx, testJoinRequest("sess-busy", "reviewer.sess-busy", "builders")); err != nil {
 			t.Fatalf("JoinChannel() error = %v", err)
 		}
 
@@ -445,7 +572,7 @@ func TestManagerStatusTracksWorkflowMetricsAndStructuredLogs(t *testing.T) {
 		}
 	}()
 
-	if err := manager.JoinChannel(ctx, "sess-a", "reviewer.sess-a", "builders"); err != nil {
+	if err := manager.JoinChannel(ctx, testJoinRequest("sess-a", "reviewer.sess-a", "builders")); err != nil {
 		t.Fatalf("JoinChannel() error = %v", err)
 	}
 
@@ -530,7 +657,7 @@ func TestManagerShutdownTracksInterruptedInFlightMessages(t *testing.T) {
 		t.Fatalf("NewManager() error = %v", err)
 	}
 
-	if err := manager.JoinChannel(ctx, "sess-stop", "reviewer.sess-stop", "builders"); err != nil {
+	if err := manager.JoinChannel(ctx, testJoinRequest("sess-stop", "reviewer.sess-stop", "builders")); err != nil {
 		t.Fatalf("JoinChannel() error = %v", err)
 	}
 
@@ -600,7 +727,7 @@ func TestManagerListsPeersAndAuditsInboundRemoteDeliveries(t *testing.T) {
 		}
 	}()
 
-	if err := manager.JoinChannel(ctx, "sess-local", "reviewer.sess-local", "builders"); err != nil {
+	if err := manager.JoinChannel(ctx, testJoinRequest("sess-local", "reviewer.sess-local", "builders")); err != nil {
 		t.Fatalf("JoinChannel() error = %v", err)
 	}
 
@@ -707,7 +834,7 @@ func TestManagerAuditsGeneratedGreetsAndControlReceivers(t *testing.T) {
 	}()
 
 	for _, sessionID := range []string{"sess-a", "sess-b", "sess-c"} {
-		if err := manager.JoinChannel(ctx, sessionID, "coder."+sessionID, "builders"); err != nil {
+		if err := manager.JoinChannel(ctx, testJoinRequest(sessionID, "coder."+sessionID, "builders")); err != nil {
 			t.Fatalf("JoinChannel(%q) error = %v", sessionID, err)
 		}
 	}
@@ -800,7 +927,7 @@ func TestManagerValidationAndNilGuards(t *testing.T) {
 	if _, err := nilManager.Inbox(context.Background(), "sess"); err == nil {
 		t.Fatal("nil manager Inbox() error = nil, want non-nil")
 	}
-	if err := nilManager.JoinChannel(context.Background(), "sess", "peer", "builders"); err == nil {
+	if err := nilManager.JoinChannel(context.Background(), testJoinRequest("sess", "peer", "builders")); err == nil {
 		t.Fatal("nil manager JoinChannel() error = nil, want non-nil")
 	}
 	if err := nilManager.LeaveChannel(context.Background(), "sess"); err == nil {
@@ -829,7 +956,7 @@ func TestManagerValidationAndNilGuards(t *testing.T) {
 		}
 	}()
 
-	if err := manager.JoinChannel(nilTestContext(), "sess", "peer", "builders"); err == nil {
+	if err := manager.JoinChannel(nilTestContext(), testJoinRequest("sess", "peer", "builders")); err == nil {
 		t.Fatal("JoinChannel(nil ctx) error = nil, want non-nil")
 	}
 	if err := manager.LeaveChannel(nilTestContext(), "sess"); err == nil {
@@ -850,7 +977,7 @@ func TestManagerValidationAndNilGuards(t *testing.T) {
 	if _, err := manager.Inbox(nilTestContext(), "sess"); err == nil {
 		t.Fatal("Inbox(nil ctx) error = nil, want non-nil")
 	}
-	if err := manager.JoinChannel(context.Background(), "", "peer", "builders"); err == nil {
+	if err := manager.JoinChannel(context.Background(), testJoinRequest("", "peer", "builders")); err == nil {
 		t.Fatal("JoinChannel(missing session) error = nil, want non-nil")
 	}
 	if err := manager.LeaveChannel(context.Background(), ""); err == nil {
