@@ -11,6 +11,32 @@ import (
 	workspacepkg "github.com/pedronauck/agh/internal/workspace"
 )
 
+func resolveStoredSessionWorkspace(
+	ctx context.Context,
+	meta store.SessionMeta,
+	resolver workspacepkg.RuntimeResolver,
+) (workspacepkg.ResolvedWorkspace, error) {
+	if resolver == nil {
+		return workspacepkg.ResolvedWorkspace{}, errors.New("session: workspace resolver is required")
+	}
+
+	workspaceID := strings.TrimSpace(meta.WorkspaceID)
+	if workspaceID == "" {
+		return workspacepkg.ResolvedWorkspace{}, errors.New("session: session workspace id is required")
+	}
+
+	resolved, err := resolver.Resolve(ctx, workspaceID)
+	if err != nil {
+		return workspacepkg.ResolvedWorkspace{}, fmt.Errorf(
+			"session: resolve workspace %q for session %q: %w",
+			workspaceID,
+			meta.ID,
+			err,
+		)
+	}
+	return resolved, nil
+}
+
 func (m *Manager) resolveCreateWorkspace(ctx context.Context, opts CreateOpts) (workspacepkg.ResolvedWorkspace, error) {
 	resolver, err := m.requireWorkspaceResolver()
 	if err != nil {
@@ -54,21 +80,7 @@ func (m *Manager) resolveResumeWorkspace(
 		return workspacepkg.ResolvedWorkspace{}, err
 	}
 
-	workspaceID := strings.TrimSpace(meta.WorkspaceID)
-	if workspaceID == "" {
-		return workspacepkg.ResolvedWorkspace{}, errors.New("session: session workspace id is required")
-	}
-
-	resolved, err := resolver.Resolve(ctx, workspaceID)
-	if err != nil {
-		return workspacepkg.ResolvedWorkspace{}, fmt.Errorf(
-			"session: resolve workspace %q for session %q: %w",
-			workspaceID,
-			meta.ID,
-			err,
-		)
-	}
-	return resolved, nil
+	return resolveStoredSessionWorkspace(ctx, meta, resolver)
 }
 
 func (m *Manager) requireWorkspaceResolver() (workspacepkg.RuntimeResolver, error) {
@@ -108,4 +120,46 @@ func (m *Manager) resolveWorkspaceAgent(
 		return m.agentResolver.ResolveAgent(agentName, resolvedWorkspace)
 	}
 	return resolveWorkspaceAgent(agentName, resolvedWorkspace)
+}
+
+func (m *Manager) resolveWorkspaceSessionAgent(
+	agentName string,
+	provider string,
+	resolvedWorkspace *workspacepkg.ResolvedWorkspace,
+) (aghconfig.ResolvedAgent, error) {
+	var resolver AgentResolver
+	if m != nil {
+		resolver = m.agentResolver
+	}
+	return resolveWorkspaceSessionAgent(agentName, provider, resolvedWorkspace, resolver)
+}
+
+func resolveWorkspaceSessionAgent(
+	agentName string,
+	provider string,
+	resolvedWorkspace *workspacepkg.ResolvedWorkspace,
+	agentResolver AgentResolver,
+) (aghconfig.ResolvedAgent, error) {
+	if resolvedWorkspace == nil {
+		return aghconfig.ResolvedAgent{}, errors.New("session: resolved workspace is required")
+	}
+
+	var (
+		agentDef aghconfig.AgentDef
+		err      error
+	)
+	if agentResolver != nil {
+		agentDef, err = agentResolver.ResolveAgent(agentName, resolvedWorkspace)
+	} else {
+		agentDef, err = resolveWorkspaceAgent(agentName, resolvedWorkspace)
+	}
+	if err != nil {
+		return aghconfig.ResolvedAgent{}, err
+	}
+
+	resolved, err := resolvedWorkspace.Config.ResolveSessionAgent(agentDef, provider)
+	if err != nil {
+		return aghconfig.ResolvedAgent{}, err
+	}
+	return resolved, nil
 }

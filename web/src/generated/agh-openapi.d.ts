@@ -6622,6 +6622,7 @@ export interface operations {
                 } | null;
                 id: string;
                 name?: string;
+                provider: string;
                 /** @enum {string} */
                 state: "starting" | "active" | "stopping" | "stopped";
                 stop_detail?: string;
@@ -6785,6 +6786,7 @@ export interface operations {
                 } | null;
                 id: string;
                 name?: string;
+                provider: string;
                 /** @enum {string} */
                 state: "starting" | "active" | "stopping" | "stopped";
                 stop_detail?: string;
@@ -8824,6 +8826,7 @@ export interface operations {
               } | null;
               id: string;
               name?: string;
+              provider: string;
               /** @enum {string} */
               state: "starting" | "active" | "stopping" | "stopped";
               stop_detail?: string;
@@ -8891,6 +8894,7 @@ export interface operations {
           agent_name?: string;
           channel?: string;
           name?: string;
+          provider?: string;
           workspace?: string;
           workspace_path?: string;
         };
@@ -8926,6 +8930,7 @@ export interface operations {
               } | null;
               id: string;
               name?: string;
+              provider: string;
               /** @enum {string} */
               state: "starting" | "active" | "stopping" | "stopped";
               stop_detail?: string;
@@ -9042,6 +9047,7 @@ export interface operations {
               } | null;
               id: string;
               name?: string;
+              provider: string;
               /** @enum {string} */
               state: "starting" | "active" | "stopping" | "stopped";
               stop_detail?: string;
@@ -9441,6 +9447,7 @@ export interface operations {
               } | null;
               id: string;
               name?: string;
+              provider: string;
               /** @enum {string} */
               state: "starting" | "active" | "stopping" | "stopped";
               stop_detail?: string;
@@ -19320,6 +19327,9 @@ export interface operations {
               provider: string;
               tools?: string[];
             }[];
+            providers?: {
+              name: string;
+            }[];
             sessions?: {
               acp_caps?: {
                 supported_models?: string[];
@@ -19342,6 +19352,7 @@ export interface operations {
               } | null;
               id: string;
               name?: string;
+              provider: string;
               /** @enum {string} */
               state: "starting" | "active" | "stopping" | "stopped";
               stop_detail?: string;

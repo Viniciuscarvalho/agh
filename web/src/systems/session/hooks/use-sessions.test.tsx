@@ -38,6 +38,7 @@ describe("useSessions", () => {
       {
         id: "sess-001",
         agent_name: "claude-agent",
+        provider: "claude",
         workspace_id: "ws_alpha",
         workspace_path: "/workspace/alpha",
         state: "active",
@@ -54,6 +55,7 @@ describe("useSessions", () => {
       expect(result.current.data).toHaveLength(1);
     });
 
+    expect(result.current.data?.[0]?.provider).toBe("claude");
     expect(fetchSessions).toHaveBeenCalledWith("ws_alpha", expect.any(AbortSignal));
   });
 
@@ -71,6 +73,7 @@ describe("useSession", () => {
     vi.mocked(fetchSession).mockResolvedValue({
       id: "sess-001",
       agent_name: "claude-agent",
+      provider: "claude",
       workspace_id: "ws_alpha",
       workspace_path: "/workspace/alpha",
       state: "active",
@@ -86,6 +89,7 @@ describe("useSession", () => {
       expect(result.current.data?.id).toBe("sess-001");
     });
 
+    expect(result.current.data?.provider).toBe("claude");
     expect(fetchSession).toHaveBeenCalledWith("sess-001", expect.any(AbortSignal));
   });
 });

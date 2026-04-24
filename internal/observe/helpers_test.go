@@ -1,6 +1,7 @@
 package observe
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -407,6 +408,7 @@ func TestLoadSessionMetadataSkipsMissingMetaAndKeepsStoppedState(t *testing.T) {
 		ID:          "sess-stopped",
 		Name:        "Stopped",
 		AgentName:   "coder",
+		Provider:    "claude",
 		WorkspaceID: h.workspaceID,
 		State:       "stopped",
 		CreatedAt:   h.now,
@@ -415,7 +417,7 @@ func TestLoadSessionMetadataSkipsMissingMetaAndKeepsStoppedState(t *testing.T) {
 		t.Fatalf("WriteSessionMeta() error = %v", err)
 	}
 
-	sessions, err := h.observer.loadSessionMetadata()
+	sessions, err := h.observer.loadSessionMetadata(testutil.Context(t))
 	if err != nil {
 		t.Fatalf("loadSessionMetadata() error = %v", err)
 	}
@@ -424,6 +426,38 @@ func TestLoadSessionMetadataSkipsMissingMetaAndKeepsStoppedState(t *testing.T) {
 	}
 	if sessions[0].State != "stopped" {
 		t.Fatalf("sessions[0].State = %q, want stopped", sessions[0].State)
+	}
+}
+
+func TestLoadSessionMetadataLogsOriginalSessionIDWhenLegacyProviderRepairFails(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	var logs bytes.Buffer
+	h.observer.logger = slog.New(slog.NewTextHandler(&logs, nil))
+
+	sessionDir := filepath.Join(h.home.SessionsDir, "sess-legacy")
+	if err := store.WriteSessionMeta(store.SessionMetaFile(sessionDir), store.SessionMeta{
+		ID:          "sess-legacy",
+		Name:        "Legacy",
+		AgentName:   "coder",
+		WorkspaceID: "missing-workspace",
+		State:       "stopped",
+		CreatedAt:   h.now,
+		UpdatedAt:   h.now,
+	}); err != nil {
+		t.Fatalf("WriteSessionMeta() error = %v", err)
+	}
+
+	sessions, err := h.observer.loadSessionMetadata(testutil.Context(t))
+	if err != nil {
+		t.Fatalf("loadSessionMetadata() error = %v", err)
+	}
+	if got := len(sessions); got != 0 {
+		t.Fatalf("len(sessions) = %d, want 0 after repair failure", got)
+	}
+	if !strings.Contains(logs.String(), "session_id=sess-legacy") {
+		t.Fatalf("logs = %q, want original session_id", logs.String())
 	}
 }
 
@@ -490,7 +524,7 @@ func TestMissingPathHelpers(t *testing.T) {
 
 	h := newHarness(t)
 	h.observer.homePaths.SessionsDir = missingDir
-	sessions, err := h.observer.loadSessionMetadata()
+	sessions, err := h.observer.loadSessionMetadata(testutil.Context(t))
 	if err != nil {
 		t.Fatalf("loadSessionMetadata(missing) error = %v", err)
 	}

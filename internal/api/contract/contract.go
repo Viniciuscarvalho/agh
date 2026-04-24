@@ -13,6 +13,7 @@ import (
 // CreateSessionRequest is the shared session creation request payload.
 type CreateSessionRequest struct {
 	AgentName     string `json:"agent_name,omitempty"`
+	Provider      string `json:"provider,omitempty"`
 	Name          string `json:"name,omitempty"`
 	Workspace     string `json:"workspace,omitempty"`
 	WorkspacePath string `json:"workspace_path,omitempty"`
@@ -31,6 +32,7 @@ type SessionPayload struct {
 	ID            string        `json:"id"`
 	Name          string        `json:"name,omitempty"`
 	AgentName     string        `json:"agent_name"`
+	Provider      string        `json:"provider"`
 	WorkspaceID   string        `json:"workspace_id,omitempty"`
 	WorkspacePath string        `json:"workspace_path,omitempty"`
 	Channel       string        `json:"channel,omitempty"`
@@ -603,6 +605,11 @@ type WorkspaceSkillPayload struct {
 	Source string `json:"source"`
 }
 
+// SessionProviderOptionPayload is one workspace-visible session provider option.
+type SessionProviderOptionPayload struct {
+	Name string `json:"name"`
+}
+
 // SkillPayload is the HTTP response type for a skill.
 type SkillPayload struct {
 	Name        string             `json:"name"`
@@ -635,8 +642,9 @@ type SkillActionResponse struct {
 
 // WorkspaceDetailPayload is the shared resolved workspace detail response payload.
 type WorkspaceDetailPayload struct {
-	Workspace WorkspacePayload        `json:"workspace"`
-	Sessions  []SessionPayload        `json:"sessions,omitempty"`
-	Agents    []AgentPayload          `json:"agents,omitempty"`
-	Skills    []WorkspaceSkillPayload `json:"skills,omitempty"`
+	Workspace WorkspacePayload               `json:"workspace"`
+	Sessions  []SessionPayload               `json:"sessions,omitempty"`
+	Agents    []AgentPayload                 `json:"agents,omitempty"`
+	Skills    []WorkspaceSkillPayload        `json:"skills,omitempty"`
+	Providers []SessionProviderOptionPayload `json:"providers,omitempty"`
 }

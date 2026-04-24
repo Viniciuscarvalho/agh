@@ -893,6 +893,11 @@ func TestGetWorkspaceHandlerReturnsDetail(t *testing.T) {
 			CreatedAt: time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC),
 			UpdatedAt: time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC),
 		},
+		Config: aghconfig.Config{
+			Providers: map[string]aghconfig.ProviderConfig{
+				"alpha": {Command: "alpha --acp"},
+			},
+		},
 		Agents: []aghconfig.AgentDef{{
 			Name:     "coder",
 			Provider: "fake",
@@ -925,12 +930,7 @@ func TestGetWorkspaceHandlerReturnsDetail(t *testing.T) {
 		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
 	}
 
-	var response struct {
-		Workspace workspacePayload        `json:"workspace"`
-		Sessions  []sessionPayload        `json:"sessions"`
-		Agents    []agentPayload          `json:"agents"`
-		Skills    []workspaceSkillPayload `json:"skills"`
-	}
+	var response contract.WorkspaceDetailPayload
 	decodeJSONResponse(t, recorder, &response)
 	if response.Workspace.ID != "ws_alpha" || len(response.Sessions) != 1 || len(response.Agents) != 1 ||
 		len(response.Skills) != 1 {
@@ -938,6 +938,14 @@ func TestGetWorkspaceHandlerReturnsDetail(t *testing.T) {
 	}
 	if response.Skills[0].Name != "review" {
 		t.Fatalf("skill name = %q, want review", response.Skills[0].Name)
+	}
+	providerNames := make([]string, 0, len(response.Providers))
+	for _, provider := range response.Providers {
+		providerNames = append(providerNames, provider.Name)
+	}
+	expectedNames := []string{"alpha", "claude", "codex", "copilot", "cursor", "gemini", "kiro", "opencode", "pi"}
+	if !slices.Equal(providerNames, expectedNames) {
+		t.Fatalf("provider names = %#v, want %#v", providerNames, expectedNames)
 	}
 }
 

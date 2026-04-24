@@ -5,9 +5,11 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -19,14 +21,17 @@ import (
 	aghcontract "github.com/pedronauck/agh/internal/api/contract"
 	apispec "github.com/pedronauck/agh/internal/api/spec"
 	automationpkg "github.com/pedronauck/agh/internal/automation"
+	aghconfig "github.com/pedronauck/agh/internal/config"
 	"github.com/pedronauck/agh/internal/testutil/acpmock"
 	e2etest "github.com/pedronauck/agh/internal/testutil/e2e"
+	tomltree "github.com/pelletier/go-toml"
 )
 
 const (
 	transportApprovalAgentName = "transport-approver"
 	transportAutomationAgent   = "transport-automation-runner"
 	transportFaultyAgent       = "transport-faulty-runner"
+	transportOverrideProvider  = "qa-transport-override"
 )
 
 func TestHTTPTransportApprovalFlowUsesSharedRuntimeHarness(t *testing.T) {
@@ -115,6 +120,146 @@ func TestHTTPTransportApprovalFlowUsesSharedRuntimeHarness(t *testing.T) {
 	if got, want := detail.Session.ID, session.ID; got != want {
 		t.Fatalf("detail.Session.ID = %q, want %q", got, want)
 	}
+}
+
+func TestHTTPTransportSessionProviderLifecycle(t *testing.T) {
+	acpmock.RequireDriver(t)
+	t.Parallel()
+
+	runtimeHarness := e2etest.StartRuntimeHarness(t, e2etest.RuntimeHarnessOptions{
+		MockAgents: []e2etest.MockAgentSpec{{
+			FixturePath:  transportMockFixturePath(t, "automation_task_fixture.json"),
+			FixtureAgent: "automation-runner",
+			AgentName:    transportAutomationAgent,
+		}},
+	})
+	registration, ok := runtimeHarness.MockAgentRegistration(transportAutomationAgent)
+	if !ok {
+		t.Fatalf("MockAgentRegistration(%q) not found", transportAutomationAgent)
+	}
+	provider := registration.Provider
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	t.Run("Should round-trip the provider through create and read", func(t *testing.T) {
+		var created aghcontract.SessionResponse
+		if err := runtimeHarness.HTTPJSON(ctx, http.MethodPost, "/api/sessions", aghcontract.CreateSessionRequest{
+			AgentName:     transportAutomationAgent,
+			Provider:      provider,
+			WorkspacePath: runtimeHarness.WorkspaceRoot,
+		}, &created); err != nil {
+			t.Fatalf("HTTP create session error = %v", err)
+		}
+		if created.Session.ID == "" {
+			t.Fatal("HTTP create session id = empty, want non-empty")
+		}
+		if created.Session.Provider != provider {
+			t.Fatalf("HTTP create provider = %q, want %q", created.Session.Provider, provider)
+		}
+
+		var detail aghcontract.SessionResponse
+		if err := runtimeHarness.HTTPJSON(
+			ctx,
+			http.MethodGet,
+			"/api/sessions/"+url.PathEscape(created.Session.ID),
+			nil,
+			&detail,
+		); err != nil {
+			t.Fatalf("HTTP get session error = %v", err)
+		}
+		if detail.Session.Provider != created.Session.Provider {
+			t.Fatalf(
+				"HTTP detail provider = %q, want create provider %q",
+				detail.Session.Provider,
+				created.Session.Provider,
+			)
+		}
+	})
+
+	t.Run("Should return explicit bad request when the persisted provider is missing on resume", func(t *testing.T) {
+		writeTransportProviderOverrideConfig(
+			t,
+			runtimeHarness.WorkspaceRoot,
+			transportOverrideProvider,
+			registration.Command,
+			true,
+		)
+
+		var created aghcontract.SessionResponse
+		if err := runtimeHarness.HTTPJSON(ctx, http.MethodPost, "/api/sessions", aghcontract.CreateSessionRequest{
+			AgentName:     transportAutomationAgent,
+			Provider:      transportOverrideProvider,
+			WorkspacePath: runtimeHarness.WorkspaceRoot,
+		}, &created); err != nil {
+			t.Fatalf("HTTP create session error = %v", err)
+		}
+
+		stopResp := mustHTTPRequest(
+			t,
+			runtimeHarness.HTTPClient,
+			http.MethodDelete,
+			runtimeHarness.HTTPURL("/api/sessions/"+url.PathEscape(created.Session.ID)),
+			nil,
+			nil,
+		)
+		body, readErr := io.ReadAll(stopResp.Body)
+		closeErr := stopResp.Body.Close()
+		if readErr != nil {
+			t.Fatalf("read HTTP stop response body error = %v", readErr)
+		}
+		if closeErr != nil {
+			t.Fatalf("close HTTP stop response body error = %v", closeErr)
+		}
+		if stopResp.StatusCode != http.StatusNoContent {
+			t.Fatalf("HTTP stop session status = %d, want %d; body=%s", stopResp.StatusCode, http.StatusNoContent, string(body))
+		}
+
+		writeTransportProviderOverrideConfig(
+			t,
+			runtimeHarness.WorkspaceRoot,
+			transportOverrideProvider,
+			registration.Command,
+			false,
+		)
+
+		resumeResp := mustHTTPRequest(
+			t,
+			runtimeHarness.HTTPClient,
+			http.MethodPost,
+			runtimeHarness.HTTPURL("/api/sessions/"+url.PathEscape(created.Session.ID)+"/resume"),
+			nil,
+			nil,
+		)
+		resumeBody, err := io.ReadAll(resumeResp.Body)
+		resumeCloseErr := resumeResp.Body.Close()
+		if err != nil {
+			t.Fatalf("read HTTP resume body error = %v", err)
+		}
+		if resumeCloseErr != nil {
+			t.Fatalf("close HTTP resume body error = %v", resumeCloseErr)
+		}
+		if resumeResp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("HTTP resume status = %d, want %d; body=%s", resumeResp.StatusCode, http.StatusBadRequest, string(resumeBody))
+		}
+
+		var payload struct {
+			Error string `json:"error"`
+		}
+		if err := json.Unmarshal(resumeBody, &payload); err != nil {
+			t.Fatalf("Unmarshal(resume body) error = %v; body=%s", err, string(resumeBody))
+		}
+
+		if !strings.Contains(payload.Error, created.Session.ID) {
+			t.Fatalf("HTTP resume error = %s, want session id %q", payload.Error, created.Session.ID)
+		}
+		if !strings.Contains(payload.Error, transportOverrideProvider) {
+			t.Fatalf("HTTP resume error = %s, want provider %q", payload.Error, transportOverrideProvider)
+		}
+		if !strings.Contains(payload.Error, `resolve session agent with provider "`+transportOverrideProvider+`"`) {
+			t.Fatalf("HTTP resume error = %s, want override context", payload.Error)
+		}
+	})
 }
 
 func TestHTTPTransportWebhookIngressUsesSharedRuntimeHarness(t *testing.T) {
@@ -482,6 +627,73 @@ func transportMockFixturePath(t testing.TB, name string) string {
 		t.Fatal("runtime.Caller(0) failed")
 	}
 	return filepath.Join(filepath.Dir(file), "..", "..", "testutil", "acpmock", "testdata", name)
+}
+
+func writeTransportProviderOverrideConfig(
+	t testing.TB,
+	workspaceRoot string,
+	providerName string,
+	command string,
+	includeProvider bool,
+) {
+	t.Helper()
+
+	configDir := filepath.Join(workspaceRoot, aghconfig.DirName)
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("os.MkdirAll(%q) error = %v", configDir, err)
+	}
+
+	configPath := filepath.Join(configDir, aghconfig.ConfigName)
+	tree, err := loadTransportProviderOverrideTree(configPath)
+	if err != nil {
+		t.Fatalf("load transport override config %q error = %v", configPath, err)
+	}
+
+	providerPath := []string{"providers", strings.TrimSpace(providerName)}
+	if includeProvider {
+		if tree.GetPath(providerPath) != nil {
+			if err := tree.DeletePath(providerPath); err != nil {
+				t.Fatalf("DeletePath(%v) error = %v", providerPath, err)
+			}
+		}
+		tree.SetPath(append(providerPath, "command"), strings.TrimSpace(command))
+		tree.SetPath(append(providerPath, "default_model"), "transport-override-model")
+		tree.SetPath(append(providerPath, "api_key_env"), "TRANSPORT_OVERRIDE_API_KEY")
+	} else {
+		if tree.GetPath(providerPath) != nil {
+			if err := tree.DeletePath(providerPath); err != nil {
+				t.Fatalf("DeletePath(%v) error = %v", providerPath, err)
+			}
+		}
+		if providers, ok := tree.GetPath([]string{"providers"}).(*tomltree.Tree); ok && len(providers.Keys()) == 0 {
+			if err := tree.Delete("providers"); err != nil {
+				t.Fatalf("Delete(providers) error = %v", err)
+			}
+		}
+	}
+
+	rendered, err := tree.ToTomlString()
+	if err != nil {
+		t.Fatalf("ToTomlString(%q) error = %v", configPath, err)
+	}
+	if err := os.WriteFile(configPath, []byte(rendered), 0o600); err != nil {
+		t.Fatalf("os.WriteFile(%q) error = %v", configPath, err)
+	}
+}
+
+func loadTransportProviderOverrideTree(configPath string) (*tomltree.Tree, error) {
+	contents, err := os.ReadFile(configPath)
+	switch {
+	case err == nil:
+		if strings.TrimSpace(string(contents)) == "" {
+			return tomltree.TreeFromMap(map[string]any{})
+		}
+		return tomltree.LoadBytes(contents)
+	case errors.Is(err, os.ErrNotExist):
+		return tomltree.TreeFromMap(map[string]any{})
+	default:
+		return nil, err
+	}
 }
 
 func httpSSEContainsEvent(records []e2etest.SSEEvent, want string) bool {

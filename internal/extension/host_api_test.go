@@ -64,6 +64,9 @@ func TestHostAPIHandlerSessionsListReturnsAuthorizedSessions(t *testing.T) {
 	if sessionsList[0].Agent != "coder" {
 		t.Fatalf("sessions/list[0].Agent = %q, want coder", sessionsList[0].Agent)
 	}
+	if sessionsList[0].Provider != sess.Info().Provider {
+		t.Fatalf("sessions/list[0].Provider = %q, want %q", sessionsList[0].Provider, sess.Info().Provider)
+	}
 }
 
 func TestHostAPIHandlerSessionsListReturnsCapabilityDeniedWithoutSessionRead(t *testing.T) {
@@ -84,6 +87,7 @@ func TestHostAPIHandlerSessionsCreateReturnsSessionID(t *testing.T) {
 
 	result, err := env.call(t, "ext-create", "sessions/create", map[string]string{
 		"agent":     "coder",
+		"provider":  "fake-alt",
 		"workspace": env.workspaceID,
 	})
 	if err != nil {
@@ -95,6 +99,9 @@ func TestHostAPIHandlerSessionsCreateReturnsSessionID(t *testing.T) {
 	if created.SessionID == "" {
 		t.Fatal("sessions/create session_id = empty, want non-empty")
 	}
+	if created.Provider != "fake-alt" {
+		t.Fatalf("sessions/create provider = %q, want %q", created.Provider, "fake-alt")
+	}
 
 	info, err := env.sessions.Status(testutil.Context(t), created.SessionID)
 	if err != nil {
@@ -102,6 +109,9 @@ func TestHostAPIHandlerSessionsCreateReturnsSessionID(t *testing.T) {
 	}
 	if info.State != session.StateActive {
 		t.Fatalf("created session state = %q, want %q", info.State, session.StateActive)
+	}
+	if info.Provider != "fake-alt" {
+		t.Fatalf("created session provider = %q, want %q", info.Provider, "fake-alt")
 	}
 }
 
@@ -191,6 +201,49 @@ func TestHostAPIHandlerSessionsStatusReturnsAuthorizedState(t *testing.T) {
 	if status.State != session.StateActive {
 		t.Fatalf("sessions/status state = %q, want %q", status.State, session.StateActive)
 	}
+	if status.Provider != sess.Info().Provider {
+		t.Fatalf("sessions/status provider = %q, want %q", status.Provider, sess.Info().Provider)
+	}
+}
+
+func TestHostAPIHandlerCreateBridgeSessionUsesExplicitEmptyProvider(t *testing.T) {
+	t.Run("Should use an explicit empty provider for bridge sessions", func(t *testing.T) {
+		t.Parallel()
+
+		sessions := &recordingHostAPISessionManager{}
+		handler := &HostAPIHandler{
+			sessions: sessions,
+			workspaces: newHostAPIFakeWorkspaceResolver(&workspacepkg.ResolvedWorkspace{
+				Workspace: workspacepkg.Workspace{ID: "ws-alpha", RootDir: t.TempDir()},
+				Config: aghconfig.Config{
+					Defaults: aghconfig.DefaultsConfig{Agent: "coder"},
+				},
+			}),
+		}
+
+		created, err := handler.createBridgeSession(testutil.Context(t), bridgepkg.BridgeInstance{
+			WorkspaceID: "ws-alpha",
+		})
+		if err != nil {
+			t.Fatalf("createBridgeSession() error = %v", err)
+		}
+		if created == nil {
+			t.Fatal("createBridgeSession() = nil, want session")
+		}
+		if got, want := len(sessions.createCalls), 1; got != want {
+			t.Fatalf("len(createCalls) = %d, want %d", got, want)
+		}
+		createCall := sessions.createCalls[0]
+		if got, want := createCall.AgentName, "coder"; got != want {
+			t.Fatalf("Create().AgentName = %q, want %q", got, want)
+		}
+		if got, want := createCall.Workspace, "ws-alpha"; got != want {
+			t.Fatalf("Create().Workspace = %q, want %q", got, want)
+		}
+		if got := createCall.Provider; got != "" {
+			t.Fatalf("Create().Provider = %q, want explicit empty provider", got)
+		}
+	})
 }
 
 func TestHostAPIHandlerEnvironmentListReturnsActiveEnvironmentInstances(t *testing.T) {
@@ -4677,7 +4730,8 @@ Review the workspace changes carefully.
 		Config: aghconfig.Config{
 			Defaults: aghconfig.DefaultsConfig{Agent: "coder"},
 			Providers: map[string]aghconfig.ProviderConfig{
-				"fake": {Command: "fake-agent"},
+				"fake":     {Command: "fake-agent"},
+				"fake-alt": {Command: "fake-agent"},
 			},
 			Permissions: aghconfig.PermissionsConfig{Mode: aghconfig.PermissionModeApproveAll},
 		},
@@ -4849,15 +4903,19 @@ Review the workspace changes carefully.
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		for _, info := range sessions.List() {
+		manager := env.sessions
+		if manager == nil {
+			return
+		}
+		for _, info := range manager.List() {
 			if info == nil {
 				continue
 			}
-			if err := sessions.Stop(ctx, info.ID); err != nil && !errors.Is(err, session.ErrSessionNotFound) {
+			if err := manager.Stop(ctx, info.ID); err != nil && !errors.Is(err, session.ErrSessionNotFound) {
 				t.Errorf("sessions.Stop(%q) cleanup error = %v", info.ID, err)
 			}
 		}
-		if err := sessions.WaitForFinalizations(ctx); err != nil {
+		if err := manager.WaitForFinalizations(ctx); err != nil {
 			t.Errorf("sessions.WaitForFinalizations() cleanup error = %v", err)
 		}
 	})
@@ -5162,6 +5220,61 @@ func (s *hostAPISessionSource) List() []*session.Info {
 		return nil
 	}
 	return s.manager.List()
+}
+
+type recordingHostAPISessionManager struct {
+	createCalls []session.CreateOpts
+}
+
+func (m *recordingHostAPISessionManager) Create(
+	_ context.Context,
+	opts session.CreateOpts,
+) (*session.Session, error) {
+	m.createCalls = append(m.createCalls, opts)
+	return &session.Session{
+		ID:          "sess-bridge",
+		AgentName:   opts.AgentName,
+		Provider:    "claude",
+		WorkspaceID: opts.Workspace,
+		Workspace:   opts.Workspace,
+		Type:        opts.Type,
+		State:       session.StateActive,
+	}, nil
+}
+
+func (*recordingHostAPISessionManager) ListAll(context.Context) ([]*session.Info, error) {
+	return nil, errors.New("unexpected ListAll call")
+}
+
+func (*recordingHostAPISessionManager) Status(context.Context, string) (*session.Info, error) {
+	return nil, errors.New("unexpected Status call")
+}
+
+func (*recordingHostAPISessionManager) Events(
+	context.Context,
+	string,
+	store.EventQuery,
+) ([]store.SessionEvent, error) {
+	return nil, errors.New("unexpected Events call")
+}
+
+func (*recordingHostAPISessionManager) Stop(context.Context, string) error {
+	return errors.New("unexpected Stop call")
+}
+
+func (*recordingHostAPISessionManager) Prompt(
+	context.Context,
+	string,
+	string,
+) (<-chan acp.AgentEvent, error) {
+	return nil, errors.New("unexpected Prompt call")
+}
+
+func (*recordingHostAPISessionManager) ExecEnvironment(
+	context.Context,
+	session.EnvironmentExecRequest,
+) (session.EnvironmentExecResult, error) {
+	return session.EnvironmentExecResult{}, errors.New("unexpected ExecEnvironment call")
 }
 
 type hostAPIFakeWorkspaceResolver struct {

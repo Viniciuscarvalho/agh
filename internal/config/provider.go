@@ -36,6 +36,10 @@ type ResolvedAgent struct {
 	Prompt      string
 }
 
+// ErrProviderUnavailable reports that a requested provider cannot be resolved
+// from the effective workspace/global config.
+var ErrProviderUnavailable = errors.New("provider unavailable")
+
 var builtinProviders = map[string]ProviderConfig{
 	"claude": {
 		Command:      "npx -y @agentclientprotocol/claude-agent-acp@0.24.2",
@@ -94,15 +98,15 @@ func (c *Config) ResolveProvider(name string) (ProviderConfig, error) {
 
 	if !hasBuiltin {
 		if c == nil {
-			return ProviderConfig{}, fmt.Errorf("unknown provider %q", providerName)
+			return ProviderConfig{}, newUnknownProviderError(providerName)
 		}
 		if _, ok := c.Providers[providerName]; !ok {
-			return ProviderConfig{}, fmt.Errorf("unknown provider %q", providerName)
+			return ProviderConfig{}, newUnknownProviderError(providerName)
 		}
 	}
 
 	if err := validateResolvedProvider(providerName, resolved); err != nil {
-		return ProviderConfig{}, err
+		return ProviderConfig{}, fmt.Errorf("%w: %w", ErrProviderUnavailable, err)
 	}
 
 	return resolved, nil
@@ -182,6 +186,29 @@ func (c *Config) ResolveAgent(agent AgentDef) (ResolvedAgent, error) {
 	return resolved, nil
 }
 
+// ResolveSessionAgent resolves a parsed agent definition for one session.
+// When providerOverride is set, the selected provider becomes canonical and
+// provider-owned runtime fields are re-resolved from that provider to avoid
+// mixed runtimes from the original agent definition.
+func (c *Config) ResolveSessionAgent(agent AgentDef, providerOverride string) (ResolvedAgent, error) {
+	override := strings.TrimSpace(providerOverride)
+	if override == "" {
+		return c.ResolveAgent(agent)
+	}
+
+	sessionAgent := agent
+	sessionAgent.Provider = override
+	sessionAgent.Command = ""
+	sessionAgent.Model = ""
+
+	resolved, err := c.ResolveAgent(sessionAgent)
+	if err != nil {
+		return ResolvedAgent{}, fmt.Errorf("resolve session agent with provider %q: %w", override, err)
+	}
+
+	return resolved, nil
+}
+
 func mergeProvider(base ProviderConfig, override ProviderConfig) ProviderConfig {
 	merged := cloneProvider(base)
 	if strings.TrimSpace(override.Command) != "" {
@@ -196,6 +223,10 @@ func mergeProvider(base ProviderConfig, override ProviderConfig) ProviderConfig 
 	merged.MCPServers = MergeMCPServers(merged.MCPServers, override.MCPServers)
 
 	return merged
+}
+
+func newUnknownProviderError(providerName string) error {
+	return fmt.Errorf("%w: unknown provider %q", ErrProviderUnavailable, providerName)
 }
 
 // MergeMCPServers merges provider-level and agent-level MCP servers by name.

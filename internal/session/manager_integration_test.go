@@ -632,6 +632,121 @@ func TestManagerIntegrationRemovePurgesSyntheticState(t *testing.T) {
 	}
 }
 
+func TestManagerIntegrationSyntheticQueueStateTransitions(t *testing.T) {
+	t.Run("Should requeue a claimed synthetic prompt before clearing dispatch", func(t *testing.T) {
+		t.Parallel()
+
+		manager := &Manager{
+			syntheticQueues: map[string][]queuedSyntheticPrompt{
+				"sess-synth": {{
+					request: promptRequest{turnID: "turn-queued"},
+				}},
+			},
+			syntheticDispatching: map[string]bool{
+				"sess-synth": true,
+			},
+		}
+		claimed := queuedSyntheticPrompt{request: promptRequest{turnID: "turn-claimed"}}
+
+		manager.requeueSyntheticPromptFrontAndFinishDispatch("sess-synth", claimed)
+
+		manager.syntheticMu.Lock()
+		defer manager.syntheticMu.Unlock()
+
+		if manager.syntheticDispatching["sess-synth"] {
+			t.Fatal("syntheticDispatching[\"sess-synth\"] = true, want cleared")
+		}
+		queue := manager.syntheticQueues["sess-synth"]
+		if got, want := len(queue), 2; got != want {
+			t.Fatalf("len(syntheticQueues[\"sess-synth\"]) = %d, want %d", got, want)
+		}
+		if got, want := queue[0].request.turnID, "turn-claimed"; got != want {
+			t.Fatalf("queue[0].request.turnID = %q, want %q", got, want)
+		}
+		if got, want := queue[1].request.turnID, "turn-queued"; got != want {
+			t.Fatalf("queue[1].request.turnID = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("Should drain queued synthetic prompts while clearing dispatch", func(t *testing.T) {
+		t.Parallel()
+
+		manager := &Manager{
+			syntheticQueues: map[string][]queuedSyntheticPrompt{
+				"sess-synth": {
+					{request: promptRequest{turnID: "turn-1"}},
+					{request: promptRequest{turnID: "turn-2"}},
+				},
+			},
+			syntheticDispatching: map[string]bool{
+				"sess-synth": true,
+			},
+		}
+
+		drained := manager.finishQueuedSyntheticDispatchAndDrain("sess-synth")
+
+		manager.syntheticMu.Lock()
+		defer manager.syntheticMu.Unlock()
+
+		if manager.syntheticDispatching["sess-synth"] {
+			t.Fatal("syntheticDispatching[\"sess-synth\"] = true, want cleared")
+		}
+		if got := len(manager.syntheticQueues["sess-synth"]); got != 0 {
+			t.Fatalf("len(syntheticQueues[\"sess-synth\"]) = %d, want 0", got)
+		}
+		if got, want := len(drained), 2; got != want {
+			t.Fatalf("len(drained) = %d, want %d", got, want)
+		}
+		if got, want := drained[0].request.turnID, "turn-1"; got != want {
+			t.Fatalf("drained[0].request.turnID = %q, want %q", got, want)
+		}
+		if got, want := drained[1].request.turnID, "turn-2"; got != want {
+			t.Fatalf("drained[1].request.turnID = %q, want %q", got, want)
+		}
+	})
+}
+
+func TestResolveWorkspaceSessionAgentGuardsNilInputs(t *testing.T) {
+	t.Run("Should reject a nil resolved workspace", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := resolveWorkspaceSessionAgent("coder", "", nil, nil)
+		if err == nil {
+			t.Fatal("resolveWorkspaceSessionAgent(nil workspace) error = nil, want non-nil")
+		}
+		if !strings.Contains(err.Error(), "resolved workspace is required") {
+			t.Fatalf("resolveWorkspaceSessionAgent(nil workspace) error = %v", err)
+		}
+	})
+
+	t.Run("Should allow a nil manager receiver when a workspace is provided", func(t *testing.T) {
+		t.Parallel()
+
+		homePaths, err := aghconfig.ResolveHomePathsFrom(t.TempDir())
+		if err != nil {
+			t.Fatalf("ResolveHomePathsFrom() error = %v", err)
+		}
+
+		resolvedWorkspace := &workspacepkg.ResolvedWorkspace{
+			Config: aghconfig.DefaultWithHome(homePaths),
+			Agents: []aghconfig.AgentDef{{
+				Name:     "coder",
+				Provider: "claude",
+				Prompt:   "You are a coding assistant.",
+			}},
+		}
+
+		var manager *Manager
+		resolved, err := manager.resolveWorkspaceSessionAgent("coder", "", resolvedWorkspace)
+		if err != nil {
+			t.Fatalf("resolveWorkspaceSessionAgent(nil manager) error = %v", err)
+		}
+		if got, want := resolved.Provider, "claude"; got != want {
+			t.Fatalf("resolveWorkspaceSessionAgent(nil manager) provider = %q, want %q", got, want)
+		}
+	})
+}
+
 func TestManagerIntegrationResumeWithChannelReinjectsBundledNetworkSkillBeforeACPStart(t *testing.T) {
 	h := newHarness(t)
 	networkSkill, err := bundled.LoadContent(testBundledNetworkSkillName)

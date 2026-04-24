@@ -55,6 +55,7 @@ export function ChatHeader({
   const isStopped = session.state === "stopped";
   const signal = STATE_SIGNAL[session.state] ?? { tone: "neutral" };
   const controlsBusy = isStopping || isResuming || isDeleting;
+  const providerLabel = session.provider?.trim();
 
   const handleConfirmDelete = useCallback(() => {
     setDeleteDialogOpen(false);
@@ -97,6 +98,22 @@ export function ChatHeader({
           >
             {session.name?.trim() || session.id}
           </span>
+
+          {providerLabel ? (
+            <>
+              <ChevronRight
+                aria-hidden="true"
+                className="size-3 shrink-0 text-[color:var(--color-text-tertiary)]"
+              />
+              <MonoBadge
+                tone="accent"
+                className="shrink-0 normal-case"
+                data-testid="session-provider-badge"
+              >
+                {providerLabel}
+              </MonoBadge>
+            </>
+          ) : null}
 
           {workspaceName ? (
             <>

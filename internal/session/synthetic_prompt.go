@@ -34,7 +34,7 @@ func (m *Manager) PromptSynthetic(
 		return nil, err
 	}
 
-	session, err := m.lookupPromptSession(req.target)
+	session, err := m.lookupPromptSession(ctx, req.target)
 	if err != nil {
 		return nil, err
 	}
@@ -140,27 +140,32 @@ func (m *Manager) startNextQueuedSyntheticPrompt(sessionID string) {
 		return
 	}
 
-	session, err := m.lookupPromptSession(target)
-	if err != nil {
-		m.failQueuedSyntheticPrompts(target, err)
-		return
-	}
-	if session.IsPrompting() {
-		return
-	}
-
 	item, ok := m.claimQueuedSyntheticPrompt(target)
 	if !ok {
 		return
 	}
 
+	session, err := m.lookupPromptSession(item.ctx, target)
+	if err != nil {
+		failed := m.finishQueuedSyntheticDispatchAndDrain(target)
+		m.emitQueuedSyntheticDispatchError(item, err)
+		for _, queued := range failed {
+			m.emitQueuedSyntheticDispatchError(queued, err)
+		}
+		return
+	}
+	if session.IsPrompting() {
+		m.requeueSyntheticPromptFrontAndFinishDispatch(target, item)
+		return
+	}
+
 	source, err := m.submitPromptRequest(item.ctx, item.request)
 	if err != nil {
-		m.finishQueuedSyntheticDispatch(target)
 		if errors.Is(err, ErrPromptInProgress) {
-			m.requeueSyntheticPromptFront(target, item)
+			m.requeueSyntheticPromptFrontAndFinishDispatch(target, item)
 			return
 		}
+		m.finishQueuedSyntheticDispatch(target)
 		m.emitQueuedSyntheticDispatchError(item, err)
 		m.startNextQueuedSyntheticPrompt(target)
 		return
@@ -213,10 +218,10 @@ func (m *Manager) finishQueuedSyntheticDispatch(sessionID string) {
 
 	m.syntheticMu.Lock()
 	defer m.syntheticMu.Unlock()
-	delete(m.syntheticDispatching, target)
+	m.finishQueuedSyntheticDispatchLocked(target)
 }
 
-func (m *Manager) requeueSyntheticPromptFront(sessionID string, item queuedSyntheticPrompt) {
+func (m *Manager) requeueSyntheticPromptFrontAndFinishDispatch(sessionID string, item queuedSyntheticPrompt) {
 	if m == nil {
 		return
 	}
@@ -229,11 +234,35 @@ func (m *Manager) requeueSyntheticPromptFront(sessionID string, item queuedSynth
 	m.syntheticMu.Lock()
 	defer m.syntheticMu.Unlock()
 
+	m.finishQueuedSyntheticDispatchLocked(target)
 	queue := m.syntheticQueues[target]
 	next := make([]queuedSyntheticPrompt, 0, len(queue)+1)
 	next = append(next, item)
 	next = append(next, queue...)
 	m.syntheticQueues[target] = next
+}
+
+func (m *Manager) finishQueuedSyntheticDispatchAndDrain(sessionID string) []queuedSyntheticPrompt {
+	if m == nil {
+		return nil
+	}
+
+	target := strings.TrimSpace(sessionID)
+	if target == "" {
+		return nil
+	}
+
+	m.syntheticMu.Lock()
+	defer m.syntheticMu.Unlock()
+
+	m.finishQueuedSyntheticDispatchLocked(target)
+	queue := append([]queuedSyntheticPrompt(nil), m.syntheticQueues[target]...)
+	delete(m.syntheticQueues, target)
+	return queue
+}
+
+func (m *Manager) finishQueuedSyntheticDispatchLocked(sessionID string) {
+	delete(m.syntheticDispatching, sessionID)
 }
 
 func (m *Manager) forwardQueuedSyntheticPrompt(

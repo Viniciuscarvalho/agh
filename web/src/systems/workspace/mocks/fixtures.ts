@@ -35,11 +35,13 @@ export const workspaceDetailFixture: WorkspaceDetailPayload = {
       prompt: "Own implementation details and verification for coding tasks.",
     },
   ],
+  providers: [{ name: "claude" }, { name: "codex" }, { name: "gemini" }],
   sessions: [
     {
       id: "sess-storybook",
       name: "Storybook rollout",
       agent_name: "codex-agent",
+      provider: "codex",
       workspace_id: primaryWorkspaceFixture.id,
       workspace_path: primaryWorkspaceFixture.root_dir,
       state: "active",

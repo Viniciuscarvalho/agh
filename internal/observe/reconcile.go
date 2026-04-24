@@ -15,7 +15,7 @@ import (
 
 // Reconcile scans the sessions directory and reconciles the global session index.
 func (o *Observer) Reconcile(ctx context.Context) (store.ReconcileResult, error) {
-	sessions, err := o.loadSessionMetadata()
+	sessions, err := o.loadSessionMetadata(ctx)
 	if err != nil {
 		return store.ReconcileResult{}, err
 	}
@@ -28,7 +28,7 @@ func (o *Observer) Reconcile(ctx context.Context) (store.ReconcileResult, error)
 	return result, nil
 }
 
-func (o *Observer) loadSessionMetadata() ([]store.SessionInfo, error) {
+func (o *Observer) loadSessionMetadata(ctx context.Context) ([]store.SessionInfo, error) {
 	entries, err := os.ReadDir(o.homePaths.SessionsDir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -59,6 +59,22 @@ func (o *Observer) loadSessionMetadata() ([]store.SessionInfo, error) {
 			continue
 		}
 
+		sessionID := strings.TrimSpace(meta.ID)
+		meta, err = session.RepairLegacyProvider(ctx, metaPath, meta, session.LegacyProviderRepairOptions{
+			Now:               o.now,
+			Logger:            o.logger,
+			WorkspaceResolver: o.workspaceResolver,
+		})
+		if err != nil {
+			o.logger.Warn(
+				"observe: skipping session with unrecoverable legacy provider metadata",
+				"session_id", sessionID,
+				"path", metaPath,
+				"error", err,
+			)
+			continue
+		}
+
 		normalized := o.normalizeRecoveredMeta(metaPath, meta)
 		stopReason := store.StopReason("")
 		if normalized.StopReason != nil {
@@ -68,6 +84,7 @@ func (o *Observer) loadSessionMetadata() ([]store.SessionInfo, error) {
 			ID:           normalized.ID,
 			Name:         normalized.Name,
 			AgentName:    normalized.AgentName,
+			Provider:     normalized.Provider,
 			WorkspaceID:  normalized.WorkspaceID,
 			Channel:      normalized.Channel,
 			SessionType:  normalized.SessionType,

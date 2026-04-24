@@ -1,6 +1,8 @@
 package session
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -232,6 +234,64 @@ func validResumeMeta(h *harness, sessionID string) store.SessionMeta {
 		WorkspaceID: h.workspaceID,
 		SessionType: string(SessionTypeUser),
 		State:       string(StateStopped),
+	}
+}
+
+func TestRepairRejectsNilContext(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		call func(*testing.T) error
+		want error
+	}{
+		{
+			name: "Should reject nil context in repairInactiveMeta",
+			call: func(t *testing.T) error {
+				t.Helper()
+
+				h := newHarness(t)
+				meta := validResumeMeta(h, "sess-nil-repair-context")
+				var nilCtx context.Context
+				_, err := h.manager.repairInactiveMeta(nilCtx, filepath.Join(t.TempDir(), "meta.json"), meta)
+				return err
+			},
+			want: errResumeRepairContextRequired,
+		},
+		{
+			name: "Should reject nil context in RepairLegacyProvider",
+			call: func(t *testing.T) error {
+				t.Helper()
+
+				h := newHarness(t)
+				meta := validResumeMeta(h, "sess-nil-legacy-repair")
+				var nilCtx context.Context
+				_, err := RepairLegacyProvider(
+					nilCtx,
+					filepath.Join(t.TempDir(), "meta.json"),
+					meta,
+					LegacyProviderRepairOptions{
+						Now:               h.manager.now,
+						Logger:            h.manager.logger,
+						WorkspaceResolver: h.resolver,
+						AgentResolver:     h.manager.agentResolver,
+					},
+				)
+				return err
+			},
+			want: errLegacyProviderRepairContextNeeded,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := tc.call(t)
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("error = %v, want %v", err, tc.want)
+			}
+		})
 	}
 }
 

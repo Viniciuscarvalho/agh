@@ -5,11 +5,14 @@ import { toast } from "sonner";
 
 import { SessionThread } from "@/components/assistant-ui/session-thread";
 import { useSessionPageControls } from "@/hooks/routes/use-session-page-controls";
-import { ChatHeader } from "@/systems/session/components/chat-header";
-import { SessionChatRuntimeProvider } from "@/systems/session/components/session-chat-runtime-provider";
-import { SessionInspector } from "@/systems/session/components/session-inspector";
-import { useSession } from "@/systems/session/hooks/use-sessions";
-import type { SessionPayload } from "@/systems/session/types";
+import {
+  ChatHeader,
+  SessionChatRuntimeProvider,
+  SessionInspector,
+  SessionResumeFailure,
+  useSession,
+  type SessionPayload,
+} from "@/systems/session";
 import { useWorkspaces } from "@/systems/workspace";
 
 export const Route = createFileRoute("/_app/session/$id")({
@@ -33,6 +36,7 @@ function SessionPageContent({
     handleCancelPrompt,
     handleClear,
     handleDelete,
+    handleDismissResumeFailure,
     handleResume,
     handleStop,
     isClearing,
@@ -40,6 +44,7 @@ function SessionPageContent({
     isResuming,
     isStopping,
     messages,
+    resumeFailure,
   } = useSessionPageControls(sessionId, session.state, { onDeleteSuccess });
 
   return (
@@ -55,6 +60,17 @@ function SessionPageContent({
           isResuming={isResuming}
           workspaceName={workspaceName}
         />
+        {resumeFailure ? (
+          <SessionResumeFailure
+            agentName={resumeFailure.providerUnavailable?.agentName ?? session.agent_name}
+            isRetrying={isResuming}
+            message={resumeFailure.message}
+            missingProvider={resumeFailure.providerUnavailable?.missingProvider ?? null}
+            onDismiss={handleDismissResumeFailure}
+            onRetry={handleResume}
+            sessionId={sessionId}
+          />
+        ) : null}
         <SessionThread
           sessionId={sessionId}
           agentName={session.agent_name}

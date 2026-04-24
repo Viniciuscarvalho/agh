@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -39,6 +40,7 @@ func SessionPayloadFromInfo(info *session.Info) contract.SessionPayload {
 		ID:            info.ID,
 		Name:          info.Name,
 		AgentName:     info.AgentName,
+		Provider:      info.Provider,
 		WorkspaceID:   ref.WorkspaceID,
 		WorkspacePath: ref.WorkspacePath,
 		Channel:       info.Channel,
@@ -484,6 +486,61 @@ func WorkspaceSkillPayloads(skills []workspacepkg.SkillPath) []contract.Workspac
 		})
 	}
 	return payload
+}
+
+// SessionProviderOptionPayloadsFromConfig converts the merged workspace config
+// into a stable, UI-ready list of visible provider options.
+func SessionProviderOptionPayloadsFromConfig(cfg *aghconfig.Config) []contract.SessionProviderOptionPayload {
+	names := make([]string, 0, len(aghconfig.BuiltinProviders()))
+	for name := range aghconfig.BuiltinProviders() {
+		trimmed := strings.TrimSpace(name)
+		if trimmed == "" {
+			continue
+		}
+		if cfg != nil {
+			if _, err := cfg.ResolveProvider(trimmed); err != nil {
+				continue
+			}
+		}
+		names = append(names, trimmed)
+	}
+	if cfg != nil {
+		for name := range cfg.Providers {
+			trimmed := strings.TrimSpace(name)
+			if trimmed == "" {
+				continue
+			}
+			if _, err := cfg.ResolveProvider(trimmed); err != nil {
+				continue
+			}
+			names = append(names, trimmed)
+		}
+	}
+
+	return sessionProviderOptionPayloads(names)
+}
+
+func sessionProviderOptionPayloads(names []string) []contract.SessionProviderOptionPayload {
+	sortedNames := make([]string, 0, len(names))
+	seen := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		trimmed := strings.TrimSpace(name)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		sortedNames = append(sortedNames, trimmed)
+	}
+	sort.Strings(sortedNames)
+
+	payloads := make([]contract.SessionProviderOptionPayload, 0, len(sortedNames))
+	for _, name := range sortedNames {
+		payloads = append(payloads, contract.SessionProviderOptionPayload{Name: name})
+	}
+	return payloads
 }
 
 // PayloadJSON coerces raw strings into valid JSON response bodies.

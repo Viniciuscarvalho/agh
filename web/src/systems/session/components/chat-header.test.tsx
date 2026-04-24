@@ -17,6 +17,7 @@ const baseSession: SessionPayload = {
   id: "sess-001",
   name: "My Test Session",
   agent_name: "claude-code",
+  provider: "claude",
   workspace_id: "ws_alpha",
   workspace_path: "/tmp/workspace",
   state: "active",
@@ -33,6 +34,14 @@ describe("ChatHeader", () => {
     expect(screen.getByTestId("chat-breadcrumb")).toBeInTheDocument();
     expect(screen.getByText("claude-code")).toBeInTheDocument();
     expect(screen.getByTestId("session-name")).toHaveTextContent("My Test Session");
+  });
+
+  it("renders a provider badge when the session provider is present", () => {
+    render(
+      <ChatHeader session={baseSession} onDelete={vi.fn()} onStop={vi.fn()} onResume={vi.fn()} />
+    );
+
+    expect(screen.getByTestId("session-provider-badge")).toHaveTextContent("claude");
   });
 
   it("renders status dot with success tone for active state", () => {
@@ -84,6 +93,13 @@ describe("ChatHeader", () => {
     render(<ChatHeader session={session} onDelete={vi.fn()} onStop={vi.fn()} onResume={vi.fn()} />);
 
     expect(screen.getByTestId("session-name")).toHaveTextContent("sess-001");
+  });
+
+  it("hides the provider badge when the provider is blank after trimming", () => {
+    const session = { ...baseSession, provider: "   " };
+    render(<ChatHeader session={session} onDelete={vi.fn()} onStop={vi.fn()} onResume={vi.fn()} />);
+
+    expect(screen.queryByTestId("session-provider-badge")).not.toBeInTheDocument();
   });
 
   it("shows stop button for active session", () => {

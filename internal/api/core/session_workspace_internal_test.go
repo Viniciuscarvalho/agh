@@ -7,6 +7,7 @@ import (
 	"os"
 	"testing"
 
+	aghconfig "github.com/pedronauck/agh/internal/config"
 	"github.com/pedronauck/agh/internal/session"
 	workspacepkg "github.com/pedronauck/agh/internal/workspace"
 )
@@ -127,6 +128,9 @@ func TestSessionWorkspaceStatusMappings(t *testing.T) {
 	if got := statusForSessionError(workspacepkg.ErrWorkspaceRootMissing); got != http.StatusGone {
 		t.Fatalf("statusForSessionError(root missing) = %d, want %d", got, http.StatusGone)
 	}
+	if got := statusForSessionError(aghconfig.ErrProviderUnavailable); got != http.StatusBadRequest {
+		t.Fatalf("statusForSessionError(provider unavailable) = %d, want %d", got, http.StatusBadRequest)
+	}
 	if got := statusForSessionError(session.ErrSessionNotActive); got != http.StatusBadRequest {
 		t.Fatalf("statusForSessionError(not active) = %d, want %d", got, http.StatusBadRequest)
 	}
@@ -135,5 +139,81 @@ func TestSessionWorkspaceStatusMappings(t *testing.T) {
 	}
 	if got := statusForSessionError(errors.New("boom")); got != http.StatusInternalServerError {
 		t.Fatalf("statusForSessionError(default) = %d, want %d", got, http.StatusInternalServerError)
+	}
+}
+
+func TestSessionProviderOptionPayloads(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		input    []string
+		expected []string
+	}{
+		{
+			name:     "empty input returns empty payload",
+			input:    nil,
+			expected: nil,
+		},
+		{
+			name:     "single input is trimmed and preserved",
+			input:    []string{"  codex  "},
+			expected: []string{"codex"},
+		},
+		{
+			name:     "duplicates and blanks are removed before sorting",
+			input:    []string{"", "claude", " codex ", "claude", "  "},
+			expected: []string{"claude", "codex"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			payloads := sessionProviderOptionPayloads(tc.input)
+			if got, want := len(payloads), len(tc.expected); got != want {
+				t.Fatalf("len(payloads) = %d, want %d (%#v)", got, want, payloads)
+			}
+			for i, want := range tc.expected {
+				if got := payloads[i].Name; got != want {
+					t.Fatalf("payloads[%d].Name = %q, want %q (%#v)", i, got, want, payloads)
+				}
+			}
+		})
+	}
+}
+
+func TestSessionProviderOptionPayloadsFromConfig(t *testing.T) {
+	t.Parallel()
+
+	cfg := &aghconfig.Config{
+		Providers: map[string]aghconfig.ProviderConfig{
+			"alpha":  {Command: "alpha --acp"},
+			"claude": {Command: "claude-overlay --acp"},
+		},
+	}
+
+	expectedNames := make([]string, 0, len(aghconfig.BuiltinProviders())+len(cfg.Providers))
+	for name := range aghconfig.BuiltinProviders() {
+		if _, err := cfg.ResolveProvider(name); err == nil {
+			expectedNames = append(expectedNames, name)
+		}
+	}
+	for name := range cfg.Providers {
+		if _, err := cfg.ResolveProvider(name); err == nil {
+			expectedNames = append(expectedNames, name)
+		}
+	}
+
+	payloads := SessionProviderOptionPayloadsFromConfig(cfg)
+	expected := sessionProviderOptionPayloads(expectedNames)
+	if got, want := len(payloads), len(expected); got != want {
+		t.Fatalf("len(payloads) = %d, want %d (%#v)", got, want, payloads)
+	}
+	for i, want := range expected {
+		if got := payloads[i].Name; got != want.Name {
+			t.Fatalf("payloads[%d].Name = %q, want %q (%#v)", i, got, want.Name, payloads)
+		}
 	}
 }
