@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -70,6 +72,8 @@ func TestRuntimeHarnessWaitForReadyReturnsExitError(t *testing.T) {
 
 	if err := harness.waitForReady(ctx, time.Millisecond); err == nil {
 		t.Fatal("waitForReady() error = nil, want non-nil")
+	} else if !errors.Is(err, errDaemonExitedBeforeReadiness) {
+		t.Fatalf("waitForReady() error = %v, want errDaemonExitedBeforeReadiness", err)
 	}
 }
 
@@ -96,6 +100,36 @@ func TestReadSSERecordsInferSemanticEventsFromJSONFrames(t *testing.T) {
 	want := []string{"agent_message", "permission", "tool_call", "error", "done"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("record events = %#v, want %#v", got, want)
+	}
+}
+
+func TestReadSSERecordsUntilReturnsBeforeEOF(t *testing.T) {
+	t.Parallel()
+
+	reader, writer := io.Pipe()
+	releaseWriter := make(chan struct{})
+	writerDone := make(chan struct{})
+	go func() {
+		defer close(writerDone)
+		_, _ = writer.Write([]byte("event: runtime_progress\ndata: {\"type\":\"runtime_progress\"}\n\n"))
+		<-releaseWriter
+		_ = writer.Close()
+	}()
+
+	records, err := readSSERecordsUntil(reader, func(record SSEEvent) bool {
+		return record.Event == "runtime_progress"
+	})
+	close(releaseWriter)
+	<-writerDone
+	_ = reader.Close()
+	if err != nil {
+		t.Fatalf("readSSERecordsUntil() error = %v", err)
+	}
+	if got, want := len(records), 1; got != want {
+		t.Fatalf("len(records) = %d, want %d", got, want)
+	}
+	if got, want := records[0].Event, "runtime_progress"; got != want {
+		t.Fatalf("records[0].Event = %q, want %q", got, want)
 	}
 }
 
@@ -195,8 +229,12 @@ func TestRuntimeHarnessStartRetryHelpersRebindHTTPPortAndCleanStaleState(t *test
 		processErr:     errors.New("exit status 1"),
 	}
 
-	if !harness.readinessFailureShouldRetry(errors.New("daemon exited before readiness: exit status 1")) {
+	readinessErr := fmt.Errorf("%w: %w", errDaemonExitedBeforeReadiness, errors.New("exit status 1"))
+	if !harness.readinessFailureShouldRetry(readinessErr) {
 		t.Fatal("readinessFailureShouldRetry() = false, want true for bind conflict")
+	}
+	if harness.readinessFailureShouldRetry(errors.New("daemon exited before readiness: exit status 1")) {
+		t.Fatal("readinessFailureShouldRetry() = true for string-only error, want false")
 	}
 
 	if err := harness.cleanupFailedStart(testContext(t)); err != nil {
@@ -234,6 +272,85 @@ func TestRuntimeHarnessStartRetryHelpersRebindHTTPPortAndCleanStaleState(t *test
 	}
 	if !strings.Contains(string(configContents), fmt.Sprintf("port = %d", harness.Config.HTTP.Port)) {
 		t.Fatalf("config contents = %s, want rewritten port %d", string(configContents), harness.Config.HTTP.Port)
+	}
+
+	if err := os.WriteFile(
+		processLogPath,
+		[]byte(
+			"error: daemon: start uds server: udsapi: listen on \"/tmp/agh.sock\": listen unix /tmp/agh.sock: bind: file exists\n",
+		),
+		0o600,
+	); err != nil {
+		t.Fatalf("os.WriteFile(%q) socket conflict error = %v", processLogPath, err)
+	}
+	if !harness.readinessFailureShouldRetry(readinessErr) {
+		t.Fatal("readinessFailureShouldRetry() = false, want true for socket bind conflict")
+	}
+	if retryHTTPPort, retrySocketPath := harness.readinessFailureRetryReasons(
+		readinessErr,
+	); retryHTTPPort || !retrySocketPath {
+		t.Fatalf(
+			"readinessFailureRetryReasons(socket conflict) = (%v, %v), want (false, true)",
+			retryHTTPPort,
+			retrySocketPath,
+		)
+	}
+
+	if err := os.WriteFile(
+		processLogPath,
+		[]byte(
+			"error: daemon: start uds server: udsapi: listen on \"/tmp/agh.sock\": listen unix /tmp/agh.sock: bind: address already in use\n",
+		),
+		0o600,
+	); err != nil {
+		t.Fatalf("os.WriteFile(%q) socket address conflict error = %v", processLogPath, err)
+	}
+	if retryHTTPPort, retrySocketPath := harness.readinessFailureRetryReasons(
+		readinessErr,
+	); retryHTTPPort || !retrySocketPath {
+		t.Fatalf(
+			"readinessFailureRetryReasons(socket address conflict) = (%v, %v), want (false, true)",
+			retryHTTPPort,
+			retrySocketPath,
+		)
+	}
+
+	previousSocket := harness.Config.Daemon.Socket
+	if err := harness.reseedRuntimeSocketPath(t); err != nil {
+		t.Fatalf("reseedRuntimeSocketPath() error = %v", err)
+	}
+	if harness.Config.Daemon.Socket == previousSocket {
+		t.Fatalf("reseedRuntimeSocketPath() kept socket %q, want new path", previousSocket)
+	}
+	if harness.UDSClient == nil {
+		t.Fatal("reseedRuntimeSocketPath() left UDSClient nil")
+	}
+}
+
+func TestRuntimeHarnessPromptSessionUntilRejectsNilPredicateBeforeRequest(t *testing.T) {
+	t.Parallel()
+
+	var requested atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requested.Store(true)
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+
+	harness := &RuntimeHarness{
+		UDSBaseURL: server.URL,
+		UDSClient:  server.Client(),
+	}
+
+	records, err := harness.PromptSessionUntil(context.Background(), "sess-nil-predicate", "hello", nil)
+	if err == nil {
+		t.Fatal("PromptSessionUntil(nil predicate) error = nil, want validation error")
+	}
+	if records != nil {
+		t.Fatalf("PromptSessionUntil(nil predicate) records = %#v, want nil", records)
+	}
+	if requested.Load() {
+		t.Fatal("PromptSessionUntil(nil predicate) issued an HTTP request")
 	}
 }
 

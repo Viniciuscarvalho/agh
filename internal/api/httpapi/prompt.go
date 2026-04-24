@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pedronauck/agh/internal/acp"
+	"github.com/pedronauck/agh/internal/api/contract"
 	core "github.com/pedronauck/agh/internal/api/core"
 )
 
@@ -17,6 +19,8 @@ type promptRequest struct {
 	Message  string              `json:"message"`
 	Messages []uiMessageEnvelope `json:"messages"`
 }
+
+const detachedPromptDrainTimeout = 30 * time.Second
 
 type uiMessageEnvelope struct {
 	Role    string              `json:"role"`
@@ -30,21 +34,22 @@ type uiMessageTextPart struct {
 }
 
 type agentEventPayload struct {
-	Type       string             `json:"type"`
-	SessionID  string             `json:"session_id,omitempty"`
-	TurnID     string             `json:"turn_id,omitempty"`
-	RequestID  string             `json:"request_id,omitempty"`
-	Timestamp  string             `json:"timestamp,omitempty"`
-	Text       string             `json:"text,omitempty"`
-	Title      string             `json:"title,omitempty"`
-	ToolCallID string             `json:"tool_call_id,omitempty"`
-	StopReason string             `json:"stop_reason,omitempty"`
-	Action     string             `json:"action,omitempty"`
-	Resource   string             `json:"resource,omitempty"`
-	Decision   string             `json:"decision,omitempty"`
-	Error      string             `json:"error,omitempty"`
-	Usage      *tokenUsagePayload `json:"usage,omitempty"`
-	Raw        json.RawMessage    `json:"raw,omitempty"`
+	Type       string                           `json:"type"`
+	SessionID  string                           `json:"session_id,omitempty"`
+	TurnID     string                           `json:"turn_id,omitempty"`
+	RequestID  string                           `json:"request_id,omitempty"`
+	Timestamp  string                           `json:"timestamp,omitempty"`
+	Text       string                           `json:"text,omitempty"`
+	Title      string                           `json:"title,omitempty"`
+	ToolCallID string                           `json:"tool_call_id,omitempty"`
+	StopReason string                           `json:"stop_reason,omitempty"`
+	Action     string                           `json:"action,omitempty"`
+	Resource   string                           `json:"resource,omitempty"`
+	Decision   string                           `json:"decision,omitempty"`
+	Error      string                           `json:"error,omitempty"`
+	Usage      *tokenUsagePayload               `json:"usage,omitempty"`
+	Runtime    *contract.RuntimeActivityPayload `json:"runtime,omitempty"`
+	Raw        json.RawMessage                  `json:"raw,omitempty"`
 }
 
 type tokenUsagePayload struct {
@@ -97,7 +102,12 @@ func (h *Handlers) promptSession(c *gin.Context) {
 	}
 
 	promptCtx, cancelPrompt := context.WithCancel(context.WithoutCancel(c.Request.Context()))
-	defer cancelPrompt()
+	cancelOnReturn := cancelPrompt
+	defer func() {
+		if cancelOnReturn != nil {
+			cancelOnReturn()
+		}
+	}()
 	events, err := h.Sessions.Prompt(promptCtx, c.Param("id"), message)
 	if err != nil {
 		core.RespondError(c, core.StatusForSessionError(err), err, true)
@@ -124,6 +134,9 @@ func (h *Handlers) promptSession(c *gin.Context) {
 	for {
 		select {
 		case <-c.Request.Context().Done():
+			cancelOnReturn()
+			cancelOnReturn = nil
+			h.drainPromptEventsAsync(context.WithoutCancel(c.Request.Context()), events)
 			return
 		case <-h.StreamDoneChannel():
 			return
@@ -135,9 +148,58 @@ func (h *Handlers) promptSession(c *gin.Context) {
 				return
 			}
 			if err := state.emit(writer, event); err != nil {
+				cancelOnReturn()
+				cancelOnReturn = nil
+				h.drainPromptEventsAsync(context.WithoutCancel(c.Request.Context()), events)
 				return
 			}
 		}
+	}
+}
+
+func (h *Handlers) drainPromptEventsAsync(ctx context.Context, events <-chan acp.AgentEvent) {
+	if h == nil || ctx == nil {
+		return
+	}
+	drainCtx, cancelDrain := context.WithTimeout(ctx, detachedPromptDrainTimeout)
+	h.promptDrainWG.Go(func() {
+		defer cancelDrain()
+		h.drainPromptEvents(drainCtx, events)
+	})
+}
+
+func (h *Handlers) drainPromptEvents(ctx context.Context, events <-chan acp.AgentEvent) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-h.StreamDoneChannel():
+			return
+		case _, ok := <-events:
+			if !ok {
+				return
+			}
+		}
+	}
+}
+
+func (h *Handlers) waitForPromptDrains(ctx context.Context) error {
+	if h == nil {
+		return nil
+	}
+	if ctx == nil {
+		return errors.New("httpapi: prompt drain wait context is required")
+	}
+	done := make(chan struct{})
+	go func() {
+		h.promptDrainWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("httpapi: wait for prompt drains: %w", ctx.Err())
 	}
 }
 
@@ -526,6 +588,7 @@ func agentEventPayloadFromEvent(event acp.AgentEvent) agentEventPayload {
 		Decision:   base.Decision,
 		Error:      base.Error,
 		Usage:      tokenUsagePayloadFromUsage(event.Usage),
+		Runtime:    base.Runtime,
 		Raw:        base.Raw,
 	}
 	if !event.Timestamp.IsZero() {

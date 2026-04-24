@@ -27,6 +27,54 @@ const (
 	promptSubmissionPathSynthetic  promptSubmissionPath = "synthetic"
 )
 
+type promptPumpLoopState struct {
+	source    <-chan acp.AgentEvent
+	runtime   <-chan acp.AgentEvent
+	activity  *promptActivitySupervisor
+	turnEnded bool
+}
+
+func (s *promptPumpLoopState) active() bool {
+	return s != nil && (s.source != nil || s.runtime != nil)
+}
+
+func (s *promptPumpLoopState) sourceClosedShouldReturn() bool {
+	if s == nil {
+		return true
+	}
+	s.source = nil
+	s.stopRuntime()
+	return s.runtime == nil || s.turnEnded
+}
+
+func (s *promptPumpLoopState) runtimeClosedShouldReturn() bool {
+	if s == nil {
+		return true
+	}
+	s.runtime = nil
+	return s.turnEnded || s.source == nil
+}
+
+func (s *promptPumpLoopState) turnEndedShouldReturn() bool {
+	if s == nil {
+		return true
+	}
+	s.turnEnded = true
+	s.stopRuntime()
+	return s.runtime == nil
+}
+
+func (s *promptPumpLoopState) stopRuntime() {
+	if s == nil || s.activity == nil || s.runtime == nil {
+		return
+	}
+	s.activity.stop()
+}
+
+func isPromptTerminalEvent(eventType string) bool {
+	return eventType == acp.EventTypeDone || eventType == acp.EventTypeError
+}
+
 // Prompt sends one prompt turn to an active session and mirrors the runtime stream into storage and observers.
 func (m *Manager) Prompt(ctx context.Context, id string, msg string) (<-chan acp.AgentEvent, error) {
 	return m.PromptWithOpts(ctx, id, PromptOpts{
@@ -117,19 +165,25 @@ func (m *Manager) submitPromptRequest(ctx context.Context, req promptRequest) (<
 			dispatchMessage = augmented
 		}
 	}
+	activity := newPromptActivitySupervisor(ctx, m, session, turnState, m.supervision)
+	activity.start()
 	source, err := m.driver.Prompt(ctx, proc, acp.PromptRequest{
-		TurnID:  req.turnID,
-		Message: dispatchMessage,
-		Meta:    req.meta,
+		TurnID:                    req.turnID,
+		Message:                   dispatchMessage,
+		Meta:                      req.meta,
+		ActivityReporter:          activity.report,
+		ActivityHeartbeatInterval: m.supervision.ActivityHeartbeatInterval,
 	})
 	if err != nil {
+		activity.stop()
+		activity.finish(m.now())
 		return nil, fmt.Errorf("session: prompt session %q: %w", req.target, err)
 	}
 
 	out := make(chan acp.AgentEvent, m.promptBufSize)
 	clearTurnSource = false
 	// pumpPrompt terminates when the driver closes the source channel or the request context ends.
-	go m.pumpPrompt(ctx, session, turnState, source, out)
+	go m.pumpPrompt(ctx, session, turnState, source, activity.eventsChannel(), out, activity)
 	return out, nil
 }
 
@@ -357,10 +411,16 @@ func (m *Manager) pumpPrompt(
 	session *Session,
 	turnState *promptTurnDispatchState,
 	source <-chan acp.AgentEvent,
+	runtime <-chan acp.AgentEvent,
 	out chan<- acp.AgentEvent,
+	activity *promptActivitySupervisor,
 ) {
 	defer close(out)
 	defer func() {
+		if activity != nil {
+			activity.stop()
+			activity.finish(m.now())
+		}
 		m.finishPromptMessage(ctx, turnState, time.Time{})
 		m.dispatchTurnEnd(ctx, turnState, time.Time{})
 		if session != nil {
@@ -374,28 +434,37 @@ func (m *Manager) pumpPrompt(
 		}
 	}()
 
-	for {
+	loop := promptPumpLoopState{source: source, runtime: runtime, activity: activity}
+	for loop.active() {
 		var (
-			event acp.AgentEvent
-			ok    bool
+			event        acp.AgentEvent
+			ok           bool
+			runtimeEvent bool
 		)
 		select {
 		case <-ctx.Done():
 			return
-		case event, ok = <-source:
+		case event, ok = <-loop.source:
 			if !ok {
-				return
+				if loop.sourceClosedShouldReturn() {
+					return
+				}
+				continue
 			}
+		case event, ok = <-loop.runtime:
+			if !ok {
+				if loop.runtimeClosedShouldReturn() {
+					return
+				}
+				continue
+			}
+			runtimeEvent = true
 		}
 
 		normalized := m.normalizeEvent(session, turnState.turnID, event)
 		normalized = m.preparePromptEvent(ctx, turnState, normalized)
-		if session != nil {
-			session.observeACPUpdate(normalized.Timestamp)
-			if err := m.writeMeta(session); err != nil {
-				m.sessionLogger(session).
-					Warn("session: persist liveness update failed", "turn_id", turnState.turnID, "error", err)
-			}
+		if activity != nil && !runtimeEvent {
+			activity.observeEvent(normalized)
 		}
 		if err := m.recordEvent(ctx, session, normalized); err != nil {
 			m.sessionLogger(session).
@@ -409,9 +478,11 @@ func (m *Manager) pumpPrompt(
 			return
 		}
 
-		if normalized.Type == acp.EventTypeDone || normalized.Type == acp.EventTypeError {
+		if isPromptTerminalEvent(normalized.Type) {
 			m.dispatchTurnEnd(ctx, turnState, normalized.Timestamp)
-			return
+			if loop.turnEndedShouldReturn() {
+				return
+			}
 		}
 	}
 }

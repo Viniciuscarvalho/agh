@@ -21,9 +21,10 @@ const (
 	// RestartOperationEnvKey carries the restart operation id from the helper to the replacement daemon.
 	RestartOperationEnvKey = "AGH_INTERNAL_RESTART_OPERATION_ID"
 
-	defaultRestartPollInterval = 100 * time.Millisecond
-	defaultRestartReleaseWait  = 15 * time.Second
-	defaultRestartReadyWait    = 20 * time.Second
+	defaultRestartPollInterval  = 100 * time.Millisecond
+	defaultRestartReleaseWait   = 15 * time.Second
+	defaultRestartReadyWait     = 20 * time.Second
+	defaultRestartExitDrainWait = 500 * time.Millisecond
 )
 
 var (
@@ -560,6 +561,7 @@ type RelaunchHelperConfig struct {
 	PollInterval   time.Duration
 	ReleaseTimeout time.Duration
 	ReadyTimeout   time.Duration
+	ExitDrainWait  time.Duration
 }
 
 type relaunchHelper struct {
@@ -592,6 +594,9 @@ func newRelaunchHelper(cfg RelaunchHelperConfig) *relaunchHelper {
 	}
 	if cfg.ReadyTimeout <= 0 {
 		cfg.ReadyTimeout = defaultRestartReadyWait
+	}
+	if cfg.ExitDrainWait <= 0 {
+		cfg.ExitDrainWait = defaultRestartExitDrainWait
 	}
 
 	return &relaunchHelper{
@@ -768,6 +773,9 @@ func (h *relaunchHelper) waitForReady(
 	operationID string,
 	process restartProcess,
 ) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	waitCtx, cancel := withTimeoutCap(ctx, h.cfg.ReadyTimeout)
 	defer cancel()
 
@@ -795,11 +803,7 @@ func (h *relaunchHelper) waitForReady(
 				errReplacementDaemonExitedBeforeReady,
 			)
 		case <-waitCtx.Done():
-			return h.fail(
-				store,
-				operationID,
-				errors.New("daemon: replacement daemon did not become ready before timeout"),
-			)
+			return h.handleReadyWaitDone(ctx, waitCtx, store, operationID, processErrCh)
 		case <-ticker.C:
 			operation, err := store.Get(operationID)
 			if err != nil {
@@ -816,6 +820,80 @@ func (h *relaunchHelper) waitForReady(
 				return fmt.Errorf("daemon: restart operation failed: %s", operation.FailureReason)
 			}
 		}
+	}
+}
+
+func (h *relaunchHelper) handleReadyWaitDone(
+	ctx context.Context,
+	waitCtx context.Context,
+	store *restartStore,
+	operationID string,
+	processErrCh <-chan error,
+) error {
+	if err := replacementReadinessCanceledError(waitCtx); err != nil {
+		return h.fail(store, operationID, err)
+	}
+	exited, err := waitForProcessExitAfterReadyTimeout(ctx, processErrCh, h.cfg.ExitDrainWait)
+	if exited {
+		if err != nil {
+			return h.fail(
+				store,
+				operationID,
+				fmt.Errorf("%w: %w", errReplacementDaemonExitedBeforeReady, err),
+			)
+		}
+		return h.fail(store, operationID, errReplacementDaemonExitedBeforeReady)
+	}
+	if err != nil {
+		if cancelErr := replacementReadinessCanceledError(ctx); cancelErr != nil {
+			return h.fail(store, operationID, cancelErr)
+		}
+		return h.fail(
+			store,
+			operationID,
+			fmt.Errorf("daemon: wait for replacement daemon exit after readiness timeout: %w", err),
+		)
+	}
+	return h.fail(store, operationID, errors.New("daemon: replacement daemon did not become ready before timeout"))
+}
+
+func replacementReadinessCanceledError(ctx context.Context) error {
+	if ctx == nil || !errors.Is(ctx.Err(), context.Canceled) {
+		return nil
+	}
+	cause := context.Cause(ctx)
+	if cause == nil {
+		cause = ctx.Err()
+	} else if !errors.Is(cause, ctx.Err()) {
+		cause = errors.Join(ctx.Err(), cause)
+	}
+	return fmt.Errorf("daemon: replacement daemon readiness canceled: %w", cause)
+}
+
+func waitForProcessExitAfterReadyTimeout(
+	ctx context.Context,
+	processErrCh <-chan error,
+	grace time.Duration,
+) (bool, error) {
+	select {
+	case err := <-processErrCh:
+		return true, err
+	default:
+	}
+	if grace <= 0 {
+		return false, nil
+	}
+
+	timer := time.NewTimer(grace)
+	defer timer.Stop()
+
+	select {
+	case err := <-processErrCh:
+		return true, err
+	case <-timer.C:
+		return false, nil
+	case <-ctx.Done():
+		return false, ctx.Err()
 	}
 }
 

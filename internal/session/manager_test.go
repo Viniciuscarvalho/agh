@@ -613,6 +613,63 @@ func TestResumeFallsBackToFreshStartWhenStoredACPSessionIsMissing(t *testing.T) 
 	}
 }
 
+func TestResumeMissingACPStateFallbackPreservesRecoveredCrashClassification(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	session := createSession(t, h)
+	originalACP := session.Info().ACPSessionID
+
+	if err := h.manager.Stop(testutil.Context(t), session.ID); err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+
+	meta := readMeta(t, session.MetaPath())
+	meta.State = string(StateActive)
+	meta.StopReason = nil
+	meta.StopDetail = ""
+	if err := store.WriteSessionMeta(session.MetaPath(), meta); err != nil {
+		t.Fatalf("WriteSessionMeta() error = %v", err)
+	}
+
+	h.driver.startHook = func(opts acp.StartOpts, sequence int) (*fakeProcess, error) {
+		if opts.ResumeSessionID != "" {
+			return nil, fmt.Errorf(
+				"%w: load session %q for %q: %w",
+				acp.ErrLoadSessionFailed,
+				opts.ResumeSessionID,
+				opts.AgentName,
+				&acpsdk.RequestError{
+					Code:    -32002,
+					Message: "Resource not found: " + opts.ResumeSessionID,
+				},
+			)
+		}
+		return newFakeProcess(opts.AgentName, opts.Command, opts.Cwd, fmt.Sprintf("acp-new-%d", sequence)), nil
+	}
+
+	resumed, err := h.manager.Resume(testutil.Context(t), session.ID)
+	if err != nil {
+		t.Fatalf("Resume(missing ACP state after crash repair) error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = h.manager.Stop(testutil.Context(t), resumed.ID)
+	})
+
+	if got := h.driver.startCalls[1].ResumeSessionID; got != originalACP {
+		t.Fatalf("first resume start ResumeSessionID = %q, want %q", got, originalACP)
+	}
+	if got := h.driver.startCalls[2].ResumeSessionID; got != "" {
+		t.Fatalf("fallback resume start ResumeSessionID = %q, want empty", got)
+	}
+	if got := resumed.Info().StopReason; got != store.StopAgentCrashed {
+		t.Fatalf("resumed StopReason = %q, want %q", got, store.StopAgentCrashed)
+	}
+	if got := resumed.Info().StopDetail; got != resumeStopDetailAgentCrashed {
+		t.Fatalf("resumed StopDetail = %q, want %q", got, resumeStopDetailAgentCrashed)
+	}
+}
+
 func TestResumeFailureRestoresStoppedMetadata(t *testing.T) {
 	t.Parallel()
 
@@ -855,7 +912,15 @@ func TestPumpPromptReturnsWhenContextIsCanceledWhileWaitingForSource(t *testing.
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		h.manager.pumpPrompt(ctx, nil, newPromptTurnDispatchState(nil, "turn-1", TurnSourceUser, ""), source, out)
+		h.manager.pumpPrompt(
+			ctx,
+			nil,
+			newPromptTurnDispatchState(nil, "turn-1", TurnSourceUser, ""),
+			source,
+			nil,
+			out,
+			nil,
+		)
 	}()
 
 	cancel()
@@ -873,6 +938,69 @@ func TestPumpPromptReturnsWhenContextIsCanceledWhileWaitingForSource(t *testing.
 		}
 	default:
 		t.Fatal("pumpPrompt() did not close output channel")
+	}
+}
+
+func TestPumpPromptDrainsRuntimeEventsAfterTurnDone(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	session := createSession(t, h)
+	t.Cleanup(func() {
+		_ = h.manager.Stop(testutil.Context(t), session.ID)
+	})
+
+	source := make(chan acp.AgentEvent)
+	runtimeEvents := make(chan acp.AgentEvent, 1)
+	out := make(chan acp.AgentEvent)
+	done := make(chan struct{})
+	ctx := testutil.Context(t)
+
+	go func() {
+		defer close(done)
+		h.manager.pumpPrompt(
+			ctx,
+			session,
+			newPromptTurnDispatchState(session, "turn-runtime-drain", TurnSourceUser, ""),
+			source,
+			runtimeEvents,
+			out,
+			nil,
+		)
+	}()
+
+	source <- acp.AgentEvent{Type: acp.EventTypeDone, TurnID: "turn-runtime-drain"}
+	first := receivePromptEvent(t, out)
+	if first.Type != acp.EventTypeDone {
+		t.Fatalf("first event type = %q, want %q", first.Type, acp.EventTypeDone)
+	}
+
+	runtimeEvents <- acp.AgentEvent{Type: acp.EventTypeRuntimeProgress, TurnID: "turn-runtime-drain"}
+	close(runtimeEvents)
+	second := receivePromptEvent(t, out)
+	if second.Type != acp.EventTypeRuntimeProgress {
+		t.Fatalf("second event type = %q, want %q", second.Type, acp.EventTypeRuntimeProgress)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("pumpPrompt() did not return after draining runtime events")
+	}
+}
+
+func receivePromptEvent(t *testing.T, events <-chan acp.AgentEvent) acp.AgentEvent {
+	t.Helper()
+
+	select {
+	case event, ok := <-events:
+		if !ok {
+			t.Fatal("prompt output channel closed before expected event")
+		}
+		return event
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for prompt event")
+		return acp.AgentEvent{}
 	}
 }
 

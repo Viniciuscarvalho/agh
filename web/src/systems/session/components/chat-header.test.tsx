@@ -88,6 +88,30 @@ describe("ChatHeader", () => {
     expect(badge.getAttribute("data-slot")).toBe("mono-badge");
   });
 
+  it("shows current runtime activity when the session is supervised", () => {
+    render(
+      <ChatHeader
+        session={{
+          ...baseSession,
+          activity: {
+            current_tool: "Read",
+            elapsed_seconds: 0,
+            idle_seconds: 12,
+            iteration_current: 0,
+            iteration_max: 0,
+            last_activity_kind: "tool_call",
+          },
+        }}
+        onDelete={vi.fn()}
+        onStop={vi.fn()}
+        onResume={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId("session-activity-inline")).toHaveTextContent("Using Read");
+    expect(screen.getByTestId("session-activity-inline")).toHaveTextContent("12s");
+  });
+
   it("shows session ID when name is not set", () => {
     const session = { ...baseSession, name: undefined };
     render(<ChatHeader session={session} onDelete={vi.fn()} onStop={vi.fn()} onResume={vi.fn()} />);

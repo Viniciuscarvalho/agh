@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -445,8 +446,16 @@ func TestDeliveryCoordinatorRetriesPromptFailuresAfterWorkerExit(t *testing.T) {
 
 	prompter := newFakeDeliveryPrompter()
 	prompter.queuePromptResult(errors.New("temporary prompt failure"))
+	retries := make(chan scheduledDeliveryRetry, 1)
 
-	coordinator, err := newDeliveryCoordinator(ctx, 4, prompter)
+	coordinator, err := newDeliveryCoordinator(
+		ctx,
+		4,
+		prompter,
+		withDeliveryRetryScheduler(func(_ context.Context, delay time.Duration, fn func()) {
+			retries <- scheduledDeliveryRetry{delay: delay, run: fn}
+		}),
+	)
 	if err != nil {
 		t.Fatalf("newDeliveryCoordinator() error = %v", err)
 	}
@@ -458,11 +467,26 @@ func TestDeliveryCoordinatorRetriesPromptFailuresAfterWorkerExit(t *testing.T) {
 		t.Fatalf("acceptOne() error = %v", err)
 	}
 
-	prompter.waitForCalls(t, 2)
-	if got := coordinator.queueDepth("sess-retry"); got != 0 {
-		t.Fatalf("queueDepth(sess-retry) = %d, want 0 once retry worker is active", got)
+	prompter.waitForCalls(t, 1)
+
+	var retry scheduledDeliveryRetry
+	select {
+	case retry = <-retries:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for scheduled retry after prompt failure")
+	}
+	if got, want := retry.delay, defaultDeliveryRetryBaseDelay; got != want {
+		t.Fatalf("retry delay = %s, want %s", got, want)
+	}
+	if got := prompter.callCount(); got != 1 {
+		t.Fatalf("callCount() before scheduled retry runs = %d, want 1", got)
+	}
+	if got := coordinator.queueDepth("sess-retry"); got != 1 {
+		t.Fatalf("queueDepth(sess-retry) before scheduled retry runs = %d, want 1", got)
 	}
 
+	retry.run()
+	prompter.waitForCalls(t, 2)
 	call := prompter.call(1)
 	if !strings.Contains(call.message, "retry me") {
 		t.Fatalf("retry call message = %q, want retried preview", call.message)
@@ -473,6 +497,95 @@ func TestDeliveryCoordinatorRetriesPromptFailuresAfterWorkerExit(t *testing.T) {
 
 	if got := coordinator.queueDepth("sess-retry"); got != 0 {
 		t.Fatalf("queueDepth(sess-retry) after completion = %d, want 0", got)
+	}
+}
+
+func TestDeliveryCoordinatorWaitTracksPendingRetryScheduler(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	prompter := newFakeDeliveryPrompter()
+	prompter.queuePromptResult(errors.New("temporary prompt failure"))
+	schedulerEntered := make(chan struct{})
+	releaseScheduler := make(chan struct{})
+
+	coordinator, err := newDeliveryCoordinator(
+		ctx,
+		4,
+		prompter,
+		withDeliveryRetryScheduler(func(ctx context.Context, _ time.Duration, _ func()) {
+			close(schedulerEntered)
+			select {
+			case <-ctx.Done():
+			case <-releaseScheduler:
+			}
+		}),
+	)
+	if err != nil {
+		t.Fatalf("newDeliveryCoordinator() error = %v", err)
+	}
+
+	if err := coordinator.acceptOne(context.Background(), Delivery{
+		SessionID: "sess-tracked-retry",
+		Envelope:  testDeliveryEnvelope(t, "msg-tracked-retry", "retry me"),
+	}); err != nil {
+		t.Fatalf("acceptOne() error = %v", err)
+	}
+
+	prompter.waitForCalls(t, 1)
+	select {
+	case <-schedulerEntered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for retry scheduler")
+	}
+
+	waitDone := make(chan struct{})
+	go func() {
+		coordinator.wait()
+		close(waitDone)
+	}()
+
+	select {
+	case <-waitDone:
+		t.Fatal("coordinator.wait() returned before pending retry scheduler finished")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(releaseScheduler)
+	select {
+	case <-waitDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("coordinator.wait() did not return after retry scheduler finished")
+	}
+}
+
+func TestDeliveryCoordinatorRetryDelayUsesExponentialCap(t *testing.T) {
+	t.Parallel()
+
+	coordinator, err := newDeliveryCoordinator(t.Context(), 4, newFakeDeliveryPrompter())
+	if err != nil {
+		t.Fatalf("newDeliveryCoordinator() error = %v", err)
+	}
+
+	cases := []struct {
+		attempt int
+		want    time.Duration
+	}{
+		{attempt: 0, want: defaultDeliveryRetryBaseDelay},
+		{attempt: 1, want: defaultDeliveryRetryBaseDelay},
+		{attempt: 2, want: 2 * defaultDeliveryRetryBaseDelay},
+		{attempt: 5, want: 16 * defaultDeliveryRetryBaseDelay},
+		{attempt: 99, want: defaultDeliveryRetryMaxDelay},
+	}
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("ShouldUseExpectedRetryDelayForAttempt%d", tc.attempt), func(t *testing.T) {
+			t.Parallel()
+
+			if got := coordinator.retryDelayFor(tc.attempt); got != tc.want {
+				t.Fatalf("retryDelayFor(%d) = %s, want %s", tc.attempt, got, tc.want)
+			}
+		})
 	}
 }
 
@@ -661,6 +774,11 @@ type fakePromptCall struct {
 	message   string
 	meta      acp.PromptNetworkMeta
 	events    chan acp.AgentEvent
+}
+
+type scheduledDeliveryRetry struct {
+	delay time.Duration
+	run   func()
 }
 
 func newFakeDeliveryPrompter() *fakeDeliveryPrompter {

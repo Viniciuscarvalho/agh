@@ -38,6 +38,8 @@ const (
 	runtimeManifestName = "runtime-manifest.json"
 )
 
+var errDaemonExitedBeforeReadiness = errors.New("daemon exited before readiness")
+
 var (
 	buildBinaryMu   sync.Mutex
 	builtBinaryPath string
@@ -174,11 +176,12 @@ func startRuntimeProcess(
 		if err == nil {
 			return
 		}
+		retryHTTPPort, retrySocketPath := harness.readinessFailureRetryReasons(err)
 
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		cleanupErr := harness.cleanupFailedStart(cleanupCtx)
 		cleanupCancel()
-		if attempt == maxStartAttempts || !harness.readinessFailureShouldRetry(err) {
+		if attempt == maxStartAttempts || (!retryHTTPPort && !retrySocketPath) {
 			if cleanupErr != nil {
 				t.Fatalf("cleanup failed start after readiness error = %v (readiness error = %v)", cleanupErr, err)
 			}
@@ -187,8 +190,15 @@ func startRuntimeProcess(
 		if cleanupErr != nil {
 			t.Fatalf("cleanup failed start before retry error = %v (readiness error = %v)", cleanupErr, err)
 		}
-		if err := harness.reseedRuntimeHTTPPort(t); err != nil {
-			t.Fatalf("reseed runtime HTTP port error = %v", err)
+		if retryHTTPPort {
+			if err := harness.reseedRuntimeHTTPPort(t); err != nil {
+				t.Fatalf("reseed runtime HTTP port error = %v", err)
+			}
+		}
+		if retrySocketPath {
+			if err := harness.reseedRuntimeSocketPath(t); err != nil {
+				t.Fatalf("reseed runtime UDS socket error = %v", err)
+			}
 		}
 	}
 }
@@ -404,18 +414,33 @@ func (h *RuntimeHarness) resetProcessState() {
 }
 
 func (h *RuntimeHarness) readinessFailureShouldRetry(err error) bool {
+	retryHTTPPort, retrySocketPath := h.readinessFailureRetryReasons(err)
+	return retryHTTPPort || retrySocketPath
+}
+
+func (h *RuntimeHarness) readinessFailureRetryReasons(err error) (retryHTTPPort bool, retrySocketPath bool) {
 	if h == nil || err == nil {
-		return false
+		return false, false
 	}
-	if !strings.Contains(err.Error(), "daemon exited before readiness") {
-		return false
+	if !errors.Is(err, errDaemonExitedBeforeReadiness) {
+		return false, false
 	}
 
 	processLog, readErr := h.readProcessLog()
 	if readErr != nil {
-		return false
+		return false, false
 	}
-	return strings.Contains(processLog, "address already in use")
+	return processLogHasHTTPPortConflict(processLog), processLogHasSocketPathConflict(processLog)
+}
+
+func processLogHasHTTPPortConflict(processLog string) bool {
+	return strings.Contains(processLog, "listen tcp") && strings.Contains(processLog, "bind: address already in use")
+}
+
+func processLogHasSocketPathConflict(processLog string) bool {
+	return strings.Contains(processLog, "listen unix") &&
+		(strings.Contains(processLog, "bind: file exists") ||
+			strings.Contains(processLog, "bind: address already in use"))
 }
 
 func (h *RuntimeHarness) readProcessLog() (string, error) {
@@ -447,6 +472,24 @@ func (h *RuntimeHarness) reseedRuntimeHTTPPort(t testing.TB) error {
 
 	h.Config.HTTP.Port = nextPort
 	h.HTTPBaseURL = fmt.Sprintf("http://%s:%d", h.Config.HTTP.Host, nextPort)
+	return writeSeedConfigFile(h.HomePaths, &h.Config)
+}
+
+func (h *RuntimeHarness) reseedRuntimeSocketPath(t testing.TB) error {
+	t.Helper()
+
+	if h == nil {
+		return errors.New("runtime harness is required")
+	}
+
+	previousSocket := h.Config.Daemon.Socket
+	nextSocket := shortSocketPath(t)
+	for nextSocket == previousSocket {
+		nextSocket = shortSocketPath(t)
+	}
+
+	h.Config.Daemon.Socket = nextSocket
+	h.UDSClient = newUDSClient(nextSocket)
 	return writeSeedConfigFile(h.HomePaths, &h.Config)
 }
 
@@ -705,6 +748,35 @@ func (h *RuntimeHarness) PromptSessionWithEvents(
 	}
 
 	return readSSERecordsWithCallback(response.Body, 0, onEvent)
+}
+
+// PromptSessionUntil sends one prompt through the operator surface and returns
+// as soon as the streamed SSE records satisfy predicate.
+func (h *RuntimeHarness) PromptSessionUntil(
+	ctx context.Context,
+	sessionID string,
+	message string,
+	predicate func(SSEEvent) bool,
+) ([]SSEEvent, error) {
+	if predicate == nil {
+		return nil, errors.New("SSE predicate is required")
+	}
+	body := map[string]string{"message": message}
+	response, err := doRequest(ctx, h.UDSClient, h.UDSURL("/api/sessions/"+sessionID+"/prompt"), http.MethodPost, body)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = response.Body.Close() }()
+
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		payload, readErr := io.ReadAll(response.Body)
+		if readErr != nil {
+			return nil, fmt.Errorf("read prompt failure response: %w", readErr)
+		}
+		return nil, fmt.Errorf("prompt session status %d: %s", response.StatusCode, bytes.TrimSpace(payload))
+	}
+
+	return readSSERecordsUntil(response.Body, predicate)
 }
 
 // SessionTranscript fetches the persisted transcript for one session.
@@ -1161,6 +1233,12 @@ func (h *RuntimeHarness) waitForReady(ctx context.Context, pollInterval time.Dur
 	for {
 		select {
 		case <-ctx.Done():
+			if exited, err := h.pollExit(); exited {
+				if err != nil {
+					return fmt.Errorf("%w: %w", errDaemonExitedBeforeReadiness, err)
+				}
+				return errDaemonExitedBeforeReadiness
+			}
 			return errors.New("daemon did not become ready before timeout")
 		case err, ok := <-h.waitCh:
 			h.processWaitMu.Lock()
@@ -1171,9 +1249,9 @@ func (h *RuntimeHarness) waitForReady(ctx context.Context, pollInterval time.Dur
 			storedErr := h.processErr
 			h.processWaitMu.Unlock()
 			if storedErr != nil {
-				return fmt.Errorf("daemon exited before readiness: %w", storedErr)
+				return fmt.Errorf("%w: %w", errDaemonExitedBeforeReadiness, storedErr)
 			}
-			return errors.New("daemon exited before readiness")
+			return errDaemonExitedBeforeReadiness
 		case <-ticker.C:
 			if err := h.probeReady(ctx); err == nil {
 				return nil
@@ -1336,6 +1414,25 @@ func readSSERecordsWithCallback(
 	limit int,
 	onRecord func(SSEEvent) error,
 ) ([]SSEEvent, error) {
+	return readSSERecordsMatching(reader, limit, onRecord, nil)
+}
+
+func readSSERecordsUntil(
+	reader io.Reader,
+	predicate func(SSEEvent) bool,
+) ([]SSEEvent, error) {
+	if predicate == nil {
+		return nil, errors.New("SSE predicate is required")
+	}
+	return readSSERecordsMatching(reader, 0, nil, predicate)
+}
+
+func readSSERecordsMatching(
+	reader io.Reader,
+	limit int,
+	onRecord func(SSEEvent) error,
+	predicate func(SSEEvent) bool,
+) ([]SSEEvent, error) {
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 0, 16*1024), 1024*1024)
 
@@ -1343,48 +1440,63 @@ func readSSERecordsWithCallback(
 	current := SSEEvent{}
 	for scanner.Scan() {
 		line := scanner.Text()
-		if line == "" {
-			if current.ID != "" || current.Event != "" || len(current.Data) > 0 {
-				normalizeSSEEvent(&current)
-				records = append(records, current)
-				if onRecord != nil {
-					if err := onRecord(current); err != nil {
-						return nil, fmt.Errorf("handle SSE record: %w", err)
-					}
-				}
-				current = SSEEvent{}
-				if limit > 0 && len(records) >= limit {
-					return records, nil
-				}
-			}
+		if line != "" {
+			applySSELine(&current, line)
 			continue
 		}
-
-		switch {
-		case strings.HasPrefix(line, "id: "):
-			current.ID = strings.TrimPrefix(line, "id: ")
-		case strings.HasPrefix(line, "event: "):
-			current.Event = strings.TrimPrefix(line, "event: ")
-		case strings.HasPrefix(line, "data: "):
-			if len(current.Data) > 0 {
-				current.Data = append(current.Data, '\n')
-			}
-			current.Data = append(current.Data, strings.TrimPrefix(line, "data: ")...)
+		var matched bool
+		var err error
+		records, matched, err = appendSSERecord(records, current, onRecord, predicate)
+		if err != nil {
+			return nil, err
+		}
+		current = SSEEvent{}
+		if matched || (limit > 0 && len(records) >= limit) {
+			return records, nil
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("scan SSE stream: %w", err)
 	}
-	if current.ID != "" || current.Event != "" || len(current.Data) > 0 {
-		normalizeSSEEvent(&current)
-		records = append(records, current)
-		if onRecord != nil {
-			if err := onRecord(current); err != nil {
-				return nil, fmt.Errorf("handle SSE record: %w", err)
-			}
-		}
+	var err error
+	records, _, err = appendSSERecord(records, current, onRecord, predicate)
+	if err != nil {
+		return nil, err
 	}
 	return records, nil
+}
+
+func applySSELine(record *SSEEvent, line string) {
+	switch {
+	case strings.HasPrefix(line, "id: "):
+		record.ID = strings.TrimPrefix(line, "id: ")
+	case strings.HasPrefix(line, "event: "):
+		record.Event = strings.TrimPrefix(line, "event: ")
+	case strings.HasPrefix(line, "data: "):
+		if len(record.Data) > 0 {
+			record.Data = append(record.Data, '\n')
+		}
+		record.Data = append(record.Data, strings.TrimPrefix(line, "data: ")...)
+	}
+}
+
+func appendSSERecord(
+	records []SSEEvent,
+	record SSEEvent,
+	onRecord func(SSEEvent) error,
+	predicate func(SSEEvent) bool,
+) ([]SSEEvent, bool, error) {
+	if record.ID == "" && record.Event == "" && len(record.Data) == 0 {
+		return records, false, nil
+	}
+	normalizeSSEEvent(&record)
+	records = append(records, record)
+	if onRecord != nil {
+		if err := onRecord(record); err != nil {
+			return nil, false, fmt.Errorf("handle SSE record: %w", err)
+		}
+	}
+	return records, predicate != nil && predicate(record), nil
 }
 
 func normalizeSSEEvent(record *SSEEvent) {

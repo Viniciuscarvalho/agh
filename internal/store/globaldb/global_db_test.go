@@ -1136,6 +1136,7 @@ func TestGlobalDBRegisterAndListSessionsUseWorkspaceID(t *testing.T) {
 			"last_update_at",
 			"stall_state",
 			"stall_reason",
+			"activity_json",
 			"environment_id",
 			"environment_backend",
 			"environment_profile",
@@ -1181,6 +1182,47 @@ func TestGlobalDBRegisterSessionRejectsStallStateWithoutReason(t *testing.T) {
 		want,
 	) {
 		t.Fatalf("RegisterSession() error = %v, want substring %q", err, want)
+	}
+}
+
+func TestGlobalDBRegisterSessionRejectsUnmarshalableActivity(t *testing.T) {
+	t.Parallel()
+
+	globalDB := openTestGlobalDB(t)
+	workspaceID := registerWorkspaceForGlobalTests(
+		t,
+		globalDB,
+		"invalid-activity-session",
+		filepath.Join(t.TempDir(), "invalid-activity-session"),
+	)
+	unmarshalableTime := time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	err := globalDB.RegisterSession(testutil.Context(t), SessionInfo{
+		ID:          "sess-invalid-activity",
+		AgentName:   "coder",
+		WorkspaceID: workspaceID,
+		State:       "active",
+		Liveness: &store.SessionLivenessMeta{
+			Activity: &store.SessionActivityMeta{
+				TurnStartedAt: &unmarshalableTime,
+			},
+		},
+		CreatedAt: time.Date(2026, 4, 3, 13, 0, 0, 0, time.UTC),
+		UpdatedAt: time.Date(2026, 4, 3, 13, 0, 0, 0, time.UTC),
+	})
+	if err == nil {
+		t.Fatal("RegisterSession(unmarshalable activity) error = nil, want marshal failure")
+	}
+	if !strings.Contains(err.Error(), "store: session liveness activity marshal") {
+		t.Fatalf("RegisterSession(unmarshalable activity) error = %v, want activity marshal context", err)
+	}
+
+	sessions, err := globalDB.ListSessions(testutil.Context(t), SessionListQuery{})
+	if err != nil {
+		t.Fatalf("ListSessions() error = %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("len(sessions) = %d, want failed register to skip write", len(sessions))
 	}
 }
 
@@ -1336,6 +1378,7 @@ func TestOpenGlobalDBMigratesLegacyWorkspaceColumn(t *testing.T) {
 			"last_update_at",
 			"stall_state",
 			"stall_reason",
+			"activity_json",
 		},
 	)
 	assertTableColumns(
@@ -1717,6 +1760,69 @@ func TestGlobalDBUpdateSessionStateReturnsNotFoundForMissingSession(t *testing.T
 	})
 	if err == nil || !strings.Contains(err.Error(), `session "missing" not found`) {
 		t.Fatalf("UpdateSessionState(missing) error = %v, want missing session error", err)
+	}
+}
+
+func TestGlobalDBUpdateSessionStateRejectsUnmarshalableActivity(t *testing.T) {
+	t.Parallel()
+
+	globalDB := openTestGlobalDB(t)
+	registerSessionForGlobalTests(t, globalDB, "sess-update-invalid-activity")
+	unmarshalableTime := time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	err := globalDB.UpdateSessionState(testutil.Context(t), SessionStateUpdate{
+		ID:    "sess-update-invalid-activity",
+		State: "active",
+		Liveness: &store.SessionLivenessMeta{
+			Activity: &store.SessionActivityMeta{
+				TurnStartedAt: &unmarshalableTime,
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("UpdateSessionState(unmarshalable activity) error = nil, want marshal failure")
+	}
+	if !strings.Contains(err.Error(), "store: build update session state") ||
+		!strings.Contains(err.Error(), "store: session liveness activity marshal") {
+		t.Fatalf("UpdateSessionState(unmarshalable activity) error = %v, want activity marshal context", err)
+	}
+
+	sessions, err := globalDB.ListSessions(testutil.Context(t), SessionListQuery{})
+	if err != nil {
+		t.Fatalf("ListSessions() error = %v", err)
+	}
+	if got, want := len(sessions), 1; got != want {
+		t.Fatalf("len(sessions) = %d, want %d", got, want)
+	}
+	if sessions[0].Liveness != nil && sessions[0].Liveness.Activity != nil {
+		t.Fatalf(
+			"sessions[0].Liveness.Activity = %#v, want failed update to skip activity write",
+			sessions[0].Liveness.Activity,
+		)
+	}
+}
+
+func TestGlobalDBListSessionsWrapsInvalidActivityJSONValidation(t *testing.T) {
+	t.Parallel()
+
+	globalDB := openTestGlobalDB(t)
+	registerSessionForGlobalTests(t, globalDB, "sess-invalid-activity-json")
+	if _, err := globalDB.DB().ExecContext(
+		testutil.Context(t),
+		`UPDATE sessions SET activity_json = ? WHERE id = ?`,
+		`{"idle_seconds":-1}`,
+		"sess-invalid-activity-json",
+	); err != nil {
+		t.Fatalf("update invalid activity_json error = %v", err)
+	}
+
+	_, err := globalDB.ListSessions(testutil.Context(t), SessionListQuery{})
+	if err == nil {
+		t.Fatal("ListSessions(invalid activity_json) error = nil, want validation error")
+	}
+	if !strings.Contains(err.Error(), "store: validate session activity json") ||
+		!strings.Contains(err.Error(), "store: session activity idle seconds must be zero or positive") {
+		t.Fatalf("ListSessions(invalid activity_json) error = %v, want validation context", err)
 	}
 }
 
@@ -2113,6 +2219,7 @@ func TestOpenGlobalDBAddsStopColumnsToCurrentSessionSchema(t *testing.T) {
 			"last_update_at",
 			"stall_state",
 			"stall_reason",
+			"activity_json",
 			"environment_id",
 			"environment_backend",
 			"environment_profile",
