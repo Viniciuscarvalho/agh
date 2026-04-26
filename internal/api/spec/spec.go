@@ -51,6 +51,8 @@ var schemaEnumValues = map[reflect.Type][]string{
 	reflect.TypeFor[taskpkg.OriginKind]():                taskOriginKindValues(),
 	reflect.TypeFor[taskpkg.DependencyKind]():            taskDependencyKindValues(),
 	reflect.TypeFor[contract.TaskInboxLane]():            taskInboxLaneValues(),
+	reflect.TypeFor[contract.CoordinationMessageKind]():  coordinationMessageKindValues(),
+	reflect.TypeFor[contract.CoordinatorConfigSource]():  coordinatorConfigSourceValues(),
 	reflect.TypeFor[hooks.HookEvent]():                   hookEventValues(),
 	reflect.TypeFor[hooks.HookEventFamily]():             hookEventFamilyValues(),
 	reflect.TypeFor[hooks.HookMode]():                    hookModeValues(),
@@ -132,7 +134,9 @@ type OperationSpec struct {
 	Transports  []Transport
 	Parameters  []ParameterSpec
 	RequestBody any
-	Responses   []ResponseSpec
+	// RequestBodyOptional keeps a request body schema documented while allowing empty requests.
+	RequestBodyOptional bool
+	Responses           []ResponseSpec
 }
 
 // Document builds the canonical OpenAPI specification document.
@@ -148,6 +152,7 @@ func Document() (*openapi3.T, error) {
 		},
 		Paths: openapi3.NewPaths(),
 		Tags: openapi3.Tags{
+			{Name: "agent"},
 			{Name: "agents"},
 			{Name: "automation"},
 			{Name: "bridges"},
@@ -1206,6 +1211,233 @@ var operationRegistry = []OperationSpec{
 	},
 	{
 		Method:      "GET",
+		Path:        "/api/agent/me",
+		OperationID: "getAgentMe",
+		Summary:     "Resolve the calling agent session",
+		Tags:        []string{"agent"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.AgentMeResponse{}},
+			{Status: 401, Description: "Agent caller identity is missing", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Caller session not found", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/agent/context",
+		OperationID: "getAgentContext",
+		Summary:     "Return the bounded calling-agent situation context",
+		Tags:        []string{"agent"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.AgentContextResponse{}},
+			{Status: 401, Description: "Agent caller identity is missing", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Caller session not found", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/agent/channels",
+		OperationID: "listAgentChannels",
+		Summary:     "List coordination channels visible to the calling agent",
+		Tags:        []string{"agent"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.AgentChannelsResponse{}},
+			{Status: 401, Description: "Agent caller identity is missing", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/agent/channels/{channel}/recv",
+		OperationID: "receiveAgentChannelMessages",
+		Summary:     "Receive task-bound coordination channel messages",
+		Tags:        []string{"agent"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("channel", "Coordination channel id"),
+			boolQueryParam("wait", "Wait for the next message when no messages are immediately available"),
+			intQueryParam("limit", "Maximum number of messages to return"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.AgentChannelMessagesResponse{}},
+			{Status: 401, Description: "Agent caller identity is missing", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Coordination channel not found", Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Invalid channel receive request", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/agent/channels/{channel}/send",
+		OperationID: "sendAgentChannelMessage",
+		Summary:     "Send one task-bound coordination channel message",
+		Tags:        []string{"agent"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("channel", "Coordination channel id"),
+		},
+		RequestBody: contract.AgentChannelSendRequest{},
+		Responses: []ResponseSpec{
+			{Status: 202, Description: "Accepted", Body: contract.AgentChannelMessageResponse{}},
+			{Status: 401, Description: "Agent caller identity is missing", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Coordination channel not found", Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Invalid channel send request", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/agent/channels/reply",
+		OperationID: "replyAgentChannelMessage",
+		Summary:     "Reply to one delivered coordination channel message",
+		Tags:        []string{"agent"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		RequestBody: contract.AgentChannelReplyRequest{},
+		Responses: []ResponseSpec{
+			{Status: 202, Description: "Accepted", Body: contract.AgentChannelMessageResponse{}},
+			{Status: 401, Description: "Agent caller identity is missing", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Coordination message not found", Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Invalid channel reply request", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/agent/tasks/claim-next",
+		OperationID: "claimNextAgentTask",
+		Summary:     "Atomically claim the next matching task run for the calling agent",
+		Tags:        []string{"agent", "tasks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		RequestBody: contract.AgentTaskClaimNextRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.AgentTaskClaimResponse{}},
+			{Status: 204, Description: "No matching task run is currently claimable"},
+			{Status: 401, Description: "Agent caller identity is missing", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Task-run claim conflict", Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Invalid claim criteria", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/agent/tasks/{run_id}/heartbeat",
+		OperationID: "heartbeatAgentTaskRun",
+		Summary:     "Extend a claimed task-run lease for the calling agent",
+		Tags:        []string{"agent", "tasks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("run_id", "Task run id"),
+		},
+		RequestBody: contract.AgentTaskHeartbeatRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.AgentTaskLeaseResponse{}},
+			{Status: 401, Description: "Agent caller identity is missing", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Task run not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Task-run lease conflict", Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Invalid heartbeat request", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/agent/tasks/{run_id}/complete",
+		OperationID: "completeAgentTaskRun",
+		Summary:     "Complete a claimed task run for the calling agent",
+		Tags:        []string{"agent", "tasks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("run_id", "Task run id"),
+		},
+		RequestBody: contract.AgentTaskCompleteRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.AgentTaskLeaseResponse{}},
+			{Status: 401, Description: "Agent caller identity is missing", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Task run not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Task-run completion conflict", Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Invalid completion request", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/agent/tasks/{run_id}/fail",
+		OperationID: "failAgentTaskRun",
+		Summary:     "Fail a claimed task run for the calling agent",
+		Tags:        []string{"agent", "tasks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("run_id", "Task run id"),
+		},
+		RequestBody: contract.AgentTaskFailRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.AgentTaskLeaseResponse{}},
+			{Status: 401, Description: "Agent caller identity is missing", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Task run not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Task-run failure conflict", Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Invalid failure request", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/agent/tasks/{run_id}/release",
+		OperationID: "releaseAgentTaskRun",
+		Summary:     "Release a claimed task run for the calling agent",
+		Tags:        []string{"agent", "tasks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("run_id", "Task run id"),
+		},
+		RequestBody: contract.AgentTaskReleaseRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.AgentTaskLeaseResponse{}},
+			{Status: 401, Description: "Agent caller identity is missing", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Task run not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Task-run release conflict", Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Invalid release request", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/agent/spawn",
+		OperationID: "spawnAgentSession",
+		Summary:     "Spawn a narrowed child session for the calling agent",
+		Tags:        []string{"agent", "sessions"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		RequestBody: contract.AgentSpawnRequest{},
+		Responses: []ResponseSpec{
+			{Status: 201, Description: "Created", Body: contract.AgentSpawnResponse{}},
+			{Status: 401, Description: "Agent caller identity is missing", Body: contract.ErrorPayload{}},
+			{Status: 403, Description: "Spawn permission denied", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Spawn limit conflict", Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Invalid spawn request", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/agent/coordinator/config",
+		OperationID: "getAgentCoordinatorConfig",
+		Summary:     "Read resolved coordinator config for the calling agent workspace",
+		Tags:        []string{"agent"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			queryParam("workspace", "Workspace id or path", false),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.AgentCoordinatorConfigResponse{}},
+			{Status: 401, Description: "Agent caller identity is missing", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
 		Path:        "/api/memory",
 		OperationID: "listMemory",
 		Summary:     "List memory document headers",
@@ -1644,17 +1876,38 @@ var operationRegistry = []OperationSpec{
 		Method:      "POST",
 		Path:        "/api/tasks/{id}/publish",
 		OperationID: "publishTask",
-		Summary:     "Publish one draft task",
+		Summary:     "Publish one draft task and enqueue executable work",
 		Tags:        []string{"tasks"},
 		Transports:  []Transport{TransportHTTP, TransportUDS},
 		Parameters: []ParameterSpec{
 			pathParam("id", "Task id"),
 		},
+		RequestBody: contract.TaskExecutionRequest{},
 		Responses: []ResponseSpec{
-			{Status: 200, Description: "OK", Body: contract.TaskResponse{}},
+			{Status: 200, Description: "OK", Body: contract.TaskExecutionResponse{}},
 			{Status: 404, Description: "Task not found", Body: contract.ErrorPayload{}},
 			{Status: 409, Description: "Task publish conflict", Body: contract.ErrorPayload{}},
 			{Status: 422, Description: "Invalid task publish request", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/tasks/{id}/start",
+		OperationID: "startTask",
+		Summary:     "Start one task by enqueueing executable work",
+		Tags:        []string{"tasks"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Task id"),
+		},
+		RequestBody: contract.TaskExecutionRequest{},
+		Responses: []ResponseSpec{
+			{Status: 201, Description: "Created", Body: contract.TaskExecutionResponse{}},
+			{Status: 404, Description: "Task not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Task start conflict", Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Invalid task start request", Body: contract.ErrorPayload{}},
 			{Status: 503, Description: "Task service is not configured", Body: contract.ErrorPayload{}},
 			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
 		},
@@ -1984,14 +2237,16 @@ var operationRegistry = []OperationSpec{
 		Method:      "POST",
 		Path:        "/api/tasks/{id}/approve",
 		OperationID: "approveTask",
-		Summary:     "Approve one approval-gated task",
+		Summary:     "Approve one approval-gated task and enqueue executable work",
 		Tags:        []string{"tasks"},
 		Transports:  []Transport{TransportHTTP, TransportUDS},
 		Parameters: []ParameterSpec{
 			pathParam("id", "Task id"),
 		},
+		RequestBody:         contract.TaskExecutionRequest{},
+		RequestBodyOptional: true,
 		Responses: []ResponseSpec{
-			{Status: 200, Description: "OK", Body: contract.TaskResponse{}},
+			{Status: 201, Description: "Created", Body: contract.TaskExecutionResponse{}},
 			{Status: 404, Description: "Task not found", Body: contract.ErrorPayload{}},
 			{Status: 409, Description: "Task approval conflict", Body: contract.ErrorPayload{}},
 			{Status: 422, Description: "Invalid task approval request", Body: contract.ErrorPayload{}},
@@ -2839,7 +3094,7 @@ func buildOperation(schemas openapi3.Schemas, spec OperationSpec) (*openapi3.Ope
 				WithContent(openapi3.NewContentWithJSONSchemaRef(schemaRef)).
 				WithDescription("JSON request body"),
 		}
-		operation.RequestBody.Value.Required = true
+		operation.RequestBody.Value.Required = !spec.RequestBodyOptional
 	}
 
 	for _, response := range spec.Responses {
@@ -3359,6 +3614,23 @@ func taskInboxLaneValues() []string {
 		string(contract.TaskInboxLaneFailedRuns),
 		string(contract.TaskInboxLaneBlocked),
 		string(contract.TaskInboxLaneArchived),
+	}
+}
+
+func coordinationMessageKindValues() []string {
+	kinds := contract.CoordinationMessageKinds()
+	values := make([]string, 0, len(kinds))
+	for _, kind := range kinds {
+		values = append(values, string(kind))
+	}
+	return values
+}
+
+func coordinatorConfigSourceValues() []string {
+	return []string{
+		string(contract.CoordinatorConfigSourceWorkspace),
+		string(contract.CoordinatorConfigSourceGlobal),
+		string(contract.CoordinatorConfigSourceDefault),
 	}
 }
 

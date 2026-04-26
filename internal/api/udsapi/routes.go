@@ -10,6 +10,7 @@ func RegisterRoutes(router gin.IRouter, handlers *Handlers) {
 	registerWorkspaceRoutes(api, handlers)
 	registerSessionRoutes(api, handlers)
 	registerAgentRoutes(api, handlers)
+	registerAgentKernelRoutes(api, handlers)
 	registerObserveRoutes(api, handlers)
 	registerHookRoutes(api, handlers)
 	registerResourceRoutes(api, handlers)
@@ -85,6 +86,27 @@ func registerAgentRoutes(api gin.IRouter, handlers *Handlers) {
 	}
 }
 
+func registerAgentKernelRoutes(api gin.IRouter, handlers *Handlers) {
+	agent := api.Group("/agent")
+	{
+		agent.GET("/me", handlers.AgentMe)
+		agent.GET("/context", handlers.AgentContext)
+		agent.POST("/spawn", handlers.AgentSpawn)
+		agent.GET("/channels", handlers.AgentChannels)
+		agent.GET("/channels/:channel/recv", handlers.AgentChannelRecv)
+		agent.POST("/channels/:channel/send", handlers.AgentChannelSend)
+		agent.POST("/channels/reply", handlers.AgentChannelReply)
+		tasks := agent.Group("/tasks")
+		{
+			tasks.POST("/claim-next", handlers.AgentTaskClaimNext)
+			tasks.POST("/:run_id/heartbeat", handlers.AgentTaskHeartbeat)
+			tasks.POST("/:run_id/complete", handlers.AgentTaskComplete)
+			tasks.POST("/:run_id/fail", handlers.AgentTaskFail)
+			tasks.POST("/:run_id/release", handlers.AgentTaskRelease)
+		}
+	}
+}
+
 func registerObserveRoutes(api gin.IRouter, handlers *Handlers) {
 	observe := api.Group("/observe")
 	{
@@ -155,6 +177,7 @@ func registerTaskRoutes(api gin.IRouter, handlers *Handlers) {
 		tasks.DELETE("/:id", handlers.DeleteTask)
 		tasks.PATCH("/:id", handlers.UpdateTask)
 		tasks.POST("/:id/publish", handlers.PublishTask)
+		tasks.POST("/:id/start", handlers.StartTask)
 		tasks.POST("/:id/cancel", handlers.CancelTask)
 		tasks.POST("/:id/children", handlers.CreateChildTask)
 		tasks.POST("/:id/dependencies", handlers.AddTaskDependency)

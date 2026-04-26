@@ -28,6 +28,7 @@ import (
 	"github.com/pedronauck/agh/internal/resources"
 	"github.com/pedronauck/agh/internal/session"
 	settingspkg "github.com/pedronauck/agh/internal/settings"
+	"github.com/pedronauck/agh/internal/situation"
 	"github.com/pedronauck/agh/internal/skills"
 	"github.com/pedronauck/agh/internal/skills/bundled"
 	taskpkg "github.com/pedronauck/agh/internal/task"
@@ -49,6 +50,7 @@ type bootState struct {
 	dreamSvc            consolidation.Service
 	dreamRuntime        *consolidation.Runtime
 	globalMemoryDir     string
+	situationContext    *situation.Service
 	promptAssembler     session.PromptAssembler
 	startupOverlay      session.StartupPromptOverlay
 	promptAugmenter     session.PromptInputAugmenter
@@ -59,6 +61,9 @@ type bootState struct {
 	workspaceResolver   *workspacepkg.Resolver
 	sessions            SessionManager
 	tasks               *taskRuntime
+	spawnReaper         *spawnReaper
+	scheduler           *schedulerRuntime
+	coordinator         *coordinatorRuntime
 	network             networkRuntime
 	observer            Observer
 	lifecycleObservers  *sessionLifecycleFanout
@@ -158,10 +163,19 @@ func (d *Daemon) boot(ctx context.Context) (err error) {
 	if err := d.bootTasks(ctx, state); err != nil {
 		return err
 	}
+	if err := d.bootSpawnReaper(ctx, state, cleanup); err != nil {
+		return err
+	}
+	if err := d.bootScheduler(ctx, state, cleanup); err != nil {
+		return err
+	}
 	if err := d.bootNetwork(ctx, state, cleanup); err != nil {
 		return err
 	}
 	if err := d.bootHooks(ctx, state, cleanup); err != nil {
+		return err
+	}
+	if err := d.bootCoordinator(ctx, state, cleanup); err != nil {
 		return err
 	}
 	if err := d.bootAutomation(ctx, state, cleanup); err != nil {
@@ -288,18 +302,25 @@ func (d *Daemon) bootPromptProviders(_ context.Context, state *bootState) error 
 		appendProviders = append(appendProviders, skills.NewCatalogProvider(state.skillsRegistry))
 	}
 
+	state.situationContext = d.buildSituationContext(state)
 	state.harnessResolver = NewHarnessContextResolver(HarnessRuntimeSignals{
-		MemoryPromptSectionEnabled: state.memoryStore != nil,
-		SkillsPromptSectionEnabled: state.skillsRegistry != nil,
-		DurableMemoryAugmenter:     state.memoryStore != nil,
-		SyntheticTurnsEnabled:      true,
-		DetachedTaskRuntimeEnabled: true,
+		SituationPromptSectionEnabled: state.situationContext != nil,
+		MemoryPromptSectionEnabled:    state.memoryStore != nil,
+		SkillsPromptSectionEnabled:    state.skillsRegistry != nil,
+		SituationAugmenter:            state.situationContext != nil,
+		DurableMemoryAugmenter:        state.memoryStore != nil,
+		SyntheticTurnsEnabled:         true,
+		DetachedTaskRuntimeEnabled:    true,
 	})
 	state.harnessRecorder = newHarnessLifecycleRecorder(state.logger, d.now)
 	state.promptAssembler = NewComposedAssembler(
 		WithSectionSelector(NewSectionSelector(state.harnessResolver, state.harnessRecorder)),
 		WithPromptSectionDescriptors(
-			defaultStartupPromptSectionDescriptorsFromProviders(prependProviders, appendProviders)...,
+			defaultStartupPromptSectionDescriptorsFromProviders(
+				prependProviders,
+				appendProviders,
+				state.situationContext,
+			)...,
 		),
 	)
 	state.promptAugmenter, err = newPromptInputCompositeAugmenter(
@@ -308,12 +329,40 @@ func (d *Daemon) bootPromptProviders(_ context.Context, state *bootState) error 
 		state.harnessRecorder,
 		defaultPromptInputAugmenterDescriptors(
 			memory.NewRecallAugmenter(state.memoryStore),
+			state.situationContext.Augment,
 		)...,
 	)
 	if err != nil {
 		return fmt.Errorf("daemon: build prompt input composite: %w", err)
 	}
 	return nil
+}
+
+func (d *Daemon) buildSituationContext(state *bootState) *situation.Service {
+	return situation.NewService(situation.Deps{
+		Now: d.now,
+		WorkspaceResolverFunc: func() situation.WorkspaceResolver {
+			return state.workspaceResolver
+		},
+		AgentResolverFunc: func() situation.AgentResolver {
+			return agentCatalogDependency(state.agentCatalog)
+		},
+		SkillRegistryFunc: func() situation.SkillRegistry {
+			return skillRegistryDependency(state.skillsRegistry)
+		},
+		TaskStoreFunc: func() situation.TaskStore {
+			if state.tasks == nil {
+				return nil
+			}
+			return state.tasks.store
+		},
+		NetworkFunc: func() situation.NetworkReader {
+			return state.network
+		},
+		CoordinatorConfigFunc: func() situation.CoordinatorConfigResolver {
+			return state.deps.CoordinatorConfig
+		},
+	})
 }
 
 func (d *Daemon) bootRuntime(ctx context.Context, state *bootState, cleanup *bootCleanup) error {
@@ -487,6 +536,7 @@ func (d *Daemon) sessionManagerDeps(state *bootState) SessionManagerDeps {
 			Agent:        state.notifier,
 			Conversation: state.notifier,
 			Compaction:   state.notifier,
+			Spawn:        state.notifier,
 		},
 		PromptAssembler:      state.promptAssembler,
 		StartupPromptOverlay: state.startupOverlay,
@@ -608,9 +658,15 @@ func (d *Daemon) runtimeDeps(state *bootState, sessions SessionManager) RuntimeD
 		WorkspaceResolver: state.workspaceResolver,
 		WorkspaceService:  state.workspaceResolver,
 		AgentCatalog:      agentCatalogDependency(state.agentCatalog),
-		SkillsRegistry:    skillsRegistryAPI(state.skillsRegistry),
-		DreamTrigger:      dreamTriggerFromRuntime(state.dreamRuntime),
-		StartedAt:         state.startedAt,
+		AgentContext:      state.situationContext,
+		CoordinatorConfig: newCoordinatorConfigResolver(
+			&state.cfg,
+			state.workspaceResolver,
+			agentCatalogDependency(state.agentCatalog),
+		),
+		SkillsRegistry: skillsRegistryAPI(state.skillsRegistry),
+		DreamTrigger:   dreamTriggerFromRuntime(state.dreamRuntime),
+		StartedAt:      state.startedAt,
 	}
 }
 
@@ -1455,8 +1511,11 @@ func (d *Daemon) publishBootState(state *bootState) {
 	d.harnessResolver = state.harnessResolver
 	d.registry = state.registry
 	d.memoryStore = state.memoryStore
+	d.situationContext = state.situationContext
 	d.sessions = state.sessions
 	d.tasks = state.tasks
+	d.spawnReaper = state.spawnReaper
+	d.scheduler = state.scheduler
 	d.network = state.network
 	d.hooks = state.hooks
 	d.extensions = state.currentExtensionRuntime()

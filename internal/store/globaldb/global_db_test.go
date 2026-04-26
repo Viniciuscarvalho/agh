@@ -169,7 +169,7 @@ func TestOpenGlobalDBRecordsSchemaMigrationAndRepeatedBootIsIdempotent(t *testin
 	if err != nil {
 		t.Fatalf("AppliedMigrations(first) error = %v", err)
 	}
-	if got, want := len(firstRecords), 6; got != want {
+	if got, want := len(firstRecords), 8; got != want {
 		t.Fatalf("len(firstRecords) = %d, want %d", got, want)
 	}
 	if firstRecords[0].Version != 1 || firstRecords[0].Name != "create_global_schema" {
@@ -190,6 +190,12 @@ func TestOpenGlobalDBRecordsSchemaMigrationAndRepeatedBootIsIdempotent(t *testin
 	if firstRecords[5].Version != 6 || firstRecords[5].Name != "add_memory_operation_scope" {
 		t.Fatalf("firstRecords[5] = %#v, want add_memory_operation_scope v6", firstRecords[5])
 	}
+	if firstRecords[6].Version != 7 || firstRecords[6].Name != "add_task_run_claim_lease_schema" {
+		t.Fatalf("firstRecords[6] = %#v, want add_task_run_claim_lease_schema v7", firstRecords[6])
+	}
+	if firstRecords[7].Version != 8 || firstRecords[7].Name != "add_session_lineage_metadata" {
+		t.Fatalf("firstRecords[7] = %#v, want add_session_lineage_metadata v8", firstRecords[7])
+	}
 	if err := first.Close(ctx); err != nil {
 		t.Fatalf("Close(first) error = %v", err)
 	}
@@ -207,7 +213,7 @@ func TestOpenGlobalDBRecordsSchemaMigrationAndRepeatedBootIsIdempotent(t *testin
 	if err != nil {
 		t.Fatalf("AppliedMigrations(second) error = %v", err)
 	}
-	if got, want := len(secondRecords), 6; got != want {
+	if got, want := len(secondRecords), 8; got != want {
 		t.Fatalf("len(secondRecords) = %d, want %d", got, want)
 	}
 	for i := range firstRecords {
@@ -1328,6 +1334,14 @@ func TestGlobalDBRegisterAndListSessionsUseWorkspaceID(t *testing.T) {
 			"failure_kind",
 			"failure_summary",
 			"crash_bundle_path",
+			"parent_session_id",
+			"root_session_id",
+			"spawn_depth",
+			"spawn_role",
+			"ttl_expires_at",
+			"auto_stop_on_parent",
+			"spawn_budget_json",
+			"permission_policy_json",
 		},
 	)
 }
@@ -1563,6 +1577,14 @@ func TestOpenGlobalDBMigratesLegacyWorkspaceColumn(t *testing.T) {
 			"stall_state",
 			"stall_reason",
 			"activity_json",
+			"parent_session_id",
+			"root_session_id",
+			"spawn_depth",
+			"spawn_role",
+			"ttl_expires_at",
+			"auto_stop_on_parent",
+			"spawn_budget_json",
+			"permission_policy_json",
 		},
 	)
 	assertTableColumns(
@@ -2415,6 +2437,14 @@ func TestOpenGlobalDBAddsStopColumnsToCurrentSessionSchema(t *testing.T) {
 			"environment_provider_state_json",
 			"environment_last_sync_at",
 			"environment_last_sync_error",
+			"parent_session_id",
+			"root_session_id",
+			"spawn_depth",
+			"spawn_role",
+			"ttl_expires_at",
+			"auto_stop_on_parent",
+			"spawn_budget_json",
+			"permission_policy_json",
 		},
 	)
 	assertTableColumns(

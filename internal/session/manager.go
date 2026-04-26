@@ -13,6 +13,7 @@ import (
 	"github.com/pedronauck/agh/internal/acp"
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	"github.com/pedronauck/agh/internal/environment"
+	"github.com/pedronauck/agh/internal/store"
 	"github.com/pedronauck/agh/internal/store/sessiondb"
 	workspacepkg "github.com/pedronauck/agh/internal/workspace"
 )
@@ -43,7 +44,9 @@ type CreateOpts struct {
 	Workspace     string
 	WorkspacePath string
 	Channel       string
+	PromptOverlay string
 	Type          Type
+	Lineage       *store.SessionLineage
 }
 
 // StoreOpener opens the per-session events store for a session directory.
@@ -61,6 +64,7 @@ type Manager struct {
 	sessions   map[string]*Session
 	pending    map[string]struct{}
 	finalizing map[string]chan struct{}
+	spawnMu    sync.Mutex
 
 	syntheticMu          sync.Mutex
 	syntheticQueues      map[string][]queuedSyntheticPrompt

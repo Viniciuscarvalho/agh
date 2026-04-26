@@ -386,12 +386,22 @@ export const tasksOperatorTestIds = {
   createSubmit: "task-editor-submit",
   createTitle: "task-editor-title-input",
   dashboardView: "tasks-dashboard-view",
+  detailActiveRunChannel: "tasks-detail-active-run-channel",
+  detailActiveRunEmpty: "tasks-detail-active-run-empty",
+  detailActiveRunEmptyHint: "tasks-detail-active-run-empty-hint",
   detailBreadcrumbTasks: "tasks-detail-breadcrumb-tasks",
   detailContent: "tasks-detail-content",
+  detailCoordination: "tasks-detail-coordination",
+  detailEnqueue: "tasks-detail-enqueue",
+  detailLifecycle: "tasks-detail-lifecycle",
+  detailLifecycleHint: "tasks-detail-lifecycle-hint",
   detailPublish: "tasks-detail-publish",
+  detailPreviewCoordination: "tasks-detail-preview-coordination",
   detailPreviewDeeplink: "tasks-detail-preview-deeplink",
+  detailPreviewLifecycle: "tasks-detail-preview-lifecycle",
   detailPreviewPanel: "tasks-detail-preview-panel",
   detailPreviewPublish: "tasks-detail-preview-publish",
+  detailRunsEmpty: "tasks-detail-runs-empty",
   detailTabAgents: "tasks-detail-tab-agents",
   detailTabRuns: "tasks-detail-tab-runs",
   inboxView: "tasks-inbox-view",
@@ -401,6 +411,8 @@ export const tasksOperatorTestIds = {
   multiAgentDisconnected: "tasks-multi-agent-disconnected",
   multiAgentEmpty: "tasks-multi-agent-empty",
   multiAgentNoActive: "tasks-multi-agent-no-active",
+  multiAgentPanel: "tasks-multi-agent-panel",
+  multiAgentSummary: "tasks-multi-agent-summary",
   navTasks: "nav-tasks",
   openCreate: "tasks-open-create",
   runDetailContent: "tasks-run-detail-content",
@@ -421,12 +433,23 @@ export interface TasksOperatorSelectors {
   dashboardActiveRun(runId: string): Locator;
   dashboardActiveRunLink(runId: string): Locator;
   dashboardView: Locator;
+  detailActiveRunChannel: Locator;
+  detailActiveRunEmpty: Locator;
+  detailActiveRunEmptyHint: Locator;
   detailBreadcrumbTasks: Locator;
   detailContent: Locator;
+  detailCoordination: Locator;
+  detailEnqueue: Locator;
+  detailLifecycle: Locator;
+  detailLifecycleHint: Locator;
   detailPublish: Locator;
+  detailPreviewCoordination: Locator;
   detailPreviewDeeplink: Locator;
+  detailPreviewLifecycle: Locator;
   detailPreviewPanel: Locator;
   detailPreviewPublish: Locator;
+  detailRunsChannel(runId: string): Locator;
+  detailRunsEmpty: Locator;
   detailRunsLink(runId: string): Locator;
   detailTab(tabId: string): Locator;
   detailTabAgents: Locator;
@@ -442,6 +465,9 @@ export interface TasksOperatorSelectors {
   multiAgentDisconnected: Locator;
   multiAgentEmpty: Locator;
   multiAgentNoActive: Locator;
+  multiAgentPanel: Locator;
+  multiAgentSummary: Locator;
+  multiAgentAgentRun(taskId: string): Locator;
   navTasks: Locator;
   openCreate: Locator;
   runDetailContent: Locator;
@@ -688,12 +714,23 @@ export function tasksOperatorSelectors(page: Pick<Page, "getByTestId">): TasksOp
     dashboardActiveRunLink: (runId: string) =>
       page.getByTestId(`tasks-dashboard-active-run-link-${runId}`),
     dashboardView: page.getByTestId(tasksOperatorTestIds.dashboardView),
+    detailActiveRunChannel: page.getByTestId(tasksOperatorTestIds.detailActiveRunChannel),
+    detailActiveRunEmpty: page.getByTestId(tasksOperatorTestIds.detailActiveRunEmpty),
+    detailActiveRunEmptyHint: page.getByTestId(tasksOperatorTestIds.detailActiveRunEmptyHint),
     detailBreadcrumbTasks: page.getByTestId(tasksOperatorTestIds.detailBreadcrumbTasks),
     detailContent: page.getByTestId(tasksOperatorTestIds.detailContent),
+    detailCoordination: page.getByTestId(tasksOperatorTestIds.detailCoordination),
+    detailEnqueue: page.getByTestId(tasksOperatorTestIds.detailEnqueue),
+    detailLifecycle: page.getByTestId(tasksOperatorTestIds.detailLifecycle),
+    detailLifecycleHint: page.getByTestId(tasksOperatorTestIds.detailLifecycleHint),
     detailPublish: page.getByTestId(tasksOperatorTestIds.detailPublish),
+    detailPreviewCoordination: page.getByTestId(tasksOperatorTestIds.detailPreviewCoordination),
     detailPreviewDeeplink: page.getByTestId(tasksOperatorTestIds.detailPreviewDeeplink),
+    detailPreviewLifecycle: page.getByTestId(tasksOperatorTestIds.detailPreviewLifecycle),
     detailPreviewPanel: page.getByTestId(tasksOperatorTestIds.detailPreviewPanel),
     detailPreviewPublish: page.getByTestId(tasksOperatorTestIds.detailPreviewPublish),
+    detailRunsChannel: (runId: string) => page.getByTestId(`tasks-detail-runs-channel-${runId}`),
+    detailRunsEmpty: page.getByTestId(tasksOperatorTestIds.detailRunsEmpty),
     detailRunsLink: (runId: string) => page.getByTestId(`tasks-detail-runs-link-${runId}`),
     detailTab: (tabId: string) => page.getByTestId(`tasks-detail-tab-${tabId}`),
     detailTabAgents: page.getByTestId(tasksOperatorTestIds.detailTabAgents),
@@ -709,6 +746,10 @@ export function tasksOperatorSelectors(page: Pick<Page, "getByTestId">): TasksOp
     multiAgentDisconnected: page.getByTestId(tasksOperatorTestIds.multiAgentDisconnected),
     multiAgentEmpty: page.getByTestId(tasksOperatorTestIds.multiAgentEmpty),
     multiAgentNoActive: page.getByTestId(tasksOperatorTestIds.multiAgentNoActive),
+    multiAgentPanel: page.getByTestId(tasksOperatorTestIds.multiAgentPanel),
+    multiAgentSummary: page.getByTestId(tasksOperatorTestIds.multiAgentSummary),
+    multiAgentAgentRun: (taskId: string) =>
+      page.getByTestId(`tasks-multi-agent-agent-run-${taskId}`),
     navTasks: page.getByTestId(tasksOperatorTestIds.navTasks),
     openCreate: page.getByTestId(tasksOperatorTestIds.openCreate),
     runDetailContent: page.getByTestId(tasksOperatorTestIds.runDetailContent),

@@ -258,13 +258,7 @@ func (d *Daemon) bootTasks(ctx context.Context, state *bootState) error {
 	if err != nil {
 		return fmt.Errorf("daemon: create harness reentry bridge: %w", err)
 	}
-	manager, err := taskpkg.NewManager(
-		taskpkg.WithStore(store),
-		taskpkg.WithSessionExecutor(bridge),
-		taskpkg.WithEventObserver(reentry),
-		taskpkg.WithNetworkChannelValidator(network.ValidateChannel),
-		taskpkg.WithCancelGracePeriod(defaultTaskCancelGrace),
-	)
+	manager, err := taskpkg.NewManager(taskManagerOptions(store, bridge, reentry, state.notifier)...)
 	if err != nil {
 		return fmt.Errorf("daemon: create task manager: %w", err)
 	}
@@ -304,6 +298,69 @@ func (d *Daemon) bootTasks(ctx context.Context, state *bootState) error {
 	return nil
 }
 
+func (d *Daemon) bootSpawnReaper(ctx context.Context, state *bootState, cleanup *bootCleanup) error {
+	if state == nil || state.sessions == nil || state.tasks == nil || state.tasks.manager == nil {
+		return nil
+	}
+	logger := state.logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	reaper, err := newSpawnReaper(
+		ctx,
+		state.sessions,
+		state.tasks.manager,
+		state.notifier,
+		logger.With("component", "spawn_reaper"),
+		d.now,
+		defaultSpawnReaperInterval,
+	)
+	if err != nil {
+		return err
+	}
+	report, err := reaper.Sweep(ctx)
+	if err != nil {
+		return err
+	}
+	if report.Reaped > 0 {
+		logger.Info(
+			"daemon: spawn reaper boot sweep complete",
+			"reaped", report.Reaped,
+			"released_leases", report.ReleasedLeases,
+			"ttl_expired", report.TTLExpired,
+			"parent_stopped", report.ParentStopped,
+			"orphaned", report.Orphaned,
+		)
+	}
+	reaper.start()
+	state.spawnReaper = reaper
+	if cleanup != nil {
+		cleanup.add(func(cleanupCtx context.Context) error {
+			return reaper.shutdown(cleanupCtx)
+		})
+	}
+	return nil
+}
+
+func taskManagerOptions(
+	store taskStore,
+	bridge taskpkg.SessionExecutor,
+	reentry taskpkg.EventObserver,
+	hooks *hooksNotifier,
+) []taskpkg.Option {
+	options := []taskpkg.Option{
+		taskpkg.WithStore(store),
+		taskpkg.WithSessionExecutor(bridge),
+		taskpkg.WithEventObserver(reentry),
+		taskpkg.WithNetworkChannelValidator(network.ValidateChannel),
+		taskpkg.WithCancelGracePeriod(defaultTaskCancelGrace),
+	}
+	if hooks != nil {
+		options = append(options, taskpkg.WithTaskRunHooks(hooks))
+	}
+	return options
+}
+
 func (r *taskRuntime) submitDetachedHarnessWork(
 	ctx context.Context,
 	req detachedHarnessSubmitRequest,
@@ -331,6 +388,13 @@ func recoverTaskRunsOnBoot(
 	sessions taskBridgeSessionManager,
 	actor taskpkg.ActorContext,
 ) (taskRecoveryStats, error) {
+	expired, err := manager.RecoverExpiredRunLeases(ctx, taskpkg.ExpiredLeaseRecovery{
+		Reason: taskRecoveryReasonBoot,
+	}, actor)
+	if err != nil {
+		return taskRecoveryStats{}, fmt.Errorf("daemon: recover expired task run leases on boot: %w", err)
+	}
+
 	runs, err := store.ListTaskRunsByStatus(ctx, []taskpkg.RunStatus{
 		taskpkg.TaskRunStatusClaimed,
 		taskpkg.TaskRunStatusStarting,
@@ -340,7 +404,7 @@ func recoverTaskRunsOnBoot(
 		return taskRecoveryStats{}, fmt.Errorf("daemon: list task runs for boot recovery: %w", err)
 	}
 
-	stats := taskRecoveryStats{}
+	stats := taskRecoveryStats{requeued: len(expired)}
 	for _, run := range runs {
 		recovery, err := planTaskRunRecovery(ctx, sessions, run)
 		if err != nil {

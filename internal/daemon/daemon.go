@@ -29,6 +29,7 @@ import (
 	"github.com/pedronauck/agh/internal/procutil"
 	"github.com/pedronauck/agh/internal/resources"
 	"github.com/pedronauck/agh/internal/session"
+	"github.com/pedronauck/agh/internal/situation"
 	"github.com/pedronauck/agh/internal/skills"
 	"github.com/pedronauck/agh/internal/store"
 	"github.com/pedronauck/agh/internal/store/globaldb"
@@ -118,6 +119,8 @@ type RuntimeDeps struct {
 	WorkspaceResolver workspacepkg.RuntimeResolver
 	WorkspaceService  core.WorkspaceService
 	AgentCatalog      core.AgentCatalog
+	AgentContext      *situation.Service
+	CoordinatorConfig CoordinatorConfigResolver
 	SkillsRegistry    core.SkillsRegistry
 	DreamTrigger      DreamTrigger
 	Settings          core.SettingsService
@@ -325,8 +328,11 @@ type Daemon struct {
 	harnessResolver      *HarnessContextResolver
 	registry             Registry
 	memoryStore          *memory.Store
+	situationContext     *situation.Service
 	sessions             SessionManager
 	tasks                *taskRuntime
+	spawnReaper          *spawnReaper
+	scheduler            *schedulerRuntime
 	network              networkRuntime
 	hooks                hookRuntime
 	extensions           extensionRuntime
@@ -348,6 +354,8 @@ type Daemon struct {
 }
 
 type shutdownTargets struct {
+	scheduler         *schedulerRuntime
+	spawnReaper       *spawnReaper
 	tasks             *taskRuntime
 	sessions          SessionManager
 	network           networkRuntime
@@ -901,6 +909,7 @@ func (d *Daemon) applyServerFactoryDefaults() {
 				udsapi.WithResourceService(deps.Resources),
 				udsapi.WithWorkspaceResolver(deps.WorkspaceService),
 				udsapi.WithAgentCatalog(deps.AgentCatalog),
+				udsapi.WithAgentContext(deps.AgentContext),
 				udsapi.WithSkillsRegistry(deps.SkillsRegistry),
 				udsapi.WithMemoryStore(deps.MemoryStore),
 				udsapi.WithDreamTrigger(deps.DreamTrigger),
@@ -1014,6 +1023,8 @@ func (d *Daemon) detachShutdownTargets() shutdownTargets {
 	defer d.mu.Unlock()
 
 	targets := shutdownTargets{
+		scheduler:         d.scheduler,
+		spawnReaper:       d.spawnReaper,
 		tasks:             d.tasks,
 		sessions:          d.sessions,
 		network:           d.network,
@@ -1043,6 +1054,8 @@ func (d *Daemon) detachShutdownTargets() shutdownTargets {
 func (d *Daemon) resetRuntimeStateLocked() {
 	d.sessions = nil
 	d.tasks = nil
+	d.spawnReaper = nil
+	d.scheduler = nil
 	d.hooks = nil
 	d.extensions = nil
 	d.automation = nil
@@ -1093,8 +1106,17 @@ func (d *Daemon) shutdownRuntimeWorkers(ctx context.Context, targets shutdownTar
 	if targets.retention != nil {
 		appendWrappedError(errs, "daemon: shutdown observability retention", targets.retention.ShutdownRetention(ctx))
 	}
+	if targets.scheduler != nil {
+		appendWrappedError(errs, "daemon: shutdown scheduler", targets.scheduler.stopLoop(ctx))
+	}
+	if targets.spawnReaper != nil {
+		appendWrappedError(errs, "daemon: shutdown spawn reaper", targets.spawnReaper.shutdown(ctx))
+	}
 	if err := d.stopSessions(ctx, targets.sessions); err != nil {
 		*errs = append(*errs, err)
+	}
+	if targets.scheduler != nil {
+		appendWrappedError(errs, "daemon: shutdown scheduler wake dispatcher", targets.scheduler.shutdownWaker(ctx))
 	}
 	if targets.tasks != nil {
 		targets.tasks.shutdown()

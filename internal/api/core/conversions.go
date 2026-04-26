@@ -47,11 +47,13 @@ func SessionPayloadFromInfo(info *session.Info) contract.SessionPayload {
 		WorkspaceID:   ref.WorkspaceID,
 		WorkspacePath: ref.WorkspacePath,
 		Channel:       info.Channel,
+		Type:          info.Type,
 		State:         info.State,
 		StopReason:    info.StopReason,
 		StopDetail:    info.StopDetail,
 		Failure:       SessionFailurePayloadFromStore(info.Failure),
 		ACPSessionID:  info.ACPSessionID,
+		Lineage:       SessionLineagePayloadFromStore(info.Lineage),
 		CreatedAt:     info.CreatedAt,
 		UpdatedAt:     info.UpdatedAt,
 	}
@@ -65,6 +67,37 @@ func SessionPayloadFromInfo(info *session.Info) contract.SessionPayload {
 		payload.Environment = environment
 	}
 	return payload
+}
+
+// SessionLineagePayloadFromStore converts typed session lineage metadata into a safe public payload.
+func SessionLineagePayloadFromStore(lineage *store.SessionLineage) *contract.SessionLineagePayload {
+	if lineage == nil {
+		return nil
+	}
+	normalized := store.NormalizeSessionLineage("", lineage)
+	payload := &contract.SessionLineagePayload{
+		ParentSessionID:  normalized.ParentSessionID,
+		RootSessionID:    normalized.RootSessionID,
+		SpawnDepth:       normalized.SpawnDepth,
+		SpawnRole:        normalized.SpawnRole,
+		TTLExpiresAt:     cloneTimePtr(normalized.TTLExpiresAt),
+		AutoStopOnParent: normalized.AutoStopOnParent,
+		SpawnBudget: contract.SpawnBudgetPayload{
+			MaxChildren:           normalized.SpawnBudget.MaxChildren,
+			MaxDepth:              normalized.SpawnBudget.MaxDepth,
+			TTLSeconds:            normalized.SpawnBudget.TTLSeconds,
+			MaxActivePerWorkspace: normalized.SpawnBudget.MaxActivePerWorkspace,
+		},
+		PermissionPolicy: contract.SpawnPermissionPolicyPayload{
+			Tools:               append([]string(nil), normalized.PermissionPolicy.Tools...),
+			Skills:              append([]string(nil), normalized.PermissionPolicy.Skills...),
+			MCPServers:          append([]string(nil), normalized.PermissionPolicy.MCPServers...),
+			WorkspacePaths:      append([]string(nil), normalized.PermissionPolicy.WorkspacePaths...),
+			NetworkChannels:     append([]string(nil), normalized.PermissionPolicy.NetworkChannels...),
+			EnvironmentProfiles: append([]string(nil), normalized.PermissionPolicy.EnvironmentProfiles...),
+		},
+	}
+	return contract.NormalizeSessionLineagePayload(payload)
 }
 
 // RuntimeActivityPayloadFromSessionMeta converts persisted session activity metadata into the shared payload.
@@ -1713,18 +1746,22 @@ func TaskRunSummaryPayloadFromSummary(summary *taskpkg.RunSummary) *contract.Tas
 	}
 
 	return &contract.TaskRunSummaryPayload{
-		ID:          summary.ID,
-		TaskID:      summary.TaskID,
-		Status:      summary.Status,
-		Attempt:     summary.Attempt,
-		MaxAttempts: summary.MaxAttempts,
-		SessionID:   summary.SessionID,
-		ClaimedBy:   cloneActorIdentity(summary.ClaimedBy),
-		QueuedAt:    summary.QueuedAt,
-		ClaimedAt:   optionalTime(summary.ClaimedAt),
-		StartedAt:   optionalTime(summary.StartedAt),
-		EndedAt:     optionalTime(summary.EndedAt),
-		Error:       summary.Error,
+		ID:                    summary.ID,
+		TaskID:                summary.TaskID,
+		Status:                summary.Status,
+		Attempt:               summary.Attempt,
+		MaxAttempts:           summary.MaxAttempts,
+		SessionID:             summary.SessionID,
+		ClaimedBy:             cloneActorIdentity(summary.ClaimedBy),
+		ClaimTokenHash:        summary.ClaimTokenHash,
+		LeaseUntil:            optionalTime(summary.LeaseUntil),
+		HeartbeatAt:           optionalTime(summary.HeartbeatAt),
+		CoordinationChannelID: summary.CoordinationChannelID,
+		QueuedAt:              summary.QueuedAt,
+		ClaimedAt:             optionalTime(summary.ClaimedAt),
+		StartedAt:             optionalTime(summary.StartedAt),
+		EndedAt:               optionalTime(summary.EndedAt),
+		Error:                 summary.Error,
 	}
 }
 

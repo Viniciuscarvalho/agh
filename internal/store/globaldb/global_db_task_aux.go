@@ -2,6 +2,7 @@ package globaldb
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -791,16 +792,29 @@ func (g *GlobalDB) createQueuedRunWithExecutor(
 		return taskpkg.Run{}, err
 	}
 
+	networkChannel := resolveStoredRunChannel(input.requestedChannel, taskRecord.NetworkChannel)
+	coordinationChannelID := coordinationChannelIDForQueuedRun(taskRecord, networkChannel, input.runID)
+	if err := ensureQueuedRunCoordinationChannel(
+		ctx,
+		exec,
+		taskRecord,
+		coordinationChannelID,
+		input.origin,
+		input.queuedAt,
+	); err != nil {
+		return taskpkg.Run{}, err
+	}
 	run := taskpkg.Run{
-		ID:             input.runID,
-		TaskID:         taskRecord.ID,
-		Status:         taskpkg.TaskRunStatusQueued,
-		Attempt:        nextAttempt,
-		Origin:         input.origin,
-		IdempotencyKey: input.idempotencyKey,
-		NetworkChannel: resolveStoredRunChannel(input.requestedChannel, taskRecord.NetworkChannel),
-		Metadata:       input.metadata,
-		QueuedAt:       input.queuedAt,
+		ID:                    input.runID,
+		TaskID:                taskRecord.ID,
+		Status:                taskpkg.TaskRunStatusQueued,
+		Attempt:               nextAttempt,
+		Origin:                input.origin,
+		IdempotencyKey:        input.idempotencyKey,
+		NetworkChannel:        networkChannel,
+		CoordinationChannelID: coordinationChannelID,
+		Metadata:              input.metadata,
+		QueuedAt:              input.queuedAt,
 	}
 	normalizedRun, err := g.normalizeTaskRunForCreate(run)
 	if err != nil {
@@ -815,35 +829,135 @@ func (g *GlobalDB) createQueuedRunWithExecutor(
 	return normalizedRun, nil
 }
 
-func insertQueuedTaskRun(ctx context.Context, exec taskSQLExecutor, run taskpkg.Run) error {
-	if _, err := exec.ExecContext(
+func coordinationChannelIDForQueuedRun(taskRecord taskpkg.Task, networkChannel string, runID string) string {
+	if taskRecord.Scope.Normalize() != taskpkg.ScopeWorkspace {
+		return ""
+	}
+	if trimmed := strings.TrimSpace(networkChannel); trimmed != "" {
+		return trimmed
+	}
+	return derivedRunCoordinationChannelID(runID)
+}
+
+func ensureQueuedRunCoordinationChannel(
+	ctx context.Context,
+	exec taskSQLExecutor,
+	taskRecord taskpkg.Task,
+	channelID string,
+	origin taskpkg.Origin,
+	queuedAt time.Time,
+) error {
+	trimmedChannelID := strings.TrimSpace(channelID)
+	if trimmedChannelID == "" {
+		return nil
+	}
+	trimmedWorkspaceID := strings.TrimSpace(taskRecord.WorkspaceID)
+	if trimmedWorkspaceID == "" {
+		return fmt.Errorf(
+			"%w: workspace task %q requires workspace_id for coordination channel",
+			taskpkg.ErrValidation,
+			taskRecord.ID,
+		)
+	}
+
+	entry, err := networkChannelEntry(ctx, exec, trimmedChannelID)
+	switch {
+	case err == nil:
+		if strings.TrimSpace(entry.WorkspaceID) != trimmedWorkspaceID {
+			return fmt.Errorf(
+				"%w: coordination channel %q belongs to workspace %q, not %q",
+				taskpkg.ErrValidation,
+				trimmedChannelID,
+				entry.WorkspaceID,
+				trimmedWorkspaceID,
+			)
+		}
+		return nil
+	case errors.Is(err, sql.ErrNoRows):
+	default:
+		return err
+	}
+
+	timestamp := queuedAt.UTC()
+	if timestamp.IsZero() {
+		timestamp = time.Now().UTC()
+	}
+	_, err = exec.ExecContext(
 		ctx,
-		`INSERT INTO task_runs (
-			id, task_id, status, attempt, claimed_by_kind, claimed_by_ref, session_id, origin_kind, origin_ref,
-			idempotency_key, network_channel, queued_at, claimed_at, started_at, ended_at, error, metadata_json, result_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		run.ID,
-		run.TaskID,
-		string(run.Status),
-		run.Attempt,
-		taskActorKindValue(run.ClaimedBy),
-		taskActorRefValue(run.ClaimedBy),
-		store.NullableString(run.SessionID),
-		string(run.Origin.Kind),
-		run.Origin.Ref,
-		store.NullableString(run.IdempotencyKey),
-		store.NullableString(run.NetworkChannel),
-		store.FormatTimestamp(run.QueuedAt),
-		nullableTaskTimestamp(run.ClaimedAt),
-		nullableTaskTimestamp(run.StartedAt),
-		nullableTaskTimestamp(run.EndedAt),
-		store.NullableString(run.Error),
-		nullableTaskJSON(run.Metadata),
-		nullableTaskJSON(run.Result),
-	); err != nil {
-		return fmt.Errorf("store: create task run %q: %w", run.ID, err)
+		`INSERT INTO network_channels (
+			channel,
+			workspace_id,
+			purpose,
+			created_by,
+			created_at,
+			updated_at
+		) VALUES (?, ?, ?, ?, ?, ?)`,
+		trimmedChannelID,
+		trimmedWorkspaceID,
+		"task_run_coordination",
+		coordinationChannelCreatedBy(origin),
+		store.FormatTimestamp(timestamp),
+		store.FormatTimestamp(timestamp),
+	)
+	if err != nil {
+		return fmt.Errorf("store: create task-run coordination channel %q: %w", trimmedChannelID, err)
 	}
 	return nil
+}
+
+func derivedRunCoordinationChannelID(runID string) string {
+	seed := strings.ToLower(strings.TrimSpace(runID))
+	cleaned := make([]rune, 0, len(seed))
+	lastDash := false
+	for _, r := range seed {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '_':
+			cleaned = append(cleaned, r)
+			lastDash = false
+		case r == '-':
+			if len(cleaned) > 0 && !lastDash {
+				cleaned = append(cleaned, r)
+				lastDash = true
+			}
+		default:
+			if len(cleaned) > 0 && !lastDash {
+				cleaned = append(cleaned, '-')
+				lastDash = true
+			}
+		}
+		if len(cleaned) >= 58 {
+			break
+		}
+	}
+	value := strings.Trim(string(cleaned), "-_")
+	if value == "" || !validCoordinationChannelStart(value[0]) {
+		sum := sha256.Sum256([]byte(seed))
+		value = fmt.Sprintf("run-%x", sum[:6])
+	}
+	return "coord-" + value
+}
+
+func validCoordinationChannelStart(value byte) bool {
+	return (value >= 'a' && value <= 'z') || (value >= '0' && value <= '9')
+}
+
+func coordinationChannelCreatedBy(origin taskpkg.Origin) string {
+	kind := strings.TrimSpace(string(origin.Kind.Normalize()))
+	ref := strings.TrimSpace(origin.Ref)
+	if kind == "" {
+		return ref
+	}
+	if ref == "" {
+		return kind
+	}
+	return kind + ":" + ref
+}
+
+func insertQueuedTaskRun(ctx context.Context, exec taskSQLExecutor, run taskpkg.Run) error {
+	if err := insertTaskRunWithExecutor(ctx, exec, run); err != nil {
+		return err
+	}
+	return replaceTaskRunCapabilitiesWithExecutor(ctx, exec, run)
 }
 
 func (g *GlobalDB) saveQueuedRunIdempotencyWithExecutor(
@@ -926,9 +1040,11 @@ func (g *GlobalDB) GetTaskRunByIdempotencyKey(
 	row := g.db.QueryRowContext(
 		ctx,
 		`SELECT
-			tr.id, tr.task_id, tr.status, tr.attempt, tr.claimed_by_kind, tr.claimed_by_ref, tr.session_id,
-			tr.origin_kind, tr.origin_ref, tr.idempotency_key, tr.network_channel, tr.queued_at, tr.claimed_at,
-			tr.started_at, tr.ended_at, tr.error, tr.metadata_json, tr.result_json
+			tr.id, tr.task_id, tr.status, tr.attempt, tr.claimed_by_kind, tr.claimed_by_ref,
+			tr.session_id, tr.origin_kind, tr.origin_ref, tr.idempotency_key, tr.network_channel,
+			'' AS claim_token, tr.claim_token_hash, tr.lease_until, tr.heartbeat_at,
+			tr.coordination_channel_id, tr.queued_at, tr.claimed_at, tr.started_at, tr.ended_at,
+			tr.error, tr.metadata_json, tr.result_json
 		 FROM task_run_idempotency tri
 		 JOIN task_runs tr ON tr.id = tri.run_id
 		 WHERE tri.idempotency_key = ? AND tri.origin_kind = ? AND tri.origin_ref = ?`,
@@ -944,7 +1060,7 @@ func (g *GlobalDB) GetTaskRunByIdempotencyKey(
 		}
 		return taskpkg.Run{}, err
 	}
-	return run, nil
+	return g.loadTaskRunCapabilities(ctx, g.db, run)
 }
 
 // SaveTaskRunIdempotency inserts one origin-scoped idempotency binding for a persisted run.
@@ -1127,9 +1243,7 @@ func (g *GlobalDB) getTaskRunWithExecutor(
 
 	row := exec.QueryRowContext(
 		ctx,
-		`SELECT
-			id, task_id, status, attempt, claimed_by_kind, claimed_by_ref, session_id, origin_kind, origin_ref,
-			idempotency_key, network_channel, queued_at, claimed_at, started_at, ended_at, error, metadata_json, result_json
+		`SELECT `+taskRunSelectColumnsSQL+`
 		 FROM task_runs
 		 WHERE id = ?`,
 		trimmedRunID,
@@ -1142,7 +1256,7 @@ func (g *GlobalDB) getTaskRunWithExecutor(
 		}
 		return taskpkg.Run{}, err
 	}
-	return run, nil
+	return g.loadTaskRunCapabilities(ctx, exec, run)
 }
 
 func (g *GlobalDB) getTaskWithExecutor(

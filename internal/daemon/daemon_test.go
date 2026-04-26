@@ -4690,6 +4690,10 @@ func (f *fakeNetworkRuntime) Inbox(_ context.Context, sessionID string) ([]netwo
 	return append([]network.Envelope(nil), f.inboxes[sessionID]...), nil
 }
 
+func (f *fakeNetworkRuntime) WaitInbox(ctx context.Context, sessionID string, _ string) ([]network.Envelope, error) {
+	return f.Inbox(ctx, sessionID)
+}
+
 func (f *fakeNetworkRuntime) JoinChannel(_ context.Context, join session.NetworkPeerJoin) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -5138,6 +5142,48 @@ func (r *recordingRegistry) CountActiveSessionBindings(context.Context, string) 
 	return 0, nil
 }
 
+func (r *recordingRegistry) ClaimNextRun(
+	context.Context,
+	taskpkg.ClaimCriteria,
+) (taskpkg.ClaimResult, error) {
+	return taskpkg.ClaimResult{}, taskpkg.ErrNoClaimableRun
+}
+
+func (r *recordingRegistry) HeartbeatRunLease(
+	context.Context,
+	taskpkg.LeaseHeartbeat,
+) (taskpkg.Run, error) {
+	return taskpkg.Run{}, taskpkg.ErrTaskRunNotFound
+}
+
+func (r *recordingRegistry) ReleaseRunLease(
+	context.Context,
+	taskpkg.LeaseRelease,
+) (taskpkg.Run, error) {
+	return taskpkg.Run{}, taskpkg.ErrTaskRunNotFound
+}
+
+func (r *recordingRegistry) CompleteRunLease(
+	context.Context,
+	taskpkg.LeaseCompletion,
+) (taskpkg.Run, error) {
+	return taskpkg.Run{}, taskpkg.ErrTaskRunNotFound
+}
+
+func (r *recordingRegistry) FailRunLease(
+	context.Context,
+	taskpkg.LeaseFailure,
+) (taskpkg.Run, error) {
+	return taskpkg.Run{}, taskpkg.ErrTaskRunNotFound
+}
+
+func (r *recordingRegistry) RecoverExpiredRunLeases(
+	context.Context,
+	taskpkg.ExpiredLeaseRecovery,
+) ([]taskpkg.ExpiredLeaseRecoveryResult, error) {
+	return nil, nil
+}
+
 func (r *recordingRegistry) ReserveQueuedRun(
 	context.Context,
 	string,
@@ -5516,24 +5562,29 @@ func (*fakeAutomationManager) MemoryObserver() automationpkg.MemoryConsolidation
 }
 
 type fakeHookRuntime struct {
-	version          int64
-	onRebuild        func(context.Context) error
-	onClose          func()
-	onDispatchCreate func(context.Context, hookspkg.SessionPostCreatePayload) error
-	onDispatchStop   func(context.Context, hookspkg.SessionPostStopPayload) error
-	onTurnStart      func(context.Context, hookspkg.TurnStartPayload) error
-	onTurnEnd        func(context.Context, hookspkg.TurnEndPayload) error
-	onMessageStart   func(context.Context, hookspkg.MessageStartPayload) error
-	onMessageDelta   func(context.Context, hookspkg.MessageDeltaPayload) error
-	onMessageEnd     func(context.Context, hookspkg.MessageEndPayload) error
-	onToolPreCall    func(context.Context, hookspkg.ToolPreCallPayload) error
-	onToolPostCall   func(context.Context, hookspkg.ToolPostCallPayload) error
-	onToolPostError  func(context.Context, hookspkg.ToolPostErrorPayload) error
-	onPermRequest    func(context.Context, hookspkg.PermissionRequestPayload) error
-	onPermResolved   func(context.Context, hookspkg.PermissionResolvedPayload) error
-	onPermDenied     func(context.Context, hookspkg.PermissionDeniedPayload) error
-	onPreCompact     func(context.Context, hookspkg.ContextPreCompactPayload) error
-	onPostCompact    func(context.Context, hookspkg.ContextPostCompactPayload) error
+	version            int64
+	onRebuild          func(context.Context) error
+	onClose            func()
+	onDispatchCreate   func(context.Context, hookspkg.SessionPostCreatePayload) error
+	onDispatchStop     func(context.Context, hookspkg.SessionPostStopPayload) error
+	onTurnStart        func(context.Context, hookspkg.TurnStartPayload) error
+	onTurnEnd          func(context.Context, hookspkg.TurnEndPayload) error
+	onMessageStart     func(context.Context, hookspkg.MessageStartPayload) error
+	onMessageDelta     func(context.Context, hookspkg.MessageDeltaPayload) error
+	onMessageEnd       func(context.Context, hookspkg.MessageEndPayload) error
+	onToolPreCall      func(context.Context, hookspkg.ToolPreCallPayload) error
+	onToolPostCall     func(context.Context, hookspkg.ToolPostCallPayload) error
+	onToolPostError    func(context.Context, hookspkg.ToolPostErrorPayload) error
+	onPermRequest      func(context.Context, hookspkg.PermissionRequestPayload) error
+	onPermResolved     func(context.Context, hookspkg.PermissionResolvedPayload) error
+	onPermDenied       func(context.Context, hookspkg.PermissionDeniedPayload) error
+	onPreCompact       func(context.Context, hookspkg.ContextPreCompactPayload) error
+	onPostCompact      func(context.Context, hookspkg.ContextPostCompactPayload) error
+	onTaskRunEnqueued  func(context.Context, hookspkg.TaskRunEnqueuedPayload) error
+	onTaskRunPreClaim  func(context.Context, hookspkg.TaskRunPreClaimPayload) error
+	onTaskRunPostClaim func(context.Context, hookspkg.TaskRunPostClaimPayload) error
+	onTaskRunRecovered func(context.Context, hookspkg.TaskRunLeaseRecoveredPayload) error
+	onSpawnPreCreate   func(context.Context, hookspkg.SpawnPreCreatePayload) error
 }
 
 func (f *fakeHookRuntime) Rebuild(ctx context.Context) error {
@@ -5861,6 +5912,154 @@ func (f *fakeHookRuntime) DispatchEnvironmentStop(
 	_ context.Context,
 	payload hookspkg.EnvironmentStopPayload,
 ) (hookspkg.EnvironmentStopPayload, error) {
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchCoordinatorPreSpawn(
+	_ context.Context,
+	payload hookspkg.CoordinatorPreSpawnPayload,
+) (hookspkg.CoordinatorPreSpawnPayload, error) {
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchCoordinatorSpawned(
+	_ context.Context,
+	payload hookspkg.CoordinatorSpawnedPayload,
+) (hookspkg.CoordinatorSpawnedPayload, error) {
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchCoordinatorDecision(
+	_ context.Context,
+	payload hookspkg.CoordinatorDecisionPayload,
+) (hookspkg.CoordinatorDecisionPayload, error) {
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchCoordinatorStopped(
+	_ context.Context,
+	payload hookspkg.CoordinatorStoppedPayload,
+) (hookspkg.CoordinatorStoppedPayload, error) {
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchCoordinatorFailed(
+	_ context.Context,
+	payload hookspkg.CoordinatorFailedPayload,
+) (hookspkg.CoordinatorFailedPayload, error) {
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchTaskRunEnqueued(
+	ctx context.Context,
+	payload hookspkg.TaskRunEnqueuedPayload,
+) (hookspkg.TaskRunEnqueuedPayload, error) {
+	if f.onTaskRunEnqueued != nil {
+		return payload, f.onTaskRunEnqueued(ctx, payload)
+	}
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchTaskRunPreClaim(
+	ctx context.Context,
+	payload hookspkg.TaskRunPreClaimPayload,
+) (hookspkg.TaskRunPreClaimPayload, error) {
+	if f.onTaskRunPreClaim != nil {
+		return payload, f.onTaskRunPreClaim(ctx, payload)
+	}
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchTaskRunPostClaim(
+	ctx context.Context,
+	payload hookspkg.TaskRunPostClaimPayload,
+) (hookspkg.TaskRunPostClaimPayload, error) {
+	if f.onTaskRunPostClaim != nil {
+		return payload, f.onTaskRunPostClaim(ctx, payload)
+	}
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchTaskRunLeaseExtended(
+	_ context.Context,
+	payload hookspkg.TaskRunLeaseExtendedPayload,
+) (hookspkg.TaskRunLeaseExtendedPayload, error) {
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchTaskRunLeaseExpired(
+	_ context.Context,
+	payload hookspkg.TaskRunLeaseExpiredPayload,
+) (hookspkg.TaskRunLeaseExpiredPayload, error) {
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchTaskRunLeaseRecovered(
+	ctx context.Context,
+	payload hookspkg.TaskRunLeaseRecoveredPayload,
+) (hookspkg.TaskRunLeaseRecoveredPayload, error) {
+	if f.onTaskRunRecovered != nil {
+		return payload, f.onTaskRunRecovered(ctx, payload)
+	}
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchTaskRunReleased(
+	_ context.Context,
+	payload hookspkg.TaskRunReleasedPayload,
+) (hookspkg.TaskRunReleasedPayload, error) {
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchTaskRunCompleted(
+	_ context.Context,
+	payload hookspkg.TaskRunCompletedPayload,
+) (hookspkg.TaskRunCompletedPayload, error) {
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchTaskRunFailed(
+	_ context.Context,
+	payload hookspkg.TaskRunFailedPayload,
+) (hookspkg.TaskRunFailedPayload, error) {
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchSpawnPreCreate(
+	ctx context.Context,
+	payload hookspkg.SpawnPreCreatePayload,
+) (hookspkg.SpawnPreCreatePayload, error) {
+	if f.onSpawnPreCreate != nil {
+		return payload, f.onSpawnPreCreate(ctx, payload)
+	}
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchSpawnCreated(
+	_ context.Context,
+	payload hookspkg.SpawnCreatedPayload,
+) (hookspkg.SpawnCreatedPayload, error) {
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchSpawnParentStopped(
+	_ context.Context,
+	payload hookspkg.SpawnParentStoppedPayload,
+) (hookspkg.SpawnParentStoppedPayload, error) {
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchSpawnTTLExpired(
+	_ context.Context,
+	payload hookspkg.SpawnTTLExpiredPayload,
+) (hookspkg.SpawnTTLExpiredPayload, error) {
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchSpawnReaped(
+	_ context.Context,
+	payload hookspkg.SpawnReapedPayload,
+) (hookspkg.SpawnReapedPayload, error) {
 	return payload, nil
 }
 

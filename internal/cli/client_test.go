@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pedronauck/agh/internal/agentidentity"
 	"github.com/pedronauck/agh/internal/api/contract"
 	automationpkg "github.com/pedronauck/agh/internal/automation"
 	bridgepkg "github.com/pedronauck/agh/internal/bridges"
@@ -23,6 +24,430 @@ type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
+}
+
+func TestUnixSocketClientAgentMeSendsIdentityHeaders(t *testing.T) {
+	t.Parallel()
+
+	client := &unixSocketClient{
+		socketPath: "/tmp/agh.sock",
+		httpClient: &http.Client{
+			Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				if req.Method != http.MethodGet || req.URL.Path != "/api/agent/me" {
+					t.Fatalf("request = %s %s, want GET /api/agent/me", req.Method, req.URL.Path)
+				}
+				if got := req.Header.Get(agentidentity.HeaderSessionID); got != "sess-1" {
+					t.Fatalf("%s = %q, want sess-1", agentidentity.HeaderSessionID, got)
+				}
+				if got := req.Header.Get(agentidentity.HeaderAgent); got != "coder" {
+					t.Fatalf("%s = %q, want coder", agentidentity.HeaderAgent, got)
+				}
+				if got := req.Header.Get(agentidentity.HeaderWorkspaceID); got != "ws-1" {
+					t.Fatalf("%s = %q, want ws-1", agentidentity.HeaderWorkspaceID, got)
+				}
+				return newHTTPResponse(
+					http.StatusOK,
+					`{"me":{"self":{"session_id":"sess-1","agent_name":"coder","provider":"test"},"workspace":{"id":"ws-1"},"session":{"id":"sess-1","agent_name":"coder","state":"active","created_at":"2026-04-03T12:00:00Z","updated_at":"2026-04-03T12:00:00Z"},"capabilities":[],"channels":[],"active_task_leases":[]}}`,
+				), nil
+			}),
+		},
+	}
+
+	me, err := client.AgentMe(context.Background(), agentidentity.Credentials{
+		SessionID:   "sess-1",
+		AgentName:   "coder",
+		WorkspaceID: "ws-1",
+	})
+	if err != nil {
+		t.Fatalf("AgentMe() error = %v", err)
+	}
+	if me.Self.SessionID != "sess-1" || me.Self.AgentName != "coder" {
+		t.Fatalf("AgentMe() = %#v, want validated response", me.Self)
+	}
+}
+
+func TestUnixSocketClientAgentChannelMethodsSendIdentityHeaders(t *testing.T) {
+	t.Parallel()
+
+	credentials := agentidentity.Credentials{
+		SessionID:   "sess-1",
+		AgentName:   "coder",
+		WorkspaceID: "ws-1",
+	}
+	metadata := contract.CoordinationMessageMetadataPayload{
+		TaskID:                "task-1",
+		RunID:                 "run-1",
+		CoordinationChannelID: "builders",
+		MessageKind:           contract.CoordinationMessageStatus,
+		CorrelationID:         "run-1",
+	}
+
+	tests := []struct {
+		name string
+		run  func(t *testing.T, client *unixSocketClient)
+	}{
+		{
+			name: "Should list agent channels",
+			run: func(t *testing.T, client *unixSocketClient) {
+				t.Helper()
+
+				channels, err := client.AgentChannels(context.Background(), credentials)
+				if err != nil {
+					t.Fatalf("AgentChannels() error = %v", err)
+				}
+				if len(channels) != 1 || channels[0].ID != "builders" {
+					t.Fatalf("AgentChannels() = %#v, want builders", channels)
+				}
+			},
+		},
+		{
+			name: "Should receive agent channel messages",
+			run: func(t *testing.T, client *unixSocketClient) {
+				t.Helper()
+
+				messages, err := client.AgentChannelRecv(
+					context.Background(),
+					"builders",
+					AgentChannelRecvQuery{Wait: true, Limit: 3},
+					credentials,
+				)
+				if err != nil {
+					t.Fatalf("AgentChannelRecv() error = %v", err)
+				}
+				if len(messages) != 1 || messages[0].MessageID != "msg-1" {
+					t.Fatalf("AgentChannelRecv() = %#v, want msg-1", messages)
+				}
+			},
+		},
+		{
+			name: "Should send agent channel messages",
+			run: func(t *testing.T, client *unixSocketClient) {
+				t.Helper()
+
+				message, err := client.AgentChannelSend(context.Background(), "builders", AgentChannelSendRequest{
+					Body:     json.RawMessage(`{"text":"ok"}`),
+					Metadata: metadata,
+				}, credentials)
+				if err != nil {
+					t.Fatalf("AgentChannelSend() error = %v", err)
+				}
+				if message.MessageID != "msg-send" {
+					t.Fatalf("AgentChannelSend() = %#v, want msg-send", message)
+				}
+			},
+		},
+		{
+			name: "Should reply to agent channel messages",
+			run: func(t *testing.T, client *unixSocketClient) {
+				t.Helper()
+
+				message, err := client.AgentChannelReply(context.Background(), AgentChannelReplyRequest{
+					ReplyToMessageID: "msg-1",
+					Body:             json.RawMessage(`{"text":"ack"}`),
+				}, credentials)
+				if err != nil {
+					t.Fatalf("AgentChannelReply() error = %v", err)
+				}
+				if message.MessageID != "msg-reply" {
+					t.Fatalf("AgentChannelReply() = %#v, want msg-reply", message)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := &unixSocketClient{
+				socketPath: "/tmp/agh.sock",
+				httpClient: &http.Client{
+					Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+						assertAgentRequestHeaders(t, req, credentials)
+						switch {
+						case req.Method == http.MethodGet && req.URL.Path == "/api/agent/channels":
+							return newHTTPResponse(
+								http.StatusOK,
+								`{"channels":[{"id":"builders","channel":"builders","display_name":"builders","workspace_id":"ws-1","allowed_message_kinds":["status","request","reply","blocker","handoff","result","review_request"]}]}`,
+							), nil
+						case req.Method == http.MethodGet && req.URL.Path == "/api/agent/channels/builders/recv":
+							if req.URL.Query().Get("wait") != "true" || req.URL.Query().Get("limit") != "3" {
+								t.Fatalf("recv query = %s, want wait=true&limit=3", req.URL.RawQuery)
+							}
+							return newHTTPResponse(
+								http.StatusOK,
+								`{"messages":[{"message_id":"msg-1","channel_id":"builders","from_session_id":"sess-peer","body":{"text":"ok"},"metadata":{"task_id":"task-1","run_id":"run-1","coordination_channel_id":"builders","message_kind":"status","correlation_id":"run-1"},"timestamp":"2026-04-03T12:00:00Z"}]}`,
+							), nil
+						case req.Method == http.MethodPost && req.URL.Path == "/api/agent/channels/builders/send":
+							body, err := io.ReadAll(req.Body)
+							if err != nil {
+								t.Fatalf("io.ReadAll(send body) error = %v", err)
+							}
+							if !strings.Contains(string(body), `"task_id":"task-1"`) ||
+								!strings.Contains(string(body), `"body":{"text":"ok"}`) {
+								t.Fatalf("send body = %s, want message and metadata", body)
+							}
+							return newHTTPResponse(
+								http.StatusAccepted,
+								`{"message":{"message_id":"msg-send","channel_id":"builders","from_session_id":"sess-1","body":{"text":"ok"},"metadata":{"task_id":"task-1","run_id":"run-1","coordination_channel_id":"builders","message_kind":"status","correlation_id":"run-1"},"timestamp":"2026-04-03T12:00:00Z"}}`,
+							), nil
+						case req.Method == http.MethodPost && req.URL.Path == "/api/agent/channels/reply":
+							body, err := io.ReadAll(req.Body)
+							if err != nil {
+								t.Fatalf("io.ReadAll(reply body) error = %v", err)
+							}
+							if !strings.Contains(string(body), `"reply_to_message_id":"msg-1"`) {
+								t.Fatalf("reply body = %s, want reply_to_message_id", body)
+							}
+							return newHTTPResponse(
+								http.StatusAccepted,
+								`{"message":{"message_id":"msg-reply","channel_id":"builders","from_session_id":"sess-1","to_session_id":"sess-peer","body":{"text":"ack"},"metadata":{"task_id":"task-1","run_id":"run-1","coordination_channel_id":"builders","message_kind":"reply","correlation_id":"run-1"},"timestamp":"2026-04-03T12:00:00Z"}}`,
+							), nil
+						default:
+							t.Fatalf("unexpected request = %s %s", req.Method, req.URL.Path)
+							return nil, nil
+						}
+					}),
+				},
+			}
+			tt.run(t, client)
+		})
+	}
+}
+
+func TestUnixSocketClientAgentTaskMethods(t *testing.T) {
+	t.Parallel()
+
+	credentials := agentidentity.Credentials{
+		SessionID:   "sess-1",
+		AgentName:   "coder",
+		WorkspaceID: "ws-1",
+	}
+	rawToken := "agh_claim_CLIENTTOKEN123"
+	var sawClaim bool
+	var sawNoWork bool
+	var sawHeartbeat bool
+	var sawComplete bool
+	var sawFail bool
+	var sawRelease bool
+
+	client := &unixSocketClient{
+		socketPath: "/tmp/agh.sock",
+		httpClient: &http.Client{
+			Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				assertAgentRequestHeaders(t, req, credentials)
+				switch {
+				case req.Method == http.MethodPost && req.URL.Path == "/api/agent/tasks/claim-next":
+					var payload contract.AgentTaskClaimNextRequest
+					if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+						t.Fatalf("json.Decode(claim-next body) error = %v", err)
+					}
+					if payload.WorkspaceID == "empty" {
+						sawNoWork = true
+						return newHTTPResponse(http.StatusNoContent, ""), nil
+					}
+					sawClaim = true
+					if payload.WorkspaceID != "ws-1" ||
+						payload.PriorityMin != 2 ||
+						payload.LeaseSeconds != 120 ||
+						!payload.Wait ||
+						len(payload.RequiredCapabilities) != 1 ||
+						payload.RequiredCapabilities[0] != "go" {
+						t.Fatalf("claim-next body = %#v, want parsed request", payload)
+					}
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"claim":{"task":{"id":"task-1","title":"Run task","status":"in_progress","scope":"workspace","workspace_id":"ws-1"},"run":{"id":"run-1","task_id":"task-1","status":"claimed","attempt":1,"session_id":"sess-1","queued_at":"2026-04-03T12:00:00Z"},"lease":{"task_id":"task-1","run_id":"run-1","status":"claimed","session_id":"sess-1","coordination_channel_id":"builders"},"claim_token":"`+rawToken+`","coordination_channel":{"id":"builders","channel":"builders","display_name":"Builders","allowed_message_kinds":["status"]}}}`,
+					), nil
+				case req.Method == http.MethodPost && req.URL.Path == "/api/agent/tasks/run-1/heartbeat":
+					sawHeartbeat = true
+					var payload contract.AgentTaskHeartbeatRequest
+					if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+						t.Fatalf("json.Decode(heartbeat body) error = %v", err)
+					}
+					if payload.ClaimToken != rawToken || payload.LeaseSeconds != 60 {
+						t.Fatalf("heartbeat body = %#v, want token and lease", payload)
+					}
+					return agentTaskLeaseHTTPResponse(taskpkg.TaskRunStatusClaimed), nil
+				case req.Method == http.MethodPost && req.URL.Path == "/api/agent/tasks/run-1/complete":
+					sawComplete = true
+					var payload contract.AgentTaskCompleteRequest
+					if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+						t.Fatalf("json.Decode(complete body) error = %v", err)
+					}
+					if payload.ClaimToken != rawToken || string(payload.Result) != `{"ok":true}` {
+						t.Fatalf("complete body = %#v, want token and result", payload)
+					}
+					return agentTaskLeaseHTTPResponse(taskpkg.TaskRunStatusCompleted), nil
+				case req.Method == http.MethodPost && req.URL.Path == "/api/agent/tasks/run-1/fail":
+					sawFail = true
+					var payload contract.AgentTaskFailRequest
+					if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+						t.Fatalf("json.Decode(fail body) error = %v", err)
+					}
+					if payload.ClaimToken != rawToken ||
+						payload.Error != "boom" ||
+						string(payload.Metadata) != `{"code":"E_TASK"}` {
+						t.Fatalf("fail body = %#v, want token error metadata", payload)
+					}
+					return agentTaskLeaseHTTPResponse(taskpkg.TaskRunStatusFailed), nil
+				case req.Method == http.MethodPost && req.URL.Path == "/api/agent/tasks/run-1/release":
+					sawRelease = true
+					var payload contract.AgentTaskReleaseRequest
+					if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+						t.Fatalf("json.Decode(release body) error = %v", err)
+					}
+					if payload.ClaimToken != rawToken || payload.Reason != "handoff" {
+						t.Fatalf("release body = %#v, want token and reason", payload)
+					}
+					return agentTaskLeaseHTTPResponse(taskpkg.TaskRunStatusQueued), nil
+				default:
+					t.Fatalf("unexpected request = %s %s", req.Method, req.URL.Path)
+					return nil, nil
+				}
+			}),
+		},
+	}
+
+	t.Run("Should claim next task", func(t *testing.T) {
+		claim, err := client.AgentTaskClaimNext(context.Background(), AgentTaskClaimNextRequest{
+			WorkspaceID:          "ws-1",
+			RequiredCapabilities: []string{"go"},
+			PriorityMin:          2,
+			LeaseSeconds:         120,
+			Wait:                 true,
+		}, credentials)
+		if err != nil {
+			t.Fatalf("AgentTaskClaimNext() error = %v", err)
+		}
+		if !claim.Claimed || claim.Claim == nil || claim.Claim.ClaimToken != rawToken {
+			t.Fatalf("AgentTaskClaimNext() = %#v, want claimed raw token response", claim)
+		}
+	})
+	t.Run("Should return no work", func(t *testing.T) {
+		noWork, err := client.AgentTaskClaimNext(
+			context.Background(),
+			AgentTaskClaimNextRequest{WorkspaceID: "empty"},
+			credentials,
+		)
+		if err != nil {
+			t.Fatalf("AgentTaskClaimNext(no work) error = %v", err)
+		}
+		if noWork.Claimed || noWork.Claim != nil {
+			t.Fatalf("AgentTaskClaimNext(no work) = %#v, want claimed false", noWork)
+		}
+	})
+	t.Run("Should heartbeat claimed task", func(t *testing.T) {
+		lease, err := client.AgentTaskHeartbeat(
+			context.Background(),
+			"run-1",
+			AgentTaskHeartbeatRequest{ClaimToken: rawToken, LeaseSeconds: 60},
+			credentials,
+		)
+		if err != nil || lease.Status != taskpkg.TaskRunStatusClaimed {
+			t.Fatalf("AgentTaskHeartbeat() = %#v, %v", lease, err)
+		}
+	})
+	t.Run("Should complete claimed task", func(t *testing.T) {
+		lease, err := client.AgentTaskComplete(
+			context.Background(),
+			"run-1",
+			AgentTaskCompleteRequest{ClaimToken: rawToken, Result: json.RawMessage(`{"ok":true}`)},
+			credentials,
+		)
+		if err != nil || lease.Status != taskpkg.TaskRunStatusCompleted {
+			t.Fatalf("AgentTaskComplete() = %#v, %v", lease, err)
+		}
+	})
+	t.Run("Should fail claimed task", func(t *testing.T) {
+		lease, err := client.AgentTaskFail(
+			context.Background(),
+			"run-1",
+			AgentTaskFailRequest{
+				ClaimToken: rawToken,
+				Error:      "boom",
+				Metadata:   json.RawMessage(`{"code":"E_TASK"}`),
+			},
+			credentials,
+		)
+		if err != nil || lease.Status != taskpkg.TaskRunStatusFailed {
+			t.Fatalf("AgentTaskFail() = %#v, %v", lease, err)
+		}
+	})
+	t.Run("Should release claimed task", func(t *testing.T) {
+		lease, err := client.AgentTaskRelease(
+			context.Background(),
+			"run-1",
+			AgentTaskReleaseRequest{ClaimToken: rawToken, Reason: "handoff"},
+			credentials,
+		)
+		if err != nil || lease.Status != taskpkg.TaskRunStatusQueued {
+			t.Fatalf("AgentTaskRelease() = %#v, %v", lease, err)
+		}
+	})
+	if !sawClaim || !sawNoWork || !sawHeartbeat || !sawComplete || !sawFail || !sawRelease {
+		t.Fatalf(
+			"method coverage claim=%t no_work=%t heartbeat=%t complete=%t fail=%t release=%t, want all true",
+			sawClaim,
+			sawNoWork,
+			sawHeartbeat,
+			sawComplete,
+			sawFail,
+			sawRelease,
+		)
+	}
+}
+
+func TestUnixSocketClientAgentTaskErrorsRedactClaimTokens(t *testing.T) {
+	t.Parallel()
+
+	rawToken := "agh_claim_CLIENTERRORTOKEN123"
+	client := &unixSocketClient{
+		socketPath: "/tmp/agh.sock",
+		httpClient: &http.Client{
+			Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+				return newHTTPResponse(
+					http.StatusConflict,
+					`{"error":"task: invalid claim token: `+rawToken+`"}`,
+				), nil
+			}),
+		},
+	}
+	_, err := client.AgentTaskRelease(
+		context.Background(),
+		"run-1",
+		AgentTaskReleaseRequest{ClaimToken: rawToken},
+		agentidentity.Credentials{SessionID: "sess-1", AgentName: "coder"},
+	)
+	if err == nil {
+		t.Fatal("AgentTaskRelease() error = nil, want redacted API error")
+	}
+	if strings.Contains(err.Error(), rawToken) || !strings.Contains(err.Error(), "agh_claim_[REDACTED]") {
+		t.Fatalf("error = %q, want redacted claim token", err.Error())
+	}
+}
+
+func agentTaskLeaseHTTPResponse(status taskpkg.RunStatus) *http.Response {
+	return newHTTPResponse(
+		http.StatusOK,
+		`{"lease":{"task_id":"task-1","run_id":"run-1","status":"`+string(
+			status,
+		)+`","session_id":"sess-1","coordination_channel_id":"builders"}}`,
+	)
+}
+
+func assertAgentRequestHeaders(t *testing.T, req *http.Request, credentials agentidentity.Credentials) {
+	t.Helper()
+
+	if got := req.Header.Get(agentidentity.HeaderSessionID); got != credentials.SessionID {
+		t.Fatalf("%s = %q, want %q", agentidentity.HeaderSessionID, got, credentials.SessionID)
+	}
+	if got := req.Header.Get(agentidentity.HeaderAgent); got != credentials.AgentName {
+		t.Fatalf("%s = %q, want %q", agentidentity.HeaderAgent, got, credentials.AgentName)
+	}
+	if got := req.Header.Get(agentidentity.HeaderWorkspaceID); got != credentials.WorkspaceID {
+		t.Fatalf("%s = %q, want %q", agentidentity.HeaderWorkspaceID, got, credentials.WorkspaceID)
+	}
 }
 
 func TestUnixSocketClientMethods(t *testing.T) {

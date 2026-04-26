@@ -259,22 +259,29 @@ type Dependency struct {
 
 // Run is the durable execution record for one task attempt.
 type Run struct {
-	ID             string          `json:"id"`
-	TaskID         string          `json:"task_id"`
-	Status         RunStatus       `json:"status"`
-	Attempt        int             `json:"attempt"`
-	ClaimedBy      *ActorIdentity  `json:"claimed_by,omitempty"`
-	SessionID      string          `json:"session_id,omitempty"`
-	Origin         Origin          `json:"origin"`
-	IdempotencyKey string          `json:"idempotency_key,omitempty"`
-	NetworkChannel string          `json:"network_channel,omitempty"`
-	Metadata       json.RawMessage `json:"metadata,omitempty"`
-	QueuedAt       time.Time       `json:"queued_at"`
-	ClaimedAt      time.Time       `json:"claimed_at"`
-	StartedAt      time.Time       `json:"started_at"`
-	EndedAt        time.Time       `json:"ended_at"`
-	Error          string          `json:"error,omitempty"`
-	Result         json.RawMessage `json:"result,omitempty"`
+	ID                    string          `json:"id"`
+	TaskID                string          `json:"task_id"`
+	Status                RunStatus       `json:"status"`
+	Attempt               int             `json:"attempt"`
+	ClaimedBy             *ActorIdentity  `json:"claimed_by,omitempty"`
+	SessionID             string          `json:"session_id,omitempty"`
+	Origin                Origin          `json:"origin"`
+	IdempotencyKey        string          `json:"idempotency_key,omitempty"`
+	NetworkChannel        string          `json:"network_channel,omitempty"`
+	ClaimToken            string          `json:"-"`
+	ClaimTokenHash        string          `json:"claim_token_hash,omitempty"`
+	LeaseUntil            time.Time       `json:"lease_until"`
+	HeartbeatAt           time.Time       `json:"heartbeat_at"`
+	CoordinationChannelID string          `json:"coordination_channel_id,omitempty"`
+	RequiredCapabilities  []string        `json:"required_capabilities,omitempty"`
+	PreferredCapabilities []string        `json:"preferred_capabilities,omitempty"`
+	Metadata              json.RawMessage `json:"metadata,omitempty"`
+	QueuedAt              time.Time       `json:"queued_at"`
+	ClaimedAt             time.Time       `json:"claimed_at"`
+	StartedAt             time.Time       `json:"started_at"`
+	EndedAt               time.Time       `json:"ended_at"`
+	Error                 string          `json:"error,omitempty"`
+	Result                json.RawMessage `json:"result,omitempty"`
 }
 
 // Event is the immutable audit record emitted for task-domain actions.
@@ -359,18 +366,22 @@ type DependencyReference struct {
 
 // RunSummary captures the operator-facing run chip data used by enriched task cards.
 type RunSummary struct {
-	ID          string         `json:"id"`
-	TaskID      string         `json:"task_id"`
-	Status      RunStatus      `json:"status"`
-	Attempt     int            `json:"attempt"`
-	MaxAttempts int            `json:"max_attempts"`
-	SessionID   string         `json:"session_id,omitempty"`
-	ClaimedBy   *ActorIdentity `json:"claimed_by,omitempty"`
-	QueuedAt    time.Time      `json:"queued_at"`
-	ClaimedAt   time.Time      `json:"claimed_at"`
-	StartedAt   time.Time      `json:"started_at"`
-	EndedAt     time.Time      `json:"ended_at"`
-	Error       string         `json:"error,omitempty"`
+	ID                    string         `json:"id"`
+	TaskID                string         `json:"task_id"`
+	Status                RunStatus      `json:"status"`
+	Attempt               int            `json:"attempt"`
+	MaxAttempts           int            `json:"max_attempts"`
+	SessionID             string         `json:"session_id,omitempty"`
+	ClaimedBy             *ActorIdentity `json:"claimed_by,omitempty"`
+	ClaimTokenHash        string         `json:"claim_token_hash,omitempty"`
+	LeaseUntil            time.Time      `json:"lease_until"`
+	HeartbeatAt           time.Time      `json:"heartbeat_at"`
+	CoordinationChannelID string         `json:"coordination_channel_id,omitempty"`
+	QueuedAt              time.Time      `json:"queued_at"`
+	ClaimedAt             time.Time      `json:"claimed_at"`
+	StartedAt             time.Time      `json:"started_at"`
+	EndedAt               time.Time      `json:"ended_at"`
+	Error                 string         `json:"error,omitempty"`
 }
 
 // View is the expanded read model returned from single-task lookups.
@@ -419,6 +430,36 @@ type Patch struct {
 type CancelTask struct {
 	Reason   string          `json:"reason,omitempty"`
 	Metadata json.RawMessage `json:"metadata,omitempty"`
+}
+
+// ExecutionAction identifies the operator action that crossed the
+// create-versus-execute lifecycle boundary.
+type ExecutionAction string
+
+const (
+	// ExecutionActionStart records an explicit operator start request.
+	ExecutionActionStart ExecutionAction = "start"
+	// ExecutionActionPublish records a draft publish request that also starts execution.
+	ExecutionActionPublish ExecutionAction = "publish"
+	// ExecutionActionApproval records an approval request that also starts execution.
+	ExecutionActionApproval ExecutionAction = "approval"
+)
+
+// ExecutionRequest captures the mutable inputs accepted when an operator
+// publish, start, or approval action enqueues executable work.
+type ExecutionRequest struct {
+	IdempotencyKey string          `json:"idempotency_key,omitempty"`
+	NetworkChannel string          `json:"network_channel,omitempty"`
+	Metadata       json.RawMessage `json:"metadata,omitempty"`
+}
+
+// Execution captures the task and run created or resolved at the explicit
+// execution boundary.
+type Execution struct {
+	Task        Task            `json:"task"`
+	Run         Run             `json:"run"`
+	Action      ExecutionAction `json:"action"`
+	ExistingRun bool            `json:"existing_run,omitempty"`
 }
 
 // AddDependency captures one dependency-edge creation request.
@@ -480,10 +521,11 @@ type Query struct {
 
 // RunQuery captures the supported list filters for task-run reads.
 type RunQuery struct {
-	TaskID    string    `json:"task_id,omitempty"`
-	Status    RunStatus `json:"status,omitempty"`
-	SessionID string    `json:"session_id,omitempty"`
-	Limit     int       `json:"limit,omitempty"`
+	TaskID                string    `json:"task_id,omitempty"`
+	Status                RunStatus `json:"status,omitempty"`
+	SessionID             string    `json:"session_id,omitempty"`
+	CoordinationChannelID string    `json:"coordination_channel_id,omitempty"`
+	Limit                 int       `json:"limit,omitempty"`
 }
 
 // EventQuery captures the supported list filters for task-event reads.

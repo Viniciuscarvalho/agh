@@ -106,7 +106,26 @@ export type HookEvent =
   | "permission.resolved"
   | "permission.denied"
   | "context.pre_compact"
-  | "context.post_compact";
+  | "context.post_compact"
+  | "coordinator.pre_spawn"
+  | "coordinator.spawned"
+  | "coordinator.decision"
+  | "coordinator.stopped"
+  | "coordinator.failed"
+  | "task.run.enqueued"
+  | "task.run.pre_claim"
+  | "task.run.post_claim"
+  | "task.run.lease_extended"
+  | "task.run.lease_expired"
+  | "task.run.lease_recovered"
+  | "task.run.released"
+  | "task.run.completed"
+  | "task.run.failed"
+  | "spawn.pre_create"
+  | "spawn.created"
+  | "spawn.parent_stopped"
+  | "spawn.ttl_expired"
+  | "spawn.reaped";
 
 export interface AgentCrashedPayload {
   event: HookEvent;
@@ -459,6 +478,23 @@ export interface AutomationTriggersParams {
   enabled?: boolean;
 }
 
+export interface AutonomyMatcher {
+  task_id?: string;
+  run_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  coordinator_session_id?: string;
+  parent_session_id?: string;
+  root_session_id?: string;
+  child_session_id?: string;
+  spawn_role?: string;
+  release_reason?: string;
+}
+
+export interface AutonomyObservationPatch {
+  labels?: Record<string, string>;
+}
+
 export type BridgeScope = string;
 
 export type BridgeInstanceSource = string;
@@ -618,6 +654,144 @@ export interface ContextPreCompactPayload {
 export interface ControlPatch {
   deny?: boolean;
   deny_reason?: string;
+}
+
+export interface CoordinatorContext {
+  workspace_id?: string;
+  workspace?: string;
+  agent_name?: string;
+  coordinator_session_id?: string;
+  task_id?: string;
+  run_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  provider?: string;
+  model?: string;
+}
+
+export interface CoordinatorDecisionPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  workspace_id?: string;
+  workspace?: string;
+  agent_name?: string;
+  coordinator_session_id?: string;
+  task_id?: string;
+  run_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  provider?: string;
+  model?: string;
+  decision_kind?: string;
+  decision?: string;
+  stop_reason?: string;
+  error?: string;
+}
+
+export interface CoordinatorFailedPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  workspace_id?: string;
+  workspace?: string;
+  agent_name?: string;
+  coordinator_session_id?: string;
+  task_id?: string;
+  run_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  provider?: string;
+  model?: string;
+  decision_kind?: string;
+  decision?: string;
+  stop_reason?: string;
+  error?: string;
+}
+
+export interface CoordinatorLifecyclePayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  workspace_id?: string;
+  workspace?: string;
+  agent_name?: string;
+  coordinator_session_id?: string;
+  task_id?: string;
+  run_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  provider?: string;
+  model?: string;
+  decision_kind?: string;
+  decision?: string;
+  stop_reason?: string;
+  error?: string;
+}
+
+export interface CoordinatorObservationPatch {
+  labels?: Record<string, string>;
+}
+
+export interface CoordinatorPreSpawnPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  workspace_id?: string;
+  workspace?: string;
+  agent_name?: string;
+  coordinator_session_id?: string;
+  task_id?: string;
+  run_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  provider?: string;
+  model?: string;
+  reason?: string;
+  denied?: boolean;
+  deny_reason?: string;
+}
+
+export interface CoordinatorSpawnPatch {
+  deny?: boolean;
+  deny_reason?: string;
+  agent_name?: string;
+  provider?: string;
+  model?: string;
+}
+
+export interface CoordinatorSpawnedPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  workspace_id?: string;
+  workspace?: string;
+  agent_name?: string;
+  coordinator_session_id?: string;
+  task_id?: string;
+  run_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  provider?: string;
+  model?: string;
+  decision_kind?: string;
+  decision?: string;
+  stop_reason?: string;
+  error?: string;
+}
+
+export interface CoordinatorStoppedPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  workspace_id?: string;
+  workspace?: string;
+  agent_name?: string;
+  coordinator_session_id?: string;
+  task_id?: string;
+  run_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  provider?: string;
+  model?: string;
+  decision_kind?: string;
+  decision?: string;
+  stop_reason?: string;
+  error?: string;
 }
 
 export interface DeliveryAck {
@@ -972,8 +1146,6 @@ export interface EventRecordPayload {
   content?: JSONValue;
 }
 
-export type HookSource = "native" | "config" | "agent_definition" | "skill";
-
 export type HookMode = "sync" | "async";
 
 export interface HookMatcher {
@@ -997,24 +1169,27 @@ export interface HookMatcher {
   message_delta_type?: string;
   compaction_reason?: string;
   compaction_strategy?: string;
+  autonomy?: AutonomyMatcher;
 }
 
 export type HookExecutorKind = "native" | "subprocess" | "wasm";
 
+export type HookSource = "native" | "config" | "agent_definition" | "skill";
+
 export interface HookDecl {
   name: string;
   event: HookEvent;
-  source: HookSource;
   mode?: HookMode;
-  required?: boolean;
-  priority?: number;
-  timeout?: number;
   matcher: HookMatcher;
   executor_kind?: HookExecutorKind;
   command?: string;
   args?: string[];
   env?: Record<string, string>;
   metadata?: Record<string, string>;
+  timeout?: number;
+  priority?: number;
+  source: HookSource;
+  required?: boolean;
 }
 
 export type HookEventFamily =
@@ -1668,6 +1843,15 @@ export interface PermissionResolvedPayload {
   tool_call: PermissionToolCall;
 }
 
+export interface PermissionSet {
+  tools?: string[];
+  skills?: string[];
+  mcp_servers?: string[];
+  workspace_paths?: string[];
+  network_channels?: string[];
+  environment_profiles?: string[];
+}
+
 export interface PromptPatch {
   deny?: boolean;
   deny_reason?: string;
@@ -2047,6 +2231,179 @@ export interface SkillsListParams {
   workspace?: string;
 }
 
+export interface SpawnContext {
+  parent_session_id?: string;
+  root_session_id?: string;
+  child_session_id?: string;
+  workspace_id?: string;
+  workspace?: string;
+  agent_name?: string;
+  spawn_role?: string;
+  spawn_depth?: number;
+  ttl_seconds?: number;
+  auto_stop_on_parent?: boolean;
+  task_id?: string;
+  run_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+}
+
+export interface SpawnCreatePatch {
+  deny?: boolean;
+  deny_reason?: string;
+  agent_name?: string;
+  spawn_role?: string;
+  ttl_seconds?: number;
+  child_permissions?: PermissionSet;
+}
+
+export interface SpawnCreatedPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  parent_session_id?: string;
+  root_session_id?: string;
+  child_session_id?: string;
+  workspace_id?: string;
+  workspace?: string;
+  agent_name?: string;
+  spawn_role?: string;
+  spawn_depth?: number;
+  ttl_seconds?: number;
+  auto_stop_on_parent?: boolean;
+  task_id?: string;
+  run_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  parent_permissions?: PermissionSet;
+  child_permissions?: PermissionSet;
+  stop_reason?: string;
+  reap_reason?: string;
+  error?: string;
+}
+
+export interface SpawnLifecyclePayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  parent_session_id?: string;
+  root_session_id?: string;
+  child_session_id?: string;
+  workspace_id?: string;
+  workspace?: string;
+  agent_name?: string;
+  spawn_role?: string;
+  spawn_depth?: number;
+  ttl_seconds?: number;
+  auto_stop_on_parent?: boolean;
+  task_id?: string;
+  run_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  parent_permissions?: PermissionSet;
+  child_permissions?: PermissionSet;
+  stop_reason?: string;
+  reap_reason?: string;
+  error?: string;
+}
+
+export interface SpawnObservationPatch {
+  labels?: Record<string, string>;
+}
+
+export interface SpawnParentStoppedPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  parent_session_id?: string;
+  root_session_id?: string;
+  child_session_id?: string;
+  workspace_id?: string;
+  workspace?: string;
+  agent_name?: string;
+  spawn_role?: string;
+  spawn_depth?: number;
+  ttl_seconds?: number;
+  auto_stop_on_parent?: boolean;
+  task_id?: string;
+  run_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  parent_permissions?: PermissionSet;
+  child_permissions?: PermissionSet;
+  stop_reason?: string;
+  reap_reason?: string;
+  error?: string;
+}
+
+export interface SpawnPreCreatePayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  parent_session_id?: string;
+  root_session_id?: string;
+  child_session_id?: string;
+  workspace_id?: string;
+  workspace?: string;
+  agent_name?: string;
+  spawn_role?: string;
+  spawn_depth?: number;
+  ttl_seconds?: number;
+  auto_stop_on_parent?: boolean;
+  task_id?: string;
+  run_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  parent_permissions?: PermissionSet;
+  child_permissions?: PermissionSet;
+  denied?: boolean;
+  deny_reason?: string;
+}
+
+export interface SpawnReapedPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  parent_session_id?: string;
+  root_session_id?: string;
+  child_session_id?: string;
+  workspace_id?: string;
+  workspace?: string;
+  agent_name?: string;
+  spawn_role?: string;
+  spawn_depth?: number;
+  ttl_seconds?: number;
+  auto_stop_on_parent?: boolean;
+  task_id?: string;
+  run_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  parent_permissions?: PermissionSet;
+  child_permissions?: PermissionSet;
+  stop_reason?: string;
+  reap_reason?: string;
+  error?: string;
+}
+
+export interface SpawnTTLExpiredPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  parent_session_id?: string;
+  root_session_id?: string;
+  child_session_id?: string;
+  workspace_id?: string;
+  workspace?: string;
+  agent_name?: string;
+  spawn_role?: string;
+  spawn_depth?: number;
+  ttl_seconds?: number;
+  auto_stop_on_parent?: boolean;
+  task_id?: string;
+  run_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  parent_permissions?: PermissionSet;
+  child_permissions?: PermissionSet;
+  stop_reason?: string;
+  reap_reason?: string;
+  error?: string;
+}
+
 export type Priority = string;
 
 export type ApprovalPolicy = string;
@@ -2287,6 +2644,21 @@ export interface TaskDependencyReferencePayload {
   depends_on: TaskReferencePayload;
 }
 
+export type CoordinationMessageKind = string;
+
+export interface CoordinationChannelPayload {
+  id: string;
+  channel?: string;
+  display_name: string;
+  purpose?: string;
+  workspace_id?: string;
+  task_id?: string;
+  run_id?: string;
+  workflow_id?: string;
+  allowed_message_kinds: CoordinationMessageKind[];
+  last_activity_at?: ISODateTime;
+}
+
 export interface TaskRunSummaryPayload {
   id: string;
   task_id: string;
@@ -2295,6 +2667,11 @@ export interface TaskRunSummaryPayload {
   max_attempts: number;
   session_id?: string;
   claimed_by?: ActorIdentity;
+  claim_token_hash?: string;
+  lease_until?: ISODateTime;
+  heartbeat_at?: ISODateTime;
+  coordination_channel_id?: string;
+  coordination_channel?: CoordinationChannelPayload;
   queued_at: ISODateTime;
   claimed_at?: ISODateTime;
   started_at?: ISODateTime;
@@ -2346,6 +2723,11 @@ export interface TaskRun {
   origin: Origin;
   idempotency_key?: string;
   network_channel?: string;
+  claim_token_hash?: string;
+  lease_until?: ISODateTime;
+  heartbeat_at?: ISODateTime;
+  coordination_channel_id?: string;
+  coordination_channel?: CoordinationChannelPayload;
   queued_at: ISODateTime;
   claimed_at?: ISODateTime;
   started_at?: ISODateTime;
@@ -2435,6 +2817,15 @@ export interface TaskRunCancelParams {
   metadata?: JSONValue;
 }
 
+export interface TaskRunClaimCriteria {
+  workspace_id?: string;
+  claimer_session_id?: string;
+  agent_name?: string;
+  required_capabilities?: string[];
+  priority_min?: number;
+  coordination_channel_id?: string;
+}
+
 export interface TaskRunClaimParams {
   id: string;
   idempotency_key?: string;
@@ -2443,6 +2834,54 @@ export interface TaskRunClaimParams {
 export interface TaskRunCompleteParams {
   id: string;
   result?: JSONValue;
+}
+
+export interface TaskRunCompletedPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  task_id?: string;
+  run_id?: string;
+  workspace_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  network_channel?: string;
+  agent_name?: string;
+  session_id?: string;
+  actor_kind?: string;
+  actor_ref?: string;
+  origin_kind?: string;
+  origin_ref?: string;
+  task_status?: string;
+  run_status?: string;
+  attempt?: number;
+  lease_until: ISODateTime;
+  release_reason?: string;
+  error?: string;
+  previous_run_status?: string;
+  previous_session_id?: string;
+  recovery_action?: string;
+  recovery_reason?: string;
+}
+
+export interface TaskRunContext {
+  task_id?: string;
+  run_id?: string;
+  workspace_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  network_channel?: string;
+  agent_name?: string;
+  session_id?: string;
+  actor_kind?: string;
+  actor_ref?: string;
+  origin_kind?: string;
+  origin_ref?: string;
+  task_status?: string;
+  run_status?: string;
+  attempt?: number;
+  lease_until: ISODateTime;
+  release_reason?: string;
+  error?: string;
 }
 
 export interface TaskRunSessionPayload {
@@ -2482,14 +2921,261 @@ export interface TaskRunEnqueueParams {
   metadata?: JSONValue;
 }
 
+export interface TaskRunEnqueuedPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  task_id?: string;
+  run_id?: string;
+  workspace_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  network_channel?: string;
+  agent_name?: string;
+  session_id?: string;
+  actor_kind?: string;
+  actor_ref?: string;
+  origin_kind?: string;
+  origin_ref?: string;
+  task_status?: string;
+  run_status?: string;
+  attempt?: number;
+  lease_until: ISODateTime;
+  release_reason?: string;
+  error?: string;
+  idempotency_key?: string;
+}
+
 export interface TaskRunFailParams {
   id: string;
   error: string;
   metadata?: JSONValue;
 }
 
+export interface TaskRunFailedPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  task_id?: string;
+  run_id?: string;
+  workspace_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  network_channel?: string;
+  agent_name?: string;
+  session_id?: string;
+  actor_kind?: string;
+  actor_ref?: string;
+  origin_kind?: string;
+  origin_ref?: string;
+  task_status?: string;
+  run_status?: string;
+  attempt?: number;
+  lease_until: ISODateTime;
+  release_reason?: string;
+  error?: string;
+  previous_run_status?: string;
+  previous_session_id?: string;
+  recovery_action?: string;
+  recovery_reason?: string;
+}
+
 export interface TaskRunGetParams {
   id: string;
+}
+
+export interface TaskRunLeaseExpiredPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  task_id?: string;
+  run_id?: string;
+  workspace_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  network_channel?: string;
+  agent_name?: string;
+  session_id?: string;
+  actor_kind?: string;
+  actor_ref?: string;
+  origin_kind?: string;
+  origin_ref?: string;
+  task_status?: string;
+  run_status?: string;
+  attempt?: number;
+  lease_until: ISODateTime;
+  release_reason?: string;
+  error?: string;
+  previous_run_status?: string;
+  previous_session_id?: string;
+  recovery_action?: string;
+  recovery_reason?: string;
+}
+
+export interface TaskRunLeaseExtendedPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  task_id?: string;
+  run_id?: string;
+  workspace_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  network_channel?: string;
+  agent_name?: string;
+  session_id?: string;
+  actor_kind?: string;
+  actor_ref?: string;
+  origin_kind?: string;
+  origin_ref?: string;
+  task_status?: string;
+  run_status?: string;
+  attempt?: number;
+  lease_until: ISODateTime;
+  release_reason?: string;
+  error?: string;
+  previous_run_status?: string;
+  previous_session_id?: string;
+  recovery_action?: string;
+  recovery_reason?: string;
+}
+
+export interface TaskRunLeasePayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  task_id?: string;
+  run_id?: string;
+  workspace_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  network_channel?: string;
+  agent_name?: string;
+  session_id?: string;
+  actor_kind?: string;
+  actor_ref?: string;
+  origin_kind?: string;
+  origin_ref?: string;
+  task_status?: string;
+  run_status?: string;
+  attempt?: number;
+  lease_until: ISODateTime;
+  release_reason?: string;
+  error?: string;
+  previous_run_status?: string;
+  previous_session_id?: string;
+  recovery_action?: string;
+  recovery_reason?: string;
+}
+
+export interface TaskRunLeaseRecoveredPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  task_id?: string;
+  run_id?: string;
+  workspace_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  network_channel?: string;
+  agent_name?: string;
+  session_id?: string;
+  actor_kind?: string;
+  actor_ref?: string;
+  origin_kind?: string;
+  origin_ref?: string;
+  task_status?: string;
+  run_status?: string;
+  attempt?: number;
+  lease_until: ISODateTime;
+  release_reason?: string;
+  error?: string;
+  previous_run_status?: string;
+  previous_session_id?: string;
+  recovery_action?: string;
+  recovery_reason?: string;
+}
+
+export interface TaskRunObservationPatch {
+  labels?: Record<string, string>;
+}
+
+export interface TaskRunPostClaimPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  task_id?: string;
+  run_id?: string;
+  workspace_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  network_channel?: string;
+  agent_name?: string;
+  session_id?: string;
+  actor_kind?: string;
+  actor_ref?: string;
+  origin_kind?: string;
+  origin_ref?: string;
+  task_status?: string;
+  run_status?: string;
+  attempt?: number;
+  lease_until: ISODateTime;
+  release_reason?: string;
+  error?: string;
+  claimed_at: ISODateTime;
+}
+
+export interface TaskRunPreClaimPatch {
+  deny?: boolean;
+  deny_reason?: string;
+  add_required_capabilities?: string[];
+  priority_min?: number;
+}
+
+export interface TaskRunPreClaimPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  task_id?: string;
+  run_id?: string;
+  workspace_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  network_channel?: string;
+  agent_name?: string;
+  session_id?: string;
+  actor_kind?: string;
+  actor_ref?: string;
+  origin_kind?: string;
+  origin_ref?: string;
+  task_status?: string;
+  run_status?: string;
+  attempt?: number;
+  lease_until: ISODateTime;
+  release_reason?: string;
+  error?: string;
+  criteria: TaskRunClaimCriteria;
+  denied?: boolean;
+  deny_reason?: string;
+}
+
+export interface TaskRunReleasedPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  task_id?: string;
+  run_id?: string;
+  workspace_id?: string;
+  workflow_id?: string;
+  coordination_channel_id?: string;
+  network_channel?: string;
+  agent_name?: string;
+  session_id?: string;
+  actor_kind?: string;
+  actor_ref?: string;
+  origin_kind?: string;
+  origin_ref?: string;
+  task_status?: string;
+  run_status?: string;
+  attempt?: number;
+  lease_until: ISODateTime;
+  release_reason?: string;
+  error?: string;
+  previous_run_status?: string;
+  previous_session_id?: string;
+  recovery_action?: string;
+  recovery_reason?: string;
 }
 
 export interface TaskRunStartParams {
@@ -2820,6 +3506,25 @@ export interface HookPayloadByEvent {
   "permission.denied": PermissionDeniedPayload;
   "context.pre_compact": ContextPreCompactPayload;
   "context.post_compact": ContextPostCompactPayload;
+  "coordinator.pre_spawn": CoordinatorPreSpawnPayload;
+  "coordinator.spawned": CoordinatorSpawnedPayload;
+  "coordinator.decision": CoordinatorDecisionPayload;
+  "coordinator.stopped": CoordinatorStoppedPayload;
+  "coordinator.failed": CoordinatorFailedPayload;
+  "task.run.enqueued": TaskRunEnqueuedPayload;
+  "task.run.pre_claim": TaskRunPreClaimPayload;
+  "task.run.post_claim": TaskRunPostClaimPayload;
+  "task.run.lease_extended": TaskRunLeaseExtendedPayload;
+  "task.run.lease_expired": TaskRunLeaseExpiredPayload;
+  "task.run.lease_recovered": TaskRunLeaseRecoveredPayload;
+  "task.run.released": TaskRunReleasedPayload;
+  "task.run.completed": TaskRunCompletedPayload;
+  "task.run.failed": TaskRunFailedPayload;
+  "spawn.pre_create": SpawnPreCreatePayload;
+  "spawn.created": SpawnCreatedPayload;
+  "spawn.parent_stopped": SpawnParentStoppedPayload;
+  "spawn.ttl_expired": SpawnTTLExpiredPayload;
+  "spawn.reaped": SpawnReapedPayload;
 }
 
 export interface HookPatchByEvent {
@@ -2861,6 +3566,25 @@ export interface HookPatchByEvent {
   "permission.denied": PermissionDeniedPatch;
   "context.pre_compact": ContextPreCompactPatch;
   "context.post_compact": ContextPostCompactPatch;
+  "coordinator.pre_spawn": CoordinatorSpawnPatch;
+  "coordinator.spawned": CoordinatorObservationPatch;
+  "coordinator.decision": CoordinatorObservationPatch;
+  "coordinator.stopped": CoordinatorObservationPatch;
+  "coordinator.failed": CoordinatorObservationPatch;
+  "task.run.enqueued": TaskRunObservationPatch;
+  "task.run.pre_claim": TaskRunPreClaimPatch;
+  "task.run.post_claim": TaskRunObservationPatch;
+  "task.run.lease_extended": TaskRunObservationPatch;
+  "task.run.lease_expired": TaskRunObservationPatch;
+  "task.run.lease_recovered": TaskRunObservationPatch;
+  "task.run.released": TaskRunObservationPatch;
+  "task.run.completed": TaskRunObservationPatch;
+  "task.run.failed": TaskRunObservationPatch;
+  "spawn.pre_create": SpawnCreatePatch;
+  "spawn.created": SpawnObservationPatch;
+  "spawn.parent_stopped": SpawnObservationPatch;
+  "spawn.ttl_expired": SpawnObservationPatch;
+  "spawn.reaped": SpawnObservationPatch;
 }
 
 export interface HostAPIMethodMap {

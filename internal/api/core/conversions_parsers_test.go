@@ -13,15 +13,18 @@ import (
 	"github.com/pedronauck/agh/internal/acp"
 	"github.com/pedronauck/agh/internal/api/contract"
 	"github.com/pedronauck/agh/internal/api/core"
+	automationpkg "github.com/pedronauck/agh/internal/automation"
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	"github.com/pedronauck/agh/internal/session"
 	"github.com/pedronauck/agh/internal/store"
+	taskpkg "github.com/pedronauck/agh/internal/task"
 )
 
 func TestSessionPayloadFromInfo(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	ttl := now.Add(time.Hour)
 	payload := core.SessionPayloadFromInfo(&session.Info{
 		ID:          "sess-1",
 		Name:        "demo",
@@ -30,9 +33,28 @@ func TestSessionPayloadFromInfo(t *testing.T) {
 		WorkspaceID: "ws_alpha",
 		Workspace:   "/workspace",
 		Channel:     "builders",
-		State:       session.StateActive,
-		StopReason:  store.StopTimeout,
-		StopDetail:  "deadline exceeded",
+		Type:        session.SessionTypeDream,
+		Lineage: &store.SessionLineage{
+			ParentSessionID:  "sess-root",
+			RootSessionID:    "sess-root",
+			SpawnDepth:       1,
+			SpawnRole:        "worker",
+			TTLExpiresAt:     &ttl,
+			AutoStopOnParent: true,
+			SpawnBudget: store.SessionSpawnBudget{
+				MaxChildren:           2,
+				MaxDepth:              1,
+				TTLSeconds:            3600,
+				MaxActivePerWorkspace: 3,
+			},
+			PermissionPolicy: store.SessionPermissionPolicy{
+				Tools:           []string{"edit"},
+				NetworkChannels: []string{"coord"},
+			},
+		},
+		State:      session.StateActive,
+		StopReason: store.StopTimeout,
+		StopDetail: "deadline exceeded",
 		Failure: &store.SessionFailure{
 			Kind:            store.FailureTimeout,
 			Summary:         "deadline exceeded",
@@ -47,6 +69,11 @@ func TestSessionPayloadFromInfo(t *testing.T) {
 			InstanceID:    "instance-1",
 			ProviderState: json.RawMessage(`{"sandbox_id":"sb-123","token":"secret"}`),
 			LastSyncError: "sync failed",
+		},
+		Liveness: &store.SessionLivenessMeta{
+			Activity: &store.SessionActivityMeta{
+				TurnID: "turn-1",
+			},
 		},
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -66,6 +93,21 @@ func TestSessionPayloadFromInfo(t *testing.T) {
 	}
 	if payload.State != session.StateActive || payload.ACPSessionID != "acp-123" {
 		t.Fatalf("payload session fields = %#v", payload)
+	}
+	if payload.Type != session.SessionTypeDream {
+		t.Fatalf("payload.Type = %q, want %q", payload.Type, session.SessionTypeDream)
+	}
+	if payload.Lineage == nil ||
+		payload.Lineage.ParentSessionID != "sess-root" ||
+		payload.Lineage.RootSessionID != "sess-root" ||
+		payload.Lineage.SpawnDepth != 1 ||
+		payload.Lineage.SpawnRole != "worker" ||
+		payload.Lineage.SpawnBudget.MaxChildren != 2 ||
+		payload.Lineage.PermissionPolicy.Tools[0] != "edit" {
+		t.Fatalf("payload.Lineage = %#v", payload.Lineage)
+	}
+	if payload.Activity == nil || payload.Activity.TurnID != "turn-1" {
+		t.Fatalf("activity = %#v", payload.Activity)
 	}
 	if payload.StopReason != store.StopTimeout || payload.StopDetail != "deadline exceeded" {
 		t.Fatalf("payload stop fields = %#v", payload)
@@ -89,6 +131,91 @@ func TestSessionPayloadFromInfo(t *testing.T) {
 	}
 	if payload.Environment.ProviderStateJSON != nil {
 		t.Fatalf("environment provider state = %s, want omitted", string(payload.Environment.ProviderStateJSON))
+	}
+}
+
+func TestRuntimeActivityPayloadFromSessionMeta(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	turnStartedAt := now.Add(-2 * time.Minute)
+	lastActivityAt := now.Add(-45 * time.Second)
+	lastProgressAt := now.Add(-15 * time.Second)
+
+	tests := []struct {
+		name   string
+		meta   *store.SessionLivenessMeta
+		assert func(*testing.T, *contract.RuntimeActivityPayload)
+	}{
+		{
+			name: "Should return nil for nil liveness metadata",
+			assert: func(t *testing.T, payload *contract.RuntimeActivityPayload) {
+				t.Helper()
+				if payload != nil {
+					t.Fatalf("RuntimeActivityPayloadFromSessionMeta(nil) = %#v, want nil", payload)
+				}
+			},
+		},
+		{
+			name: "Should return nil for empty liveness metadata",
+			meta: &store.SessionLivenessMeta{},
+			assert: func(t *testing.T, payload *contract.RuntimeActivityPayload) {
+				t.Helper()
+				if payload != nil {
+					t.Fatalf("RuntimeActivityPayloadFromSessionMeta(empty) = %#v, want nil", payload)
+				}
+			},
+		},
+		{
+			name: "Should map populated activity metadata",
+			meta: &store.SessionLivenessMeta{
+				Activity: &store.SessionActivityMeta{
+					TurnID:             " turn-1 ",
+					TurnSource:         " prompt ",
+					TurnStartedAt:      &turnStartedAt,
+					LastActivityAt:     &lastActivityAt,
+					LastActivityKind:   " tool_call ",
+					LastActivityDetail: " running ",
+					CurrentTool:        " edit ",
+					ToolCallID:         " call-1 ",
+					LastProgressAt:     &lastProgressAt,
+					IterationCurrent:   2,
+					IterationMax:       5,
+				},
+			},
+			assert: func(t *testing.T, payload *contract.RuntimeActivityPayload) {
+				t.Helper()
+				if payload == nil {
+					t.Fatal("RuntimeActivityPayloadFromSessionMeta() = nil, want payload")
+				}
+				if payload.TurnID != "turn-1" ||
+					payload.TurnSource != "prompt" ||
+					payload.LastActivityKind != "tool_call" ||
+					payload.CurrentTool != "edit" ||
+					payload.ToolCallID != "call-1" ||
+					payload.IterationCurrent != 2 ||
+					payload.IterationMax != 5 {
+					t.Fatalf("payload = %#v", payload)
+				}
+				if payload.IdleSeconds != 45 || payload.ElapsedSeconds != 120 {
+					t.Fatalf("payload timing = idle %d elapsed %d", payload.IdleSeconds, payload.ElapsedSeconds)
+				}
+				if payload.TurnStartedAt == nil || !payload.TurnStartedAt.Equal(turnStartedAt) ||
+					payload.LastActivityAt == nil || !payload.LastActivityAt.Equal(lastActivityAt) ||
+					payload.LastProgressAt == nil || !payload.LastProgressAt.Equal(lastProgressAt) {
+					t.Fatalf("payload time pointers = %#v", payload)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			payload := core.RuntimeActivityPayloadFromSessionMeta(tt.meta, now)
+			tt.assert(t, payload)
+		})
 	}
 }
 
@@ -117,6 +244,91 @@ func TestAgentPayloadFromDef(t *testing.T) {
 	if payload.MCPServers[0].Env["TOKEN"] != aghconfig.RedactedValue() {
 		t.Fatalf("payload mcp env = %#v", payload.MCPServers[0].Env)
 	}
+}
+
+func TestSessionEventPayloadFromEventIncludesStopDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Should include stop diagnostics from session info", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+		payload := core.SessionEventPayloadFromEvent(
+			store.SessionEvent{
+				ID:        "ev-1",
+				SessionID: "sess-1",
+				Sequence:  7,
+				TurnID:    "turn-1",
+				Type:      session.EventTypeSessionStopped,
+				AgentName: "coder",
+				Content:   `{"ok":true}`,
+				Timestamp: now,
+			},
+			&session.Info{
+				WorkspaceID: "ws-alpha",
+				Workspace:   "/workspace",
+				StopReason:  store.StopAgentCrashed,
+				StopDetail:  "driver failed",
+				Failure: &store.SessionFailure{
+					Kind:    store.FailureProcess,
+					Summary: "driver failed",
+				},
+			},
+		)
+
+		if payload.WorkspaceID != "ws-alpha" || payload.WorkspacePath != "/workspace" {
+			t.Fatalf("workspace payload = %#v", payload)
+		}
+		if payload.StopReason != store.StopAgentCrashed || payload.StopDetail != "driver failed" {
+			t.Fatalf("stop payload = %#v", payload)
+		}
+		if payload.Failure == nil || payload.Failure.Kind != store.FailureProcess {
+			t.Fatalf("failure payload = %#v", payload.Failure)
+		}
+	})
+}
+
+func TestJobPayloadFromJobCopiesNestedOptionalFields(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Should copy nested optional automation job fields", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+		nextRun := now.Add(time.Hour)
+		schedule := automationpkg.ScheduleSpec{Mode: automationpkg.ScheduleModeEvery, Interval: "10m"}
+		owner := taskpkg.Ownership{Kind: taskpkg.OwnerKindPool, Ref: "triage"}
+		jobTask := automationpkg.JobTaskConfig{
+			Title:          "Review queue",
+			Owner:          &owner,
+			NetworkChannel: "builders",
+		}
+		payload := core.JobPayloadFromJob(automationpkg.Job{
+			ID:        "job-1",
+			Scope:     automationpkg.AutomationScopeWorkspace,
+			Name:      "review",
+			AgentName: "coder",
+			Schedule:  &schedule,
+			Task:      &jobTask,
+			Enabled:   true,
+			Source:    automationpkg.JobSourceDynamic,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}, &nextRun, &contract.AutomationSchedulerStatePayload{Registered: true})
+
+		if payload.Schedule == nil || payload.Schedule.Interval != "10m" {
+			t.Fatalf("schedule payload = %#v", payload.Schedule)
+		}
+		if payload.Task == nil || payload.Task.Owner == nil || payload.Task.Owner.Ref != "triage" {
+			t.Fatalf("task payload = %#v", payload.Task)
+		}
+		if payload.Task == &jobTask || payload.Task.Owner == &owner {
+			t.Fatal("JobPayloadFromJob reused nested input pointers")
+		}
+		if payload.NextRun == nil || !payload.NextRun.Equal(nextRun) || payload.Scheduler == nil {
+			t.Fatalf("scheduler payload = next %v scheduler %#v", payload.NextRun, payload.Scheduler)
+		}
+	})
 }
 
 func TestParseSessionEventQueryAndHelpers(t *testing.T) {

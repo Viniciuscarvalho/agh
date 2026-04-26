@@ -27,7 +27,9 @@ type sessionStartSpec struct {
 	provider               string
 	workspace              workspacepkg.ResolvedWorkspace
 	channel                string
+	promptOverlay          string
 	sessionType            Type
+	lineage                *store.SessionLineage
 	postEvent              hookspkg.HookEvent
 	startAction            string
 	cleanupSessionDir      bool
@@ -77,6 +79,10 @@ func (m *Manager) prepareCreateStart(ctx context.Context, opts CreateOpts) (sess
 	if environmentID == "" {
 		return sessionStartSpec{}, errors.New("session: environment id generator returned empty id")
 	}
+	lineage, err := m.normalizeCreateLineage(ctx, sessionID, opts.Type, opts.Lineage)
+	if err != nil {
+		return sessionStartSpec{}, err
+	}
 
 	return sessionStartSpec{
 		sessionID:         sessionID,
@@ -86,7 +92,9 @@ func (m *Manager) prepareCreateStart(ctx context.Context, opts CreateOpts) (sess
 		provider:          strings.TrimSpace(opts.Provider),
 		workspace:         resolvedWorkspace,
 		channel:           strings.TrimSpace(opts.Channel),
+		promptOverlay:     strings.TrimSpace(opts.PromptOverlay),
 		sessionType:       normalizeSessionType(opts.Type),
+		lineage:           lineage,
 		postEvent:         hookspkg.HookSessionPostCreate,
 		startAction:       "create",
 		cleanupSessionDir: true,
@@ -114,6 +122,7 @@ func (m *Manager) prepareResumeStart(ctx context.Context, meta store.SessionMeta
 		workspace:              resolvedWorkspace,
 		channel:                strings.TrimSpace(meta.Channel),
 		sessionType:            normalizeSessionType(Type(meta.SessionType)),
+		lineage:                store.NormalizeSessionLineage(meta.ID, meta.Lineage),
 		postEvent:              hookspkg.HookSessionPostResume,
 		startAction:            "resume",
 		includePromptUpdatedAt: true,
@@ -254,16 +263,19 @@ func (s *sessionStartSpec) startupSessionContext(updatedAt time.Time) hookspkg.S
 	return ctx
 }
 
-func (s *sessionStartSpec) startupPromptContext() StartupPromptContext {
+func (s *sessionStartSpec) startupPromptContext(updatedAt time.Time) StartupPromptContext {
 	ref := workref.NewRoot(s.workspace.ID, s.workspace.RootDir)
 	return StartupPromptContext{
 		SessionID:   strings.TrimSpace(s.sessionID),
 		SessionName: strings.TrimSpace(s.sessionName),
 		AgentName:   strings.TrimSpace(s.agentName),
+		Provider:    strings.TrimSpace(s.provider),
 		WorkspaceID: ref.WorkspaceID,
 		Workspace:   ref.Workspace,
 		Channel:     strings.TrimSpace(s.channel),
 		SessionType: normalizeSessionType(s.sessionType),
+		CreatedAt:   s.createdAt,
+		UpdatedAt:   updatedAt,
 	}
 }
 
@@ -277,7 +289,7 @@ func (m *Manager) prepareSessionStartRuntime(
 		return sessionStartRuntime{}, fmt.Errorf("session: resolve workspace agent %q: %w", spec.agentName, err)
 	}
 
-	startupCtx := spec.startupPromptContext()
+	startupCtx := spec.startupPromptContext(updatedAt)
 	startupPrompt, err := m.startupPrompt(
 		ctx,
 		spec.startupSessionContext(updatedAt),
@@ -295,6 +307,13 @@ func (m *Manager) prepareSessionStartRuntime(
 		}
 	}
 	agentDef.Prompt = startupPrompt
+	if overlay := strings.TrimSpace(spec.promptOverlay); overlay != "" {
+		if strings.TrimSpace(agentDef.Prompt) == "" {
+			agentDef.Prompt = overlay
+		} else {
+			agentDef.Prompt = strings.TrimSpace(agentDef.Prompt) + "\n\n" + overlay
+		}
+	}
 
 	resolved, err := spec.workspace.Config.ResolveSessionAgent(agentDef, spec.provider)
 	if err != nil {
@@ -357,6 +376,7 @@ func (s *sessionStartSpec) newStartingSession(
 		Workspace:                s.workspace.RootDir,
 		Channel:                  s.channel,
 		Type:                     normalizeSessionType(s.sessionType),
+		Lineage:                  store.CloneSessionLineage(s.lineage),
 		State:                    StateStarting,
 		stopReason:               s.stopReason,
 		stopDetail:               s.stopDetail,
@@ -371,6 +391,69 @@ func (s *sessionStartSpec) newStartingSession(
 		recorder:                 storage.recorder,
 		environmentDestroyOnStop: s.workspace.Environment.DestroyOnStop,
 	}
+}
+
+func (m *Manager) normalizeCreateLineage(
+	ctx context.Context,
+	sessionID string,
+	sessionType Type,
+	lineage *store.SessionLineage,
+) (*store.SessionLineage, error) {
+	normalizedType := normalizeSessionType(sessionType)
+	normalized := store.NormalizeSessionLineage(sessionID, lineage)
+	if err := store.ValidateSessionLineage(sessionID, normalized); err != nil {
+		return nil, fmt.Errorf("session: validate session lineage: %w", err)
+	}
+
+	hasParent := strings.TrimSpace(normalized.ParentSessionID) != ""
+	switch {
+	case normalizedType == SessionTypeSpawned && !hasParent:
+		return nil, errors.New("session: spawned session lineage requires a parent session id")
+	case hasParent && normalizedType != SessionTypeSpawned:
+		return nil, errors.New("session: only spawned sessions may have a parent session id")
+	case normalizedType == SessionTypeCoordinator && hasParent:
+		return nil, errors.New("session: coordinator sessions must be root sessions")
+	}
+
+	requiresTTL := normalizedType == SessionTypeSpawned || normalizedType == SessionTypeCoordinator
+	if requiresTTL && normalized.TTLExpiresAt == nil {
+		return nil, errors.New("session: spawned and coordinator sessions require a ttl deadline")
+	}
+	if normalized.TTLExpiresAt != nil {
+		now := m.now()
+		if !normalized.TTLExpiresAt.After(now) {
+			return nil, errors.New("session: ttl deadline must be in the future")
+		}
+		if normalized.SpawnBudget.TTLSeconds <= 0 {
+			ttlSeconds := int64(normalized.TTLExpiresAt.Sub(now).Seconds())
+			if ttlSeconds <= 0 {
+				ttlSeconds = 1
+			}
+			normalized.SpawnBudget.TTLSeconds = ttlSeconds
+		}
+	}
+	if err := m.validateCreateLineageReferences(ctx, normalized); err != nil {
+		return nil, err
+	}
+
+	return normalized, nil
+}
+
+func (m *Manager) validateCreateLineageReferences(ctx context.Context, lineage *store.SessionLineage) error {
+	if lineage == nil || strings.TrimSpace(lineage.ParentSessionID) == "" {
+		return nil
+	}
+	if _, err := m.Status(ctx, lineage.ParentSessionID); err != nil {
+		return fmt.Errorf("session: validate parent lineage %q: %w", lineage.ParentSessionID, err)
+	}
+	rootID := strings.TrimSpace(lineage.RootSessionID)
+	if rootID == "" || rootID == strings.TrimSpace(lineage.ParentSessionID) {
+		return nil
+	}
+	if _, err := m.Status(ctx, rootID); err != nil {
+		return fmt.Errorf("session: validate root lineage %q: %w", rootID, err)
+	}
+	return nil
 }
 
 func (s *sessionStartSpec) startLogger(m *Manager) *slog.Logger {
@@ -415,6 +498,8 @@ func sessionStartEnv(base []string, session *Session) []string {
 	}
 
 	env = setSessionStartEnvValue(env, "AGH_SESSION_ID", strings.TrimSpace(session.ID))
+	env = setSessionStartEnvValue(env, "AGH_AGENT", strings.TrimSpace(session.AgentName))
+	env = setSessionStartEnvValue(env, "AGH_AGENT_NAME", strings.TrimSpace(session.AgentName))
 	env = unsetSessionStartEnvKeys(env, "AGH_SESSION_CHANNEL", "AGH_PEER_ID")
 
 	channel := strings.TrimSpace(session.Channel)

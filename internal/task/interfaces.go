@@ -12,8 +12,9 @@ type Manager interface {
 	CreateChildTask(ctx context.Context, parentTaskID string, spec CreateTask, actor ActorContext) (*Task, error)
 	DeleteTask(ctx context.Context, id string, actor ActorContext) error
 	UpdateTask(ctx context.Context, id string, patch Patch, actor ActorContext) (*Task, error)
-	PublishTask(ctx context.Context, id string, actor ActorContext) (*Task, error)
-	ApproveTask(ctx context.Context, id string, actor ActorContext) (*Task, error)
+	PublishTask(ctx context.Context, id string, req ExecutionRequest, actor ActorContext) (*Execution, error)
+	StartTask(ctx context.Context, id string, req ExecutionRequest, actor ActorContext) (*Execution, error)
+	ApproveTask(ctx context.Context, id string, req ExecutionRequest, actor ActorContext) (*Execution, error)
 	RejectTask(ctx context.Context, id string, actor ActorContext) (*Task, error)
 	CancelTask(ctx context.Context, id string, req CancelTask, actor ActorContext) (*Task, error)
 	MarkTaskRead(ctx context.Context, id string, actor ActorContext) (TriageState, error)
@@ -24,12 +25,22 @@ type Manager interface {
 	RemoveDependency(ctx context.Context, taskID string, dependsOnID string, actor ActorContext) error
 
 	EnqueueRun(ctx context.Context, spec EnqueueRun, actor ActorContext) (*Run, error)
+	ClaimNextRun(ctx context.Context, criteria ClaimCriteria, actor ActorContext) (*ClaimResult, error)
 	ClaimRun(ctx context.Context, runID string, claim ClaimRun, actor ActorContext) (*Run, error)
 	StartRun(ctx context.Context, runID string, req StartRun, actor ActorContext) (*Run, error)
 	AttachRunSession(ctx context.Context, runID string, sessionID string, actor ActorContext) (*Run, error)
+	HeartbeatRunLease(ctx context.Context, heartbeat LeaseHeartbeat, actor ActorContext) (*Run, error)
+	ReleaseRunLease(ctx context.Context, release LeaseRelease, actor ActorContext) (*Run, error)
+	CompleteRunLease(ctx context.Context, completion LeaseCompletion, actor ActorContext) (*Run, error)
+	FailRunLease(ctx context.Context, failure LeaseFailure, actor ActorContext) (*Run, error)
 	CompleteRun(ctx context.Context, runID string, result RunResult, actor ActorContext) (*Run, error)
 	FailRun(ctx context.Context, runID string, failure RunFailure, actor ActorContext) (*Run, error)
 	CancelRun(ctx context.Context, runID string, req CancelRun, actor ActorContext) (*Run, error)
+	RecoverExpiredRunLeases(
+		ctx context.Context,
+		recovery ExpiredLeaseRecovery,
+		actor ActorContext,
+	) ([]ExpiredLeaseRecoveryResult, error)
 
 	GetTask(ctx context.Context, id string, actor ActorContext) (*View, error)
 	ListTaskRuns(ctx context.Context, taskID string, query RunQuery, actor ActorContext) ([]Run, error)
@@ -85,6 +96,12 @@ type RunStore interface {
 	ListTaskRuns(ctx context.Context, query RunQuery) ([]Run, error)
 	ListTaskRunsByStatus(ctx context.Context, statuses []RunStatus) ([]Run, error)
 	CountActiveSessionBindings(ctx context.Context, sessionID string) (int, error)
+	ClaimNextRun(ctx context.Context, criteria ClaimCriteria) (ClaimResult, error)
+	HeartbeatRunLease(ctx context.Context, heartbeat LeaseHeartbeat) (Run, error)
+	ReleaseRunLease(ctx context.Context, release LeaseRelease) (Run, error)
+	CompleteRunLease(ctx context.Context, completion LeaseCompletion) (Run, error)
+	FailRunLease(ctx context.Context, failure LeaseFailure) (Run, error)
+	RecoverExpiredRunLeases(ctx context.Context, recovery ExpiredLeaseRecovery) ([]ExpiredLeaseRecoveryResult, error)
 	ReserveQueuedRun(
 		ctx context.Context,
 		taskID string,

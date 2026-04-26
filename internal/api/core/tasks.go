@@ -24,6 +24,7 @@ const (
 	taskActionGet              = "get"
 	taskActionDelete           = "delete"
 	taskActionPublish          = "publish"
+	taskActionStart            = "start"
 	taskActionUpdate           = "update"
 	taskActionCancel           = "cancel"
 	taskActionCreateChild      = "create_child"
@@ -294,19 +295,79 @@ func (h *BaseHandlers) PublishTask(c *gin.Context) {
 		return
 	}
 
+	var req contract.TaskExecutionRequest
+	if err := decodeOptionalJSON(c, &req); err != nil {
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewTaskValidationError(fmt.Errorf("%s: decode publish task request: %w", h.transportName(), err)),
+		)
+		return
+	}
+
 	actor, err := h.taskActorContext(c, taskActionPublish)
 	if err != nil {
 		h.respondError(c, StatusForTaskError(err), err)
 		return
 	}
 
-	record, err := manager.PublishTask(c.Request.Context(), taskID, actor)
+	executionReq, err := taskExecutionRequestFromRequest(req)
 	if err != nil {
 		h.respondError(c, StatusForTaskError(err), err)
 		return
 	}
 
-	c.JSON(http.StatusOK, contract.TaskResponse{Task: TaskPayloadFromTask(record)})
+	execution, err := manager.PublishTask(c.Request.Context(), taskID, executionReq, actor)
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+
+	c.JSON(http.StatusOK, TaskExecutionResponseFromExecution(execution))
+}
+
+// StartTask explicitly enqueues one executable run for an existing task.
+func (h *BaseHandlers) StartTask(c *gin.Context) {
+	manager, ok := h.requireTaskManager(c)
+	if !ok {
+		return
+	}
+
+	taskID, err := requiredPathID(c.Param("id"), "task id")
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+
+	var req contract.TaskExecutionRequest
+	if err := decodeOptionalJSON(c, &req); err != nil {
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewTaskValidationError(fmt.Errorf("%s: decode start task request: %w", h.transportName(), err)),
+		)
+		return
+	}
+
+	actor, err := h.taskActorContext(c, taskActionStart)
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+
+	executionReq, err := taskExecutionRequestFromRequest(req)
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+
+	execution, err := manager.StartTask(c.Request.Context(), taskID, executionReq, actor)
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+
+	c.JSON(http.StatusCreated, TaskExecutionResponseFromExecution(execution))
 }
 
 // CancelTask requests cancellation for one task tree.
@@ -740,14 +801,46 @@ func (h *BaseHandlers) TaskInbox(c *gin.Context) {
 
 // ApproveTask records one approval decision for an approval-gated task.
 func (h *BaseHandlers) ApproveTask(c *gin.Context) {
-	h.mutateTaskApproval(c, taskActionApprove, func(
-		ctx context.Context,
-		manager TaskService,
-		taskID string,
-		actor taskpkg.ActorContext,
-	) (*taskpkg.Task, error) {
-		return manager.ApproveTask(ctx, taskID, actor)
-	})
+	manager, ok := h.requireTaskManager(c)
+	if !ok {
+		return
+	}
+
+	taskID, err := requiredPathID(c.Param("id"), "task id")
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+
+	var req contract.TaskExecutionRequest
+	if err := decodeOptionalJSON(c, &req); err != nil {
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewTaskValidationError(fmt.Errorf("%s: decode approve task request: %w", h.transportName(), err)),
+		)
+		return
+	}
+
+	actor, err := h.taskActorContext(c, taskActionApprove)
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+
+	executionReq, err := taskExecutionRequestFromRequest(req)
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+
+	execution, err := manager.ApproveTask(c.Request.Context(), taskID, executionReq, actor)
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+
+	c.JSON(http.StatusCreated, TaskExecutionResponseFromExecution(execution))
 }
 
 // RejectTask records one rejection decision for an approval-gated task.
@@ -1375,6 +1468,21 @@ func enqueueTaskRunFromRequest(taskID string, req contract.EnqueueTaskRunRequest
 	return spec, nil
 }
 
+func taskExecutionRequestFromRequest(req contract.TaskExecutionRequest) (taskpkg.ExecutionRequest, error) {
+	if err := validateTaskChannel("task_execution.network_channel", req.NetworkChannel); err != nil {
+		return taskpkg.ExecutionRequest{}, err
+	}
+	spec := taskpkg.ExecutionRequest{
+		IdempotencyKey: strings.TrimSpace(req.IdempotencyKey),
+		NetworkChannel: strings.TrimSpace(req.NetworkChannel),
+		Metadata:       append(json.RawMessage(nil), req.Metadata...),
+	}
+	if err := spec.Validate("task_execution"); err != nil {
+		return taskpkg.ExecutionRequest{}, err
+	}
+	return spec, nil
+}
+
 func claimTaskRunFromRequest(req contract.ClaimTaskRunRequest) (taskpkg.ClaimRun, error) {
 	claim := taskpkg.ClaimRun{IdempotencyKey: strings.TrimSpace(req.IdempotencyKey)}
 	if err := claim.Validate("claim_run"); err != nil {
@@ -1564,6 +1672,17 @@ func TaskRunPayloadsFromRuns(runs []taskpkg.Run) []contract.TaskRunPayload {
 	return payloads
 }
 
+// TaskExecutionResponseFromExecution converts one task execution-boundary result.
+func TaskExecutionResponseFromExecution(execution *taskpkg.Execution) contract.TaskExecutionResponse {
+	if execution == nil {
+		return contract.TaskExecutionResponse{}
+	}
+	return contract.TaskExecutionResponse{
+		Task: TaskPayloadFromTask(&execution.Task),
+		Run:  TaskRunPayloadFromRun(&execution.Run),
+	}
+}
+
 // TaskRunPayloadFromRun converts one task run into the shared payload.
 func TaskRunPayloadFromRun(run *taskpkg.Run) contract.TaskRunPayload {
 	if run == nil {
@@ -1571,22 +1690,74 @@ func TaskRunPayloadFromRun(run *taskpkg.Run) contract.TaskRunPayload {
 	}
 
 	return contract.TaskRunPayload{
-		ID:             run.ID,
-		TaskID:         run.TaskID,
-		Status:         run.Status,
-		Attempt:        run.Attempt,
-		ClaimedBy:      cloneActorIdentity(run.ClaimedBy),
-		SessionID:      run.SessionID,
-		Origin:         run.Origin,
-		IdempotencyKey: run.IdempotencyKey,
-		NetworkChannel: run.NetworkChannel,
-		QueuedAt:       run.QueuedAt,
-		ClaimedAt:      optionalTime(run.ClaimedAt),
-		StartedAt:      optionalTime(run.StartedAt),
-		EndedAt:        optionalTime(run.EndedAt),
-		Error:          run.Error,
-		Metadata:       cloneRawMessage(run.Metadata),
-		Result:         cloneRawMessage(run.Result),
+		ID:                    run.ID,
+		TaskID:                run.TaskID,
+		Status:                run.Status,
+		Attempt:               run.Attempt,
+		ClaimedBy:             cloneActorIdentity(run.ClaimedBy),
+		SessionID:             run.SessionID,
+		Origin:                run.Origin,
+		IdempotencyKey:        run.IdempotencyKey,
+		NetworkChannel:        run.NetworkChannel,
+		ClaimTokenHash:        run.ClaimTokenHash,
+		LeaseUntil:            optionalTime(run.LeaseUntil),
+		HeartbeatAt:           optionalTime(run.HeartbeatAt),
+		CoordinationChannelID: run.CoordinationChannelID,
+		QueuedAt:              run.QueuedAt,
+		ClaimedAt:             optionalTime(run.ClaimedAt),
+		StartedAt:             optionalTime(run.StartedAt),
+		EndedAt:               optionalTime(run.EndedAt),
+		Error:                 run.Error,
+		Metadata:              redactRawClaimTokenFields(run.Metadata),
+		Result:                redactRawClaimTokenFields(run.Result),
+	}
+}
+
+func redactRawClaimTokenFields(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return nil
+	}
+	var decoded any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return cloneRawMessage(raw)
+	}
+	redacted, changed := redactRawClaimTokenValue(decoded)
+	if !changed {
+		return cloneRawMessage(raw)
+	}
+	encoded, err := json.Marshal(redacted)
+	if err != nil {
+		return nil
+	}
+	return encoded
+}
+
+func redactRawClaimTokenValue(value any) (any, bool) {
+	switch typed := value.(type) {
+	case map[string]any:
+		changed := false
+		redacted := make(map[string]any, len(typed))
+		for key, nested := range typed {
+			if strings.EqualFold(strings.TrimSpace(key), "claim_token") {
+				changed = true
+				continue
+			}
+			next, nestedChanged := redactRawClaimTokenValue(nested)
+			redacted[key] = next
+			changed = changed || nestedChanged
+		}
+		return redacted, changed
+	case []any:
+		changed := false
+		redacted := make([]any, len(typed))
+		for idx, nested := range typed {
+			next, nestedChanged := redactRawClaimTokenValue(nested)
+			redacted[idx] = next
+			changed = changed || nestedChanged
+		}
+		return redacted, changed
+	default:
+		return value, false
 	}
 }
 
