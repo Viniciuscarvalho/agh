@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 title: Agent Caller Identity Layer
 type: backend
 complexity: medium
@@ -32,11 +32,11 @@ Add the identity resolution layer used by agent-facing UDS and CLI commands. Ope
 </requirements>
 
 ## Subtasks
-- [ ] 5.1 Add shared CLI/UDS caller identity resolver and typed error mapping.
-- [ ] 5.2 Add daemon/client helpers for session lookup and actor/origin derivation.
-- [ ] 5.3 Add JSON/JSONL output and exit-code conventions for future `me`, `ch`, `task`, and `spawn` commands.
-- [ ] 5.4 Add tests for missing env, stale session, stopped session, agent mismatch, workspace mismatch, and valid identity.
-- [ ] 5.5 Confirm manual operator commands still require explicit flags and do not infer identity accidentally.
+- [x] 5.1 Add shared CLI/UDS caller identity resolver and typed error mapping.
+- [x] 5.2 Add daemon/client helpers for session lookup and actor/origin derivation.
+- [x] 5.3 Add JSON/JSONL output and exit-code conventions for future `me`, `ch`, `task`, and `spawn` commands.
+- [x] 5.4 Add tests for missing env, stale session, stopped session, agent mismatch, workspace mismatch, and valid identity.
+- [x] 5.5 Confirm manual operator commands still require explicit flags and do not infer identity accidentally.
 
 ## Implementation Details
 Keep identity resolution close to transport/CLI boundaries and use existing `session.Status`, task actor types, and UDS client patterns. This is a security boundary: invalid env input must fail closed.
@@ -70,14 +70,14 @@ Keep identity resolution close to transport/CLI boundaries and use existing `ses
 
 ## Tests
 - Unit tests:
-  - [ ] Missing `AGH_SESSION_ID` returns a specific identity-required error.
-  - [ ] Unknown or stopped session returns a stale identity error.
-  - [ ] `AGH_AGENT` mismatch against session agent name fails closed.
-  - [ ] Valid session identity yields `ActorKindAgentSession` and `OriginKindUDS`/CLI as appropriate.
-  - [ ] JSON and JSONL output helpers render stable machine-readable errors.
+  - [x] Missing `AGH_SESSION_ID` returns a specific identity-required error.
+  - [x] Unknown or stopped session returns a stale identity error.
+  - [x] `AGH_AGENT` mismatch against session agent name fails closed.
+  - [x] Valid session identity yields `ActorKindAgentSession` and `OriginKindUDS`/CLI as appropriate.
+  - [x] JSON and JSONL output helpers render stable machine-readable errors.
 - Integration tests:
-  - [ ] Existing `agh task create --workspace ...` remains operator-explicit even with agent env variables present.
-  - [ ] UDS handler tests prove invalid caller identity cannot access agent endpoints.
+  - [x] Existing `agh task create --workspace ...` remains operator-explicit even with agent env variables present.
+  - [x] UDS handler tests prove invalid caller identity cannot access agent endpoints.
 - Test coverage target: >=80%.
 - All tests must pass.
 

@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 title: Tasks UI Manual First Labels And E2E
 type: frontend
 complexity: medium
@@ -11,10 +11,10 @@ dependencies:
 # Task 15: Tasks UI Manual First Labels And E2E
 
 ## Overview
-Update the existing Tasks UI so users understand the manual-first execution boundary and coordinator handoff. This is an honesty pass over current task surfaces, not a broad autonomy dashboard.
+Update the existing Tasks UI so users understand the manual-first execution boundary, coordinator handoff, and task-run coordination channel association. This is an honesty pass over current task surfaces, not a broad autonomy dashboard.
 
 <critical>
-- ALWAYS READ `_techspec.md`, ADR-010, ADR-011, `DESIGN.md`, `web/AGENTS.md`, and current task system files before changing UI
+- ALWAYS READ `_techspec.md`, ADR-010, ADR-011, ADR-012, `DESIGN.md`, `web/AGENTS.md`, and current task system files before changing UI
 - DO NOT BUILD A NEW AUTONOMY DASHBOARD IN MVP
 - UI COPY MUST MAKE CREATION VS START/PUBLISH/APPROVAL CLEAR
 - USE GENERATED CONTRACT TYPES - do not hand-roll duplicate frontend DTOs
@@ -25,6 +25,7 @@ Update the existing Tasks UI so users understand the manual-first execution boun
 <requirements>
 - MUST update existing task list/detail/action UI to distinguish draft/created tasks from executable queued/running work.
 - MUST label publish/start/approval actions as the coordinator handoff boundary when coordinator is enabled.
+- MUST represent coordination channel availability for queued/running coordinated runs without implying that channel messages own task status.
 - MUST preserve manual operator control: users can create tasks, start them, and start sessions independently.
 - MUST consume generated contract fields from task_10/task_14 instead of local type guesses.
 - MUST add or update Playwright E2E coverage for manual-first task creation/start and coordinator-trigger labels.
@@ -32,17 +33,17 @@ Update the existing Tasks UI so users understand the manual-first execution boun
 </requirements>
 
 ## Subtasks
-- [ ] 15.1 Audit `web/src/systems/tasks` for task lifecycle labels, action affordances, and generated type usage.
-- [ ] 15.2 Update adapters/hooks/components to represent created, queued, running, completed, failed, and approval-needed states accurately.
-- [ ] 15.3 Update action labels/tooltips so start/publish/approval clearly means executable run/coordinator handoff.
-- [ ] 15.4 Add mocks/fixtures for user-created task, agent-created pending approval, queued run, and coordinator-enabled workspace.
-- [ ] 15.5 Add Playwright E2E for create-without-run, start-enqueues-run, approval-enqueues-run, and manual session coexistence labels.
-- [ ] 15.6 Run web lint, typecheck, unit tests, and E2E gates required by `web/AGENTS.md`.
+- [x] 15.1 Audit `web/src/systems/tasks` for task lifecycle labels, action affordances, and generated type usage.
+- [x] 15.2 Update adapters/hooks/components to represent created, queued, running, completed, failed, and approval-needed states accurately.
+- [x] 15.3 Update action labels/tooltips so start/publish/approval clearly means executable run/coordinator handoff.
+- [x] 15.4 Add mocks/fixtures for user-created task, agent-created pending approval, queued run with coordination channel, and coordinator-enabled workspace.
+- [x] 15.5 Add Playwright E2E for create-without-run, start-enqueues-run with coordination channel, approval-enqueues-run, and manual session coexistence labels.
+- [x] 15.6 Run web lint, typecheck, unit tests, and E2E gates required by `web/AGENTS.md`.
 
 ## Implementation Details
-Stay inside the existing Tasks system and design tokens. The goal is to prevent operator confusion: creating a task should read as saved intent; start/publish/approve should read as making it executable and eligible for coordinator orchestration.
+Stay inside the existing Tasks system and design tokens. The goal is to prevent operator confusion: creating a task should read as saved intent; start/publish/approve should read as making it executable, channel-bound, and eligible for coordinator orchestration.
 
-Do not create a card-heavy autonomy overview or a scheduler/coordinator monitoring surface. Those are post-MVP web tasks.
+Do not create a card-heavy autonomy overview, chat client, or scheduler/coordinator monitoring surface. Those are post-MVP web tasks. If coordination channel metadata appears, keep it as concise run detail/action affordance that points to the existing channel surface.
 
 ### Relevant Files
 - `DESIGN.md` - authoritative design tokens and UI constraints.
@@ -64,9 +65,11 @@ Do not create a card-heavy autonomy overview or a scheduler/coordinator monitori
 ### Related ADRs
 - [ADR-010: Manual Operator Control Remains First-Class](adrs/adr-010.md) - UI must preserve manual workflows.
 - [ADR-011: Generated Contract And Runtime Docs Co-Ship](adrs/adr-011.md) - generated frontend contract usage.
+- [ADR-012: Task-Run Coordination Channels](adrs/adr-012.md) - UI-visible channel association semantics.
 
 ## Deliverables
 - Updated Tasks UI labels/actions for creation versus execution start.
+- Minimal Tasks UI treatment for coordination channel availability on coordinated runs.
 - Updated adapters/types/mocks aligned with generated backend contracts.
 - Playwright E2E coverage for manual-first and coordinator-trigger task flows.
 - Frontend unit tests with 80%+ coverage for touched adapters/hooks/components **(REQUIRED)**.
@@ -74,17 +77,19 @@ Do not create a card-heavy autonomy overview or a scheduler/coordinator monitori
 
 ## Tests
 - Unit tests:
-  - [ ] Task adapter maps created/draft tasks without runs to non-executable saved-intent labels.
-  - [ ] Task adapter maps queued/running runs to executable/coordinator-handoff labels.
-  - [ ] Action hook chooses create, start, publish, approve, or retry actions based on generated state fields.
-  - [ ] Component tests assert no label implies that creation alone starts autonomy.
-  - [ ] Mocks cover user-created, agent-created approval, queued, running, failed, and coordinator-enabled states.
+  - [x] Task adapter maps created/draft tasks without runs to non-executable saved-intent labels.
+  - [x] Task adapter maps queued/running runs to executable/coordinator-handoff labels.
+  - [x] Task adapter maps `coordination_channel_id` to a channel-available affordance without treating channel messages as task status.
+  - [x] Action hook chooses create, start, publish, approve, or retry actions based on generated state fields.
+  - [x] Component tests assert no label implies that creation alone starts autonomy.
+  - [x] Mocks cover user-created, agent-created approval, queued, running, failed, and coordinator-enabled states.
 - Integration/E2E tests:
-  - [ ] Creating a task in the UI does not show a queued/running run until start/publish.
-  - [ ] Starting a task shows queued/coordinator-handoff state and preserves manual control copy.
-  - [ ] Approving an agent-created task transitions into executable queued state.
-  - [ ] Existing manual session start UI is unaffected by task autonomy labels.
-  - [ ] `make web-lint`, `make web-typecheck`, `make web-test`, and relevant Playwright task specs pass.
+  - [x] Creating a task in the UI does not show a queued/running run until start/publish.
+  - [x] Starting a task shows queued/coordinator-handoff state and preserves manual control copy.
+  - [x] Starting a coordinated task shows channel availability only after run enqueue.
+  - [x] Approving an agent-created task transitions into executable queued state.
+  - [x] Existing manual session start UI is unaffected by task autonomy labels.
+  - [x] `make web-lint`, `make web-typecheck`, `make web-test`, and relevant Playwright task specs pass.
 - Test coverage target: >=80% for changed frontend files.
 - All tests must pass.
 
@@ -92,4 +97,5 @@ Do not create a card-heavy autonomy overview or a scheduler/coordinator monitori
 - All tests passing.
 - Test coverage >=80% for changed frontend files.
 - UI clearly communicates that task creation and autonomous execution are separate steps.
+- UI clearly communicates that coordination channels support conversation while task status remains task-run state.
 - No broad autonomy dashboard or post-MVP web scope is introduced.

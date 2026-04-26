@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 title: Agent Contract DTOs And OpenAPI Parity
 type: backend
 complexity: high
@@ -10,10 +10,10 @@ dependencies:
 # Task 02: Agent Contract DTOs And OpenAPI Parity
 
 ## Overview
-Define the transport contracts needed by agent-facing autonomy APIs before behavior depends on them. This task adds DTOs for agent context, claim/lease responses, spawn metadata, coordinator config read models, and safe HTTP projections while keeping generated OpenAPI and web TypeScript in lockstep.
+Define the transport contracts needed by agent-facing autonomy APIs before behavior depends on them. This task adds DTOs for agent context, task-run coordination channels, claim/lease responses, spawn metadata, coordinator config read models, and safe HTTP projections while keeping generated OpenAPI and web TypeScript in lockstep.
 
 <critical>
-- ALWAYS READ `_techspec.md`, ADR-002, ADR-003, ADR-006, and ADR-011 before changing contracts
+- ALWAYS READ `_techspec.md`, ADR-002, ADR-003, ADR-006, ADR-011, and ADR-012 before changing contracts
 - REFERENCE TECHSPEC for payload shape; do not expose raw `claim_token` in read models
 - FOCUS ON "WHAT" - stable DTOs, OpenAPI parity, and generated web types
 - MINIMIZE CODE - do not implement business behavior here
@@ -22,7 +22,7 @@ Define the transport contracts needed by agent-facing autonomy APIs before behav
 </critical>
 
 <requirements>
-- MUST add transport-agnostic DTOs under `internal/api/contract` for agent context, task claim/lease commands, spawn, lineage, and coordinator config.
+- MUST add transport-agnostic DTOs under `internal/api/contract` for agent context, task-run coordination channel metadata, task claim/lease commands, spawn, lineage, and coordinator config.
 - MUST keep raw `claim_token` limited to the synchronous claim response; read/list/detail models MUST expose only `claim_token_hash` when needed.
 - MUST update OpenAPI spec registration and tests for every new public endpoint or schema.
 - MUST run `make codegen` and update `openapi/agh.json` and `web/src/generated/agh-openapi.d.ts`.
@@ -31,15 +31,17 @@ Define the transport contracts needed by agent-facing autonomy APIs before behav
 </requirements>
 
 ## Subtasks
-- [ ] 2.1 Add contract DTOs for `/agent/me`, `/agent/context`, task lease commands, spawn, lineage, and coordinator config read surfaces.
-- [ ] 2.2 Add OpenAPI operation specs/tests for the new schemas without wiring runtime handlers yet.
-- [ ] 2.3 Regenerate OpenAPI and generated TypeScript contracts.
-- [ ] 2.4 Update web type derivations and fixtures affected by task-run/session-lineage fields.
-- [ ] 2.5 Add contract tests proving raw claim tokens never appear in read models, SSE payloads, or web-facing DTOs.
-- [ ] 2.6 Run backend contract tests plus `make codegen`, `make web-typecheck`, and `make web-test`.
+- [x] 2.1 Add contract DTOs for `/agent/me`, `/agent/context`, task coordination channel metadata, task lease commands, spawn, lineage, and coordinator config read surfaces.
+- [x] 2.2 Add OpenAPI operation specs/tests for the new schemas without wiring runtime handlers yet.
+- [x] 2.3 Regenerate OpenAPI and generated TypeScript contracts.
+- [x] 2.4 Update web type derivations and fixtures affected by task-run/session-lineage fields.
+- [x] 2.5 Add contract tests proving raw claim tokens never appear in read models, SSE payloads, or web-facing DTOs.
+- [x] 2.6 Run backend contract tests plus `make codegen`, `make web-typecheck`, and `make web-test`.
 
 ## Implementation Details
 Use `internal/api/contract` as the source of truth and the existing `internal/api/spec` builder for OpenAPI. Any field added for task runs or sessions must flow through conversion helpers rather than ad-hoc response structs in handlers.
+
+Claim responses and agent context DTOs must include the stable `coordination_channel_id` and display metadata for coordinated runs. Read models must never expose raw `claim_token`, and channel DTOs must not accept or return raw claim tokens in message metadata.
 
 ### Relevant Files
 - `internal/api/contract/contract.go` - session and shared payloads.
@@ -65,9 +67,11 @@ Use `internal/api/contract` as the source of truth and the existing `internal/ap
 - [ADR-003: Extend Task Runs for Atomic Claim and Lease](adrs/adr-003.md) - claim token exposure rules.
 - [ADR-006: Safe Spawn Requires Lineage, TTL, and Permission Narrowing](adrs/adr-006.md) - spawn/lineage DTOs.
 - [ADR-011: Generated Contracts and Documentation Co-Ship with Autonomy MVP Steps](adrs/adr-011.md) - codegen and web parity.
+- [ADR-012: Task-Run Coordination Channels](adrs/adr-012.md) - coordination channel DTOs and metadata.
 
 ## Deliverables
 - Contract DTOs and OpenAPI specs for autonomy MVP surfaces.
+- Coordination channel metadata in claim/context/channel DTOs.
 - Regenerated `openapi/agh.json` and `web/src/generated/agh-openapi.d.ts`.
 - Updated web contract consumers/fixtures where generated fields require it.
 - Unit tests with 80%+ coverage for contract conversion helpers **(REQUIRED)**.
@@ -75,14 +79,15 @@ Use `internal/api/contract` as the source of truth and the existing `internal/ap
 
 ## Tests
 - Unit tests:
-  - [ ] Contract conversion includes lineage, task lease summaries, coordinator config, and bounded context sections.
-  - [ ] Read models include `claim_token_hash` only and never include raw `claim_token`.
-  - [ ] Empty optional sections serialize consistently without `null`/missing-field ambiguity that breaks generated clients.
-  - [ ] OpenAPI schema tests assert required fields and operation tags for agent endpoints.
-  - [ ] Web type derivations compile against regenerated task/session payloads without assertions or loose `any`.
+  - [x] Contract conversion includes lineage, task lease summaries, coordination channel metadata, coordinator config, and bounded context sections.
+  - [x] Read models include `claim_token_hash` only and never include raw `claim_token`.
+  - [x] Channel message DTOs include typed correlation fields and reject raw `claim_token` metadata.
+  - [x] Empty optional sections serialize consistently without `null`/missing-field ambiguity that breaks generated clients.
+  - [x] OpenAPI schema tests assert required fields and operation tags for agent endpoints.
+  - [x] Web type derivations compile against regenerated task/session payloads without assertions or loose `any`.
 - Integration tests:
-  - [ ] `make codegen` produces no stale generated artifacts.
-  - [ ] `make web-typecheck` and `make web-test` pass after generated contract changes.
+  - [x] `make codegen` produces no stale generated artifacts.
+  - [x] `make web-typecheck` and `make web-test` pass after generated contract changes.
 - Test coverage target: >=80%.
 - All tests must pass.
 

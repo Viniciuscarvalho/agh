@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 title: Autonomy MVP QA Plan And Regression Artifacts
 type: test
 complexity: high
@@ -28,30 +28,30 @@ dependencies:
 Generate the reusable QA planning artifacts for the autonomy MVP before live execution begins. This mirrors the Hermes QA handoff pattern: create a feature-level test plan, regression suites, manual test cases, and traceability matrix under `.compozy/tasks/autonomous/qa/`.
 
 <critical>
-- ALWAYS READ `_techspec.md`, ADRs 001-011, tasks 01-16, and changed docs before planning coverage
+- ALWAYS READ `_techspec.md`, ADRs 001-012, tasks 01-16, and changed docs before planning coverage
 - ACTIVATE `/qa-report` with `qa-output-path=.compozy/tasks/autonomous` before writing or revising QA artifacts
 - KEEP THE SAME `qa-output-path` FOR `/qa-execution` - all planning and execution artifacts must live under `.compozy/tasks/autonomous/qa/`
 - DO NOT EXECUTE THE FLOWS IN THIS TASK - this is planning, prioritization, traceability, and artifact generation only
-- COVER REAL RISK - config, hooks, situation context, identity, channels, lease fencing, scheduler, spawn, coordinator, web, and docs all need explicit P0/P1 coverage
+- COVER REAL RISK - config, hooks, situation context, identity, coordination channels, lease fencing, scheduler, spawn, coordinator, web, and docs all need explicit P0/P1 coverage
 - NO WORKAROUNDS - do not create generic smoke plans that fail to prove the accepted autonomy invariants
 </critical>
 
 <requirements>
 - MUST use the `/qa-report` skill with `qa-output-path=.compozy/tasks/autonomous`.
 - MUST generate a feature-level QA plan under `.compozy/tasks/autonomous/qa/test-plans/`.
-- MUST generate manual test cases covering backend, SQLite stores, daemon lifecycle, CLI/UDS, hooks, task leases, scheduler, spawn, coordinator, web Tasks UI, and `packages/site` docs.
+- MUST generate manual test cases covering backend, SQLite stores, daemon lifecycle, CLI/UDS, hooks, task leases, coordination channels, scheduler, spawn, coordinator, web Tasks UI, and `packages/site` docs.
 - MUST produce at least one regression-suite document defining smoke, targeted, and full execution lanes for task_18.
 - MUST define artifact locations under `.compozy/tasks/autonomous/qa/` for issues, screenshots, logs, and verification reporting.
 - MUST map every P0/P1 test case to tasks 01-16, the TechSpec, or ADR decisions.
 </requirements>
 
 ## Subtasks
-- [ ] 17.1 Activate `/qa-report` with `qa-output-path=.compozy/tasks/autonomous`.
-- [ ] 17.2 Write the feature-level QA plan with scope, risks, environments, entry/exit criteria, and traceability across runtime, web, and docs.
-- [ ] 17.3 Generate manual test cases for all autonomy MVP tracks and cross-track invariants.
-- [ ] 17.4 Build regression-suite definitions with smoke, targeted, and full execution lanes for task_18.
-- [ ] 17.5 Map each P0/P1 case to task files, TechSpec sections, ADRs, or resource-reference lessons.
-- [ ] 17.6 Confirm the QA artifact layout is stable and ready for `/qa-execution`.
+- [x] 17.1 Activate `/qa-report` with `qa-output-path=.compozy/tasks/autonomous`.
+- [x] 17.2 Write the feature-level QA plan with scope, risks, environments, entry/exit criteria, and traceability across runtime, web, and docs.
+- [x] 17.3 Generate manual test cases for all autonomy MVP tracks and cross-track invariants.
+- [x] 17.4 Build regression-suite definitions with smoke, targeted, and full execution lanes for task_18.
+- [x] 17.5 Map each P0/P1 case to task files, TechSpec sections, ADRs, or resource-reference lessons.
+- [x] 17.6 Confirm the QA artifact layout is stable and ready for `/qa-execution`.
 
 ## Implementation Details
 Use `.compozy/tasks/hermes/task_10.md` and the Hermes QA artifact layout as the local pattern, but tailor every case to autonomy MVP invariants. The output should help a future executor prove the real system, not just parse docs.
@@ -95,6 +95,7 @@ The QA plan must include coverage for references that influenced implementation:
 - [ADR-009: Autonomy Hooks And Extension Contracts](adrs/adr-009.md) - hook coverage.
 - [ADR-010: Manual Operator Control Remains First-Class](adrs/adr-010.md) - manual coexistence coverage.
 - [ADR-011: Generated Contract And Runtime Docs Co-Ship](adrs/adr-011.md) - web/docs/contract coverage.
+- [ADR-012: Task-Run Coordination Channels](adrs/adr-012.md) - coordination channel coverage.
 
 ## Deliverables
 - `.compozy/tasks/autonomous/qa/test-plans/autonomy-mvp-test-plan.md`.
@@ -106,7 +107,8 @@ The QA plan must include coverage for references that influenced implementation:
 ## Tests
 - Artifact validation:
   - [ ] Feature QA plan includes objectives, scope, risk table, environment matrix, entry criteria, and exit criteria.
-  - [ ] Manual test cases exist for each autonomy track: config, hooks, situation, identity, channels, claim/lease, scheduler, spawn, coordinator, UI, and docs.
+  - [ ] Manual test cases exist for each autonomy track: config, hooks, situation, identity, coordination channels, claim/lease, scheduler, spawn, coordinator, UI, and docs.
+  - [ ] P0 cases prove coordinated run enqueue binds a channel and that channel messages cannot mutate task-run ownership/status.
   - [ ] Regression suite defines smoke, targeted, and full lanes with explicit P0/P1 ordering.
   - [ ] Every P0/P1 case includes expected results and traceability to a task, TechSpec section, ADR, or resource-reference lesson.
   - [ ] Planning artifacts avoid broad post-MVP scope unless explicitly marked out-of-scope.
@@ -122,3 +124,17 @@ The QA plan must include coverage for references that influenced implementation:
 - `/qa-report` has been run explicitly with `qa-output-path=.compozy/tasks/autonomous`.
 - Task_18 can begin execution without redefining QA scope, priorities, or output paths.
 - QA artifacts prove the autonomy MVP through real runtime, CLI, web, and docs behavior rather than superficial smoke checks.
+
+## Completion Notes
+- Created `.compozy/tasks/autonomous/qa/test-plans/autonomy-mvp-test-plan.md` with objectives, scope, artifact layout, environment matrix, risk table, entry/exit criteria, and runtime/web/docs traceability.
+- Created `.compozy/tasks/autonomous/qa/test-plans/autonomy-mvp-regression.md` with smoke, targeted, and full regression lanes for task_18 using explicit P0/P1 ordering and evidence destinations.
+- Created 18 manual cases under `.compozy/tasks/autonomous/qa/test-cases/` covering config, contracts, hooks, situation context, identity, coordination channels, SQLite leases, task lease CLI/UDS, execution boundary, scheduler, lineage, spawn, coordinator, web Tasks UI, docs, E2E, and post-MVP boundary checks.
+- No planning-discovered concrete discrepancies were found, so no `BUG-*` issue files were created.
+
+## Verification Evidence
+- `find .compozy/tasks/autonomous/qa -maxdepth 3 -type f -print | sort` confirmed all generated artifacts live under `.compozy/tasks/autonomous/qa/`.
+- `find .compozy/tasks/autonomous/qa/test-cases -maxdepth 1 -type f -name 'TC-*.md' | wc -l` returned `18`.
+- `rg --files-without-match '### Traceability'`, `rg --files-without-match '\*\*Expected:\*\*'`, and `rg --files-without-match 'TechSpec:'` over `TC-*.md` returned no missing-case output.
+- Artifact coverage checks confirmed the required autonomy tracks, task_01 through task_16 references, P0 channel-binding coverage, and P0 channel non-authority coverage.
+- `git diff --cached --check` passed after mechanical Markdown whitespace cleanup.
+- `make verify` passed after final artifact cleanup.

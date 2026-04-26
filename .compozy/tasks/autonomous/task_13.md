@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 title: Safe Spawn API CLI And Reaper
 type: backend
 complexity: critical
@@ -31,12 +31,12 @@ Add the safe autonomous spawn surface. Agents may create bounded child sessions 
 </requirements>
 
 ## Subtasks
-- [ ] 13.1 Add `SpawnOpts`, permission atom model, and subset comparator.
-- [ ] 13.2 Implement daemon/session manager spawn path with lineage, TTL, cap, and workspace validation.
-- [ ] 13.3 Add `/agent/spawn` UDS endpoint and `agh spawn` CLI command.
-- [ ] 13.4 Add reaper lifecycle for TTL expiry, parent stop, and orphan cleanup.
-- [ ] 13.5 Release active task leases through task service APIs when spawned sessions are stopped by the reaper.
-- [ ] 13.6 Add tests for spawn success, denial, reaper cleanup, lease release, hooks, and operator regression.
+- [x] 13.1 Add `SpawnOpts`, permission atom model, and subset comparator.
+- [x] 13.2 Implement daemon/session manager spawn path with lineage, TTL, cap, and workspace validation.
+- [x] 13.3 Add `/agent/spawn` UDS endpoint and `agh spawn` CLI command.
+- [x] 13.4 Add reaper lifecycle for TTL expiry, parent stop, and orphan cleanup.
+- [x] 13.5 Release active task leases through task service APIs when spawned sessions are stopped by the reaper.
+- [x] 13.6 Add tests for spawn success, denial, reaper cleanup, lease release, hooks, and operator regression.
 
 ## Implementation Details
 Spawn is a safety boundary, not a convenience wrapper around `Manager.Create`. The permission comparator should be a real typed model with known atoms. Unknown atoms must fail closed.
@@ -77,17 +77,17 @@ The reaper must be owned by daemon lifecycle with explicit context cancellation 
 
 ## Tests
 - Unit tests:
-  - [ ] Permission comparator accepts exact/subset permissions and rejects superset or unknown atoms.
-  - [ ] Spawn validation rejects coordinator-from-coordinator, missing TTL, over-depth, over-child-cap, and cross-workspace requests.
-  - [ ] CLI/handler validation returns structured errors without leaking internal policy state.
-  - [ ] Reaper classifies TTL expiry, parent stop, and orphan cleanup with structured reasons.
-  - [ ] `spawn.*` payload conversion includes parent/root/depth without raw secrets.
+  - [x] Permission comparator accepts exact/subset permissions and rejects superset or unknown atoms.
+  - [x] Spawn validation rejects coordinator-from-coordinator, missing TTL, over-depth, over-child-cap, and cross-workspace requests.
+  - [x] CLI/handler validation returns structured errors without leaking internal policy state.
+  - [x] Reaper classifies TTL expiry, parent stop, and orphan cleanup with structured reasons.
+  - [x] `spawn.*` payload conversion includes parent/root/depth without raw secrets.
 - Integration tests:
-  - [ ] A parent session spawns a child with narrowed permissions and durable lineage.
-  - [ ] Stopping the parent stops children and releases any active task lease through the task service.
-  - [ ] TTL expiry stops child sessions without fire-and-forget goroutines.
-  - [ ] Manual operator session creation remains available and is not subject to child-only caps.
-  - [ ] Generated contracts/web checks pass if spawn DTOs are public.
+  - [x] A parent session spawns a child with narrowed permissions and durable lineage.
+  - [x] Stopping the parent stops children and releases any active task lease through the task service.
+  - [x] TTL expiry stops child sessions without fire-and-forget goroutines.
+  - [x] Manual operator session creation remains available and is not subject to child-only caps.
+  - [x] Generated contracts/web checks pass if spawn DTOs are public.
 - Test coverage target: >=80%.
 - All tests must pass.
 

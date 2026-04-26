@@ -233,16 +233,41 @@ Inline mono pill for identifiers (agent IDs, versions, protocol strings).
 - **Type:** JetBrains Mono 11px, weight 500, tracking 0.06em.
 - **Default:** border 1px `#3C3A39`, text `#98989D`, background transparent.
 - **Variants:** same tint-formula as status badges when they carry a signal.
+- **`solid-accent` (reserved):** solid `#E8572A` background, `#17110F` text. Reserved for unread-count pills inside channel/nav rows — never for general status.
 
-#### Kind Chip
+#### Mono Chip
 
-Protocol kind markers (`greet`, `whois`, `say`, `direct`, `recipe`, `receipt`, `trace`) — used on the site.
+Neutral inline chip for capability descriptors and tag rows (`code`, `shell`, `file.read`, `plan.delegate`).
 
 - **Radius:** 5px (`--radius-chip`).
 - **Padding:** 2px 6px.
-- **Type:** JetBrains Mono 10.5px, weight 500, lowercase (protocol strings are lowercase).
-- **Background:** `#E8572A26` (accent tint).
-- **Text:** `#E8572A`.
+- **Type:** JetBrains Mono 10px, weight 500, tracking 0.04em.
+- **Background:** `#2E2C2B` (surface-elevated). **Text:** `#8E8E93`.
+- Use when an identifier needs a neutral chip without a semantic tone. For tinted variants reach for `MonoBadge`.
+
+#### Kind Chip
+
+Wire-protocol kind marker (`say`, `greet`, `direct`, `receipt`, `recipe`, `trace`, `whois`).
+
+- **Radius:** 3px.
+- **Padding:** 1px 6px.
+- **Type:** JetBrains Mono 9.5px, weight 600, uppercase, tracking 0.08em.
+- **Surface:** transparent with 1px `#3C3A39` border. **Text:** `#636366`.
+- **Wire-dot prefix:** 7×7 circle whose color is keyed off `kind` —
+  - `say #8E8E93` · `greet #5BA6FF` · `direct #E8572A` · `receipt #30D158` · `recipe #FFD60A` · `trace #B892FF` · `whois #4FD1C5`.
+- Unknown kinds (platform names, event ids) render the chrome without a dot.
+
+#### Wire Chip
+
+Free-floating filter chip used in stand-alone filter rows (the network channel header `ALL · SAY · DIRECT · …`). Distinct from `Pills`, which renders a contained segmented track.
+
+- **Radius:** 4px.
+- **Padding:** 3px 8px.
+- **Type:** JetBrains Mono 10.5px.
+- **Inactive:** bg `#1E1C1B`, border 1px `#3C3A39`, text `#8E8E93`.
+- **Hover:** border `#636366`, text `#E5E5E7`.
+- **Active:** bg `#2E2C2B`, border `#636366`, text `#E5E5E7` — never solid accent.
+- **Dot prefix (optional):** 7×7 circle when the chip carries a kind, color from the same map as Kind Chip.
 
 #### ALPHA Chip (brand)
 
@@ -284,7 +309,9 @@ The canonical marketing card. Pattern: icon well → eyebrow → verb-forward ti
 
 ### Inputs
 
-#### Text / Search Input
+#### Text Input (forms)
+
+Form-grade input used inside Field/InputGroup composites.
 
 - **Container:** bg `#2E2C2B`, radius 8px, height 36px, padding 0 12px, gap 8px.
 - **Border:** 1px solid `#3C3A39` (default), 1.5px solid `#E8572A` (focused).
@@ -293,9 +320,30 @@ The canonical marketing card. Pattern: icon well → eyebrow → verb-forward ti
 - **Icon (if any):** search / prefix icon, 16px, `#636366`.
 - **Disabled:** bg `#1E1C1B`, border `#2E2C2B`, text `#4A4847`.
 
-#### Dropdown Filter
+#### Search / Filter Input (sidebar + panel)
 
-Pill-shaped dropdown for filter controls.
+Compact search/filter row used inside sidebars and list panels (`SearchInput`).
+
+- **Container:** bg `#181716` (surface-panel), radius 7px, height 28px, padding 0 8px, gap 8px.
+- **Border:** 1px solid `#3C3A39` (default), 1px solid `#636366` (focus-within). No accent ring.
+- **Placeholder:** Inter 13px Regular, `#636366`.
+- **Text:** Inter 13px Regular, `#E5E5E7`.
+- **Search icon:** 12px, `#636366`.
+- **Kbd hint (`⌘K`, `jump`, …):** JetBrains Mono 9px uppercase, padding 1px 4px, radius 4px, border 1px `#3C3A39`, bg `#181716`, text `#636366`. Hidden on mobile (`sm:inline-flex`).
+
+#### Pills (segmented toggle)
+
+Header-level segmented selector (`ALL / GLOBAL / WORKSPACE`, `LIST / KANBAN / DASHBOARD / INBOX`, `JOBS / TRIGGERS`, room detail tabs).
+
+- **Track:** inline-flex, gap 2px, padding 3px, radius 8px, border 1px `#3C3A39`, bg `#181716` (surface-panel).
+- **Segment:** height 22px, radius 5px, padding 0 10px, JetBrains Mono 10px weight 600 uppercase tracking 0.08em.
+- **Inactive:** bg transparent, text `#636366`. **Hover:** text `#8E8E93`.
+- **Active:** bg `#2E2C2B` (surface-elevated), text `#E5E5E7`. **Never solid accent.**
+- **Inline badge (count):** min-width 14px, height 14px, radius 7px, bg `#E8572A`, text `#17110F`, JetBrains Mono 9px weight 700.
+
+#### Dropdown Filter (legacy single trigger)
+
+Pill-shaped trigger for a popover filter (not segmented).
 
 - **Container:** radius 20px, height 32px, padding 6px 14px, gap 6px.
 - **Border:** 1px solid `#3C3A39` (default), 1px solid `#E8572A` (active).
@@ -369,6 +417,24 @@ Inline card showing tool execution.
 - **File path:** Inter 13px Regular, `#636366`.
 - **Status badge:** right-aligned (DONE / RUNNING / ERROR).
 
+#### Wire Card
+
+Bordered protocol card used to embed wire payloads (recipes, receipts, capability descriptors, room intros) inside message threads.
+
+- **Shell:** border 1px `#3C3A39`, bg `#1E1C1B`, radius 6px, max-width 520px (or `w-full` when stretched inside a message body).
+- **Head (`WireCardHead`):** bg `#0E0E0F` (canvas-deep), border-bottom 1px `#3C3A39`, padding 6px 10px, JetBrains Mono 10.5px uppercase tracking 0.06em, text `#636366`.
+- **Body (`WireCardBody`):** padding 8px 12px, JetBrains Mono 11px.
+- **Foot (`WireCardFoot`):** bg `#0E0E0F`, border-top 1px `#3C3A39`, padding 6px 10px, hosts ghost action buttons.
+- **Inline variant (`inline`):** single-line strip, padding 6px 10px, gap 8px — used for receipt confirmations.
+
+#### Typing Dots
+
+Three-dot typing indicator paired with `<peer> is typing…` copy.
+
+- 3× 4×4 dots, gap 2px, radius 50%, bg `#636366`.
+- Animation: `typing-bounce` 1.2s infinite ease-in-out, with 0s / 0.15s / 0.3s stagger.
+- Container copy: JetBrains Mono 11px `#636366`.
+
 #### Chat Input
 
 - **Container:** bg `#1E1C1B`, radius 12px, padding 12px 16px, border 1px `#3C3A39`.
@@ -395,28 +461,40 @@ Inline dot + label patterns.
 
 #### Structure
 
-- **Workspace icon rail:** 40px wide, left edge. 32px circle avatars.
+- **Workspace icon rail:** 44px wide, left edge. 28px circle avatars.
   - App logo: `#E8572A` bg, white letter.
-  - Active workspace: `#E8572A` ring.
+  - Active workspace: `#E8572A` border.
   - Inactive: `#2E2C2B` bg, `#8E8E93` letter.
   - Hover: `#353332` bg.
-  - New: `#2E2C2B` bg, "+" icon.
-- **Sidebar panel:** bg `#1E1C1B`, width ~220px, full height.
+  - New: `#2E2C2B` bg, dashed border, `+` icon.
+- **Sidebar panel:** bg `#0E0E0F` (canvas-deep), width 240px, full height.
 
-#### Section Header
+#### Section Header (`SidebarSectionLabel`)
 
-JetBrains Mono 11px Medium uppercase, `#636366`, with optional count right-aligned.
+JetBrains Mono 9px weight 600 uppercase, tracking 0.14em, `#98989D` (`--color-text-label`). Padding 12px 12px 6px 12px. Same primitive used for `AGENTS`, `WORKSPACE`, `STARRED`, `CHANNELS`, `DIRECT MESSAGES`, and panel-internal subheaders.
 
-#### Agent / Nav Row
+#### Nav Row (top-level + channel rows)
 
-- **Row:** padding 8px 12px.
-- **Avatar / icon:** 24px circle or 16px icon, colored per role.
-- **Label:** Inter 14px Medium (active) / Regular (default), `#E5E5E7` / `#8E8E93`.
-- **Active indicator:** 3px left accent bar `#E8572A`.
+Flat row, no border or card chrome.
+
+- **Row:** padding 6px 8px, radius 6px, gap 8px (top-level) / gap 2.5 (channel rows).
+- **Icon:** 13–14px, `#636366` default → `#E5E5E7` when active.
+- **Label:** Inter 13px (top-level) / JetBrains Mono 12px (channel rows). Default text `#8E8E93`, active `#E5E5E7` weight 500. Unread channel rows render the label `#E5E5E7` weight 600.
+- **Hover:** bg `#353332` (`--color-hover`).
+- **Active:** bg `#1E1C1B` (`--color-surface`) **plus** a 2px-wide accent left bar (`#E8572A`) anchored against the panel edge (`-left-2` in a `px-2` nav container, `-left-1.5` in a `mx-1.5` row).
+- **Unread badge:** `MonoBadge` `tone="solid-accent"` with the count.
+
+#### Session Row (collapsible child)
+
+Indented child row beneath each agent collapsible.
+
+- **Row:** padding 4px 8px, radius 5px, font-size 12px, color `#8E8E93`.
+- **Indent:** 18–22px from the agent label, with a 1px `#3C3A39` left rule between the indent and the row.
+- **Active treatment:** same flat-row + 2px left accent bar pattern as Nav Row, anchored at `-left-3` to clear the indent line.
 
 #### System Status Footer
 
-Dot + label + version (`#636366`, right-aligned) + settings gear icon.
+Dot + label + version (`#636366`, right-aligned) + settings nav row.
 
 ### Site Header (Marketing + Docs)
 

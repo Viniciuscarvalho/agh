@@ -10,6 +10,8 @@ Autonomy extensibility is a first-class requirement. New autonomous behavior mus
 
 Autonomy is additive, not a replacement for operator control. Users must still be able to create tasks manually, start sessions manually, prompt sessions directly, and use existing operator surfaces for counter-checks or directed work. Task creation is not blocked by autonomy. Once a user gives a task the go-ahead to run, by publishing, starting, or approving execution so a run is enqueued, the coordinator becomes the default orchestrator for that run. User-created tasks, coordinator-created tasks, and agent-created child tasks use the same task/session/claim/lease contracts; there is no separate manual queue and no coordinator-only queue.
 
+Coordinated execution also has an explicit communication plane. Every workspace-scoped task run enqueued for coordinated execution is bound to a stable coordination channel. The coordinator and workers use that channel for status, requests, blockers, handoffs, review requests, and result exchange. Task ownership and terminal state still live only in `task_runs` through `ClaimNextRun` and token-fenced transitions.
+
 ## System Architecture
 
 ### Component Overview
@@ -32,7 +34,7 @@ Adds a daemon-owned scheduler under `internal/scheduler`. For the MVP it is a sw
 
 **Coordinator Agent**
 
-Adds a normal managed AGH session that owns semantic orchestration: decomposition, follow-up task creation, delegation intent, validation, and synthesis. It is spawned when a task run is enqueued for coordinated execution, uses a restricted orchestration tool surface, and is configurable by provider/model through global config and workspace override. Manual user-created tasks do not need special metadata at creation time; the publish/start/approval action that enqueues the run is the coordinator trigger.
+Adds a normal managed AGH session that owns semantic orchestration: decomposition, follow-up task creation, delegation intent, validation, and synthesis. It is spawned when a task run is enqueued for coordinated execution, uses a restricted orchestration tool surface, and is configurable by provider/model through global config and workspace override. Manual user-created tasks do not need special metadata at creation time; the publish/start/approval action that enqueues the run is the coordinator trigger. The coordinator communicates with workers through the run's coordination channel but never uses channel messages as task ownership or terminal-status state.
 
 **Safe Spawn and Lineage**
 
@@ -40,7 +42,7 @@ Extends session creation with parent/child metadata, TTL, budget, role overlays,
 
 **Minimal Network Evolution**
 
-Keeps the local autonomy MVP focused: channel discovery metadata, peer status, handoff when needed, and enough peer/channel inspection for agents and the coordinator to route work. Cross-daemon swarm, leader election, and broad contract-net behavior remain out of scope for the MVP.
+Keeps the local autonomy MVP focused: task-run coordination channel binding, channel discovery metadata, peer status, handoff when needed, and enough peer/channel inspection for agents and the coordinator to route work. Cross-daemon swarm, leader election, and broad contract-net behavior remain out of scope for the MVP.
 
 **Memory and Self-Correction**
 
@@ -56,13 +58,13 @@ Adds typed coordinator, spawn, and task-run events, payloads, patches, dispatch 
 
 1. A user, automation, agent, or coordinator creates or updates a task as durable intent through existing task APIs. Creation may produce a draft, blocked, or ready task, but it does not create run ownership and does not start a coordinator.
 2. A publish, approval, start, or equivalent execution action explicitly allows the task to run and enqueues a task run through the task service.
-3. Run enqueue writes the existing `task.run_enqueued` domain audit event, dispatches the `task.run.enqueued` hook post-commit, and wakes the mechanical scheduler plus coordinator bootstrap path when the run is coordinated.
+3. Run enqueue creates or resolves the run's `coordination_channel_id` for workspace-scoped coordinated work, writes the existing `task.run_enqueued` domain audit event, dispatches the `task.run.enqueued` hook post-commit, and wakes the mechanical scheduler plus coordinator bootstrap path when the run is coordinated.
 4. The scheduler refreshes the idle-session registry and notifies eligible sessions that matching claimable work exists.
 5. A user-started or autonomous agent calls `ClaimNextRun(criteria)` through `agh task next` or the equivalent UDS endpoint.
-6. The task service/globaldb atomically claims one run and returns the claimed task envelope plus `claim_token`.
-7. The agent performs work, heartbeats the task-run lease, sends network messages as needed, and completes/fails/releases the run with the claim token.
+6. The task service/globaldb atomically claims one run and returns the claimed task envelope, coordination channel metadata, and `claim_token`.
+7. The agent performs work, heartbeats the task-run lease, uses the coordination channel for operational communication when useful, and completes/fails/releases the run with the claim token.
 8. Hooks record lifecycle events, memory writes summarize durable outcomes, and observability checks detect loops, timeouts, and budget overruns.
-9. The coordinator-agent creates follow-up tasks or synthesizes final results when semantic orchestration is required.
+9. The coordinator-agent reads durable task-run outcomes plus relevant coordination channel messages, then creates follow-up tasks or synthesizes final results when semantic orchestration is required.
 
 ### Manual Control Contract
 
@@ -88,12 +90,44 @@ The coordinator auto-spawns only when all conditions are true:
 
 - The workspace has no healthy active coordinator session.
 - A task run is enqueued by a publish/start/approve-execution action for coordinated execution. In current AGH terms, the durable trigger is the task-run enqueue boundary and its `task.run_enqueued` event, not `task.created`.
+- The workspace-scoped run has a stable `coordination_channel_id` created or resolved by the enqueue path.
 - Coordinator auto-start is enabled in resolved coordinator config.
 - Spawn caps and permission policy allow the coordinator session.
 
 The trigger is idempotent per workspace. A coordinator cannot spawn another coordinator. Task creation alone does not trigger coordinator startup. Manual user-started sessions do not trigger coordinator startup by themselves. Agent-created tasks inside an existing coordinator workflow inherit that workflow context and do not spawn a second coordinator.
 
 Global-scope task runs do not trigger coordinator auto-spawn in the MVP. They require explicit operator assignment or a future daemon-global coordinator decision.
+
+### Task-Channel Coordination Contract
+
+Every workspace-scoped task run enqueued for coordinated execution has one durable coordination channel association. The task service records `coordination_channel_id` on the run at the enqueue/start boundary. Task creation alone does not create claimable work and does not require a coordination channel.
+
+The channel is the operational conversation surface for coordinator and worker sessions. It is used for status updates, requests, replies, blockers, handoffs, review requests, result exchange, and synthesis context. It is not an ownership or status authority. Claim, heartbeat, complete, fail, release, and terminal task-run state remain task service operations guarded by claim tokens.
+
+The coordinator should always bind a coordinated run to a channel, but it does not need to post chat messages for every internal transition. The rule is bind always, speak when useful. Heartbeats, lease extension, and normal terminal transitions should not be mirrored into channel chatter unless an agent needs human-readable coordination context.
+
+Channel messages that relate to coordinated work must carry typed correlation metadata:
+
+- `task_id`
+- `run_id`
+- `workflow_id` when present
+- `coordination_channel_id`
+- `message_kind`
+- `correlation_id`
+
+The MVP message kinds are:
+
+- `status`
+- `request`
+- `reply`
+- `blocker`
+- `handoff`
+- `result`
+- `review_request`
+
+Raw `claim_token` values must never appear in channel messages, channel read models, logs, SSE payloads, web payloads, or memory summaries. If an agent needs to prove ownership, it uses the task API with its token; it does not send the token through the network.
+
+The implementation may derive the coordination channel from a task, run, or workflow policy, but the chosen `coordination_channel_id` must be stable on the run and visible in `ClaimNextRun` responses and `/agent/context`.
 
 ### Architectural Boundaries
 
@@ -187,10 +221,12 @@ Extend `task_runs` with:
 - `claim_token TEXT`
 - `lease_until TIMESTAMP`
 - `heartbeat_at TIMESTAMP`
+- `coordination_channel_id TEXT`
 
 Indexes:
 
 - `(status, lease_until, queued_at)` for ready/expired run discovery.
+- `(coordination_channel_id)` for channel-to-run correlation and task-bound inbox summaries.
 - Keep using the existing `(session_id, status)` index for session-owned active runs.
 - Unique/partial fencing as needed to prevent multiple active claims for the same run.
 
@@ -205,7 +241,20 @@ Use side tables for claim-time matching in the MVP:
 
 Add indexes on `(capability_id, run_id)` for both tables. `ClaimNextRun(criteria)` uses these tables for exact capability filtering. Optional capability JSON may exist only as a denormalized prompt/rendering projection; it is not the matching source of truth.
 
-Execution metadata belongs to the run enqueue/start request boundary, not task creation. In the MVP, `workflow_id`, `execution_mode`, and `execution_reason` live in existing `metadata_json` unless implementation proves that a promoted column is required for query performance or constraints. Do not add `created_by_actor_*`, `started_by_actor_*`, or `execution_requested_at`; the current task and run actor/origin/timestamp fields already cover those facts.
+Execution metadata belongs to the run enqueue/start request boundary, not task creation. In the MVP, `workflow_id`, `execution_mode`, `execution_reason`, and coordination-channel policy details live in existing `metadata_json` unless implementation proves that a promoted column is required for query performance or constraints. Do not add `created_by_actor_*`, `started_by_actor_*`, or `execution_requested_at`; the current task and run actor/origin/timestamp fields already cover those facts.
+
+**Coordination channel message metadata**
+
+Task-bound channel messages use typed envelope metadata, preferably in the existing envelope extension field if one exists:
+
+- `task_id`
+- `run_id`
+- `workflow_id`
+- `coordination_channel_id`
+- `message_kind`
+- `correlation_id`
+
+The network layer validates the MVP `message_kind` enum and rejects raw `claim_token` fields in coordination message metadata. Channel message metadata is correlation and conversation context only; task ownership and terminal state remain in `task_runs`.
 
 **Session lineage fields**
 
@@ -245,6 +294,7 @@ Add typed payload/patch structs for autonomy events:
 - `CoordinatorPreSpawnPayload` / `CoordinatorSpawnPatch`
 - `TaskRunPreClaimPayload` / optional deny-or-narrow patch
 - `TaskRunLeasePayload` / observation patch
+- `TaskRunEnqueuedPayload` / observation patch with `coordination_channel_id`
 - `SpawnPreCreatePayload` / `SpawnCreatePatch`
 
 `TaskRunPreClaimPayload` may deny a claim. If mutation is enabled in the MVP, it may only add required-capability constraints or raise `PriorityMin`; it must not remove required capabilities, broaden matching criteria, change claimant identity, or mutate committed claim state directly. Scheduler wake/no-match signals are internal observability events, not hooks, until an external policy use case exists.
@@ -292,7 +342,9 @@ Operator-facing task/session endpoints remain explicit and continue to support m
 
 Read endpoints exposed over HTTP must return `claim_token_hash`, never raw `claim_token`. The raw token is returned only in the synchronous claim response to the claimant on the issuing transport and is never included in list/detail read models, SSE streams, logs, or web UI payloads.
 
-`/agent/context` returns the stable `agh me context` payload in this order: `self`, `workspace`, `session`, `task`, `inbox_summary`, `peer_roster`, `capabilities`, `limits`, and `provenance`. Each list section is bounded and includes truncation metadata; full records come from dedicated endpoints.
+`/agent/channels` returns channel discovery metadata, including purpose, manifest fields when present, and task-run correlation fields for channels the caller may inspect. Channel send/reply endpoints accept the MVP coordination message kinds and correlation metadata for task-bound messages.
+
+`/agent/context` returns the stable `agh me context` payload in this order: `self`, `workspace`, `session`, `task`, `coordination_channel`, `inbox_summary`, `peer_roster`, `capabilities`, `limits`, and `provenance`. Each list section is bounded and includes truncation metadata; full records come from dedicated endpoints.
 
 CLI commands map one-to-one onto these endpoints:
 
@@ -311,6 +363,8 @@ CLI commands map one-to-one onto these endpoints:
 - `agh spawn`
 
 Agent-initiated task creation requires a session-level `task.create` capability atom. Coordinator sessions receive it by default; spawned workers do not unless the parent explicitly grants it and permission narrowing allows it.
+
+`agh task next --wait` returns the claimed run's `coordination_channel_id` and channel display metadata when a channel exists. Agents should use `agh ch send`, `agh ch recv --wait`, and `agh ch reply --to-message` for operational coordination, but must use `agh task heartbeat|complete|fail|release` for ownership and terminal state.
 
 Existing or future operator commands remain explicit, including `agh task create --workspace ...`, `agh task publish --workspace ...`, `agh task start --workspace ...`, and `agh session create --agent ...`. `agh task start` is the operator-facing command that enqueues a run for an executable non-draft task. Operator commands are allowed to start sessions for manual verification without triggering task execution by themselves.
 
@@ -387,7 +441,7 @@ The MVP targets local daemon autonomy first. Network protocol changes should be 
 | `internal/daemon` | modified | New wiring for situation providers, scheduler, coordinator bootstrap, hooks, and config resolution. Medium risk due to composition scope. | Add explicit constructor options and keep daemon as the only composition root. |
 | `internal/session` | modified | Session lineage, spawn opts, situation updates, synthetic prompts, lifecycle hooks. High risk around shutdown and parent/child cleanup. | Add focused lifecycle tests and parent-stop/TTL recovery tests. |
 | `internal/task` | modified | Claim/lease API, task capability criteria, heartbeat/complete/release fencing. High risk around races. | Implement with SQLite transactions and race-focused tests. |
-| `internal/store/globaldb` | modified | Schema changes for claim/lease/session lineage/capability JSON. Medium risk. | Update schema and store tests; greenfield alpha allows clean schema change. |
+| `internal/store/globaldb` | modified | Schema changes for claim/lease/session lineage/capability tables and coordination channel IDs. Medium risk. | Update schema and store tests; greenfield alpha allows clean schema change. |
 | `internal/scheduler` | new | Daemon-owned sweep/notify loop with idle registry, lease recovery, and capability-aware wakeups. Medium risk around goroutine lifecycle and backpressure. | Keep state rebuildable and context-owned; scheduler must not be a second run claimant in MVP. |
 | `internal/cli` | modified | Agent-facing commands with implicit identity and JSON/JSONL output. Medium risk around contract stability. | Add contract tests for env identity, exit codes, and output schema. |
 | `internal/api/contract` | modified | DTOs for agent context, claim, lease, spawn, telemetry, coordinator config. Medium risk. | Keep transport-agnostic DTOs and generated OpenAPI parity where needed. |
@@ -395,8 +449,8 @@ The MVP targets local daemon autonomy first. Network protocol changes should be 
 | Operator task/session surfaces | modified | Manual task creation and manual session creation must remain first-class. Medium risk if autonomy-only assumptions leak into APIs. | Add explicit tests for user-created tasks and user-started sessions entering the same claim/session contracts. |
 | `openapi/agh.json`, `web/src/generated/agh-openapi.d.ts`, `web/src/systems/tasks/types.ts`, `web/src/systems/session/types.ts` | modified in MVP | Contract DTO changes in steps 1, 6, 7, 9, and 10 propagate into web typecheck and Storybook/MSW fixtures. Medium risk because web can break even when broad UI is deferred. | Run `make codegen` with every contract change, update generated types and affected web fixtures, and gate on `make web-typecheck` and `make web-test`. Do not expose raw `claim_token` over HTTP. |
 | Operator Tasks UI | modified in MVP | The publish/approve/enqueue distinction becomes load-bearing once run enqueue triggers coordinator bootstrap. Low implementation risk but high product-risk if labels imply task creation starts orchestration. | Minimal copy/label/disabled-state pass in `web/src/systems/tasks/components/` plus an e2e scenario for manual-first flows. No new dashboard or autonomy route. |
-| `packages/site` runtime docs | modified in MVP | New CLI verbs and runtime concepts would be undocumented at the step 10 demo milestone. Medium risk for adoption and task handoff. | Add minimum `core/autonomy/` docs and CLI reference pages for `agh me`, `agh spawn`, and new `agh task` verbs; update hook/config/session docs; run site source generation/typecheck/tests. Keep marketing pages unchanged. |
-| `internal/network` | modified later | Minimal channel discovery, status, handoff, reply simplification, optional multi-home. Medium risk. | Defer wire changes until the local autonomy MVP proves the needed shape. |
+| `packages/site` runtime docs | modified in MVP | New CLI verbs and runtime concepts would be undocumented at the step 10 demo milestone. Medium risk for adoption and task handoff. | Add minimum `core/autonomy/` docs and CLI reference pages for `agh me`, `agh ch`, `agh spawn`, and new `agh task` verbs; update hook/config/session docs; run site source generation/typecheck/tests. Keep marketing pages unchanged. |
+| `internal/network` | modified in MVP | Minimal channel discovery, task-run coordination channel metadata, status, handoff, reply simplification. Medium risk. | Add only task/run correlation metadata and MVP message kinds; defer multi-home, contract-net, vote/react/escalate, and cross-daemon routing. |
 | `internal/memory` | modified later | Agent/session provenance, session summaries, recall provenance. Medium risk around concurrent writes. | MVP only fixes useful provenance needed by task/session ownership; broader summaries are post-MVP. |
 | `internal/hooks` | modified | New autonomy events, payloads, patches, dispatch, introspection. Medium risk around hook mutability. | Make safety-sensitive hooks observation-only unless explicitly safe. |
 | `internal/resources` | unchanged for MVP | Possible coordinator/eval resource kinds are post-MVP. Low risk if deferred. | Do not add resource kinds in MVP unless a durable user-authored declaration is required. |
@@ -417,6 +471,9 @@ The MVP targets local daemon autonomy first. Network protocol changes should be 
 - Coordinator config resolution follows workspace > global > bundled defaults.
 - Task creation alone does not auto-spawn a coordinator and does not create a claimable run.
 - Task publish/start/approve-execution enqueues coordinated work and triggers coordinator startup when no healthy coordinator exists.
+- Workspace-scoped coordinated run enqueue creates or resolves a stable `coordination_channel_id`.
+- Coordination channel messages carry task/run correlation metadata and cannot contain raw `claim_token` values.
+- Channel `status` and `result` messages do not mutate task-run ownership or terminal state.
 - Spawn options reject permission widening, excessive depth, excessive children, missing TTL, and invalid parent session.
 - Permission narrowing rejects unknown child atoms and does not silently narrow.
 - TTL/parent-stop releases active leases with structured release reasons.
@@ -432,6 +489,7 @@ The MVP targets local daemon autonomy first. Network protocol changes should be 
 - Task queued -> scheduler wake -> idle agent pulls with `ClaimNextRun` -> run complete.
 - User-created task remains draft/blocked/ready after creation -> no coordinator auto-spawn and no claimable run until explicit execution.
 - User publishes/starts/approves that task -> run enqueue emits `task.run_enqueued` -> coordinator spawns -> coordinator decomposes/delegates -> worker claims through `ClaimNextRun`.
+- Coordinated task run -> claim response includes `coordination_channel_id` -> worker exchanges `status`/`blocker`/`result` messages through the channel -> completion still happens only through token-fenced task API.
 - Parent session stop -> child auto-stop -> active child leases release with `parent_stopped`.
 - Lease expiry on daemon restart -> recovery makes the run claimable without duplicate completion.
 - `agh ch reply --to-message` replaces delivery shell-snippet guidance using implicit identity.
@@ -462,15 +520,15 @@ Steps 1-10 are the local autonomy MVP. They should feed the first `$cy-create-ta
 2. **Autonomy hook taxonomy** - depends on step 1. Add `coordinator.*`, `spawn.*`, and `task.run.*` events, payloads, patches, dispatch, introspection, and bridge interfaces before behavior depends on them. Scheduler wake/no-match/recovery remain internal observability in the MVP.
 3. **Situation Surface** - depends on steps 1 and 2. Add prompt providers, self-capability rendering, task context rendering, and bounded dynamic situation updates.
 4. **Agent Kernel CLI identity layer** - depends on step 1. Add caller identity resolution, UDS audit fields, JSON/JSONL conventions, and exit-code taxonomy.
-5. **Channel and self-context verbs** - depends on steps 3 and 4. Add `agh me`, `agh me context`, `agh ch recv --wait`, `agh ch reply`, and channel discovery/listing.
-6. **Task claim/lease schema and store API** - depends on steps 1 and 2. Add `task_runs` claim fields, capability side tables, `ClaimNextRun`, heartbeat, release, fencing tests, lease invariants, and boot recovery ordering.
-7. **Agent and operator task verbs** - depends on steps 4 and 6. Add `agh task next`, heartbeat, complete, fail, release, permitted `agh task create`, and explicit operator publish/start commands; keep existing operator task/session commands functional.
+5. **Channel and self-context verbs** - depends on steps 3 and 4. Add `agh me`, `agh me context`, `agh ch recv --wait`, `agh ch reply`, channel discovery/listing, and MVP coordination message metadata/kinds.
+6. **Task claim/lease schema and store API** - depends on steps 1 and 2. Add `task_runs` claim fields, `coordination_channel_id`, capability side tables, `ClaimNextRun`, heartbeat, release, fencing tests, lease invariants, and boot recovery ordering.
+7. **Agent and operator task verbs** - depends on steps 4 and 6. Add `agh task next`, heartbeat, complete, fail, release, permitted `agh task create`, explicit operator publish/start commands, and claim responses that include coordination-channel metadata; keep existing operator task/session commands functional.
    Demo milestone: at this point a user-started agent can self-claim and complete a queued task end-to-end without the scheduler or coordinator.
 8. **Mechanical scheduler sweep/notify** - depends on steps 2, 3, 6, and 7. Add `internal/scheduler`, idle-agent registry, boot rebuild, capability-aware wakeups, and lease sweep. Do not make it a direct run claimant in MVP.
 9. **Safe spawn and lineage** - depends on steps 1, 2, and 4. Add `SpawnOpts`, lineage fields, TTL, caps, permission narrowing, parent-aware reaper, and `agh spawn`.
-10. **Coordinator-agent bootstrap** - depends on steps 3, 7, 8, and 9. Add task publish/start/approve-execution trigger at the run enqueue boundary, restricted tools, provider/model config, one active coordinator per workspace, and manual override controls.
-    Co-ship requirement: step 10 must include the operator Tasks UI copy/labeling pass for the publish/enqueue/coordinator-trigger boundary, one web e2e scenario covering ADR-010 manual-first bookends, and the minimum docs set under `packages/site/content/runtime/core/autonomy/` plus CLI reference pages for `agh me`, `agh spawn`, and new `agh task` verbs.
-11. **Post-MVP network evolution** - depends on MVP validation. Add peer status, channel manifest/discovery, and handoff only after local autonomy proves the needed wire shape.
+10. **Coordinator-agent bootstrap** - depends on steps 3, 7, 8, and 9. Add task publish/start/approve-execution trigger at the run enqueue boundary, coordination-channel binding/usage, restricted tools, provider/model config, one active coordinator per workspace, and manual override controls.
+    Co-ship requirement: step 10 must include the operator Tasks UI copy/labeling pass for the publish/enqueue/coordinator-trigger boundary, one web e2e scenario covering ADR-010 manual-first bookends, and the minimum docs set under `packages/site/content/runtime/core/autonomy/` plus CLI reference pages for `agh me`, `agh ch`, `agh spawn`, and new `agh task` verbs.
+11. **Post-MVP network evolution** - depends on MVP validation. Add multi-home sessions, richer peer negotiation, contract-net verbs, and broader handoff/mention semantics only after local autonomy proves the needed wire shape.
 12. **Post-MVP memory provenance and session summaries** - depends on MVP validation. Write broader recall provenance and add session-end summaries before broad extraction.
 13. **Post-MVP self-correction and telemetry** - depends on MVP validation. Add repetition detector, recovery prompts, agent-callable telemetry, and autonomy alerts beyond the minimal counters.
 14. **Post-MVP eval/replay harness** - depends on MVP validation. Add recorded ACP/session trajectories, YAML cases, replay fixtures, and deterministic assertions under a dedicated ADR/TechSpec.
@@ -623,6 +681,10 @@ Likelihood: medium. Mitigation: TTL, parent-aware reaper, boot recovery, and chi
 
 Likelihood: medium. Mitigation: local autonomy comes first; cross-daemon swarm, election, and broad contract-net semantics stay out of MVP.
 
+**Channels becoming hidden task state**
+
+Likelihood: medium. Mitigation: coordination channels are operational conversation only. Tests and docs must prove claim, heartbeat, complete, fail, release, and terminal task status remain token-fenced task service operations.
+
 **Memory extraction writes noisy facts**
 
 Likelihood: medium. Mitigation: start with session summaries and provenance, then add broader turn/network extraction after telemetry shows useful signal.
@@ -640,3 +702,4 @@ Likelihood: medium. Mitigation: start with session summaries and provenance, the
 - [ADR-009: Autonomy Hooks and Extension Points Are First-Class Contracts](adrs/adr-009.md) - Add typed autonomy hooks and resource/provider extension contracts through existing AGH extensibility systems.
 - [ADR-010: Manual Operator Control Remains First-Class](adrs/adr-010.md) - Preserve manual task creation and manual session starts as peers of autonomous workflows on the same task/session contracts.
 - [ADR-011: Generated Contracts and Documentation Co-Ship with Autonomy MVP Steps](adrs/adr-011.md) - Keep generated web contracts, minimal Tasks UI labeling, and runtime docs in lockstep with autonomy contract changes.
+- [ADR-012: Task-Run Coordination Channels](adrs/adr-012.md) - Bind each coordinated run to a stable network channel for operational agent communication without making channels the task ownership authority.

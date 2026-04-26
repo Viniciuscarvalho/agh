@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 title: Session Lineage And Spawn Metadata
 type: backend
 complexity: high
@@ -34,12 +34,12 @@ Add the session metadata required for safe autonomous spawning: parent/root line
 </requirements>
 
 ## Subtasks
-- [ ] 12.1 Extend session creation options and canonical session info with lineage/policy metadata.
-- [ ] 12.2 Update global session schema/store mapping for lineage, TTL, role, and budget fields.
-- [ ] 12.3 Update manager creation/list/get flows to preserve manual root sessions and spawned-child metadata.
-- [ ] 12.4 Update contracts/OpenAPI/generated web types for public session read models.
-- [ ] 12.5 Add tests for root sessions, child metadata, restart reads, invalid depth/policy, and DTO compatibility.
-- [ ] 12.6 Document task_13 integration points in completion notes.
+- [x] 12.1 Extend session creation options and canonical session info with lineage/policy metadata.
+- [x] 12.2 Update global session schema/store mapping for lineage, TTL, role, and budget fields.
+- [x] 12.3 Update manager creation/list/get flows to preserve manual root sessions and spawned-child metadata.
+- [x] 12.4 Update contracts/OpenAPI/generated web types for public session read models.
+- [x] 12.5 Add tests for root sessions, child metadata, restart reads, invalid depth/policy, and DTO compatibility.
+- [x] 12.6 Document task_13 integration points in completion notes.
 
 ## Implementation Details
 Keep the model explicit enough for task_13 to enforce spawn caps and permission narrowing without parsing free-form metadata. Do not add the reaper yet, but make TTL/budget fields available for it.
@@ -93,3 +93,9 @@ Keep the model explicit enough for task_13 to enforce spawn caps and permission 
 - Test coverage >=80%.
 - Safe spawn enforcement can be implemented without schema refactors.
 - Manual and autonomous sessions share one coherent session catalog.
+
+## Completion Notes
+- Added typed lineage/budget/policy model surfaces in `store.SessionLineage`, `session.CreateOpts.Lineage`, `session.Info`, and public session conversion paths.
+- Persisted lineage through explicit global catalog columns for parent/root/depth/role/TTL/auto-stop plus typed JSON columns for budget and permission policy.
+- Kept manual user/dream/system sessions as root rows while adding explicit `coordinator` and `spawned` session types for future autonomous behavior.
+- Task 13 integration points: use `session.SessionTypeSpawned`, `session.SessionTypeCoordinator`, `store.SessionLineage`, and globaldb filters for `SessionType`, `ParentSessionID`, `RootSessionID`, and `SpawnRole`; implement spawn API/reaper enforcement there, not in this task.

@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 title: Autonomy Config Foundation
 type: backend
 complexity: medium
@@ -30,11 +30,11 @@ Add the configuration foundation for the autonomy MVP without starting any coord
 </requirements>
 
 ## Subtasks
-- [ ] 1.1 Add typed autonomy/coordinator config structs, defaults, and validation.
-- [ ] 1.2 Merge autonomy config through global and workspace `.agh/config.toml` overlays.
-- [ ] 1.3 Add a daemon-facing resolver interface and no-op implementation path for later coordinator bootstrap.
-- [ ] 1.4 Add config tests for defaults, workspace override precedence, invalid providers/models, TTL bounds, and unknown key rejection.
-- [ ] 1.5 Record contract/web/docs impact as not applicable or apply required generated updates if a public DTO is touched.
+- [x] 1.1 Add typed autonomy/coordinator config structs, defaults, and validation.
+- [x] 1.2 Merge autonomy config through global and workspace `.agh/config.toml` overlays.
+- [x] 1.3 Add a daemon-facing resolver interface and no-op implementation path for later coordinator bootstrap.
+- [x] 1.4 Add config tests for defaults, workspace override precedence, invalid providers/models, TTL bounds, and unknown key rejection.
+- [x] 1.5 Record contract/web/docs impact as not applicable or apply required generated updates if a public DTO is touched.
 
 ## Implementation Details
 Keep config ownership in `internal/config` and wire only a resolver boundary in `internal/daemon`. Use existing TOML loading, validation, and workspace overlay patterns instead of adding a parallel config loader.
@@ -68,14 +68,14 @@ Keep config ownership in `internal/config` and wire only a resolver boundary in 
 
 ## Tests
 - Unit tests:
-  - [ ] Default config returns coordinator auto-start disabled/enabled according to TechSpec default and non-zero safe limits.
-  - [ ] Workspace coordinator override wins over global config for provider, model, TTL, max children, and enabled flag.
-  - [ ] Invalid TTL, negative max children, empty agent name, and unknown provider/model return wrapped validation errors with field paths.
-  - [ ] Unknown autonomy TOML keys are rejected by the existing strict config loader.
-  - [ ] Resolver returns bundled/default coordinator identity when no global or workspace override exists.
+  - [x] Default config returns coordinator auto-start disabled/enabled according to TechSpec default and non-zero safe limits.
+  - [x] Workspace coordinator override wins over global config for provider, model, TTL, max children, and enabled flag.
+  - [x] Invalid TTL, negative max children, empty agent name, and unknown provider/model return wrapped validation errors with field paths.
+  - [x] Unknown autonomy TOML keys are rejected by the existing strict config loader.
+  - [x] Resolver returns bundled/default coordinator identity when no global or workspace override exists.
 - Integration tests:
-  - [ ] `Load(WithWorkspaceRoot(...))` merges autonomy config without clobbering existing providers, hooks, network, memory, or skills sections.
-  - [ ] Config edits do not mutate process environment or ambient workspace config.
+  - [x] `Load(WithWorkspaceRoot(...))` merges autonomy config without clobbering existing providers, hooks, network, memory, or skills sections.
+  - [x] Config edits do not mutate process environment or ambient workspace config.
 - Test coverage target: >=80%.
 - All tests must pass.
 
@@ -84,3 +84,11 @@ Keep config ownership in `internal/config` and wire only a resolver boundary in 
 - Test coverage >=80%.
 - Later tasks can consume coordinator policy through one resolver boundary.
 - No coordinator runtime behavior starts from task creation or config loading alone.
+
+## Completion Notes
+- Implemented typed `[autonomy.coordinator]` config in `internal/config` with strict TOML overlay support, conservative defaults, provider/model and safety-limit validation, and resolver fallback semantics.
+- Added `RuntimeDeps.CoordinatorConfig` in `internal/daemon` as the no-runtime-behavior resolver boundary for later coordinator bootstrap.
+- Verification: `go test ./internal/config -run 'Autonomy|Coordinator'`, `go test ./internal/daemon -run 'CoordinatorConfig'`, `go test ./internal/config`, `go test ./internal/daemon`, `go test -cover ./internal/config` (`81.2%`), and `make verify` all passed.
+- Generated contracts/public DTOs: not changed; `make codegen` was not required.
+- `web/`: not changed.
+- `packages/site`: not changed.

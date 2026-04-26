@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 title: ClaimNextRun And Lease Fencing Service
 type: backend
 complexity: critical
@@ -10,10 +10,10 @@ dependencies:
 # Task 08: ClaimNextRun And Lease Fencing Service
 
 ## Overview
-Implement the authoritative task-run claim primitive and lease fencing rules. `ClaimNextRun(criteria)` becomes the only way autonomous sessions take new work, while heartbeat, completion, failure, and release operations must prove ownership through the current claim token.
+Implement the authoritative task-run claim primitive and lease fencing rules. `ClaimNextRun(criteria)` becomes the only way autonomous sessions take new work, returns coordination channel metadata for coordinated runs, while heartbeat, completion, failure, and release operations must prove ownership through the current claim token.
 
 <critical>
-- ALWAYS READ `_techspec.md`, ADR-003, ADR-004, ADR-009, and ADR-010 before changing claim behavior
+- ALWAYS READ `_techspec.md`, ADR-003, ADR-004, ADR-009, ADR-010, and ADR-012 before changing claim behavior
 - `ClaimNextRun(criteria)` IS THE ONLY AUTHORITATIVE NEXT-WORK PRIMITIVE - scheduler and coordinator code must not bypass it
 - EVERY MUTATION AFTER CLAIM MUST BE FENCED BY THE CURRENT CLAIM TOKEN
 - ONE ACTIVE TASK-RUN LEASE PER SESSION IN MVP unless the TechSpec is explicitly changed
@@ -23,6 +23,7 @@ Implement the authoritative task-run claim primitive and lease fencing rules. `C
 
 <requirements>
 - MUST add transactional `ClaimNextRun(criteria)` to the task service/globaldb layer using SQLite transaction semantics.
+- MUST return `coordination_channel_id` and safe channel display metadata in successful claim results for channel-bound coordinated runs.
 - MUST filter eligible work by queued status, workspace/scope, capabilities, lease expiration, authority, and one-active-lease-per-session rules.
 - MUST generate raw claim tokens only for successful synchronous claim responses and persist only the hash.
 - MUST fence heartbeat, release, complete, and fail operations with the current raw claim token.
@@ -31,15 +32,15 @@ Implement the authoritative task-run claim primitive and lease fencing rules. `C
 </requirements>
 
 ## Subtasks
-- [ ] 8.1 Add `ClaimCriteria`, `ClaimResult`, and lease mutation interfaces to `internal/task`.
-- [ ] 8.2 Implement transactional pending-run selection and claim update in `internal/store/globaldb`.
-- [ ] 8.3 Add token generation, hashing, and constant-time token verification helpers.
-- [ ] 8.4 Fence heartbeat/release/complete/fail operations by token hash and lease state.
-- [ ] 8.5 Add deterministic expired-lease recovery and one-active-lease-per-session enforcement.
-- [ ] 8.6 Add concurrency, recovery, hook, and regression tests covering all lease state transitions.
+- [x] 8.1 Add `ClaimCriteria`, `ClaimResult`, coordination channel metadata, and lease mutation interfaces to `internal/task`.
+- [x] 8.2 Implement transactional pending-run selection and claim update in `internal/store/globaldb`.
+- [x] 8.3 Add token generation, hashing, and constant-time token verification helpers.
+- [x] 8.4 Fence heartbeat/release/complete/fail operations by token hash and lease state.
+- [x] 8.5 Add deterministic expired-lease recovery and one-active-lease-per-session enforcement.
+- [x] 8.6 Add concurrency, recovery, hook, and regression tests covering all lease state transitions.
 
 ## Implementation Details
-Keep the transaction small: select the best eligible run, update its claim metadata, and return the claimed run with the raw token to the caller. Avoid a scheduler-owned queue and avoid generic lock managers.
+Keep the transaction small: select the best eligible run, update its claim metadata, and return the claimed run with the raw token and safe coordination channel metadata to the caller. Avoid a scheduler-owned queue and avoid generic lock managers.
 
 Use injected clocks or store-level time providers for tests. Race tests should coordinate goroutines with channels/barriers and prove that exactly one claimant wins.
 
@@ -64,9 +65,11 @@ Use injected clocks or store-level time providers for tests. Race tests should c
 - [ADR-004: Coordinator-Agent Plus Mechanical Scheduler](adrs/adr-004.md) - scheduler must not become the claimant.
 - [ADR-009: Autonomy Hooks And Extension Contracts](adrs/adr-009.md) - hook emission boundaries.
 - [ADR-010: Manual Operator Control Remains First-Class](adrs/adr-010.md) - operator and agent paths share the same claim model.
+- [ADR-012: Task-Run Coordination Channels](adrs/adr-012.md) - claim results expose the communication channel without changing ownership rules.
 
 ## Deliverables
 - Transactional `ClaimNextRun(criteria)` implementation.
+- Claim results with coordination channel metadata for coordinated runs.
 - Fenced heartbeat, release, complete, and fail operations.
 - Expired lease recovery without duplicate ownership.
 - Unit tests with 80%+ coverage for lease state machine helpers **(REQUIRED)**.
@@ -74,17 +77,19 @@ Use injected clocks or store-level time providers for tests. Race tests should c
 
 ## Tests
 - Unit tests:
-  - [ ] Claim criteria validation rejects missing claimer session, invalid workspace scope, and unsupported capability names.
-  - [ ] Token hashing and verification never compare raw token strings directly.
-  - [ ] Heartbeat extends only the current lease and rejects stale, missing, expired, or mismatched tokens.
-  - [ ] Complete/fail/release require the current token and clear or preserve fields according to the TechSpec.
-  - [ ] One-active-lease-per-session rejects a second claim until the current run is completed, failed, released, or expired.
+  - [x] Claim criteria validation rejects missing claimer session, invalid workspace scope, and unsupported capability names.
+  - [x] Token hashing and verification never compare raw token strings directly.
+  - [x] Heartbeat extends only the current lease and rejects stale, missing, expired, or mismatched tokens.
+  - [x] Complete/fail/release require the current token and clear or preserve fields according to the TechSpec.
+  - [x] One-active-lease-per-session rejects a second claim until the current run is completed, failed, released, or expired.
+  - [x] Claim result mapping includes `coordination_channel_id` when present and never includes raw claim tokens in channel metadata.
 - Integration tests:
-  - [ ] Concurrent claim attempts against one queued run result in exactly one successful claimant.
-  - [ ] Capability matching returns only runs whose required capabilities are all satisfied.
-  - [ ] Expired leases become claimable again, while unexpired leases are skipped.
-  - [ ] Boot recovery identifies stale leases and emits the configured task-run events/hooks once.
-  - [ ] Manual operator-enqueued runs and agent-created runs are both claimable through the same primitive.
+  - [x] Concurrent claim attempts against one queued run result in exactly one successful claimant.
+  - [x] Capability matching returns only runs whose required capabilities are all satisfied.
+  - [x] Expired leases become claimable again, while unexpired leases are skipped.
+  - [x] Boot recovery identifies stale leases and emits the configured task-run events/hooks once.
+  - [x] Manual operator-enqueued runs and agent-created runs are both claimable through the same primitive.
+  - [x] Channel-bound runs remain owned only after a successful token-fenced claim; channel metadata alone never grants ownership.
 - Test coverage target: >=80%.
 - All tests must pass.
 

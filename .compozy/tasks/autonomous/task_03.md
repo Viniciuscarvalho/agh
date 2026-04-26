@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 title: Autonomy Hook Taxonomy And Task Hook Bridge
 type: backend
 complexity: high
@@ -24,6 +24,7 @@ Add the typed hook surface for coordinator lifecycle, task-run ownership, and sp
 
 <requirements>
 - MUST add `coordinator.*`, `task.run.*`, and `spawn.*` hook events with families, sync eligibility, payloads, patches, dispatch methods, matchers, and introspection descriptors.
+- MUST include `coordination_channel_id` in relevant task-run and coordinator hook payloads without making hooks or channels task ownership authorities.
 - MUST keep scheduler wake/no-match/recovery as metrics/logs/observability, not hooks, for the MVP.
 - MUST add a narrow dispatcher interface consumed by `internal/task` and implemented in daemon wiring.
 - MUST dispatch pre-claim/pre-spawn hooks at the call site before transactional state changes and post hooks after committed state/audit events.
@@ -32,15 +33,15 @@ Add the typed hook surface for coordinator lifecycle, task-run ownership, and sp
 </requirements>
 
 ## Subtasks
-- [ ] 3.1 Add autonomy hook events/families and update event catalog/introspection.
-- [ ] 3.2 Add payloads, patches, matchers, patch guards, and dispatch methods.
-- [ ] 3.3 Add a task-domain hook dispatcher interface plus no-op default implementation.
-- [ ] 3.4 Wire daemon hook bridge adapters without creating package import cycles.
-- [ ] 3.5 Add tests for taxonomy validation, hook binding resources, deny/narrow behavior, and forbidden patch widening.
-- [ ] 3.6 Confirm generated contracts/web/docs impact and defer documentation details to task_16 if no DTO changes occur.
+- [x] 3.1 Add autonomy hook events/families and update event catalog/introspection.
+- [x] 3.2 Add payloads, patches, matchers, patch guards, and dispatch methods.
+- [x] 3.3 Add a task-domain hook dispatcher interface plus no-op default implementation.
+- [x] 3.4 Wire daemon hook bridge adapters without creating package import cycles.
+- [x] 3.5 Add tests for taxonomy validation, hook binding resources, deny/narrow behavior, and forbidden patch widening.
+- [x] 3.6 Confirm generated contracts/web/docs impact and defer documentation details to task_16 if no DTO changes occur.
 
 ## Implementation Details
-Extend the existing `internal/hooks` architecture rather than adding autonomy-specific callback registries. The task service should depend only on a narrow interface, not on `daemon` or the hook runtime implementation.
+Extend the existing `internal/hooks` architecture rather than adding autonomy-specific callback registries. The task service should depend only on a narrow interface, not on `daemon` or the hook runtime implementation. Task-run and coordinator payloads should carry `coordination_channel_id` where available so extensions can correlate orchestration events with channel traffic.
 
 ### Relevant Files
 - `internal/hooks/events.go` - event taxonomy and family validation.
@@ -64,6 +65,7 @@ Extend the existing `internal/hooks` architecture rather than adding autonomy-sp
 - [ADR-004: Split Semantic Coordination from Mechanical Scheduling](adrs/adr-004.md) - hooks observe/shape, scheduler owns mechanics.
 - [ADR-009: Autonomy Hooks and Extension Points Are First-Class Contracts](adrs/adr-009.md) - first-class extension surface and safety boundaries.
 - [ADR-011: Generated Contracts and Documentation Co-Ship with Autonomy MVP Steps](adrs/adr-011.md) - contract/docs parity when hook catalog surfaces change.
+- [ADR-012: Task-Run Coordination Channels](adrs/adr-012.md) - hook payload correlation with task-bound channels.
 
 ## Deliverables
 - Typed autonomy hook events, payloads, patches, dispatch, and introspection descriptors.
@@ -74,14 +76,15 @@ Extend the existing `internal/hooks` architecture rather than adding autonomy-sp
 
 ## Tests
 - Unit tests:
-  - [ ] Hook catalog lists every new `coordinator.*`, `task.run.*`, and `spawn.*` event with the correct family and sync eligibility.
-  - [ ] `task.run.pre_claim` can deny or narrow criteria only in the allowed directions.
-  - [ ] Spawn pre-create patch rejects permission widening and unknown child atoms after hook mutation.
-  - [ ] Scheduler wake/no-match names are absent from hook taxonomy.
-  - [ ] No-op task hook dispatcher preserves current task behavior.
+  - [x] Hook catalog lists every new `coordinator.*`, `task.run.*`, and `spawn.*` event with the correct family and sync eligibility.
+  - [x] Task-run and coordinator hook payload tests include `coordination_channel_id` when a run is channel-bound.
+  - [x] `task.run.pre_claim` can deny or narrow criteria only in the allowed directions.
+  - [x] Spawn pre-create patch rejects permission widening and unknown child atoms after hook mutation.
+  - [x] Scheduler wake/no-match names are absent from hook taxonomy.
+  - [x] No-op task hook dispatcher preserves current task behavior.
 - Integration tests:
-  - [ ] Hook binding resource registers one autonomy hook and receives a typed payload through the daemon bridge.
-  - [ ] Post-commit task-run hook dispatch occurs after the corresponding audit event write.
+  - [x] Hook binding resource registers one autonomy hook and receives a typed payload through the daemon bridge.
+  - [x] Post-commit task-run hook dispatch occurs after the corresponding audit event write.
 - Test coverage target: >=80%.
 - All tests must pass.
 

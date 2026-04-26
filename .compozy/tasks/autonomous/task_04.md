@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 title: Situation Surface Providers
 type: backend
 complexity: high
@@ -12,7 +12,7 @@ dependencies:
 # Task 04: Situation Surface Providers
 
 ## Overview
-Build the bounded runtime context that agents need to act without shell snippets or hidden assumptions. This task renders self identity, workspace/session facts, active task context, inbox summary, peer roster, capabilities, limits, and provenance through existing prompt provider/augmenter seams and the `/agent/context` contract.
+Build the bounded runtime context that agents need to act without shell snippets or hidden assumptions. This task renders self identity, workspace/session facts, active task context, coordination channel context, inbox summary, peer roster, capabilities, limits, and provenance through existing prompt provider/augmenter seams and the `/agent/context` contract.
 
 <critical>
 - ALWAYS READ `_techspec.md`, ADR-001, ADR-002, and ADR-009 before implementing situation providers
@@ -24,24 +24,26 @@ Build the bounded runtime context that agents need to act without shell snippets
 </critical>
 
 <requirements>
-- MUST render `/agent/context` sections in stable order: `self`, `workspace`, `session`, `task`, `inbox_summary`, `peer_roster`, `capabilities`, `limits`, `provenance`.
+- MUST render `/agent/context` sections in stable order: `self`, `workspace`, `session`, `task`, `coordination_channel`, `inbox_summary`, `peer_roster`, `capabilities`, `limits`, `provenance`.
 - MUST bound every list section and include truncation metadata.
 - MUST use existing session prompt assembly/augmenter seams and daemon composition root wiring.
 - MUST omit unavailable sections cleanly without inventing placeholder facts.
-- MUST include `agent_name` and `session_id` provenance in rendered context, hooks/logs where relevant, and task-run payloads if available.
+- MUST include `agent_name`, `session_id`, `coordination_channel_id`, and task/run provenance in rendered context, hooks/logs where relevant, and task-run payloads if available.
 - MUST not implement broad post-MVP memory extraction, eval/replay, or cross-daemon network evolution.
 </requirements>
 
 ## Subtasks
-- [ ] 4.1 Define situation provider interfaces and section renderers in the daemon/session boundary.
-- [ ] 4.2 Render self/workspace/session/capability/limit sections from existing runtime state.
-- [ ] 4.3 Render task/inbox/peer sections from task and network services when available.
-- [ ] 4.4 Wire prompt startup and bounded dynamic update injection through existing prompt seams.
-- [ ] 4.5 Add tests for stable ordering, truncation metadata, missing services, provenance, and prompt assembly.
-- [ ] 4.6 Update contracts or web generated artifacts if `/agent/context` DTO shape changes from task_02.
+- [x] 4.1 Define situation provider interfaces and section renderers in the daemon/session boundary.
+- [x] 4.2 Render self/workspace/session/capability/limit sections from existing runtime state.
+- [x] 4.3 Render task/coordination-channel/inbox/peer sections from task and network services when available.
+- [x] 4.4 Wire prompt startup and bounded dynamic update injection through existing prompt seams.
+- [x] 4.5 Add tests for stable ordering, truncation metadata, missing services, provenance, and prompt assembly.
+- [x] 4.6 Update contracts or web generated artifacts if `/agent/context` DTO shape changes from task_02.
 
 ## Implementation Details
 Keep the first implementation local-daemon focused. Reference external projects only for context shaping ideas; do not port their abstractions or create a new memory/plugin stack.
+
+For coordinated runs, `/agent/context` must show the task-bound coordination channel and a bounded inbox summary so an agent knows where to send `status`, `request`, `blocker`, `handoff`, `result`, and `review_request` messages. Do not include raw claim tokens in context or channel summaries.
 
 ### Relevant Files
 - `internal/session/interfaces.go` - `PromptInputAugmenter` and prompt assembly interfaces.
@@ -65,6 +67,7 @@ Keep the first implementation local-daemon focused. Reference external projects 
 - [ADR-002: Agent-Facing CLI Before Built-In MCP Tools](adrs/adr-002.md) - context backs CLI-first agent controls.
 - [ADR-008: Memory Provenance Before Rich Memory Scopes](adrs/adr-008.md) - provenance before broad memory scope.
 - [ADR-009: Autonomy Hooks and Extension Points Are First-Class Contracts](adrs/adr-009.md) - provider extensibility.
+- [ADR-012: Task-Run Coordination Channels](adrs/adr-012.md) - active run channel context.
 
 ## Deliverables
 - Situation provider and renderer stack wired through daemon/session seams.
@@ -75,15 +78,16 @@ Keep the first implementation local-daemon focused. Reference external projects 
 
 ## Tests
 - Unit tests:
-  - [ ] Rendering preserves the required section order and omits unavailable sections.
-  - [ ] Peer roster, inbox, capabilities, and task lists truncate deterministically and report truncation metadata.
-  - [ ] `agent_name`, `session_id`, workspace, provider/model, and limits appear when present.
-  - [ ] Missing network/task/skill services do not panic and do not fabricate data.
-  - [ ] Provider output is stable for snapshot-style assertions without current-time nondeterminism.
+  - [x] Rendering preserves the required section order and omits unavailable sections.
+  - [x] Peer roster, inbox, capabilities, and task lists truncate deterministically and report truncation metadata.
+  - [x] Coordination channel section appears for channel-bound runs and is omitted for unavailable/non-coordinated context.
+  - [x] `agent_name`, `session_id`, workspace, provider/model, and limits appear when present.
+  - [x] Missing network/task/skill services do not panic and do not fabricate data.
+  - [x] Provider output is stable for snapshot-style assertions without current-time nondeterminism.
 - Integration tests:
-  - [ ] A created session receives startup situation context through `PromptProvider` or prompt assembly.
-  - [ ] A prompt submitted after task assignment includes the active task envelope without duplicating previous context.
-  - [ ] Existing harness context tests continue to pass with the new provider stack.
+  - [x] A created session receives startup situation context through `PromptProvider` or prompt assembly.
+  - [x] A prompt submitted after task assignment includes the active task envelope without duplicating previous context.
+  - [x] Existing harness context tests continue to pass with the new provider stack.
 - Test coverage target: >=80%.
 - All tests must pass.
 
