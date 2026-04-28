@@ -8,6 +8,8 @@ import {
 } from "@/test/fetch-test-utils";
 
 import {
+  SessionApiError,
+  SessionNotFoundError,
   cancelSessionPrompt,
   clearSessionConversation,
   createSession,
@@ -16,6 +18,7 @@ import {
   fetchSessionEvents,
   fetchSessionTranscript,
   fetchSessions,
+  repairSession,
   resumeSession,
   stopSession,
 } from "./session-api";
@@ -29,6 +32,27 @@ const mockSession = {
   state: "active",
   created_at: "2026-04-01T00:00:00Z",
   updated_at: "2026-04-01T01:00:00Z",
+};
+
+const mockRepair = {
+  session_id: "sess-001",
+  issues: [
+    {
+      code: "event_sequence_gap",
+      severity: "warning",
+      turn_id: "turn-1",
+      detail: "gap before sequence 4",
+    },
+  ],
+  actions: [
+    {
+      code: "append_terminal_error",
+      turn_id: "turn-1",
+      event_id: "ev-repair-1",
+      persisted: false,
+    },
+  ],
+  persisted: false,
 };
 
 beforeEach(() => {
@@ -301,6 +325,53 @@ describe("resumeSession", () => {
     vi.mocked(globalThis.fetch).mockResolvedValue(new Response(null, { status: 404 }));
 
     await expect(resumeSession("unknown")).rejects.toThrow("Session not found: unknown");
+  });
+});
+
+describe("repairSession", () => {
+  it("calls POST repair endpoint with query flags and returns the repair payload", async () => {
+    mockJsonResponse({ repair: mockRepair });
+
+    const result = await repairSession("sess-001", { dry_run: true, force: true });
+
+    expect(result).toEqual(mockRepair);
+    const request = fetchRequest();
+    const url = new URL(request.url);
+    expect(request.method).toBe("POST");
+    expect(url.pathname).toBe("/api/sessions/sess-001/repair");
+    expect(url.searchParams.get("dry_run")).toBe("true");
+    expect(url.searchParams.get("force")).toBe("true");
+  });
+
+  it("throws 404 error for unknown session", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(new Response(null, { status: 404 }));
+
+    await expect(repairSession("unknown")).rejects.toBeInstanceOf(SessionNotFoundError);
+    await expect(repairSession("unknown")).rejects.toThrow("Session not found: unknown");
+  });
+
+  it("throws typed adapter error for non-404 failures", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(new Response(null, { status: 500 }));
+
+    await expect(repairSession("sess-001")).rejects.toBeInstanceOf(SessionApiError);
+    await expect(repairSession("sess-001")).rejects.toMatchObject({
+      message: 'Failed to repair session "sess-001": 500',
+      status: 500,
+      sessionId: "sess-001",
+    });
+  });
+
+  it("passes abort signal to fetch", async () => {
+    mockJsonResponse({ repair: mockRepair });
+
+    const controller = new AbortController();
+    await repairSession("sess-001", {}, controller.signal);
+
+    await expectFetchRequest({
+      method: "POST",
+      path: "/api/sessions/sess-001/repair",
+      signal: controller.signal,
+    });
   });
 });
 

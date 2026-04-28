@@ -12,6 +12,8 @@ import type {
   SessionMessage,
   SessionEventPayload,
   SessionPayload,
+  SessionRepairPayload,
+  SessionRepairQuery,
   TurnHistoryPayload,
 } from "../types";
 import { normalizeTranscriptMessages } from "../lib/message-schemas";
@@ -21,7 +23,42 @@ export type {
   CreateSessionParams,
   FetchSessionEventsParams,
   PermissionDecision,
+  SessionRepairQuery,
 } from "../types";
+
+export class SessionApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly sessionId?: string
+  ) {
+    super(message);
+    this.name = "SessionApiError";
+  }
+}
+
+export class SessionNotFoundError extends SessionApiError {
+  constructor(id: string) {
+    super(`Session not found: ${id}`, 404, id);
+    this.name = "SessionNotFoundError";
+  }
+}
+
+function throwSessionRequestError(
+  response: Response,
+  error: unknown,
+  fallback: string,
+  sessionId?: string
+): never {
+  if (response.status === 404 && sessionId) {
+    throw new SessionNotFoundError(sessionId);
+  }
+  throw new SessionApiError(
+    defaultApiErrorMessage(fallback, response, error),
+    response.status,
+    sessionId
+  );
+}
 
 export async function fetchSessions(
   workspace?: string,
@@ -36,7 +73,7 @@ export async function fetchSessions(
     signal,
   });
   if (apiRequestFailed(response, error)) {
-    throw new Error(defaultApiErrorMessage("Failed to fetch sessions", response, error));
+    throwSessionRequestError(response, error, "Failed to fetch sessions");
   }
   return requireResponseData(data, response, "Failed to fetch sessions").sessions;
 }
@@ -51,9 +88,9 @@ export async function createSession(
   });
   if (apiRequestFailed(response, error)) {
     if (response.status === 409) {
-      throw new Error("Max sessions reached");
+      throw new SessionApiError("Max sessions reached", 409);
     }
-    throw new Error(defaultApiErrorMessage("Failed to create session", response, error));
+    throwSessionRequestError(response, error, "Failed to create session");
   }
   return requireResponseData(data, response, "Failed to create session").session;
 }
@@ -64,10 +101,7 @@ export async function fetchSession(id: string, signal?: AbortSignal): Promise<Se
     signal,
   });
   if (apiRequestFailed(response, error)) {
-    if (response.status === 404) {
-      throw new Error(`Session not found: ${id}`);
-    }
-    throw new Error(defaultApiErrorMessage(`Failed to fetch session "${id}"`, response, error));
+    throwSessionRequestError(response, error, `Failed to fetch session "${id}"`, id);
   }
   return requireResponseData(data, response, `Failed to fetch session "${id}"`).session;
 }
@@ -78,10 +112,7 @@ export async function deleteSession(id: string, signal?: AbortSignal): Promise<v
     signal,
   });
   if (apiRequestFailed(response, error)) {
-    if (response.status === 404) {
-      throw new Error(`Session not found: ${id}`);
-    }
-    throw new Error(defaultApiErrorMessage(`Failed to delete session "${id}"`, response, error));
+    throwSessionRequestError(response, error, `Failed to delete session "${id}"`, id);
   }
 }
 
@@ -91,10 +122,7 @@ export async function stopSession(id: string, signal?: AbortSignal): Promise<voi
     signal,
   });
   if (apiRequestFailed(response, error)) {
-    if (response.status === 404) {
-      throw new Error(`Session not found: ${id}`);
-    }
-    throw new Error(defaultApiErrorMessage(`Failed to stop session "${id}"`, response, error));
+    throwSessionRequestError(response, error, `Failed to stop session "${id}"`, id);
   }
 }
 
@@ -112,9 +140,13 @@ export async function cancelSessionPrompt(id: string, signal?: AbortSignal): Pro
   const response = await globalThis.fetch(request);
   if (!response.ok) {
     if (response.status === 404) {
-      throw new Error(`Session not found: ${id}`);
+      throw new SessionNotFoundError(id);
     }
-    throw new Error(`Failed to cancel prompt for session "${id}": ${response.status}`);
+    throw new SessionApiError(
+      `Failed to cancel prompt for session "${id}": ${response.status}`,
+      response.status,
+      id
+    );
   }
 }
 
@@ -124,12 +156,27 @@ export async function resumeSession(id: string, signal?: AbortSignal): Promise<S
     signal,
   });
   if (apiRequestFailed(response, error)) {
-    if (response.status === 404) {
-      throw new Error(`Session not found: ${id}`);
-    }
-    throw new Error(defaultApiErrorMessage(`Failed to resume session "${id}"`, response, error));
+    throwSessionRequestError(response, error, `Failed to resume session "${id}"`, id);
   }
   return requireResponseData(data, response, `Failed to resume session "${id}"`).session;
+}
+
+export async function repairSession(
+  id: string,
+  query: SessionRepairQuery = {},
+  signal?: AbortSignal
+): Promise<SessionRepairPayload> {
+  const { data, error, response } = await apiClient.POST("/api/sessions/{id}/repair", {
+    params: {
+      path: { id },
+      query,
+    },
+    signal,
+  });
+  if (apiRequestFailed(response, error)) {
+    throwSessionRequestError(response, error, `Failed to repair session "${id}"`, id);
+  }
+  return requireResponseData(data, response, `Failed to repair session "${id}"`).repair;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -163,17 +210,29 @@ export async function clearSessionConversation(
   const response = await globalThis.fetch(request);
   if (!response.ok) {
     if (response.status === 404) {
-      throw new Error(`Session not found: ${id}`);
+      throw new SessionNotFoundError(id);
     }
     if (response.status === 409) {
-      throw new Error(`Cannot clear session "${id}" while a prompt is still running`);
+      throw new SessionApiError(
+        `Cannot clear session "${id}" while a prompt is still running`,
+        409,
+        id
+      );
     }
-    throw new Error(`Failed to clear session "${id}": ${response.status}`);
+    throw new SessionApiError(
+      `Failed to clear session "${id}": ${response.status}`,
+      response.status,
+      id
+    );
   }
 
   const body: unknown = await response.json();
   if (!isSessionEnvelope(body)) {
-    throw new Error(`Failed to clear session "${id}": invalid response payload`);
+    throw new SessionApiError(
+      `Failed to clear session "${id}": invalid response payload`,
+      response.status,
+      id
+    );
   }
 
   return body.session;
@@ -192,12 +251,7 @@ export async function fetchSessionEvents(
     signal,
   });
   if (apiRequestFailed(response, error)) {
-    if (response.status === 404) {
-      throw new Error(`Session not found: ${id}`);
-    }
-    throw new Error(
-      defaultApiErrorMessage(`Failed to fetch session events "${id}"`, response, error)
-    );
+    throwSessionRequestError(response, error, `Failed to fetch session events "${id}"`, id);
   }
   return requireResponseData(data, response, `Failed to fetch session events "${id}"`).events;
 }
@@ -213,10 +267,7 @@ export async function approveSession(
     signal,
   });
   if (apiRequestFailed(response, error)) {
-    if (response.status === 404) {
-      throw new Error(`Session not found: ${id}`);
-    }
-    throw new Error(defaultApiErrorMessage("Failed to approve permission", response, error));
+    throwSessionRequestError(response, error, "Failed to approve permission", id);
   }
 }
 
@@ -229,12 +280,7 @@ export async function fetchSessionHistory(
     signal,
   });
   if (apiRequestFailed(response, error)) {
-    if (response.status === 404) {
-      throw new Error(`Session not found: ${id}`);
-    }
-    throw new Error(
-      defaultApiErrorMessage(`Failed to fetch session history "${id}"`, response, error)
-    );
+    throwSessionRequestError(response, error, `Failed to fetch session history "${id}"`, id);
   }
   return requireResponseData(data, response, `Failed to fetch session history "${id}"`).history;
 }
@@ -248,12 +294,7 @@ export async function fetchSessionTranscript(
     signal,
   });
   if (apiRequestFailed(response, error)) {
-    if (response.status === 404) {
-      throw new Error(`Session not found: ${id}`);
-    }
-    throw new Error(
-      defaultApiErrorMessage(`Failed to fetch session transcript "${id}"`, response, error)
-    );
+    throwSessionRequestError(response, error, `Failed to fetch session transcript "${id}"`, id);
   }
 
   const payload = requireResponseData(data, response, `Failed to fetch session transcript "${id}"`);

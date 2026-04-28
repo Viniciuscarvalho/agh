@@ -28,6 +28,7 @@ func TestBaseHandlersSessionEndpoints(t *testing.T) {
 
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	var createCalled atomic.Bool
+	var repairSeen session.RepairOpts
 	manager := testutil.StubSessionManager{
 		ListAllFn: func(context.Context) ([]*session.Info, error) {
 			return []*session.Info{testutil.NewSessionInfo("sess-a")}, nil
@@ -70,6 +71,18 @@ func TestBaseHandlersSessionEndpoints(t *testing.T) {
 			resumed := testutil.NewSession(id)
 			resumed.State = session.StateActive
 			return resumed, nil
+		},
+		RepairFn: func(_ context.Context, opts session.RepairOpts) (*session.RepairResult, error) {
+			repairSeen = opts
+			return &session.RepairResult{
+				SessionID: opts.SessionID,
+				Actions: []session.RepairAction{{
+					Code:      session.RepairActionAppendTerminalError,
+					TurnID:    "turn-1",
+					Persisted: !opts.DryRun,
+				}},
+				Persisted: !opts.DryRun,
+			}, nil
 		},
 		EventsFn: func(_ context.Context, id string, query store.EventQuery) ([]store.SessionEvent, error) {
 			if id != "sess-a" || query.Limit != 10 || query.AfterSequence != 5 {
@@ -181,6 +194,61 @@ func TestBaseHandlersSessionEndpoints(t *testing.T) {
 		resumeResp := performRequest(t, fixture.Engine, http.MethodPost, "/sessions/sess-a/resume", nil)
 		if resumeResp.Code != http.StatusOK {
 			t.Fatalf("resume status = %d, want %d", resumeResp.Code, http.StatusOK)
+		}
+	})
+
+	t.Run("ShouldRepairSession", func(t *testing.T) {
+		repairResp := performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPost,
+			"/sessions/sess-a/repair?dry_run=true&force=true",
+			nil,
+		)
+		if repairResp.Code != http.StatusOK {
+			t.Fatalf("repair status = %d, want %d", repairResp.Code, http.StatusOK)
+		}
+		if repairSeen.SessionID != "sess-a" || !repairSeen.DryRun || !repairSeen.Force {
+			t.Fatalf("repair opts = %#v, want sess-a dry-run force", repairSeen)
+		}
+		var payload contract.SessionRepairResponse
+		if err := json.Unmarshal(repairResp.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("json.Unmarshal(repair response) error = %v", err)
+		}
+		if payload.Repair.SessionID != "sess-a" {
+			t.Fatalf("repair session id = %q, want sess-a", payload.Repair.SessionID)
+		}
+		if payload.Repair.Persisted {
+			t.Fatalf("repair persisted = %v, want false for dry-run", payload.Repair.Persisted)
+		}
+		if got, want := len(payload.Repair.Actions), 1; got != want {
+			t.Fatalf("repair actions len = %d, want %d", got, want)
+		}
+		action := payload.Repair.Actions[0]
+		if got, want := action.Code, session.RepairActionAppendTerminalError; got != want {
+			t.Fatalf("repair action code = %q, want %q", got, want)
+		}
+		if got, want := action.TurnID, "turn-1"; got != want {
+			t.Fatalf("repair action turn id = %q, want %q", got, want)
+		}
+		if action.Persisted {
+			t.Fatalf("repair action persisted = %v, want false for dry-run", action.Persisted)
+		}
+	})
+
+	t.Run("ShouldRejectConflictingRepairQueryAliases", func(t *testing.T) {
+		repairResp := performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPost,
+			"/sessions/sess-a/repair?dry_run=true&dry-run=false",
+			nil,
+		)
+		if repairResp.Code != http.StatusBadRequest {
+			t.Fatalf("repair conflicting alias status = %d, want %d", repairResp.Code, http.StatusBadRequest)
+		}
+		if !strings.Contains(repairResp.Body.String(), "conflicting boolean query values for dry_run, dry-run") {
+			t.Fatalf("repair conflicting alias body = %q, want conflict message", repairResp.Body.String())
 		}
 	})
 

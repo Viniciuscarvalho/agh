@@ -1,7 +1,7 @@
 import { AlertCircle, BookOpen, Loader2, Trash2 } from "lucide-react";
 import { useState } from "react";
 
-import { Button, CodeBlock, Empty, MonoBadge, Section, StatusDot } from "@agh/ui";
+import { Button, CodeBlock, Empty, Pill, Section } from "@agh/ui";
 
 import {
   formatKnowledgeDateTime,
@@ -14,6 +14,7 @@ import {
 import type { KnowledgeMemoryItem } from "@/systems/knowledge/types";
 
 import { KnowledgeDeleteDialog } from "./knowledge-delete-dialog";
+import { pillToneFromKnowledgeTone } from "./knowledge-pill-tone";
 
 interface KnowledgeDetailPanelProps {
   memory: KnowledgeMemoryItem | undefined;
@@ -92,8 +93,8 @@ function KnowledgeDetailPanel({
 
   const resolvedScope = scope ?? resolveKnowledgeScope(memory);
   const scopeForTone = resolvedScope === "workspace" ? "workspace" : "global";
-  const scopeTone = memoryScopeTone(scopeForTone);
-  const typeTone = memoryTypeTone(memory.type);
+  const scopeTone = pillToneFromKnowledgeTone(memoryScopeTone(scopeForTone));
+  const typeTone = pillToneFromKnowledgeTone(memoryTypeTone(memory.type));
 
   const metadataRows: MetadataRow[] = [
     { key: "Type", value: memory.type, tone: "mono" },
@@ -137,16 +138,16 @@ function KnowledgeDetailPanel({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
-            <MonoBadge data-testid="detail-type-badge" tone={typeTone}>
+            <Pill mono data-testid="detail-type-badge" tone={typeTone}>
               {memory.type}
-            </MonoBadge>
-            <MonoBadge data-testid="detail-scope-badge" tone={scopeTone}>
+            </Pill>
+            <Pill mono data-testid="detail-scope-badge" tone={scopeTone}>
               {knowledgeScopeLabel(scopeForTone)}
-            </MonoBadge>
+            </Pill>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <StatusDot tone="success" />
+          <Pill.Dot tone="success" />
           <span className="text-[13px] text-[color:var(--color-text-secondary)]">Active</span>
           <span className="font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
             Updated {formatKnowledgeRelativeTime(memory.mod_time)}
@@ -185,7 +186,7 @@ function KnowledgeDetailPanel({
                 </dt>
                 <dd className="min-w-0 text-right">
                   {row.tone === "mono" ? (
-                    <MonoBadge>{row.value}</MonoBadge>
+                    <Pill mono>{row.value}</Pill>
                   ) : (
                     <span className="text-[13px] text-[color:var(--color-text-primary)]">
                       {row.value}

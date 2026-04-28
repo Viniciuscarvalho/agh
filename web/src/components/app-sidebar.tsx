@@ -15,16 +15,14 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import {
-  cn,
-  ConnectionIndicator,
-  Logo,
-  type ConnectionStatus,
-  Sidebar,
-  SidebarSectionLabel,
-  StatusDot,
-} from "@agh/ui";
+import { cn, Logo, Sidebar, SidebarSectionLabel, Pill } from "@agh/ui";
 
+import { ConnectionIndicator, type ConnectionStatus } from "@/components/connection-indicator";
+import {
+  ACTIVE_NAV_INDICATOR_CLASS,
+  ACTIVE_NAV_ROW_CLASS,
+  NAV_ROW_CLASS,
+} from "@/components/sidebar-nav-classes";
 import { AgentIcon, type AgentPayload } from "@/systems/agent";
 import type { SessionPayload } from "@/systems/session";
 import type { WorkspacePayload } from "@/systems/workspace";
@@ -87,28 +85,6 @@ function RailSlot({
     </div>
   );
 }
-
-interface HeaderSlotProps {
-  activeWorkspace: WorkspacePayload | undefined;
-}
-
-function HeaderSlot({ activeWorkspace }: HeaderSlotProps) {
-  return (
-    <span
-      data-testid="sidebar-workspace-name"
-      className="flex-1 truncate text-[13px] font-medium text-[color:var(--color-text-primary)]"
-    >
-      {activeWorkspace?.name ?? ""}
-    </span>
-  );
-}
-
-const NAV_ROW_CLASS =
-  "relative flex items-center gap-2 rounded-[6px] px-2 py-1.5 text-[13px] text-[color:var(--color-text-secondary)] transition-colors hover:bg-[color:var(--color-hover)] hover:text-[color:var(--color-text-primary)]";
-const ACTIVE_NAV_ROW_CLASS =
-  "bg-[color:var(--color-surface)] font-medium text-[color:var(--color-text-primary)]";
-const ACTIVE_NAV_INDICATOR_CLASS =
-  "absolute -left-2 top-1.5 bottom-1.5 w-[2px] rounded-r-[2px] bg-[color:var(--color-accent)]";
 
 interface NavItemProps {
   to: string;
@@ -174,7 +150,7 @@ function AgentItem({ agent, hasActiveSession }: AgentItemProps) {
       />
       <span className="truncate">{agent.name}</span>
       {hasActiveSession ? (
-        <StatusDot
+        <Pill.Dot
           tone="success"
           size="sm"
           className="ml-auto"
@@ -339,7 +315,6 @@ export interface AppSidebarProps {
   collapsed: boolean;
   onCollapseChange: (next: boolean) => void;
   workspaces: WorkspacePayload[] | undefined;
-  activeWorkspace: WorkspacePayload | undefined;
   activeWorkspaceId: string | null;
   onSelectWorkspace: (id: string) => void;
   onAddWorkspace: () => void;
@@ -355,7 +330,6 @@ function AppSidebar({
   collapsed,
   onCollapseChange,
   workspaces,
-  activeWorkspace,
   activeWorkspaceId,
   onSelectWorkspace,
   onAddWorkspace,
@@ -380,7 +354,6 @@ function AppSidebar({
           onAddWorkspace={onAddWorkspace}
         />
       }
-      header={<HeaderSlot activeWorkspace={activeWorkspace} />}
       nav={
         <NavSlot
           agents={agents}

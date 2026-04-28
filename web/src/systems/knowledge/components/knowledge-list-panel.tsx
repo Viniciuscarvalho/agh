@@ -1,11 +1,12 @@
 import { AlertCircle, BookOpen, Loader2 } from "lucide-react";
 import { useMemo } from "react";
 
-import { Empty, MonoBadge, SearchInput } from "@agh/ui";
+import { Empty, Pill, SearchInput } from "@agh/ui";
 import { cn } from "@/lib/utils";
 
 import {
   formatKnowledgeRelativeTime,
+  knowledgeScopeShortLabel,
   knowledgeMemoryKey,
   memoryScopeTone,
   resolveKnowledgeScope,
@@ -13,6 +14,7 @@ import {
 } from "../lib/knowledge-formatters";
 import { filterKnowledgeMemories, groupKnowledgeMemoriesByScope } from "../lib/knowledge-list";
 import type { KnowledgeMemoryItem } from "../types";
+import { pillToneFromKnowledgeTone } from "./knowledge-pill-tone";
 
 interface KnowledgeListPanelProps {
   memories: KnowledgeMemoryItem[];
@@ -67,12 +69,20 @@ function KnowledgeListItem({ memory, isSelected, onSelect }: KnowledgeListItemPr
         </span>
       ) : null}
       <div className="flex flex-wrap items-center gap-1.5">
-        <MonoBadge data-testid={`type-badge-${memory.type}`} tone={memoryTypeTone(memory.type)}>
+        <Pill
+          mono
+          data-testid={`type-badge-${memory.type}`}
+          tone={pillToneFromKnowledgeTone(memoryTypeTone(memory.type))}
+        >
           {memory.type}
-        </MonoBadge>
-        <MonoBadge data-testid={`scope-badge-${scope}`} tone={memoryScopeTone(scope)}>
-          {scope === "workspace" ? "WS" : "GLOBAL"}
-        </MonoBadge>
+        </Pill>
+        <Pill
+          mono
+          data-testid={`scope-badge-${scope}`}
+          tone={pillToneFromKnowledgeTone(memoryScopeTone(scope))}
+        >
+          {knowledgeScopeShortLabel(scope)}
+        </Pill>
       </div>
     </button>
   );
@@ -156,7 +166,7 @@ function KnowledgeListPanel({
                   <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-text-label)]">
                     {group.label}
                   </span>
-                  <MonoBadge>{group.memories.length}</MonoBadge>
+                  <Pill mono>{group.memories.length}</Pill>
                 </div>
                 {group.memories.map(memory => (
                   <KnowledgeListItem

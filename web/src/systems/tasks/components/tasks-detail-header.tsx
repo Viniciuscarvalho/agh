@@ -1,8 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import { ListChecks, Radio } from "lucide-react";
 
-import { Button, MonoBadge, PageHeader, Pill, StatusDot } from "@agh/ui";
-import { pillVariantFromTone } from "@/lib/pill-variant";
+import { Button, Pill, PageHeader } from "@agh/ui";
+import { pillToneFromLegacyTone } from "@/lib/pill-variant";
 
 import {
   formatRelativeTime,
@@ -40,10 +40,10 @@ export interface TasksDetailHeaderProps {
 }
 
 /**
- * Detail page header — `PageHeader` with the task title + short id `MonoBadge` +
- * status pill, plus action buttons (edit, cancel, publish, enqueue) in the meta
- * slot. The eyebrow row below surfaces secondary metadata (owner, origin, created-
- * by, last update, priority + approval pills).
+ * Detail page header — `PageHeader` with task title, `Pill.Dot`, short id `Pill`,
+ * status pills, and action buttons (edit, cancel, publish, enqueue) in the meta
+ * slot. The eyebrow row below surfaces secondary metadata (owner, origin,
+ * created-by, last update, priority + approval pills).
  */
 export function TasksDetailHeader({
   detail,
@@ -82,24 +82,26 @@ export function TasksDetailHeader({
         icon={() => <ListChecks className="size-3.5" />}
         title={
           <span className="flex min-w-0 items-center gap-2">
-            <StatusDot tone={signal.tone} pulse={signal.pulse} />
+            <Pill.Dot tone={signal.tone} pulse={signal.pulse} />
             <span
               className="truncate text-[15px] font-semibold text-[color:var(--color-text-primary)]"
               data-testid="tasks-detail-title"
             >
               {record.title}
             </span>
-            <MonoBadge data-testid="tasks-detail-id">{identifier}</MonoBadge>
+            <Pill mono data-testid="tasks-detail-id">
+              {identifier}
+            </Pill>
             <Pill
               data-testid="tasks-detail-status"
-              variant={pillVariantFromTone(taskStatusTone(record.status))}
+              tone={pillToneFromLegacyTone(taskStatusTone(record.status))}
             >
               {taskStatusLabel(record.status)}
             </Pill>
             <Pill
               data-testid="tasks-detail-lifecycle"
               title={taskLifecyclePhaseDescription(lifecyclePhase)}
-              variant={pillVariantFromTone(taskLifecyclePhaseTone(lifecyclePhase))}
+              tone={pillToneFromLegacyTone(taskLifecyclePhaseTone(lifecyclePhase))}
             >
               {taskLifecyclePhaseLabel(lifecyclePhase)}
             </Pill>
@@ -107,7 +109,7 @@ export function TasksDetailHeader({
               <Pill
                 data-testid="tasks-detail-coordination"
                 title="Coordination channel is bound to the active run. Channel messages support coordination only — task ownership stays in the task service."
-                variant={pillVariantFromTone("violet")}
+                tone={pillToneFromLegacyTone("violet")}
               >
                 <span className="inline-flex items-center gap-1">
                   <Radio className="size-3" aria-hidden="true" />
@@ -200,12 +202,12 @@ export function TasksDetailHeader({
         data-testid="tasks-detail-meta"
       >
         {record.priority ? (
-          <Pill variant={pillVariantFromTone(taskPriorityTone(record.priority))}>
+          <Pill tone={pillToneFromLegacyTone(taskPriorityTone(record.priority))}>
             {taskPriorityLabel(record.priority)}
           </Pill>
         ) : null}
         {taskHasApprovalPending(record) ? (
-          <Pill variant="accent">{taskApprovalStateLabel(record.approval_state)}</Pill>
+          <Pill tone="accent">{taskApprovalStateLabel(record.approval_state)}</Pill>
         ) : null}
         <span>Owner {taskOwnerLabel(record.owner)}</span>
         <span>· Origin {record.origin?.kind?.toUpperCase() ?? "UNKNOWN"}</span>
