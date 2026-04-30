@@ -98,6 +98,28 @@ func TestPortHandlesNilServer(t *testing.T) {
 	}
 }
 
+func TestNewWithHomePathsRealignsDefaultConfig(t *testing.T) {
+	t.Run("Should use overridden home paths for the default daemon socket", func(t *testing.T) {
+		processHome := filepath.Join(t.TempDir(), "process-home")
+		t.Setenv("AGH_HOME", processHome)
+		homePaths := newTestHomePaths(t)
+
+		server, err := New(
+			WithHomePaths(homePaths),
+			WithSessionManager(stubSessionManager{}),
+			WithTaskService(stubTaskManager{}),
+			WithObserver(stubObserver{}),
+			WithWorkspaceResolver(stubWorkspaceService{}),
+		)
+		if err != nil {
+			t.Fatalf("New() error = %v", err)
+		}
+		if got, want := server.config.Daemon.Socket, homePaths.DaemonSocket; got != want {
+			t.Fatalf("config daemon socket = %q, want %q", got, want)
+		}
+	})
+}
+
 func TestNewRequiresSessionManagerTaskServiceObserverAndWorkspaceResolver(t *testing.T) {
 	homePaths := newTestHomePaths(t)
 
@@ -516,9 +538,8 @@ func TestLoopbackServerRejectsMismatchedSettingsItemNames(t *testing.T) {
 					ExecutorKind: hookspkg.HookExecutorSubprocess,
 					Command:      "/bin/capture",
 					Matcher: hookspkg.HookMatcher{
-						ToolName:      "read",
-						ToolNamespace: "fs",
-						ToolReadOnly:  &readOnly,
+						ToolID:       "agh__read",
+						ToolReadOnly: &readOnly,
 					},
 				},
 			}),
@@ -736,6 +757,18 @@ func TestNonLoopbackServerBlocksSettingsAndExtensionMutationsButKeepsReads(t *te
 			body:   []byte(`{}`),
 		},
 		{name: "Should block extension installs", method: http.MethodPost, path: "/api/extensions", body: []byte(`{}`)},
+		{
+			name:   "Should block tool approvals",
+			method: http.MethodPost,
+			path:   "/api/tools/agh__skill_view/approvals",
+			body:   []byte(`{}`),
+		},
+		{
+			name:   "Should block tool invocation",
+			method: http.MethodPost,
+			path:   "/api/tools/agh__skill_view/invoke",
+			body:   []byte(`{}`),
+		},
 		{
 			name:   "Should block extension enables",
 			method: http.MethodPost,

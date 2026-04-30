@@ -68,6 +68,8 @@ type ResolvedAgent struct {
 	Command     string
 	Model       string
 	Tools       []string
+	Toolsets    []string
+	DenyTools   []string
 	Permissions string
 	APIKeyEnv   string
 	MCPServers  []MCPServer
@@ -180,11 +182,6 @@ func (c *Config) ResolveAgent(agent AgentDef) (ResolvedAgent, error) {
 		return ResolvedAgent{}, err
 	}
 
-	tools := cloneStrings(agent.Tools)
-	if len(tools) == 0 {
-		tools = []string{"*"}
-	}
-
 	resolvedPermissions := strings.TrimSpace(agent.Permissions)
 	if resolvedPermissions == "" {
 		resolvedPermissions = string(permissions.Mode)
@@ -205,7 +202,9 @@ func (c *Config) ResolveAgent(agent AgentDef) (ResolvedAgent, error) {
 		Provider:    providerName,
 		Command:     command,
 		Model:       model,
-		Tools:       tools,
+		Tools:       cloneStrings(agent.Tools),
+		Toolsets:    cloneStrings(agent.Toolsets),
+		DenyTools:   cloneStrings(agent.DenyTools),
 		Permissions: resolvedPermissions,
 		APIKeyEnv:   provider.APIKeyEnv,
 		MCPServers:  mergeMCPServerLayers(mcpServers, provider.MCPServers, agent.MCPServers),
@@ -368,7 +367,29 @@ func (s MCPServer) Validate(path string) error {
 	case transport == MCPServerTransportStdio && !s.Auth.IsZero():
 		return fmt.Errorf("%s.auth is only valid for remote MCP servers", path)
 	default:
+		return validateStdioMCPEnv(path, transport, s.Env)
+	}
+}
+
+func validateStdioMCPEnv(path string, transport MCPServerTransport, env map[string]string) error {
+	if transport != MCPServerTransportStdio {
 		return nil
+	}
+	for key := range env {
+		if forbiddenStdioMCPEnvKey(key) {
+			return fmt.Errorf("%s.env.%s is forbidden for stdio MCP servers", path, strings.TrimSpace(key))
+		}
+	}
+	return nil
+}
+
+func forbiddenStdioMCPEnvKey(key string) bool {
+	normalized := strings.ToUpper(strings.TrimSpace(key))
+	switch normalized {
+	case "NODE_OPTIONS", "PYTHONPATH", "PYTHONHOME", "LD_PRELOAD":
+		return true
+	default:
+		return strings.HasPrefix(normalized, "DYLD_")
 	}
 }
 

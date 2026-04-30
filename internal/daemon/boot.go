@@ -18,6 +18,7 @@ import (
 	extensionpkg "github.com/pedronauck/agh/internal/extension"
 	hookspkg "github.com/pedronauck/agh/internal/hooks"
 	aghlogger "github.com/pedronauck/agh/internal/logger"
+	mcppkg "github.com/pedronauck/agh/internal/mcp"
 	"github.com/pedronauck/agh/internal/memory"
 	"github.com/pedronauck/agh/internal/memory/consolidation"
 	"github.com/pedronauck/agh/internal/network"
@@ -61,11 +62,15 @@ type bootState struct {
 	sandboxRegistry     *sandbox.Registry
 	workspaceResolver   *workspacepkg.Resolver
 	sessions            SessionManager
+	hostedMCP           *mcppkg.HostedService
 	tasks               *taskRuntime
 	spawnReaper         *spawnReaper
 	scheduler           *schedulerRuntime
 	coordinator         *coordinatorRuntime
 	network             networkRuntime
+	toolRegistry        toolspkg.Registry
+	toolsets            core.ToolsetRegistry
+	toolApprovals       toolspkg.ApprovalTokenIssuer
 	observer            Observer
 	lifecycleObservers  *sessionLifecycleFanout
 	hookTelemetrySinks  *hookTelemetryFanout
@@ -174,6 +179,7 @@ func (d *Daemon) bootComponents(ctx context.Context, state *bootState, cleanup *
 		func() error { return d.bootScheduler(ctx, state, cleanup) },
 		func() error { return d.bootNetwork(ctx, state, cleanup) },
 		func() error { return d.bootHooks(ctx, state, cleanup) },
+		func() error { return d.bootToolRegistry(ctx, state) },
 		func() error { return d.bootCoordinator(ctx, state, cleanup) },
 		func() error { return d.bootAutomation(ctx, state, cleanup) },
 		func() error { return d.bootBundles(ctx, state) },
@@ -200,6 +206,7 @@ func (d *Daemon) beginBoot() error {
 		d.registry != nil ||
 		d.sessions != nil ||
 		d.network != nil ||
+		d.toolRegistry != nil ||
 		d.observer != nil ||
 		d.resourceReconcile != nil ||
 		d.automation != nil ||
@@ -291,6 +298,7 @@ func (d *Daemon) bootPromptProviders(_ context.Context, state *bootState) error 
 		SituationPromptSectionEnabled: state.situationContext != nil,
 		MemoryPromptSectionEnabled:    state.memoryStore != nil,
 		SkillsPromptSectionEnabled:    state.skillsRegistry != nil,
+		ToolsPromptSectionEnabled:     state.cfg.Tools.Enabled,
 		SituationAugmenter:            state.situationContext != nil,
 		DurableMemoryAugmenter:        state.memoryStore != nil,
 		SyntheticTurnsEnabled:         true,
@@ -468,6 +476,11 @@ func (d *Daemon) bootRuntimeServices(
 	}
 	state.sandboxRegistry = sandboxRegistry
 	state.bridges = d.composeBridgeRuntime(state, cleanup)
+	hostedMCP, err := d.buildHostedMCPService(state)
+	if err != nil {
+		return err
+	}
+	state.hostedMCP = hostedMCP
 
 	resourceKernel, err := d.buildResourceKernel(state.registry)
 	if err != nil {
@@ -620,6 +633,7 @@ func (d *Daemon) sessionManagerDeps(state *bootState) SessionManagerDeps {
 		SandboxRegistry:      state.sandboxRegistry,
 		SessionSupervision:   state.cfg.Session.Supervision,
 		ProcessRegistry:      state.processRegistry,
+		HostedMCP:            hostedMCPLauncher(state.hostedMCP),
 	}
 }
 
@@ -736,6 +750,10 @@ func (d *Daemon) runtimeDeps(state *bootState, sessions SessionManager) RuntimeD
 			agentCatalogDependency(state.agentCatalog),
 		),
 		SkillsRegistry: skillsRegistryAPI(state.skillsRegistry),
+		ToolRegistry:   state.toolRegistry,
+		Toolsets:       state.toolsets,
+		ToolApprovals:  state.toolApprovals,
+		HostedMCP:      state.hostedMCP,
 		DreamTrigger:   dreamTriggerFromRuntime(state.dreamRuntime),
 		StartedAt:      state.startedAt,
 	}
@@ -1592,6 +1610,7 @@ func (d *Daemon) publishBootState(state *bootState) {
 	d.spawnReaper = state.spawnReaper
 	d.scheduler = state.scheduler
 	d.network = state.network
+	d.toolRegistry = state.toolRegistry
 	d.hooks = state.hooks
 	d.extensions = state.currentExtensionRuntime()
 	d.bridges = state.bridges

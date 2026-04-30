@@ -168,6 +168,57 @@ func TestMCPServerValidateSupportsRemoteOAuthPKCE(t *testing.T) {
 	}
 }
 
+func TestMCPServerValidateRejectsUnsafeStdioEnv(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		key  string
+	}{
+		{name: "Should reject Node options", key: "NODE_OPTIONS"},
+		{name: "Should reject Python path", key: "PYTHONPATH"},
+		{name: "Should reject Python home", key: "PYTHONHOME"},
+		{name: "Should reject preload", key: "LD_PRELOAD"},
+		{name: "Should reject Darwin dynamic loader variables", key: "DYLD_INSERT_LIBRARIES"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			server := MCPServer{
+				Name:    "local",
+				Command: "npx",
+				Env:     map[string]string{tc.key: "value"},
+			}
+			err := server.Validate("mcp_servers[0]")
+			if err == nil || !strings.Contains(err.Error(), "forbidden for stdio MCP servers") {
+				t.Fatalf("Validate(%s) error = %v, want forbidden env validation", tc.key, err)
+			}
+		})
+	}
+}
+
+func TestMCPServerValidateAllowsSafeRemoteEnvNames(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Should allow remote MCP env values", func(t *testing.T) {
+		t.Parallel()
+
+		server := MCPServer{
+			Name:      "remote",
+			Transport: MCPServerTransportHTTP,
+			URL:       "https://mcp.example/mcp",
+			Env: map[string]string{
+				"NODE_OPTIONS": "--require ./shim.js",
+			},
+		}
+		if err := server.Validate("mcp_servers[0]"); err != nil {
+			t.Fatalf("Validate(remote MCP env) error = %v, want nil", err)
+		}
+	})
+}
+
 func TestRedactedMCPServerDoesNotExposeEnvSecretValues(t *testing.T) {
 	t.Parallel()
 
@@ -324,8 +375,8 @@ func TestResolveAgentDefaultsToolsAndPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveAgent() error = %v", err)
 	}
-	if len(resolved.Tools) != 1 || resolved.Tools[0] != "*" {
-		t.Fatalf("ResolveAgent() Tools = %#v", resolved.Tools)
+	if len(resolved.Tools) != 0 {
+		t.Fatalf("ResolveAgent() Tools = %#v, want empty default", resolved.Tools)
 	}
 	if resolved.Permissions != string(PermissionModeApproveAll) {
 		t.Fatalf("ResolveAgent() Permissions = %q, want %q", resolved.Permissions, PermissionModeApproveAll)
@@ -377,7 +428,9 @@ func TestResolveSessionAgent(t *testing.T) {
 			Model:       "agent-model",
 			Permissions: string(PermissionModeApproveReads),
 			Prompt:      "prompt",
-			Tools:       []string{"bash"},
+			Tools:       []string{"agh__skill_view"},
+			Toolsets:    []string{"agh__catalog"},
+			DenyTools:   []string{"agh__task_*"},
 			MCPServers: []MCPServer{
 				{Name: "agent", Command: "agent-command"},
 			},

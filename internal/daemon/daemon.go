@@ -22,6 +22,7 @@ import (
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	extensionpkg "github.com/pedronauck/agh/internal/extension"
 	hookspkg "github.com/pedronauck/agh/internal/hooks"
+	mcppkg "github.com/pedronauck/agh/internal/mcp"
 	"github.com/pedronauck/agh/internal/memory"
 	"github.com/pedronauck/agh/internal/memory/consolidation"
 	"github.com/pedronauck/agh/internal/observe"
@@ -111,6 +112,10 @@ type RuntimeDeps struct {
 	Sessions          SessionManager
 	Tasks             taskpkg.Manager
 	Network           core.NetworkService
+	ToolRegistry      toolspkg.Registry
+	Toolsets          core.ToolsetRegistry
+	ToolApprovals     toolspkg.ApprovalTokenIssuer
+	HostedMCP         *mcppkg.HostedService
 	Observer          Observer
 	Automation        core.AutomationManager
 	Bridges           core.BridgeService
@@ -284,6 +289,7 @@ type SessionManagerDeps struct {
 	SandboxRegistry      *sandbox.Registry
 	SessionSupervision   aghconfig.SessionSupervisionConfig
 	ProcessRegistry      *toolruntime.Registry
+	HostedMCP            session.HostedMCPLauncher
 }
 
 // Daemon is the sole AGH composition root.
@@ -334,6 +340,7 @@ type Daemon struct {
 	spawnReaper          *spawnReaper
 	scheduler            *schedulerRuntime
 	network              networkRuntime
+	toolRegistry         toolspkg.Registry
 	hooks                hookRuntime
 	extensions           extensionRuntime
 	observer             Observer
@@ -538,6 +545,7 @@ func (d *Daemon) applySessionManagerFactoryDefault() {
 			session.WithWorkspaceResolver(deps.WorkspaceResolver),
 			session.WithSandboxRegistry(deps.SandboxRegistry),
 			session.WithSessionSupervision(deps.SessionSupervision),
+			session.WithHostedMCPLauncher(deps.HostedMCP),
 			session.WithDriver(session.NewACPDriverAdapter(acp.New(
 				acp.WithLogger(deps.Logger),
 				acp.WithProcessRegistry(deps.ProcessRegistry),
@@ -877,6 +885,9 @@ func (d *Daemon) applyServerFactoryDefaults() {
 				httpapi.WithAutomation(deps.Automation),
 				httpapi.WithBridgeService(deps.Bridges),
 				httpapi.WithBundleService(deps.Bundles),
+				httpapi.WithToolRegistry(deps.ToolRegistry),
+				httpapi.WithToolsetRegistry(deps.Toolsets),
+				httpapi.WithToolApprovalIssuer(deps.ToolApprovals),
 				httpapi.WithSettingsService(deps.Settings),
 				httpapi.WithSettingsRestartController(deps.SettingsRestart),
 				httpapi.WithResourceService(deps.Resources),
@@ -904,6 +915,9 @@ func (d *Daemon) applyServerFactoryDefaults() {
 				udsapi.WithAutomation(deps.Automation),
 				udsapi.WithBridgeService(deps.Bridges),
 				udsapi.WithBundleService(deps.Bundles),
+				udsapi.WithToolRegistry(deps.ToolRegistry),
+				udsapi.WithToolsetRegistry(deps.Toolsets),
+				udsapi.WithToolApprovalIssuer(deps.ToolApprovals),
 				udsapi.WithSettingsService(deps.Settings),
 				udsapi.WithSettingsRestartController(deps.SettingsRestart),
 				udsapi.WithResourceService(deps.Resources),
@@ -915,6 +929,7 @@ func (d *Daemon) applyServerFactoryDefaults() {
 				udsapi.WithMemoryStore(deps.MemoryStore),
 				udsapi.WithDreamTrigger(deps.DreamTrigger),
 				udsapi.WithExtensionService(deps.Extensions),
+				udsapi.WithHostedMCP(deps.HostedMCP),
 			)
 		}
 	}
@@ -1080,6 +1095,7 @@ func (d *Daemon) resetRuntimeStateLocked() {
 	d.skillsDone = nil
 	d.bridges = nil
 	d.network = nil
+	d.toolRegistry = nil
 }
 
 func (d *Daemon) shutdownDetached(ctx context.Context, targets shutdownTargets) error {

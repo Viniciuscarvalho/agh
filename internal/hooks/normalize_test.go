@@ -298,6 +298,37 @@ func TestValidateAndNormalizeHookDecls(t *testing.T) {
 	}
 }
 
+func TestNormalizeHookDeclsSkipsDisabledDeclarations(t *testing.T) {
+	t.Parallel()
+
+	disabled := false
+	decls := []HookDecl{
+		{
+			Name:    "disabled",
+			Event:   HookToolPreCall,
+			Source:  HookSourceConfig,
+			Command: "./disabled.sh",
+			Enabled: &disabled,
+		},
+		{
+			Name:    "enabled",
+			Event:   HookToolPreCall,
+			Source:  HookSourceConfig,
+			Command: "./enabled.sh",
+		},
+	}
+
+	hooks, err := NormalizeHookDecls(decls, func(decl HookDecl) (Executor, error) {
+		return stubExecutor{kind: decl.ExecutorKind}, nil
+	})
+	if err != nil {
+		t.Fatalf("NormalizeHookDecls() error = %v", err)
+	}
+	if len(hooks) != 1 || hooks[0].Name != "enabled" {
+		t.Fatalf("NormalizeHookDecls() = %#v, want only enabled declaration", hooks)
+	}
+}
+
 func TestValidateHookDeclRejectsNativeExecutorForNonNativeSource(t *testing.T) {
 	t.Parallel()
 
@@ -350,13 +381,13 @@ func TestValidateHookDeclRejectsInvalidMatcherPattern(t *testing.T) {
 		Source:  HookSourceConfig,
 		Command: "./hook.sh",
 		Matcher: HookMatcher{
-			ToolName: "[",
+			ToolID: "[",
 		},
 	})
 	if err == nil {
 		t.Fatal("ValidateHookDecl() error = nil, want non-nil")
 	}
-	if !strings.Contains(err.Error(), "matcher.tool_name pattern") {
+	if !strings.Contains(err.Error(), "matcher.tool_id pattern") {
 		t.Fatalf("ValidateHookDecl() error = %q, want matcher pattern detail", err)
 	}
 }

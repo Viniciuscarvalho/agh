@@ -149,8 +149,8 @@ type HookMatcher struct {
 	InputClass         string           `json:"input_class,omitempty"         yaml:"input_class,omitempty"`
 	ACPEventType       string           `json:"acp_event_type,omitempty"      yaml:"acp_event_type,omitempty"`
 	TurnID             string           `json:"turn_id,omitempty"             yaml:"turn_id,omitempty"`
+	ToolID             string           `json:"tool_id,omitempty"             yaml:"tool_id,omitempty"`
 	ToolName           string           `json:"tool_name,omitempty"           yaml:"tool_name,omitempty"`
-	ToolNamespace      string           `json:"tool_namespace,omitempty"      yaml:"tool_namespace,omitempty"`
 	ToolReadOnly       *bool            `json:"tool_read_only,omitempty"      yaml:"tool_read_only,omitempty"`
 	DecisionClass      string           `json:"decision_class,omitempty"      yaml:"decision_class,omitempty"`
 	MessageRole        string           `json:"message_role,omitempty"        yaml:"message_role,omitempty"`
@@ -189,9 +189,15 @@ type HookDecl struct {
 	SkillSource  HookSkillSource   `json:"-"                       yaml:"-"`
 	Timeout      time.Duration     `json:"timeout,omitempty"       yaml:"timeout,omitempty"`
 	Priority     int               `json:"priority,omitempty"      yaml:"priority,omitempty"`
+	Enabled      *bool             `json:"enabled,omitempty"       yaml:"enabled,omitempty"`
 	Source       HookSource        `json:"source"                  yaml:"source"`
 	Required     bool              `json:"required,omitempty"      yaml:"required,omitempty"`
 	PrioritySet  bool              `json:"-"                       yaml:"-"`
+}
+
+// EnabledValue reports whether a declaration participates in dispatch.
+func (d HookDecl) EnabledValue() bool {
+	return d.Enabled == nil || *d.Enabled
 }
 
 // RegisteredHook is the normalized hook ready for dispatch.

@@ -1538,8 +1538,8 @@ func (m *Manager) hookConfigToDecl(ext *managedExtension, cfg HookConfig) (hooks
 		InputClass:         strings.TrimSpace(cfg.Matcher.InputClass),
 		ACPEventType:       strings.TrimSpace(cfg.Matcher.ACPEventType),
 		TurnID:             strings.TrimSpace(cfg.Matcher.TurnID),
+		ToolID:             strings.TrimSpace(cfg.Matcher.ToolID),
 		ToolName:           strings.TrimSpace(cfg.Matcher.ToolName),
-		ToolNamespace:      strings.TrimSpace(cfg.Matcher.ToolNamespace),
 		DecisionClass:      strings.TrimSpace(cfg.Matcher.DecisionClass),
 		MessageRole:        strings.TrimSpace(cfg.Matcher.MessageRole),
 		MessageDeltaType:   strings.TrimSpace(cfg.Matcher.MessageDeltaType),
@@ -2215,6 +2215,8 @@ func cloneMCPServer(server aghconfig.MCPServer) aghconfig.MCPServer {
 func cloneAgentDef(agent aghconfig.AgentDef) aghconfig.AgentDef {
 	cloned := agent
 	cloned.Tools = slices.Clone(agent.Tools)
+	cloned.Toolsets = slices.Clone(agent.Toolsets)
+	cloned.DenyTools = slices.Clone(agent.DenyTools)
 	cloned.Capabilities = agent.Capabilities.Clone()
 	cloned.MCPServers = make([]aghconfig.MCPServer, 0, len(agent.MCPServers))
 	for _, server := range agent.MCPServers {

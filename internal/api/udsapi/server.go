@@ -18,6 +18,7 @@ import (
 	"github.com/pedronauck/agh/internal/api/contract"
 	core "github.com/pedronauck/agh/internal/api/core"
 	aghconfig "github.com/pedronauck/agh/internal/config"
+	mcppkg "github.com/pedronauck/agh/internal/mcp"
 	"github.com/pedronauck/agh/internal/memory"
 )
 
@@ -54,6 +55,7 @@ type Server struct {
 
 	homePaths         aghconfig.HomePaths
 	config            aghconfig.Config
+	configSet         bool
 	socketPath        string
 	logger            *slog.Logger
 	startedAt         time.Time
@@ -68,6 +70,9 @@ type Server struct {
 	automation        core.AutomationManager
 	bridges           core.BridgeService
 	bundles           core.BundleService
+	tools             core.ToolRegistry
+	toolsets          core.ToolsetRegistry
+	toolApprovals     core.ToolApprovalIssuer
 	settings          core.SettingsService
 	settingsRestart   core.SettingsRestartController
 	workspaces        core.WorkspaceService
@@ -79,6 +84,7 @@ type Server struct {
 	dreamTrigger      core.DreamTrigger
 	agentLoader       core.AgentLoader
 	extensions        ExtensionService
+	hostedMCP         *mcppkg.HostedService
 
 	engine       *gin.Engine
 	handlers     *Handlers
@@ -100,6 +106,9 @@ type handlerConfig struct {
 	automation        core.AutomationManager
 	bridges           core.BridgeService
 	bundles           core.BundleService
+	tools             core.ToolRegistry
+	toolsets          core.ToolsetRegistry
+	toolApprovals     core.ToolApprovalIssuer
 	settings          core.SettingsService
 	settingsRestart   core.SettingsRestartController
 	workspaces        core.WorkspaceService
@@ -117,12 +126,14 @@ type handlerConfig struct {
 	pollInterval      time.Duration
 	agentLoader       core.AgentLoader
 	extensions        ExtensionService
+	hostedMCP         *mcppkg.HostedService
 }
 
 // Handlers expose request/response and SSE endpoints for the AGH API.
 type Handlers struct {
 	*core.BaseHandlers
 	Extensions    ExtensionService
+	HostedMCP     *mcppkg.HostedService
 	promptDrainWG sync.WaitGroup
 }
 
@@ -130,6 +141,9 @@ type Handlers struct {
 func WithHomePaths(homePaths aghconfig.HomePaths) Option {
 	return func(server *Server) {
 		server.homePaths = homePaths
+		if !server.configSet {
+			server.config = aghconfig.DefaultWithHome(homePaths)
+		}
 	}
 }
 
@@ -138,6 +152,7 @@ func WithConfig(cfg *aghconfig.Config) Option {
 	return func(server *Server) {
 		if cfg != nil {
 			server.config = *cfg
+			server.configSet = true
 		}
 	}
 }
@@ -240,6 +255,27 @@ func WithBundleService(service core.BundleService) Option {
 	}
 }
 
+// WithToolRegistry injects the executable tool registry.
+func WithToolRegistry(registry core.ToolRegistry) Option {
+	return func(server *Server) {
+		server.tools = registry
+	}
+}
+
+// WithToolsetRegistry injects the named toolset projection registry.
+func WithToolsetRegistry(registry core.ToolsetRegistry) Option {
+	return func(server *Server) {
+		server.toolsets = registry
+	}
+}
+
+// WithToolApprovalIssuer injects the local approval-token issuer.
+func WithToolApprovalIssuer(issuer core.ToolApprovalIssuer) Option {
+	return func(server *Server) {
+		server.toolApprovals = issuer
+	}
+}
+
 // WithSettingsService injects the daemon-owned settings service.
 func WithSettingsService(service core.SettingsService) Option {
 	return func(server *Server) {
@@ -314,6 +350,13 @@ func WithAgentLoader(loader core.AgentLoader) Option {
 func WithExtensionService(service ExtensionService) Option {
 	return func(server *Server) {
 		server.extensions = service
+	}
+}
+
+// WithHostedMCP injects the hosted AGH MCP session exposure service.
+func WithHostedMCP(service *mcppkg.HostedService) Option {
+	return func(server *Server) {
+		server.hostedMCP = service
 	}
 }
 
@@ -450,6 +493,9 @@ func (s *Server) handlerConfig() *handlerConfig {
 		automation:        s.automation,
 		bridges:           s.bridges,
 		bundles:           s.bundles,
+		tools:             s.tools,
+		toolsets:          s.toolsets,
+		toolApprovals:     s.toolApprovals,
 		settings:          s.settings,
 		settingsRestart:   s.settingsRestart,
 		workspaces:        s.workspaces,
@@ -467,6 +513,7 @@ func (s *Server) handlerConfig() *handlerConfig {
 		pollInterval:      s.pollInterval,
 		agentLoader:       s.agentLoader,
 		extensions:        s.extensions,
+		hostedMCP:         s.hostedMCP,
 	}
 }
 
@@ -517,6 +564,10 @@ func (s *Server) Start(ctx context.Context) error {
 		Handler:           s.engine,
 		ReadHeaderTimeout: defaultReadHeaderTimeout,
 		IdleTimeout:       defaultIdleTimeout,
+		ConnContext: func(ctx context.Context, conn net.Conn) context.Context {
+			peer, err := mcppkg.PeerInfoFromConn(conn)
+			return mcppkg.ContextWithPeerInfo(ctx, peer, err)
+		},
 	}
 	serveDone := make(chan struct{})
 
@@ -679,6 +730,9 @@ func newHandlers(cfg *handlerConfig) *Handlers {
 			Automation:                   cfg.automation,
 			Bridges:                      cfg.bridges,
 			Bundles:                      cfg.bundles,
+			Tools:                        cfg.tools,
+			Toolsets:                     cfg.toolsets,
+			ToolApprovals:                cfg.toolApprovals,
 			Settings:                     cfg.settings,
 			SettingsRestart:              cfg.settingsRestart,
 			Workspaces:                   cfg.workspaces,
@@ -697,6 +751,7 @@ func newHandlers(cfg *handlerConfig) *Handlers {
 			AgentLoader:                  cfg.agentLoader,
 		}),
 		Extensions: cfg.extensions,
+		HostedMCP:  cfg.hostedMCP,
 	}
 }
 

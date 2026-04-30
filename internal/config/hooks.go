@@ -19,6 +19,7 @@ type parsedHookDeclaration struct {
 	Name     string             `yaml:"name"               toml:"name"`
 	Event    string             `yaml:"event"              toml:"event"`
 	Mode     string             `yaml:"mode,omitempty"     toml:"mode,omitempty"`
+	Enabled  *bool              `yaml:"enabled,omitempty"  toml:"enabled,omitempty"`
 	Required bool               `yaml:"required,omitempty" toml:"required,omitempty"`
 	Priority *int               `yaml:"priority,omitempty" toml:"priority,omitempty"`
 	Timeout  time.Duration      `yaml:"timeout,omitempty"  toml:"timeout,omitempty"`
@@ -45,8 +46,8 @@ type parsedHookMatcher struct {
 	InputClass         string `yaml:"input_class,omitempty"         toml:"input_class,omitempty"`
 	ACPEventType       string `yaml:"acp_event_type,omitempty"      toml:"acp_event_type,omitempty"`
 	TurnID             string `yaml:"turn_id,omitempty"             toml:"turn_id,omitempty"`
+	ToolID             string `yaml:"tool_id,omitempty"             toml:"tool_id,omitempty"`
 	ToolName           string `yaml:"tool_name,omitempty"           toml:"tool_name,omitempty"`
-	ToolNamespace      string `yaml:"tool_namespace,omitempty"      toml:"tool_namespace,omitempty"`
 	ToolReadOnly       *bool  `yaml:"tool_read_only,omitempty"      toml:"tool_read_only,omitempty"`
 	DecisionClass      string `yaml:"decision_class,omitempty"      toml:"decision_class,omitempty"`
 	MessageRole        string `yaml:"message_role,omitempty"        toml:"message_role,omitempty"`
@@ -87,6 +88,9 @@ func HookDeclarations(hooksCfg HooksConfig, agents []AgentDef) ([]hookspkg.HookD
 
 	normalized := make([]hookspkg.HookDecl, 0, len(raw))
 	for idx, decl := range raw {
+		if !decl.EnabledValue() {
+			continue
+		}
 		resolved, err := hookspkg.NormalizeHookDecl(decl, hookDeclarationResolver)
 		if err != nil {
 			return nil, fmt.Errorf(
@@ -132,6 +136,7 @@ func (d parsedHookDeclaration) toHookDecl(
 		Event:        hookspkg.HookEvent(strings.TrimSpace(d.Event)),
 		Source:       source,
 		Mode:         hookspkg.HookMode(strings.TrimSpace(d.Mode)),
+		Enabled:      cloneBoolPtr(d.Enabled),
 		Required:     d.Required,
 		Timeout:      d.Timeout,
 		Matcher:      matcher,
@@ -186,8 +191,8 @@ func (m parsedHookMatcher) toHookMatcher(scopeAgentName string) (hookspkg.HookMa
 		InputClass:         strings.TrimSpace(m.InputClass),
 		ACPEventType:       strings.TrimSpace(m.ACPEventType),
 		TurnID:             strings.TrimSpace(m.TurnID),
+		ToolID:             strings.TrimSpace(m.ToolID),
 		ToolName:           strings.TrimSpace(m.ToolName),
-		ToolNamespace:      strings.TrimSpace(m.ToolNamespace),
 		DecisionClass:      strings.TrimSpace(m.DecisionClass),
 		MessageRole:        strings.TrimSpace(m.MessageRole),
 		MessageDeltaType:   strings.TrimSpace(m.MessageDeltaType),
@@ -231,9 +236,18 @@ func cloneHookDecl(src hookspkg.HookDecl) hookspkg.HookDecl {
 	cloned.Args = cloneStrings(src.Args)
 	cloned.Env = mergeStringMaps(nil, src.Env)
 	cloned.Metadata = mergeStringMaps(nil, src.Metadata)
+	cloned.Enabled = cloneBoolPtr(src.Enabled)
 	if src.Matcher.ToolReadOnly != nil {
 		value := *src.Matcher.ToolReadOnly
 		cloned.Matcher.ToolReadOnly = &value
 	}
 	return cloned
+}
+
+func cloneBoolPtr(src *bool) *bool {
+	if src == nil {
+		return nil
+	}
+	value := *src
+	return &value
 }

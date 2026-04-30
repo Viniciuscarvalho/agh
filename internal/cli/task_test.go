@@ -66,47 +66,51 @@ func TestTaskCreateAndUpdateRejectInvalidFlagCombos(t *testing.T) {
 func TestTaskCreateRemainsOperatorExplicitWithAgentEnv(t *testing.T) {
 	t.Parallel()
 
-	var gotRequest CreateTaskRequest
-	deps := newTestDeps(t, &stubClient{
-		createTaskFn: func(_ context.Context, request CreateTaskRequest) (TaskRecord, error) {
-			gotRequest = request
-			return TaskRecord{
-				ID:    "task-1",
-				Title: request.Title,
-				Scope: taskpkg.ScopeWorkspace,
-			}, nil
-		},
-	})
-	deps.getenv = func(key string) string {
-		switch key {
-		case agentidentity.EnvSessionID:
-			return "agent-session"
-		case agentidentity.EnvAgent:
-			return "coder"
-		default:
-			return ""
-		}
-	}
+	t.Run("Should keep operator task create explicit with agent env", func(t *testing.T) {
+		t.Parallel()
 
-	if _, _, err := executeRootCommand(
-		t,
-		deps,
-		"task",
-		"create",
-		"--scope",
-		"workspace",
-		"--workspace",
-		"alpha",
-		"--title",
-		"Manual task",
-		"-o",
-		"json",
-	); err != nil {
-		t.Fatalf("executeRootCommand(task create) error = %v", err)
-	}
-	if gotRequest.Workspace != "alpha" {
-		t.Fatalf("Workspace = %q, want explicit workspace alpha", gotRequest.Workspace)
-	}
+		var gotRequest CreateTaskRequest
+		deps := newTestDeps(t, &stubClient{
+			createTaskFn: func(_ context.Context, request CreateTaskRequest) (TaskRecord, error) {
+				gotRequest = request
+				return TaskRecord{
+					ID:    "task-1",
+					Title: request.Title,
+					Scope: taskpkg.ScopeWorkspace,
+				}, nil
+			},
+		})
+		deps.getenv = func(key string) string {
+			switch key {
+			case agentidentity.EnvSessionID:
+				return "agent-session"
+			case agentidentity.EnvAgent:
+				return "coder"
+			default:
+				return ""
+			}
+		}
+
+		if _, _, err := executeRootCommand(
+			t,
+			deps,
+			"task",
+			"create",
+			"--scope",
+			"workspace",
+			"--workspace",
+			"alpha",
+			"--title",
+			"Manual task",
+			"-o",
+			"json",
+		); err != nil {
+			t.Fatalf("executeRootCommand(task create) error = %v", err)
+		}
+		if gotRequest.Workspace != "alpha" {
+			t.Fatalf("Workspace = %q, want explicit workspace alpha", gotRequest.Workspace)
+		}
+	})
 }
 
 func TestTaskCreateAndListCommandsParseTaskFields(t *testing.T) {
@@ -240,7 +244,7 @@ func TestTaskExecutionCommandsMapBoundaryRequests(t *testing.T) {
 		wantAction string
 	}{
 		{
-			name: "publish",
+			name: "Should map task publish request",
 			args: []string{
 				"task",
 				"publish",
@@ -265,7 +269,7 @@ func TestTaskExecutionCommandsMapBoundaryRequests(t *testing.T) {
 			},
 		},
 		{
-			name: "start",
+			name: "Should map task start request",
 			args: []string{
 				"task",
 				"start",
@@ -290,7 +294,7 @@ func TestTaskExecutionCommandsMapBoundaryRequests(t *testing.T) {
 			},
 		},
 		{
-			name: "approve",
+			name: "Should map task approve request",
 			args: []string{
 				"task",
 				"approve",
@@ -620,8 +624,7 @@ func TestTaskRunCommandsMapLifecycleRequests(t *testing.T) {
 func TestAgentTaskCommandsMapLeaseRequests(t *testing.T) {
 	t.Parallel()
 
-	rawToken := "agh_claim_COMMANDTOKEN123"
-	t.Run("next", func(t *testing.T) {
+	t.Run("Should map task next lease request", func(t *testing.T) {
 		t.Parallel()
 
 		var gotRequest AgentTaskClaimNextRequest
@@ -635,7 +638,7 @@ func TestAgentTaskCommandsMapLeaseRequests(t *testing.T) {
 				gotRequest = request
 				return AgentTaskNextRecord{
 					Claimed: true,
-					Claim:   ptr(agentTaskClaimRecord(rawToken)),
+					Claim:   ptr(agentTaskClaimRecord()),
 				}, nil
 			},
 		})
@@ -680,12 +683,15 @@ func TestAgentTaskCommandsMapLeaseRequests(t *testing.T) {
 		if err := json.Unmarshal([]byte(stdout), &output); err != nil {
 			t.Fatalf("json.Unmarshal(task next) error = %v", err)
 		}
-		if !output.Claimed || output.Claim == nil || output.Claim.ClaimToken != rawToken {
-			t.Fatalf("task next output = %#v, want claimed token response", output)
+		if strings.Contains(stdout, `"claim_token"`) || strings.Contains(stdout, "agh_claim_") {
+			t.Fatal("task next output leaked raw claim token")
+		}
+		if !output.Claimed || output.Claim == nil || output.Claim.Lease.ClaimTokenHash == "" {
+			t.Fatalf("task next output = %#v, want claimed session-bound response", output)
 		}
 	})
 
-	t.Run("next no work", func(t *testing.T) {
+	t.Run("Should render task next no-work response", func(t *testing.T) {
 		t.Parallel()
 
 		deps := newAgentCommandTestDeps(t, &stubClient{
@@ -716,8 +722,8 @@ func TestAgentTaskCommandsMapLeaseRequests(t *testing.T) {
 		fn   func(t *testing.T) *stubClient
 	}{
 		{
-			name: "heartbeat",
-			args: []string{"task", "heartbeat", "run-1", "--claim-token", rawToken, "--lease-seconds", "60", "-o", "json"},
+			name: "Should map task heartbeat request",
+			args: []string{"task", "heartbeat", "run-1", "--lease-seconds", "60", "-o", "json"},
 			fn: func(t *testing.T) *stubClient {
 				t.Helper()
 				return &stubClient{
@@ -728,8 +734,8 @@ func TestAgentTaskCommandsMapLeaseRequests(t *testing.T) {
 						credentials agentidentity.Credentials,
 					) (AgentTaskLeaseRecord, error) {
 						assertAgentCredentials(t, credentials)
-						if runID != "run-1" || request.ClaimToken != rawToken || request.LeaseSeconds != 60 {
-							t.Fatalf("heartbeat runID=%q request=%#v, want run-1 token lease", runID, request)
+						if runID != "run-1" || request.LeaseSeconds != 60 {
+							t.Fatalf("heartbeat runID=%q request=%#v, want run-1 lease duration", runID, request)
 						}
 						return agentTaskLeaseRecord(taskpkg.TaskRunStatusClaimed), nil
 					},
@@ -737,8 +743,8 @@ func TestAgentTaskCommandsMapLeaseRequests(t *testing.T) {
 			},
 		},
 		{
-			name: "complete",
-			args: []string{"task", "complete", "run-1", "--claim-token", rawToken, "--result", `{"ok":true}`, "-o", "json"},
+			name: "Should map task complete request",
+			args: []string{"task", "complete", "run-1", "--result", `{"ok":true}`, "-o", "json"},
 			fn: func(t *testing.T) *stubClient {
 				t.Helper()
 				return &stubClient{
@@ -749,8 +755,8 @@ func TestAgentTaskCommandsMapLeaseRequests(t *testing.T) {
 						credentials agentidentity.Credentials,
 					) (AgentTaskLeaseRecord, error) {
 						assertAgentCredentials(t, credentials)
-						if runID != "run-1" || request.ClaimToken != rawToken || string(request.Result) != `{"ok":true}` {
-							t.Fatalf("complete runID=%q request=%#v, want run-1 token result", runID, request)
+						if runID != "run-1" || string(request.Result) != `{"ok":true}` {
+							t.Fatalf("complete runID=%q request=%#v, want run-1 result", runID, request)
 						}
 						return agentTaskLeaseRecord(taskpkg.TaskRunStatusCompleted), nil
 					},
@@ -758,9 +764,9 @@ func TestAgentTaskCommandsMapLeaseRequests(t *testing.T) {
 			},
 		},
 		{
-			name: "fail",
+			name: "Should map task fail request",
 			args: []string{
-				"task", "fail", "run-1", "--claim-token", rawToken, "--error", "boom", "--metadata", `{"code":"E_TASK"}`, "-o", "json",
+				"task", "fail", "run-1", "--error", "boom", "--metadata", `{"code":"E_TASK"}`, "-o", "json",
 			},
 			fn: func(t *testing.T) *stubClient {
 				t.Helper()
@@ -773,10 +779,9 @@ func TestAgentTaskCommandsMapLeaseRequests(t *testing.T) {
 					) (AgentTaskLeaseRecord, error) {
 						assertAgentCredentials(t, credentials)
 						if runID != "run-1" ||
-							request.ClaimToken != rawToken ||
 							request.Error != "boom" ||
 							string(request.Metadata) != `{"code":"E_TASK"}` {
-							t.Fatalf("fail runID=%q request=%#v, want run-1 token error metadata", runID, request)
+							t.Fatalf("fail runID=%q request=%#v, want run-1 error metadata", runID, request)
 						}
 						return agentTaskLeaseRecord(taskpkg.TaskRunStatusFailed), nil
 					},
@@ -784,8 +789,8 @@ func TestAgentTaskCommandsMapLeaseRequests(t *testing.T) {
 			},
 		},
 		{
-			name: "release",
-			args: []string{"task", "release", "run-1", "--claim-token", rawToken, "--reason", "handoff", "-o", "json"},
+			name: "Should map task release request",
+			args: []string{"task", "release", "run-1", "--reason", "handoff", "-o", "json"},
 			fn: func(t *testing.T) *stubClient {
 				t.Helper()
 				return &stubClient{
@@ -796,8 +801,8 @@ func TestAgentTaskCommandsMapLeaseRequests(t *testing.T) {
 						credentials agentidentity.Credentials,
 					) (AgentTaskLeaseRecord, error) {
 						assertAgentCredentials(t, credentials)
-						if runID != "run-1" || request.ClaimToken != rawToken || request.Reason != "handoff" {
-							t.Fatalf("release runID=%q request=%#v, want run-1 token reason", runID, request)
+						if runID != "run-1" || request.Reason != "handoff" {
+							t.Fatalf("release runID=%q request=%#v, want run-1 reason", runID, request)
 						}
 						return agentTaskLeaseRecord(taskpkg.TaskRunStatusQueued), nil
 					},
@@ -812,8 +817,8 @@ func TestAgentTaskCommandsMapLeaseRequests(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s command error = %v", tt.name, err)
 			}
-			if strings.Contains(stdout, rawToken) {
-				t.Fatalf("%s output leaked raw token %q: %s", tt.name, rawToken, stdout)
+			if strings.Contains(stdout, "agh_claim_") {
+				t.Fatalf("%s output leaked raw claim token pattern: %s", tt.name, stdout)
 			}
 			var output AgentTaskLeaseRecord
 			if err := json.Unmarshal([]byte(stdout), &output); err != nil {
@@ -829,30 +834,22 @@ func TestAgentTaskCommandsMapLeaseRequests(t *testing.T) {
 func TestAgentTaskCommandsValidateBeforeAgentCalls(t *testing.T) {
 	t.Parallel()
 
-	rawToken := "agh_claim_VALIDATIONTOKEN123"
 	tests := []struct {
 		name    string
 		args    []string
 		wantErr string
 	}{
 		{
-			name:    "blank run id",
-			args:    []string{"task", "heartbeat", " ", "--claim-token", rawToken, "-o", "json"},
+			name:    "Should reject blank run id",
+			args:    []string{"task", "heartbeat", " ", "-o", "json"},
 			wantErr: "run id is required",
 		},
 		{
-			name:    "missing token",
-			args:    []string{"task", "heartbeat", "run-1", "-o", "json"},
-			wantErr: "claim-token",
-		},
-		{
-			name: "negative lease",
+			name: "Should reject negative lease duration",
 			args: []string{
 				"task",
 				"heartbeat",
 				"run-1",
-				"--claim-token",
-				rawToken,
 				"--lease-seconds",
 				"-1",
 				"-o",
@@ -861,18 +858,16 @@ func TestAgentTaskCommandsValidateBeforeAgentCalls(t *testing.T) {
 			wantErr: "--lease-seconds must be zero or positive",
 		},
 		{
-			name:    "negative priority",
+			name:    "Should reject negative priority",
 			args:    []string{"task", "next", "--priority-min", "-1", "-o", "json"},
 			wantErr: "--priority-min must be zero or positive",
 		},
 		{
-			name: "invalid result json",
+			name: "Should reject invalid result json",
 			args: []string{
 				"task",
 				"complete",
 				"run-1",
-				"--claim-token",
-				rawToken,
 				"--result",
 				`{"ok":`,
 				"-o",
@@ -881,28 +876,24 @@ func TestAgentTaskCommandsValidateBeforeAgentCalls(t *testing.T) {
 			wantErr: "invalid --result JSON",
 		},
 		{
-			name: "raw claim token in result",
+			name: "Should reject raw claim token in result",
 			args: []string{
 				"task",
 				"complete",
 				"run-1",
-				"--claim-token",
-				rawToken,
 				"--result",
 				`{"claim_token":"secret"}`,
 				"-o",
 				"json",
 			},
-			wantErr: "must not contain raw claim_token",
+			wantErr: "must not contain raw lease credential",
 		},
 		{
-			name: "raw claim token in failure metadata",
+			name: "Should reject raw claim token in failure metadata",
 			args: []string{
 				"task",
 				"fail",
 				"run-1",
-				"--claim-token",
-				rawToken,
 				"--error",
 				"boom",
 				"--metadata",
@@ -910,7 +901,7 @@ func TestAgentTaskCommandsValidateBeforeAgentCalls(t *testing.T) {
 				"-o",
 				"json",
 			},
-			wantErr: "must not contain raw claim_token",
+			wantErr: "must not contain raw lease credential",
 		},
 	}
 
@@ -1181,83 +1172,108 @@ func TestTaskMutationCommandsMapRequests(t *testing.T) {
 func TestTaskCommandsSupportDetailAndToonOutput(t *testing.T) {
 	t.Parallel()
 
-	deps := newTestDeps(t, &stubClient{
-		getTaskFn: func(context.Context, string) (TaskDetailRecord, error) {
-			return sampleTaskDetailRecord(), nil
-		},
-		listTasksFn: func(context.Context, TaskListQuery) ([]TaskSummaryRecord, error) {
-			return []TaskSummaryRecord{sampleTaskSummaryRecord()}, nil
-		},
+	t.Run("Should render task detail human sections", func(t *testing.T) {
+		t.Parallel()
+
+		deps := newTestDeps(t, &stubClient{
+			getTaskFn: func(context.Context, string) (TaskDetailRecord, error) {
+				return sampleTaskDetailRecord(), nil
+			},
+		})
+		humanOut, _, err := executeRootCommand(t, deps, "task", "get", "task-1", "-o", "human")
+		if err != nil {
+			t.Fatalf("task get human error = %v", err)
+		}
+		if !strings.Contains(humanOut, "Task") || !strings.Contains(humanOut, "Dependencies") ||
+			!strings.Contains(humanOut, "Task Runs") {
+			t.Fatalf("task get human output = %q, want detail sections", humanOut)
+		}
 	})
 
-	humanOut, _, err := executeRootCommand(t, deps, "task", "get", "task-1", "-o", "human")
-	if err != nil {
-		t.Fatalf("task get human error = %v", err)
-	}
-	if !strings.Contains(humanOut, "Task") || !strings.Contains(humanOut, "Dependencies") ||
-		!strings.Contains(humanOut, "Task Runs") {
-		t.Fatalf("task get human output = %q, want detail sections", humanOut)
-	}
+	t.Run("Should render task list toon array", func(t *testing.T) {
+		t.Parallel()
 
-	toonOut, _, err := executeRootCommand(t, deps, "task", "list", "-o", "toon")
-	if err != nil {
-		t.Fatalf("task list toon error = %v", err)
-	}
-	if !strings.Contains(
-		toonOut,
-		"tasks[1]{id,identifier,scope,workspace_id,parent_task_id,status,owner,network_channel,title}:",
-	) {
-		t.Fatalf("task list toon output = %q, want tasks TOON array", toonOut)
-	}
+		deps := newTestDeps(t, &stubClient{
+			listTasksFn: func(context.Context, TaskListQuery) ([]TaskSummaryRecord, error) {
+				return []TaskSummaryRecord{sampleTaskSummaryRecord()}, nil
+			},
+		})
+		toonOut, _, err := executeRootCommand(t, deps, "task", "list", "-o", "toon")
+		if err != nil {
+			t.Fatalf("task list toon error = %v", err)
+		}
+		if !strings.Contains(
+			toonOut,
+			"tasks[1]{id,identifier,scope,workspace_id,parent_task_id,status,owner,network_channel,title}:",
+		) {
+			t.Fatalf("task list toon output = %q, want tasks TOON array", toonOut)
+		}
+	})
 }
 
 func TestTaskBundlesRenderTaskRunAndDetailSections(t *testing.T) {
 	t.Parallel()
 
-	detail := sampleTaskDetailRecord()
-	detailToon, err := taskDetailBundle(&detail).toon()
-	if err != nil {
-		t.Fatalf("taskDetailBundle().toon() error = %v", err)
-	}
-	if !strings.Contains(detailToon, "task_children[1]{id,identifier,scope,workspace_id,status,owner,title}:") ||
-		!strings.Contains(detailToon, "task_dependencies[1]{task_id,depends_on_task_id,kind,created_at}:") ||
-		!strings.Contains(
-			detailToon,
+	t.Run("Should render task detail toon sections", func(t *testing.T) {
+		t.Parallel()
+
+		detail := sampleTaskDetailRecord()
+		detailToon, err := taskDetailBundle(&detail).toon()
+		if err != nil {
+			t.Fatalf("taskDetailBundle().toon() error = %v", err)
+		}
+		if !strings.Contains(detailToon, "task_children[1]{id,identifier,scope,workspace_id,status,owner,title}:") ||
+			!strings.Contains(detailToon, "task_dependencies[1]{task_id,depends_on_task_id,kind,created_at}:") ||
+			!strings.Contains(
+				detailToon,
+				"task_runs[1]{id,status,attempt,session_id,claimed_by,network_channel,coordination_channel_id,queued_at,started_at,ended_at,error}:",
+			) ||
+			!strings.Contains(detailToon, "task_events[1]{id,event_type,run_id,actor,origin,timestamp}:") {
+			t.Fatalf("task detail toon output = %q, want child/dependency/run/event sections", detailToon)
+		}
+	})
+
+	t.Run("Should render task run human detail section", func(t *testing.T) {
+		t.Parallel()
+
+		runHuman, err := taskRunBundle(sampleTaskRunRecord(taskpkg.TaskRunStatusCompleted)).human()
+		if err != nil {
+			t.Fatalf("taskRunBundle().human() error = %v", err)
+		}
+		if !strings.Contains(runHuman, "Task Run") || !strings.Contains(runHuman, "Idempotency Key") ||
+			!strings.Contains(runHuman, "Result") {
+			t.Fatalf("task run human output = %q, want task run detail section", runHuman)
+		}
+	})
+
+	t.Run("Should render task run toon array", func(t *testing.T) {
+		t.Parallel()
+
+		runToon, err := taskRunListBundle([]TaskRunRecord{sampleTaskRunRecord(taskpkg.TaskRunStatusCompleted)}).toon()
+		if err != nil {
+			t.Fatalf("taskRunListBundle().toon() error = %v", err)
+		}
+		if !strings.Contains(
+			runToon,
 			"task_runs[1]{id,status,attempt,session_id,claimed_by,network_channel,coordination_channel_id,queued_at,started_at,ended_at,error}:",
-		) ||
-		!strings.Contains(detailToon, "task_events[1]{id,event_type,run_id,actor,origin,timestamp}:") {
-		t.Fatalf("task detail toon output = %q, want child/dependency/run/event sections", detailToon)
-	}
+		) {
+			t.Fatalf("task run toon output = %q, want task run TOON array", runToon)
+		}
+	})
 
-	runHuman, err := taskRunBundle(sampleTaskRunRecord(taskpkg.TaskRunStatusCompleted)).human()
-	if err != nil {
-		t.Fatalf("taskRunBundle().human() error = %v", err)
-	}
-	if !strings.Contains(runHuman, "Task Run") || !strings.Contains(runHuman, "Idempotency Key") ||
-		!strings.Contains(runHuman, "Result") {
-		t.Fatalf("task run human output = %q, want task run detail section", runHuman)
-	}
+	t.Run("Should parse dependency kind validation", func(t *testing.T) {
+		t.Parallel()
 
-	runToon, err := taskRunListBundle([]TaskRunRecord{sampleTaskRunRecord(taskpkg.TaskRunStatusCompleted)}).toon()
-	if err != nil {
-		t.Fatalf("taskRunListBundle().toon() error = %v", err)
-	}
-	if !strings.Contains(
-		runToon,
-		"task_runs[1]{id,status,attempt,session_id,claimed_by,network_channel,coordination_channel_id,queued_at,started_at,ended_at,error}:",
-	) {
-		t.Fatalf("task run toon output = %q, want task run TOON array", runToon)
-	}
-
-	if kind, err := parseOptionalTaskDependencyKind("blocks"); err != nil || kind != taskpkg.DependencyKindBlocks {
-		t.Fatalf("parseOptionalTaskDependencyKind(blocks) = (%q, %v), want blocks", kind, err)
-	}
-	if _, err := parseOptionalTaskDependencyKind(
-		"relates",
-	); err == nil ||
-		!strings.Contains(err.Error(), "unsupported value") {
-		t.Fatalf("parseOptionalTaskDependencyKind(relates) error = %v, want unsupported value validation", err)
-	}
+		if kind, err := parseOptionalTaskDependencyKind("blocks"); err != nil || kind != taskpkg.DependencyKindBlocks {
+			t.Fatalf("parseOptionalTaskDependencyKind(blocks) = (%q, %v), want blocks", kind, err)
+		}
+		if _, err := parseOptionalTaskDependencyKind(
+			"relates",
+		); err == nil ||
+			!strings.Contains(err.Error(), "unsupported value") {
+			t.Fatalf("parseOptionalTaskDependencyKind(relates) error = %v, want unsupported value validation", err)
+		}
+	})
 }
 
 func TestParseTaskListFiltersRejectsHalfSpecifiedOwnerFilter(t *testing.T) {
@@ -1268,8 +1284,8 @@ func TestParseTaskListFiltersRejectsHalfSpecifiedOwnerFilter(t *testing.T) {
 		ownerKindRaw string
 		ownerRef     string
 	}{
-		{name: "ShouldRejectOwnerKindWithoutOwnerRef", ownerKindRaw: "pool"},
-		{name: "ShouldRejectOwnerRefWithoutOwnerKind", ownerRef: "triage"},
+		{name: "Should reject owner kind without owner ref", ownerKindRaw: "pool"},
+		{name: "Should reject owner ref without owner kind", ownerRef: "triage"},
 	}
 
 	for _, tt := range tests {
@@ -1385,7 +1401,7 @@ func sampleTaskExecutionRecord() TaskExecutionRecord {
 	}
 }
 
-func agentTaskClaimRecord(rawToken string) AgentTaskClaimRecord {
+func agentTaskClaimRecord() AgentTaskClaimRecord {
 	lease := agentTaskLeaseRecord(taskpkg.TaskRunStatusClaimed)
 	return AgentTaskClaimRecord{
 		Task: contract.TaskReferencePayload{
@@ -1397,9 +1413,8 @@ func agentTaskClaimRecord(rawToken string) AgentTaskClaimRecord {
 			Scope:       taskpkg.ScopeWorkspace,
 			WorkspaceID: "ws-1",
 		},
-		Run:        sampleTaskRunRecord(taskpkg.TaskRunStatusClaimed),
-		Lease:      lease,
-		ClaimToken: rawToken,
+		Run:   sampleTaskRunRecord(taskpkg.TaskRunStatusClaimed),
+		Lease: lease,
 		CoordinationChannel: &contract.CoordinationChannelPayload{
 			ID:                  "builders",
 			Channel:             "builders",

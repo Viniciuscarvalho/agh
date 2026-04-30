@@ -255,6 +255,13 @@ export interface AgentStoppedPayload {
   error?: string;
 }
 
+export interface ArtifactRef {
+  uri: string;
+  name?: string;
+  mime_type?: string;
+  bytes?: number;
+}
+
 export interface AutomationFirePatch {
   prompt?: string;
   cancel?: boolean;
@@ -944,6 +951,63 @@ export interface EventRecordPayload {
   content?: JSONValue;
 }
 
+export type ToolID = string;
+
+export type RiskClass = string;
+
+export interface ExtensionToolRuntimeDescriptor {
+  id: ToolID;
+  handler: string;
+  input_schema_digest: string;
+  output_schema_digest?: string;
+  read_only: boolean;
+  risk: RiskClass;
+  capabilities?: string[];
+}
+
+export interface ExtensionProvideToolsResponse {
+  tools: ExtensionToolRuntimeDescriptor[];
+}
+
+export interface ExtensionToolCallRequest {
+  tool_id: ToolID;
+  handler: string;
+  session_id?: string;
+  input: JSONValue;
+}
+
+export interface ToolContent {
+  type: string;
+  text?: string;
+  data?: JSONValue;
+  mime_type?: string;
+  metadata?: Record<string, JSONValue>;
+}
+
+export type ReasonCode = string;
+
+export interface Redaction {
+  path: string;
+  reason: ReasonCode;
+  bytes?: number;
+}
+
+export interface ToolResult {
+  content?: ToolContent[];
+  structured?: JSONValue;
+  preview?: string;
+  artifacts?: ArtifactRef[];
+  metadata?: Record<string, JSONValue>;
+  redactions?: Redaction[];
+  truncated: boolean;
+  bytes: number;
+  duration_ms: number;
+}
+
+export interface ExtensionToolCallResponse {
+  result: ToolResult;
+}
+
 export type HookMode = "sync" | "async";
 
 export interface HookMatcher {
@@ -959,8 +1023,8 @@ export interface HookMatcher {
   input_class?: string;
   acp_event_type?: string;
   turn_id?: string;
+  tool_id?: string;
   tool_name?: string;
-  tool_namespace?: string;
   tool_read_only?: boolean;
   decision_class?: string;
   message_role?: string;
@@ -986,6 +1050,7 @@ export interface HookDecl {
   metadata?: Record<string, string>;
   timeout?: number;
   priority?: number;
+  enabled?: boolean;
   source: HookSource;
   required?: boolean;
 }
@@ -3258,29 +3323,67 @@ export interface TasksParams {
   limit?: number;
 }
 
-export type ToolSource = "builtin" | "mcp" | "extension" | "dynamic";
+export type BackendKind = string;
+
+export interface BackendRef {
+  kind: BackendKind;
+  extension_id?: string;
+  handler?: string;
+  mcp_server?: string;
+  mcp_tool?: string;
+  native_name?: string;
+  requires_capabilities?: string[];
+}
+
+export type SourceKind = "builtin" | "mcp" | "extension" | "dynamic";
+
+export interface SourceRef {
+  kind: SourceKind;
+  owner: string;
+  raw_server_name?: string;
+  raw_tool_name?: string;
+  resource_id?: string;
+  resource_version?: string;
+  workspace_id?: string;
+  scope?: string;
+}
+
+export type Visibility = string;
+
+export type ToolsetID = string;
 
 export interface Tool {
-  name: string;
+  id: ToolID;
+  backend: BackendRef;
+  display_title?: string;
   description: string;
   input_schema: JSONValue;
+  output_schema?: JSONValue;
+  source: SourceRef;
+  visibility: Visibility;
+  risk: RiskClass;
   read_only: boolean;
-  source: ToolSource;
+  destructive: boolean;
+  open_world: boolean;
+  requires_interaction: boolean;
+  concurrency_safe: boolean;
+  max_result_bytes?: number;
+  toolsets?: ToolsetID[];
+  tags?: string[];
+  search_hints?: string[];
 }
 
 export interface ToolCallPatch {
   deny?: boolean;
   deny_reason?: string;
-  tool_name?: string;
-  tool_namespace?: string;
+  tool_id?: string;
   read_only?: boolean;
   tool_input?: JSONValue;
 }
 
 export interface ToolCallRef {
   tool_call_id?: string;
-  tool_name?: string;
-  tool_namespace?: string;
+  tool_id?: string;
   read_only?: boolean;
 }
 
@@ -3299,8 +3402,7 @@ export interface ToolPostCallPayload {
   updated_at: ISODateTime;
   turn_id?: string;
   tool_call_id?: string;
-  tool_name?: string;
-  tool_namespace?: string;
+  tool_id?: string;
   read_only?: boolean;
   title?: string;
   tool_input?: JSONValue;
@@ -3330,8 +3432,7 @@ export interface ToolPostErrorPayload {
   updated_at: ISODateTime;
   turn_id?: string;
   tool_call_id?: string;
-  tool_name?: string;
-  tool_namespace?: string;
+  tool_id?: string;
   read_only?: boolean;
   title?: string;
   tool_input?: JSONValue;
@@ -3353,8 +3454,7 @@ export interface ToolPreCallPayload {
   updated_at: ISODateTime;
   turn_id?: string;
   tool_call_id?: string;
-  tool_name?: string;
-  tool_namespace?: string;
+  tool_id?: string;
   read_only?: boolean;
   tool_input?: JSONValue;
 }

@@ -308,6 +308,135 @@ func TestDocumentTracksRequiredFieldsAndEnums(t *testing.T) {
 			},
 		},
 		{
+			name: "ShouldDescribeToolRegistryContractsAndRoutes",
+			check: func(t *testing.T, doc *openapi3.T) {
+				t.Helper()
+
+				listTools := operationFor(t, doc, "/api/tools", "GET")
+				assertTagsContain(t, listTools, "tools")
+				assertParameter(t, listTools, "workspace_id", openapi3.ParameterInQuery, false)
+				listSchema := jsonResponseSchema(t, listTools, 200)
+				assertRequired(t, listSchema, "tools")
+				toolsSchema := propertySchema(t, listSchema, "tools")
+				if toolsSchema.Items == nil || toolsSchema.Items.Value == nil {
+					t.Fatal("expected tools to define an items schema")
+				}
+				toolSchema := toolsSchema.Items.Value
+				assertRequired(t, toolSchema, "descriptor", "availability", "decision")
+				descriptorSchema := propertySchema(t, toolSchema, "descriptor")
+				assertRequired(
+					t,
+					descriptorSchema,
+					"tool_id",
+					"backend",
+					"description",
+					"input_schema",
+					"source",
+					"visibility",
+					"risk",
+					"read_only",
+					"destructive",
+					"open_world",
+					"requires_interaction",
+					"concurrency_safe",
+				)
+				searchTools := operationFor(t, doc, "/api/tools/search", "POST")
+				assertTagsContain(t, searchTools, "tools")
+				searchRequest := jsonRequestSchema(t, searchTools)
+				assertRequired(t, searchRequest, "query")
+				assertNotRequired(t, searchRequest, "limit", "workspace_id", "session_id", "agent_name")
+				searchSchema := jsonResponseSchema(t, searchTools, 200)
+				assertRequired(t, searchSchema, "tools")
+				assertEnumValues(
+					t,
+					propertySchema(t, propertySchema(t, descriptorSchema, "backend"), "kind"),
+					"bridge",
+					"extension_host",
+					"mcp",
+					"native_go",
+				)
+				assertEnumValues(
+					t,
+					propertySchema(t, descriptorSchema, "visibility"),
+					"internal",
+					"model",
+					"operator",
+					"session",
+				)
+				assertEnumValues(
+					t,
+					propertySchema(t, descriptorSchema, "risk"),
+					"destructive",
+					"mutating",
+					"open_world",
+					"read",
+				)
+
+				invoke := operationFor(t, doc, "/api/tools/{id}/invoke", "POST")
+				assertResponseStatus(t, invoke, 202)
+				invokeRequest := jsonRequestSchema(t, invoke)
+				assertRequired(t, invokeRequest, "input")
+				assertNotRequired(t, invokeRequest, "approval_token", "session_id", "workspace_id")
+				errorSchema := jsonResponseSchema(t, invoke, 202)
+				errorPayload := propertySchema(t, errorSchema, "error")
+				assertRequired(t, errorPayload, "code", "message")
+				assertEnumValues(
+					t,
+					propertySchema(t, errorPayload, "code"),
+					"tool_approval_required",
+					"tool_backend_failed",
+					"tool_canceled",
+					"tool_conflict",
+					"tool_denied",
+					"tool_invalid_input",
+					"tool_not_found",
+					"tool_result_too_large",
+					"tool_timed_out",
+					"tool_unavailable",
+				)
+
+				approval := operationFor(t, doc, "/api/tools/{id}/approvals", "POST")
+				approvalSchema := jsonResponseSchema(t, approval, 201)
+				assertRequired(
+					t,
+					propertySchema(t, approvalSchema, "approval"),
+					"approval_token",
+					"expires_at",
+					"tool_id",
+					"input_digest",
+				)
+
+				sessionTools := operationFor(t, doc, "/api/sessions/{id}/tools", "GET")
+				assertTagsContain(t, sessionTools, "sessions", "tools")
+				assertResponseStatus(t, sessionTools, 200)
+				sessionSearch := operationFor(t, doc, "/api/sessions/{id}/tools/search", "POST")
+				assertTagsContain(t, sessionSearch, "sessions", "tools")
+				assertParameter(t, sessionSearch, "id", openapi3.ParameterInPath, true)
+				sessionSearchRequest := jsonRequestSchema(t, sessionSearch)
+				assertRequired(t, sessionSearchRequest, "query")
+				assertNotRequired(t, sessionSearchRequest, "limit", "workspace_id", "session_id", "agent_name")
+				sessionSearchSchema := jsonResponseSchema(t, sessionSearch, 200)
+				assertRequired(t, sessionSearchSchema, "tools")
+
+				toolsets := operationFor(t, doc, "/api/toolsets", "GET")
+				assertTagsContain(t, toolsets, "toolsets")
+				toolsetsSchema := jsonResponseSchema(t, toolsets, 200)
+				assertRequired(t, toolsetsSchema, "toolsets")
+				toolsetsItems := propertySchema(t, toolsetsSchema, "toolsets")
+				if toolsetsItems.Items == nil || toolsetsItems.Items.Value == nil {
+					t.Fatal("expected toolsets to define an items schema")
+				}
+				toolsetSchema := toolsetsItems.Items.Value
+				assertRequired(t, toolsetSchema, "id", "status")
+				assertNotRequired(t, toolsetSchema, "reason_codes", "expanded_tools")
+				toolset := operationFor(t, doc, "/api/toolsets/{id}", "GET")
+				assertTagsContain(t, toolset, "toolsets")
+				assertParameter(t, toolset, "id", openapi3.ParameterInPath, true)
+				toolsetResponse := jsonResponseSchema(t, toolset, 200)
+				assertRequired(t, propertySchema(t, toolsetResponse, "toolset"), "id", "status")
+			},
+		},
+		{
 			name: "ShouldDescribeBridgeSecretBindingContracts",
 			check: func(t *testing.T, doc *openapi3.T) {
 				t.Helper()
@@ -480,7 +609,10 @@ func TestDocumentTracksRequiredFieldsAndEnums(t *testing.T) {
 				)
 				claimResponse := jsonResponseSchema(t, claimOperation, 200)
 				claimPayload := propertySchema(t, claimResponse, "claim")
-				assertRequired(t, claimPayload, "task", "run", "lease", "claim_token")
+				assertRequired(t, claimPayload, "task", "run", "lease")
+				if _, exists := claimPayload.Properties["claim_token"]; exists {
+					t.Fatalf("agent claim payload schema exposes raw claim_token")
+				}
 				leaseSchema := propertySchema(t, claimPayload, "lease")
 				assertRequired(t, leaseSchema, "task_id", "run_id", "status")
 				assertNotRequired(t, leaseSchema, "claim_token_hash", "coordination_channel")
@@ -488,8 +620,10 @@ func TestDocumentTracksRequiredFieldsAndEnums(t *testing.T) {
 				heartbeatOperation := operationFor(t, doc, "/api/agent/tasks/{run_id}/heartbeat", "POST")
 				assertParameter(t, heartbeatOperation, "run_id", openapi3.ParameterInPath, true)
 				heartbeatSchema := jsonRequestSchema(t, heartbeatOperation)
-				assertRequired(t, heartbeatSchema, "claim_token")
 				assertNotRequired(t, heartbeatSchema, "lease_seconds")
+				if _, exists := heartbeatSchema.Properties["claim_token"]; exists {
+					t.Fatalf("agent heartbeat schema exposes raw claim_token")
+				}
 
 				sendOperation := operationFor(t, doc, "/api/agent/channels/{channel}/send", "POST")
 				assertParameter(t, sendOperation, "channel", openapi3.ParameterInPath, true)
@@ -928,7 +1062,7 @@ func TestSchemaCustomizerCoversAdditionalEnums(t *testing.T) {
 		{name: "TaskInboxLane", typ: contract.TaskInboxLaneApprovals},
 		{name: "HookSkillSource", typ: hooks.HookSkillSourceBundled},
 		{name: "HookExecutorKind", typ: hooks.HookExecutorNative},
-		{name: "ToolSource", typ: tools.ToolSource(0)},
+		{name: "ToolSource", typ: tools.ToolSourceBuiltin},
 		{name: "HostAPIMethod", typ: extensionprotocol.HostAPIMethod("memory.read")},
 	}
 

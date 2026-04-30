@@ -26,7 +26,6 @@ AGH agent definitions are parsed from `AGENT.md` files with YAML frontmatter fol
 name: general
 provider: claude
 model: claude-sonnet-4-20250514
-tools: [read, glob, grep, write, bash]
 permissions: approve-all
 ---
 You are a reliable software engineering agent.
@@ -40,10 +39,39 @@ The prompt body after the frontmatter is required. AGH will reject an agent defi
 - `provider`: optional if you already configured a default provider
 - `model`: optional if the provider config already defines a default model
 - `command`: optional when the provider already defines how to launch the ACP adapter
-- `tools`: optional; AGH defaults to `["*"]` when omitted
+- `tools`: optional exact canonical ToolIDs or namespace-prefix wildcard patterns, such as `agh__skill_view` or `mcp__github__*`
+- `toolsets`: optional named ToolsetIDs, such as `agh__catalog`
+- `deny_tools`: optional exact ToolIDs or patterns that narrow the agent's grants
 - `permissions`: optional; AGH falls back to the global permissions mode when omitted
 - `mcp_servers`: optional per-agent MCP server list
 - `mcp.json`: optional sidecar file in the same agent directory when you want MCP declarations outside frontmatter
+
+## Tool defaults and discovery
+
+Do not add `agh__bootstrap` or `agh__catalog` just to make discovery work. AGH adds those discovery toolsets at runtime by default unless the effective policy denies them.
+
+Use `tools` and `toolsets` only when the agent needs additional runtime capabilities or when you are intentionally narrowing the surface. Keep `deny_tools` for explicit restrictions.
+
+When an agent needs an AGH-internal capability, prefer the tool-first loop:
+
+1. Search with `agh__tool_search`.
+2. Inspect the descriptor with `agh__tool_info`.
+3. Invoke the dedicated AGH tool when it is callable.
+
+For skills, search with `agh__skill_search` and load full instructions with `agh__skill_view`. Use `agh skill view ...` from the shell only as an operator fallback when policy denies the tool or the session is outside the tool surface.
+
+Example with extra task tools:
+
+```yaml
+---
+name: task-writer
+provider: claude
+toolsets: [agh__tasks]
+deny_tools: [agh__task_cancel]
+permissions: approve-reads
+---
+You maintain task metadata and write concise task updates.
+```
 
 ## Permission modes
 
@@ -90,7 +118,8 @@ If both `AGENT.md` and `mcp.json` declare MCP servers, AGH keeps both and lets `
 1. Set defaults in `~/.agh/config.toml` for the provider and permission mode you use most often.
 2. Create `~/.agh/agents/<name>/AGENT.md`.
 3. Keep the frontmatter small and put the actual behavior instructions in the markdown body.
-4. Add `mcp_servers` only when the agent really needs them.
-5. Reuse provider defaults instead of copying the same `command` and `model` into every agent file.
+4. Let default discovery provide `agh__bootstrap` and `agh__catalog`; add only extra toolsets the agent actually needs.
+5. Add `mcp_servers` only when the agent really needs them.
+6. Reuse provider defaults instead of copying the same `command` and `model` into every agent file.
 
 If AGH rejects an agent definition, check the frontmatter first: missing `name`, invalid `permissions`, empty prompt body, or malformed `mcp_servers` entries are the fastest failure points.

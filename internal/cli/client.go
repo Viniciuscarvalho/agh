@@ -20,14 +20,15 @@ import (
 	"github.com/pedronauck/agh/internal/api/contract"
 	automationpkg "github.com/pedronauck/agh/internal/automation"
 	bridgepkg "github.com/pedronauck/agh/internal/bridges"
+	mcppkg "github.com/pedronauck/agh/internal/mcp"
 	"github.com/pedronauck/agh/internal/memory"
 	"github.com/pedronauck/agh/internal/sse"
-	taskpkg "github.com/pedronauck/agh/internal/task"
 )
 
 const (
-	baseURL              = "http://unix"
-	defaultUserAgentName = "agh-cli"
+	baseURL                        = "http://unix"
+	defaultUnixSocketClientTimeout = 30 * time.Second
+	defaultUserAgentName           = "agh-cli"
 )
 
 // DaemonClient is the CLI transport surface for talking to the AGH daemon over UDS.
@@ -82,6 +83,12 @@ type DaemonClient interface {
 	ListSkills(ctx context.Context, query SkillQuery) ([]SkillRecord, error)
 	GetSkill(ctx context.Context, name string, query SkillQuery) (SkillRecord, error)
 	GetSkillContent(ctx context.Context, name string, query SkillQuery) (string, error)
+	ListTools(ctx context.Context, query ToolQuery) (ToolsResponseRecord, error)
+	SearchTools(ctx context.Context, request ToolSearchRequest) (ToolsResponseRecord, error)
+	GetTool(ctx context.Context, id string, query ToolQuery) (ToolResponseRecord, error)
+	InvokeTool(ctx context.Context, id string, request ToolInvokeRequest) (ToolInvokeResponseRecord, error)
+	ListToolsets(ctx context.Context, query ToolQuery) (ToolsetsResponseRecord, error)
+	GetToolset(ctx context.Context, id string, query ToolQuery) (ToolsetResponseRecord, error)
 	HookCatalog(ctx context.Context, query HookCatalogQuery) ([]HookCatalogRecord, error)
 	HookRuns(ctx context.Context, query HookRunsQuery) ([]HookRunRecord, error)
 	HookEvents(ctx context.Context, query HookEventsQuery) ([]HookEventRecord, error)
@@ -590,11 +597,13 @@ type SSEEvent = sse.Event
 type SSEHandler = sse.Handler
 
 type unixSocketClient struct {
-	socketPath string
-	httpClient *http.Client
+	socketPath   string
+	httpClient   *http.Client
+	streamClient *http.Client
 }
 
 var _ DaemonClient = (*unixSocketClient)(nil)
+var _ mcppkg.HostedProxyClient = (*unixSocketClient)(nil)
 
 var errStopSSE = sse.ErrStop
 
@@ -613,8 +622,9 @@ func NewClient(socketPath string) (DaemonClient, error) {
 	}
 
 	return &unixSocketClient{
-		socketPath: path,
-		httpClient: &http.Client{Transport: transport},
+		socketPath:   path,
+		httpClient:   &http.Client{Transport: transport, Timeout: defaultUnixSocketClientTimeout},
+		streamClient: &http.Client{Transport: transport},
 	}, nil
 }
 
@@ -996,6 +1006,92 @@ func (c *unixSocketClient) SessionHistory(
 		return nil, err
 	}
 	return response.History, nil
+}
+
+func (c *unixSocketClient) BindHostedMCP(
+	ctx context.Context,
+	request mcppkg.HostedBindRequest,
+) (mcppkg.HostedBindResponse, error) {
+	var response mcppkg.HostedBindResponse
+	if err := c.doJSON(ctx, http.MethodPost, "/api/internal/hosted-mcp/bind", nil, request, &response); err != nil {
+		return mcppkg.HostedBindResponse{}, err
+	}
+	return response, nil
+}
+
+func (c *unixSocketClient) HostedMCPProjection(
+	ctx context.Context,
+	bindID string,
+) (mcppkg.HostedProjectionResponse, error) {
+	query := url.Values{}
+	query.Set("bind_id", strings.TrimSpace(bindID))
+	var response mcppkg.HostedProjectionResponse
+	if err := c.doJSON(ctx, http.MethodGet, "/api/internal/hosted-mcp/projection", query, nil, &response); err != nil {
+		return mcppkg.HostedProjectionResponse{}, err
+	}
+	return response, nil
+}
+
+func (c *unixSocketClient) StreamHostedMCPProjection(
+	ctx context.Context,
+	bindID string,
+	lastDigest string,
+	handler mcppkg.HostedProjectionHandler,
+) error {
+	query := url.Values{}
+	query.Set("bind_id", strings.TrimSpace(bindID))
+	if trimmed := strings.TrimSpace(lastDigest); trimmed != "" {
+		query.Set("last_digest", trimmed)
+	}
+	return c.doSSE(
+		ctx,
+		http.MethodGet,
+		"/api/internal/hosted-mcp/projection/stream",
+		query,
+		nil,
+		"",
+		func(event SSEEvent) error {
+			if event.Event == "error" {
+				return readAPIErrorBody(0, "", event.Data)
+			}
+			if event.Event != "projection" {
+				return nil
+			}
+			var snapshot mcppkg.HostedProjectionResponse
+			if err := json.Unmarshal(event.Data, &snapshot); err != nil {
+				return fmt.Errorf("cli: decode hosted MCP projection event: %w", err)
+			}
+			if handler == nil {
+				return nil
+			}
+			return handler(snapshot)
+		},
+	)
+}
+
+func (c *unixSocketClient) CallHostedMCP(
+	ctx context.Context,
+	request mcppkg.HostedCallRequest,
+) (mcppkg.HostedCallResponse, error) {
+	var response mcppkg.HostedCallResponse
+	if err := c.doJSON(
+		ctx,
+		http.MethodPost,
+		"/api/internal/hosted-mcp/tools/call",
+		nil,
+		request,
+		&response,
+	); err != nil {
+		return mcppkg.HostedCallResponse{}, err
+	}
+	return response, nil
+}
+
+func (c *unixSocketClient) ReleaseHostedMCP(
+	ctx context.Context,
+	request mcppkg.HostedReleaseRequest,
+) error {
+	return c.doJSON(ctx, http.MethodPost, "/api/internal/hosted-mcp/release", nil, request, nil)
 }
 
 func (c *unixSocketClient) CreateWorkspace(
@@ -2024,7 +2120,16 @@ func (c *unixSocketClient) doSSE(
 	lastEventID string,
 	handler SSEHandler,
 ) error {
-	response, err := c.doRequest(ctx, method, path, query, requestBody, lastEventID)
+	response, err := c.doRequestWithCredentialsAndClient(
+		ctx,
+		method,
+		path,
+		query,
+		requestBody,
+		lastEventID,
+		agentidentity.Credentials{},
+		c.streamHTTPClient(),
+	)
 	if err != nil {
 		return err
 	}
@@ -2070,8 +2175,34 @@ func (c *unixSocketClient) doRequestWithCredentials(
 	lastEventID string,
 	credentials agentidentity.Credentials,
 ) (*http.Response, error) {
+	return c.doRequestWithCredentialsAndClient(
+		ctx,
+		method,
+		path,
+		query,
+		requestBody,
+		lastEventID,
+		credentials,
+		c.httpClient,
+	)
+}
+
+// doRequestWithCredentialsAndClient lets SSE streams opt out of the JSON request timeout.
+func (c *unixSocketClient) doRequestWithCredentialsAndClient(
+	ctx context.Context,
+	method string,
+	path string,
+	query url.Values,
+	requestBody any,
+	lastEventID string,
+	credentials agentidentity.Credentials,
+	client *http.Client,
+) (*http.Response, error) {
 	if ctx == nil {
 		return nil, errors.New("cli: context is required")
+	}
+	if client == nil {
+		return nil, errors.New("cli: http client is required")
 	}
 
 	target := baseURL + path
@@ -2101,11 +2232,22 @@ func (c *unixSocketClient) doRequestWithCredentials(
 	}
 	setAgentIdentityHeaders(req, credentials)
 
-	response, err := c.httpClient.Do(req)
+	response, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("cli: %s %s via %s: %w", method, path, c.socketPath, err)
 	}
 	return response, nil
+}
+
+// streamHTTPClient preserves long-lived streams when no dedicated client has been configured.
+func (c *unixSocketClient) streamHTTPClient() *http.Client {
+	if c != nil && c.streamClient != nil {
+		return c.streamClient
+	}
+	if c == nil {
+		return nil
+	}
+	return c.httpClient
 }
 
 func setAgentIdentityHeaders(req *http.Request, credentials agentidentity.Credentials) {
@@ -2518,20 +2660,30 @@ func readAPIError(response *http.Response) error {
 	if err != nil {
 		return fmt.Errorf("cli: read api error response: %w", err)
 	}
+	return readAPIErrorBody(response.StatusCode, response.Status, body)
+}
 
+func readAPIErrorBody(statusCode int, status string, body []byte) error {
 	var payload struct {
 		Error string `json:"error"`
 	}
 	if len(body) > 0 && json.Unmarshal(body, &payload) == nil && strings.TrimSpace(payload.Error) != "" {
-		return errors.New(taskpkg.RedactClaimTokens(strings.TrimSpace(payload.Error)))
+		return errors.New(redactToolDiagnostic(payload.Error))
+	}
+	var toolPayload contract.ToolErrorResponse
+	if len(body) > 0 && json.Unmarshal(body, &toolPayload) == nil && toolPayload.Error.Code != "" {
+		return newToolAPIError(statusCode, status, toolPayload)
 	}
 
 	message := strings.TrimSpace(string(body))
 	if message == "" {
-		message = response.Status
+		message = status
 	}
-	message = taskpkg.RedactClaimTokens(message)
-	return fmt.Errorf("daemon api %s: %s", response.Status, message)
+	message = redactToolDiagnostic(message)
+	if strings.TrimSpace(status) == "" {
+		return errors.New(message)
+	}
+	return fmt.Errorf("daemon api %s: %s", status, message)
 }
 
 func drainResponseBody(method string, path string, body io.Reader) error {
