@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -139,23 +140,26 @@ func ValidStopReason(r StopReason) bool {
 
 // SessionInfo is the canonical session index row stored in the global database.
 type SessionInfo struct {
-	ID           string
-	Name         string
-	AgentName    string
-	Provider     string
-	WorkspaceID  string
-	Channel      string
-	SessionType  string
-	Lineage      *SessionLineage
-	State        string
-	ACPSessionID *string
-	StopReason   StopReason
-	StopDetail   string
-	Failure      *SessionFailure
-	Liveness     *SessionLivenessMeta
-	Sandbox      *SessionSandboxMeta
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID               string
+	Name             string
+	AgentName        string
+	Provider         string
+	WorkspaceID      string
+	Channel          string
+	SessionType      string
+	Lineage          *SessionLineage
+	State            string
+	ACPSessionID     *string
+	StopReason       StopReason
+	StopDetail       string
+	Failure          *SessionFailure
+	Liveness         *SessionLivenessMeta
+	Sandbox          *SessionSandboxMeta
+	SoulSnapshotID   string
+	SoulDigest       string
+	ParentSoulDigest string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // Validate ensures the session record contains the required fields.
@@ -176,6 +180,9 @@ func (s SessionInfo) Validate() error {
 		return err
 	}
 	if err := s.Liveness.Validate(); err != nil {
+		return err
+	}
+	if err := validateSessionSoulProvenance(s.SoulSnapshotID, s.SoulDigest); err != nil {
 		return err
 	}
 	if s.Failure != nil {
@@ -217,6 +224,23 @@ type SessionStateUpdate struct {
 	UpdatedAt     time.Time
 }
 
+// SessionSoulSnapshotUpdate updates the Soul provenance attached to a session.
+type SessionSoulSnapshotUpdate struct {
+	ID               string
+	SoulSnapshotID   string
+	SoulDigest       string
+	ParentSoulDigest string
+	UpdatedAt        time.Time
+}
+
+// Validate ensures session Soul provenance is internally consistent.
+func (u SessionSoulSnapshotUpdate) Validate() error {
+	if err := requireField(u.ID, "session soul update id"); err != nil {
+		return err
+	}
+	return validateSessionSoulProvenance(u.SoulSnapshotID, u.SoulDigest)
+}
+
 // Validate ensures the update contains the required fields.
 func (u SessionStateUpdate) Validate() error {
 	if err := requireField(u.ID, "session update id"); err != nil {
@@ -232,6 +256,15 @@ func (u SessionStateUpdate) Validate() error {
 		if err := u.Failure.Validate(); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func validateSessionSoulProvenance(snapshotID string, digest string) error {
+	hasSnapshotID := strings.TrimSpace(snapshotID) != ""
+	hasDigest := strings.TrimSpace(digest) != ""
+	if hasSnapshotID && !hasDigest {
+		return errors.New("store: session soul digest is required when soul snapshot id is set")
 	}
 	return nil
 }
@@ -600,24 +633,27 @@ type SessionSandboxMeta struct {
 
 // SessionMeta is the atomically-written session metadata document.
 type SessionMeta struct {
-	ID           string               `json:"id"`
-	Name         string               `json:"name,omitempty"`
-	AgentName    string               `json:"agent_name"`
-	Provider     string               `json:"provider,omitempty"`
-	Model        string               `json:"model,omitempty"`
-	WorkspaceID  string               `json:"workspace_id,omitempty"`
-	Channel      string               `json:"channel,omitempty"`
-	SessionType  string               `json:"session_type,omitempty"`
-	Lineage      *SessionLineage      `json:"lineage,omitempty"`
-	State        string               `json:"state"`
-	StopReason   *StopReason          `json:"stop_reason,omitempty"`
-	StopDetail   string               `json:"stop_detail,omitempty"`
-	Failure      *SessionFailure      `json:"failure,omitempty"`
-	ACPSessionID *string              `json:"acp_session_id,omitempty"`
-	Liveness     *SessionLivenessMeta `json:"liveness,omitempty"`
-	Sandbox      *SessionSandboxMeta  `json:"sandbox,omitempty"`
-	CreatedAt    time.Time            `json:"created_at"`
-	UpdatedAt    time.Time            `json:"updated_at"`
+	ID               string               `json:"id"`
+	Name             string               `json:"name,omitempty"`
+	AgentName        string               `json:"agent_name"`
+	Provider         string               `json:"provider,omitempty"`
+	Model            string               `json:"model,omitempty"`
+	WorkspaceID      string               `json:"workspace_id,omitempty"`
+	Channel          string               `json:"channel,omitempty"`
+	SessionType      string               `json:"session_type,omitempty"`
+	Lineage          *SessionLineage      `json:"lineage,omitempty"`
+	State            string               `json:"state"`
+	StopReason       *StopReason          `json:"stop_reason,omitempty"`
+	StopDetail       string               `json:"stop_detail,omitempty"`
+	Failure          *SessionFailure      `json:"failure,omitempty"`
+	ACPSessionID     *string              `json:"acp_session_id,omitempty"`
+	Liveness         *SessionLivenessMeta `json:"liveness,omitempty"`
+	Sandbox          *SessionSandboxMeta  `json:"sandbox,omitempty"`
+	SoulSnapshotID   string               `json:"soul_snapshot_id,omitempty"`
+	SoulDigest       string               `json:"soul_digest,omitempty"`
+	ParentSoulDigest string               `json:"parent_soul_digest,omitempty"`
+	CreatedAt        time.Time            `json:"created_at"`
+	UpdatedAt        time.Time            `json:"updated_at"`
 }
 
 // Validate ensures the metadata file remains aligned with the session index schema.
@@ -646,6 +682,9 @@ func (m SessionMeta) Validate() error {
 		}
 	}
 	if err := m.Liveness.Validate(); err != nil {
+		return err
+	}
+	if err := validateSessionSoulProvenance(m.SoulSnapshotID, m.SoulDigest); err != nil {
 		return err
 	}
 	return nil

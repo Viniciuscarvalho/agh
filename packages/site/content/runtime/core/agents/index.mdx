@@ -8,11 +8,21 @@ provider that runs it, the permissions it inherits, and the capabilities it adve
 start AGH resolves that definition into an ACP subprocess, injects environment, negotiates the
 session, and supervises it through stop.
 
+Use this section when you need to answer which agent will run, which provider command AGH will
+execute, what capabilities the agent advertises to the network, or why a session did not launch the
+way you expected. Agent docs sit between configuration and sessions: configuration explains the
+files, sessions explain live runtime state, and this section explains the handoff from definition to
+managed subprocess.
+
 <OperatorNote>
   This section is the runtime model for agents. The `AGENT.md` file format itself lives under
   [Configuration → AGENT.md](/runtime/core/configuration/agent-md); reach for it when authoring, not
   when troubleshooting runtime resolution.
 </OperatorNote>
+
+For a new project, start with definitions, confirm the provider ID on the providers page, then check
+spawning if the process fails. Reach for capabilities when the question is what another peer can
+discover about the agent, not how the process starts.
 
 <figure className="not-prose my-8 overflow-hidden rounded-lg border border-(--color-divider) bg-(--color-surface) p-2">
   <img
@@ -42,10 +52,24 @@ session, and supervises it through stop.
     meta="Discovery"
   />
   <RouteRow
+    href="/runtime/core/agents/soul"
+    label="Persona"
+    title="Optional SOUL.md authored persona"
+    description="Use this page when authoring an agent's SOUL.md persona file, understanding the prompt projection, snapshots, and managed authoring boundary."
+    meta="Authoring"
+  />
+  <RouteRow
+    href="/runtime/core/agents/heartbeat"
+    label="Wake policy"
+    title="Optional HEARTBEAT.md and session health"
+    description="Use this page when authoring an agent's HEARTBEAT.md wake/reentry policy, reading session health, or requesting a manual advisory wake."
+    meta="Authoring"
+  />
+  <RouteRow
     href="/runtime/core/agents/providers"
     label="Providers"
     title="Provider IDs, launch commands, and overrides"
-    description="Use this page when configuring built-in providers (claude, codex, gemini, …) or wiring a custom ACP-compatible provider."
+    description="Use this page when configuring built-in providers (claude, codex, gemini, qwen-code, …) or wiring a custom ACP-compatible provider."
     meta="Execution"
   />
   <RouteRow

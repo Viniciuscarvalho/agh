@@ -75,9 +75,17 @@ type Server struct {
 	toolApprovals     core.ToolApprovalIssuer
 	settings          core.SettingsService
 	settingsRestart   core.SettingsRestartController
+	vault             core.VaultService
 	workspaces        core.WorkspaceService
 	agentCatalog      core.AgentCatalog
 	agentContext      core.AgentContextService
+	soulAuthoring     core.SoulAuthoringService
+	soulRefresher     core.SoulRefresher
+	heartbeatAuthor   core.HeartbeatAuthoringService
+	heartbeatStatus   core.HeartbeatStatusService
+	heartbeatWake     core.HeartbeatWakeService
+	sessionHealth     core.SessionHealthReader
+	wakeEvents        core.HeartbeatWakeEventReader
 	coordinatorConfig core.CoordinatorConfigResolver
 	skillsRegistry    core.SkillsRegistry
 	memoryStore       *memory.Store
@@ -111,9 +119,17 @@ type handlerConfig struct {
 	toolApprovals     core.ToolApprovalIssuer
 	settings          core.SettingsService
 	settingsRestart   core.SettingsRestartController
+	vault             core.VaultService
 	workspaces        core.WorkspaceService
 	agentCatalog      core.AgentCatalog
 	agentContext      core.AgentContextService
+	soulAuthoring     core.SoulAuthoringService
+	soulRefresher     core.SoulRefresher
+	heartbeatAuthor   core.HeartbeatAuthoringService
+	heartbeatStatus   core.HeartbeatStatusService
+	heartbeatWake     core.HeartbeatWakeService
+	sessionHealth     core.SessionHealthReader
+	wakeEvents        core.HeartbeatWakeEventReader
 	coordinatorConfig core.CoordinatorConfigResolver
 	skillsRegistry    core.SkillsRegistry
 	memoryStore       *memory.Store
@@ -290,6 +306,13 @@ func WithSettingsRestartController(controller core.SettingsRestartController) Op
 	}
 }
 
+// WithVaultService injects the daemon-owned vault control surface.
+func WithVaultService(service core.VaultService) Option {
+	return func(server *Server) {
+		server.vault = service
+	}
+}
+
 // WithWorkspaceResolver injects the runtime workspace resolver/service.
 func WithWorkspaceResolver(workspaces core.WorkspaceService) Option {
 	return func(server *Server) {
@@ -322,6 +345,55 @@ func WithAgentCatalog(catalog core.AgentCatalog) Option {
 func WithAgentContext(service core.AgentContextService) Option {
 	return func(server *Server) {
 		server.agentContext = service
+	}
+}
+
+// WithSoulAuthoring injects the managed Soul authoring surface.
+func WithSoulAuthoring(service core.SoulAuthoringService) Option {
+	return func(server *Server) {
+		server.soulAuthoring = service
+	}
+}
+
+// WithSoulRefresher injects the session Soul refresh surface.
+func WithSoulRefresher(service core.SoulRefresher) Option {
+	return func(server *Server) {
+		server.soulRefresher = service
+	}
+}
+
+// WithHeartbeatAuthoring injects the managed Heartbeat authoring surface.
+func WithHeartbeatAuthoring(service core.HeartbeatAuthoringService) Option {
+	return func(server *Server) {
+		server.heartbeatAuthor = service
+	}
+}
+
+// WithHeartbeatStatus injects the Heartbeat status/read surface.
+func WithHeartbeatStatus(service core.HeartbeatStatusService) Option {
+	return func(server *Server) {
+		server.heartbeatStatus = service
+	}
+}
+
+// WithHeartbeatWake injects the manual Heartbeat wake surface.
+func WithHeartbeatWake(service core.HeartbeatWakeService) Option {
+	return func(server *Server) {
+		server.heartbeatWake = service
+	}
+}
+
+// WithSessionHealthReader injects the metadata-only session health reader.
+func WithSessionHealthReader(reader core.SessionHealthReader) Option {
+	return func(server *Server) {
+		server.sessionHealth = reader
+	}
+}
+
+// WithHeartbeatWakeEventReader injects the retained Heartbeat wake audit reader.
+func WithHeartbeatWakeEventReader(reader core.HeartbeatWakeEventReader) Option {
+	return func(server *Server) {
+		server.wakeEvents = reader
 	}
 }
 
@@ -498,9 +570,17 @@ func (s *Server) handlerConfig() *handlerConfig {
 		toolApprovals:     s.toolApprovals,
 		settings:          s.settings,
 		settingsRestart:   s.settingsRestart,
+		vault:             s.vault,
 		workspaces:        s.workspaces,
 		agentCatalog:      s.agentCatalog,
 		agentContext:      s.agentContext,
+		soulAuthoring:     s.soulAuthoring,
+		soulRefresher:     s.soulRefresher,
+		heartbeatAuthor:   s.heartbeatAuthor,
+		heartbeatStatus:   s.heartbeatStatus,
+		heartbeatWake:     s.heartbeatWake,
+		sessionHealth:     s.sessionHealth,
+		wakeEvents:        s.wakeEvents,
 		coordinatorConfig: s.coordinatorConfig,
 		skillsRegistry:    s.skillsRegistry,
 		memoryStore:       s.memoryStore,
@@ -735,9 +815,17 @@ func newHandlers(cfg *handlerConfig) *Handlers {
 			ToolApprovals:                cfg.toolApprovals,
 			Settings:                     cfg.settings,
 			SettingsRestart:              cfg.settingsRestart,
+			Vault:                        cfg.vault,
 			Workspaces:                   cfg.workspaces,
 			AgentCatalog:                 cfg.agentCatalog,
 			AgentContextService:          cfg.agentContext,
+			SoulAuthoring:                cfg.soulAuthoring,
+			SoulRefresher:                cfg.soulRefresher,
+			HeartbeatAuthoring:           cfg.heartbeatAuthor,
+			HeartbeatStatus:              cfg.heartbeatStatus,
+			HeartbeatWake:                cfg.heartbeatWake,
+			SessionHealth:                cfg.sessionHealth,
+			HeartbeatWakeEvents:          cfg.wakeEvents,
 			CoordinatorConfig:            cfg.coordinatorConfig,
 			SkillsRegistry:               cfg.skillsRegistry,
 			MemoryStore:                  cfg.memoryStore,

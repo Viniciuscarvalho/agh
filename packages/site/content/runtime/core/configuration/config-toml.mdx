@@ -32,6 +32,8 @@ Use only `[sandboxes.<name>]` for session execution boundaries.
 | `[limits]`                    | Daemon-level session and agent caps.                                            | `max_sessions = 10`, `max_concurrent_agents = 20`                                 |
 | `[session.limits]`            | Session-scoped wall-clock timeout.                                              | `timeout = "0s"`                                                                  |
 | `[session.supervision]`       | Runtime activity heartbeat, progress, warning, and inactivity timeout controls. | heartbeat 30 seconds, progress 10 minutes, warning 15 minutes, timeout 30 minutes |
+| `[agents.soul]`               | Optional `SOUL.md` parsing, body limits, and compact projection budget.         | enabled, 32 KiB body, 2 KiB compact projection                                    |
+| `[agents.heartbeat]`          | Optional `HEARTBEAT.md` policy bounds, wake cadence/limits, and health timing.  | enabled, 32 KiB body, 5 min/30 min intervals, 25 wakes per cycle, 168 h retention |
 | `[permissions]`               | Default permission mode.                                                        | `mode = "approve-all"`                                                            |
 | `[tools]`                     | Tool registry lifecycle, hosted MCP enablement, and result budget defaults.     | enabled, hosted MCP enabled, 256 KiB result default                               |
 | `[tools.hosted_mcp]`          | Hosted MCP session bind nonce lifecycle.                                        | 30 seconds                                                                        |
@@ -115,6 +117,40 @@ inactivity_timeout = "30m"
 # Grace period after cooperative prompt cancel before AGH stops the session as timeout.
 timeout_cancel_grace = "30s"
 
+[agents.soul]
+# Disabling pauses prompt injection but keeps inspect/validate/write/delete/history/rollback available.
+enabled = true
+# Hard cap for SOUL.md body bytes after normalization.
+max_body_bytes = 32768
+# Compact /agent/context projection budget. Must be <= max_body_bytes.
+context_projection_bytes = 2048
+
+[agents.heartbeat]
+# Disabling pauses wake decisions but keeps managed authoring available for repair.
+enabled = true
+# Bounded HEARTBEAT.md body size (snapshot uses normalized body).
+max_body_bytes = 32768
+# Compact projection budget for status surfaces.
+context_projection_bytes = 4096
+# Hard floor for authored preferences.min_interval. Files below this are clamped.
+min_interval = "5m"
+# Default cadence baseline used when authored files omit min_interval.
+default_interval = "30m"
+# Cooldown between wakes for a single session.
+wake_cooldown = "1m"
+# Maximum scheduler-cycle wakes across the daemon.
+max_wakes_per_cycle = 25
+# When true, wake only sessions in active runtime state.
+active_session_only = true
+# When true, authored active_hours/quiet_windows preferences are honored within bounds.
+allow_active_hours_preferences = true
+# Retention for agent_heartbeat_wake_events audit rows. Minimum 1h.
+wake_event_retention = "168h"
+# Idle age before metadata-only presence is treated as stale for wake eligibility.
+session_health_stale_after = "2m"
+# Minimum interval between session.health.update.after hook fires for the same session.
+session_health_hook_min_interval = "1m"
+
 [permissions]
 # Valid values: deny-all, approve-reads, approve-all.
 mode = "approve-all"
@@ -154,20 +190,26 @@ url = "https://mcp.example.com/sse"
 type = "oauth2_pkce"
 issuer_url = "https://auth.example.com"
 client_id = "agh-desktop"
-client_secret_env = "REMOTE_DOCS_MCP_CLIENT_SECRET"
+client_secret_ref = "env:REMOTE_DOCS_MCP_CLIENT_SECRET"
 scopes = ["mcp.read", "mcp.write"]
 
 [providers.claude]
-# Overrides the built-in Claude provider command/model/key environment variable.
-command = "npx -y @agentclientprotocol/claude-agent-acp@0.24.2"
-default_model = "claude-sonnet-4-20250514"
-api_key_env = "ANTHROPIC_API_KEY"
+# Overrides the built-in Claude provider command/model/credential slot.
+command = "npx -y @agentclientprotocol/claude-agent-acp@latest"
+default_model = "claude-sonnet-4-6"
+
+[[providers.claude.credential_slots]]
+name = "api_key"
+target_env = "ANTHROPIC_API_KEY"
+secret_ref = "env:ANTHROPIC_API_KEY"
+kind = "api_key"
+required = false
 
 [[providers.claude.mcp_servers]]
 name = "github"
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-github"]
-env = { GITHUB_TOKEN = "replace-with-real-token" }
+secret_env = { GITHUB_TOKEN = "env:GITHUB_TOKEN" }
 
 [sandboxes.local]
 backend = "local"
@@ -362,6 +404,54 @@ continues to observe runtime activity or controlled waiting heartbeats.
 | `inactivity_timeout`          | duration | `30m`   | Zero or positive Go duration. | Idle age before AGH cancels the prompt cooperatively. Zero disables inactivity timeout.       |
 | `timeout_cancel_grace`        | duration | `30s`   | Positive Go duration.         | Grace period after timeout cancel before AGH stops the session with stop reason `timeout`.    |
 
+## `[agents.soul]`
+
+`[agents.soul]` controls the optional `SOUL.md` authored persona artifact. Config owns body
+limits, compact projection budget, and the `enabled` toggle. `SOUL.md` cannot redefine any of
+these keys, and forbidden operational fields in `SOUL.md` are rejected. See
+[Agent Soul](/runtime/core/agents/soul).
+
+| Field                      | Type    | Default | Valid values                                   | Description                                                                                                                                |
+| -------------------------- | ------- | ------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `enabled`                  | boolean | `true`  | `true` or `false`                              | When false, AGH stops injecting Soul into prompts and `/agent/context` but keeps inspect/validate/write/delete/history/rollback available. |
+| `max_body_bytes`           | integer | `32768` | Positive integer.                              | Maximum normalized `SOUL.md` body size. Files beyond this fail validation with `oversized_body`.                                           |
+| `context_projection_bytes` | integer | `2048`  | Positive integer; must be `<= max_body_bytes`. | Compact `/agent/context.soul` projection budget.                                                                                           |
+
+Workspace overlay merges scalar fields predictably; setting any key zero-clamps to the validated
+positive value or fails with a typed validation error. Disabling at runtime does not clear stored
+snapshots; managed authoring keeps working so operators can repair a broken file.
+
+## `[agents.heartbeat]`
+
+`[agents.heartbeat]` controls the optional `HEARTBEAT.md` advisory wake policy and the runtime
+health/wake-audit subsystem. Config owns cadence, rate limits, retention, and stale thresholds;
+authored files express bounded preferences only. See
+[Agent Heartbeat](/runtime/core/agents/heartbeat).
+
+| Field                              | Type     | Default | Valid values                                         | Description                                                                                                                  |
+| ---------------------------------- | -------- | ------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`                          | boolean  | `true`  | `true` or `false`                                    | When false, AGH disables wake decisions but keeps managed authoring available so operators can repair a broken policy.       |
+| `max_body_bytes`                   | integer  | `32768` | Positive integer; capped at the runtime hard limit.  | Maximum normalized `HEARTBEAT.md` body size; oversized files fail validation.                                                |
+| `context_projection_bytes`         | integer  | `4096`  | Positive integer; must be `<= max_body_bytes`.       | Compact projection budget for status responses.                                                                              |
+| `min_interval`                     | duration | `5m`    | Positive Go duration; must be `<= default_interval`. | Hard floor for authored `preferences.min_interval`. Files below this are clamped with `heartbeat_preference_clamped`.        |
+| `default_interval`                 | duration | `30m`   | Positive Go duration.                                | Default cadence baseline used when authored files omit `min_interval`.                                                       |
+| `wake_cooldown`                    | duration | `1m`    | Positive Go duration.                                | Cooldown between wakes targeting the same session.                                                                           |
+| `max_wakes_per_cycle`              | integer  | `25`    | Positive integer.                                    | Daemon-wide cap on wakes per scheduler cycle. Excess wakes return `heartbeat_rate_limited`.                                  |
+| `active_session_only`              | boolean  | `true`  | `true` or `false`                                    | When true, only sessions reported as active and attachable are wake-eligible.                                                |
+| `allow_active_hours_preferences`   | boolean  | `true`  | `true` or `false`                                    | When false, authored `active_hours`/`quiet_windows` are ignored with `heartbeat_preference_ignored`.                         |
+| `wake_event_retention`             | duration | `168h`  | Positive Go duration; minimum `1h`.                  | Retention for `agent_heartbeat_wake_events` audit rows. Cleanup runs at boot and during scheduler maintenance cycles.        |
+| `session_health_stale_after`       | duration | `2m`    | Positive Go duration.                                | Idle age before metadata-only presence becomes `stale` for wake eligibility.                                                 |
+| `session_health_hook_min_interval` | duration | `1m`    | Positive Go duration.                                | Minimum interval between `session.health.update.after` hook fires for the same session; metadata-only touches are coalesced. |
+
+`[agents.heartbeat]` does not own task-run lease heartbeat (`task_runs` + `ClaimNextRun` +
+`HeartbeatRunLease`), `[session.supervision]` activity heartbeat, or AGH Network `[network]`
+greet presence. Those four authorities remain independent.
+
+`HEARTBEAT.md` snapshot digest covers the normalized body, canonical frontmatter JSON, and a
+canonical digest of the resolved `[agents.heartbeat]` config subset. Editing any field that
+affects parsing, preference resolution, eligibility, retention, or coalescing invalidates the
+digest and triggers a fresh resolution at the next wake decision.
+
 ## `[permissions]`
 
 | Field  | Type   | Default       | Valid values                               | Description                                                                              |
@@ -404,32 +494,33 @@ and hosted MCP bind nonces are transient session launch state.
 Top-level MCP servers are merged with provider, agent, and skill MCP servers during session startup.
 They can point at local stdio processes or remote HTTP/SSE MCP endpoints.
 
-| Field       | Type         | Default             | Valid values              | Description                                                                                |
-| ----------- | ------------ | ------------------- | ------------------------- | ------------------------------------------------------------------------------------------ |
-| `name`      | string       | required            | Non-empty after trimming. | Stable server key used for merge and replacement.                                          |
-| `transport` | string       | inferred            | `stdio`, `http`, `sse`.   | Transport kind. Command servers default to `stdio`; URL servers default to `http`.         |
-| `command`   | string       | required for stdio  | Non-empty command.        | Executable command for a local stdio MCP server. Invalid for remote transports.            |
-| `url`       | string URL   | required for remote | Absolute URL.             | Remote MCP endpoint for `http` or `sse` transports. Invalid for `stdio`.                   |
-| `auth`      | object       | empty               | OAuth 2.1 PKCE settings.  | Remote auth metadata and client settings. Invalid for `stdio`.                             |
-| `args`      | string array | empty               | Strings.                  | Process arguments passed to the command.                                                   |
-| `env`       | string map   | empty               | String keys and values.   | Literal environment values passed to the MCP server. AGH does not perform shell expansion. |
+| Field        | Type         | Default             | Valid values                                       | Description                                                                                                 |
+| ------------ | ------------ | ------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `name`       | string       | required            | Non-empty after trimming.                          | Stable server key used for merge and replacement.                                                           |
+| `transport`  | string       | inferred            | `stdio`, `http`, `sse`.                            | Transport kind. Command servers default to `stdio`; URL servers default to `http`.                          |
+| `command`    | string       | required for stdio  | Non-empty command.                                 | Executable command for a local stdio MCP server. Invalid for remote transports.                             |
+| `url`        | string URL   | required for remote | Absolute URL.                                      | Remote MCP endpoint for `http` or `sse` transports. Invalid for `stdio`.                                    |
+| `auth`       | object       | empty               | OAuth 2.1 PKCE settings.                           | Remote auth metadata and client settings. Invalid for `stdio`.                                              |
+| `args`       | string array | empty               | Strings.                                           | Process arguments passed to the command.                                                                    |
+| `env`        | string map   | empty               | String keys and values.                            | Literal environment values passed to the MCP server. AGH does not perform shell expansion.                  |
+| `secret_env` | string map   | empty               | `env:NAME` or `vault:mcp/<server>/env/<KEY>` refs. | Secret environment bindings for stdio servers. Values are resolved at launch and redacted from diagnostics. |
 
 OAuth-enabled remote servers store only metadata in config. Token material is kept in the AGH
-global database with private filesystem permissions and is exposed through API, settings, CLI,
-logs, and the agent-callable `agh__mcp_auth_status` tool only as redacted status. Login and logout
-remain operator-only management flows on the CLI and HTTP surfaces.
+Vault as encrypted refs and is exposed through API, settings, CLI, logs, and the agent-callable
+`agh__mcp_auth_status` tool only as redacted status. Login/logout happen on CLI and HTTP. These are
+operator-only management flows.
 
-| `auth` field        | Type         | Required    | Description                                                            |
-| ------------------- | ------------ | ----------- | ---------------------------------------------------------------------- |
-| `type`              | string       | yes         | Must be `oauth2_pkce`.                                                 |
-| `client_id`         | string       | yes         | OAuth client ID.                                                       |
-| `client_secret_env` | string       | no          | Environment variable name containing the client secret, when required. |
-| `issuer_url`        | string URL   | conditional | Issuer for OAuth metadata discovery.                                   |
-| `metadata_url`      | string URL   | conditional | Explicit OAuth authorization-server metadata URL.                      |
-| `authorization_url` | string URL   | conditional | Direct authorization endpoint. Pair with `token_url`.                  |
-| `token_url`         | string URL   | conditional | Direct token endpoint. Pair with `authorization_url`.                  |
-| `revocation_url`    | string URL   | no          | Optional endpoint used by `agh mcp auth logout`.                       |
-| `scopes`            | string array | no          | Requested OAuth scopes.                                                |
+| `auth` field        | Type         | Required    | Description                                                                                             |
+| ------------------- | ------------ | ----------- | ------------------------------------------------------------------------------------------------------- |
+| `type`              | string       | yes         | Must be `oauth2_pkce`.                                                                                  |
+| `client_id`         | string       | yes         | OAuth client ID.                                                                                        |
+| `client_secret_ref` | string       | no          | `env:NAME` or `vault:mcp/<server>/oauth/client-secret` ref containing the client secret, when required. |
+| `issuer_url`        | string URL   | conditional | Issuer for OAuth metadata discovery.                                                                    |
+| `metadata_url`      | string URL   | conditional | Explicit OAuth authorization-server metadata URL.                                                       |
+| `authorization_url` | string URL   | conditional | Direct authorization endpoint. Pair with `token_url`.                                                   |
+| `token_url`         | string URL   | conditional | Direct token endpoint. Pair with `authorization_url`.                                                   |
+| `revocation_url`    | string URL   | no          | Optional endpoint used by `agh mcp auth logout`.                                                        |
+| `scopes`            | string array | no          | Requested OAuth scopes.                                                                                 |
 
 Configure one of `metadata_url`, `issuer_url`, or both `authorization_url` and `token_url`, then
 authenticate with:
@@ -447,26 +538,72 @@ authentication is repaired through the operator login/logout commands above.
 
 ## `[providers.<name>]`
 
-Provider keys override built-ins with the same name or create a custom provider. Built-ins are:
-`claude`, `codex`, `gemini`, `opencode`, `copilot`, `cursor`, `kiro`, and `pi`.
+Provider keys override built-ins with the same name or create a custom provider. Built-ins are
+`claude`, `codex`, `gemini`, `opencode`, `copilot`, `cursor`, `kiro`, `blackbox`, `cline`,
+`goose`, `hermes`, `junie`, `kimi-cli`, `openclaw`, `openhands`, `qoder`, `qwen-code`, `pi`,
+`openrouter`, `zai`, `moonshot`, `vercel-ai-gateway`, `xai`, `minimax`, `mistral`, and `groq`.
 
-| Field           | Type                        | Default                                                            | Valid values                                      | Description                                                                                      |
-| --------------- | --------------------------- | ------------------------------------------------------------------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `command`       | string                      | Built-in command or empty for custom providers.                    | Required after built-in plus override resolution. | ACP launch command for this provider.                                                            |
-| `default_model` | string                      | Built-in model or empty.                                           | Any string.                                       | Model used when an agent omits `model`.                                                          |
-| `api_key_env`   | string                      | Built-in key env for `claude`, `codex`, `gemini`; empty otherwise. | Environment variable name.                        | Metadata naming the API key variable the provider expects. AGH does not validate that it is set. |
-| `mcp_servers`   | array of MCP server objects | empty                                                              | Same shape as `[[mcp_servers]]`.                  | Provider-specific MCP servers merged after top-level config and before agent MCP servers.        |
+| Field              | Type                        | Default                                         | Valid values                                      | Description                                                                               |
+| ------------------ | --------------------------- | ----------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `command`          | string                      | Built-in command or empty for custom providers. | Required after built-in plus override resolution. | ACP launch command for this provider.                                                     |
+| `display_name`     | string                      | Built-in label or empty.                        | Any string.                                       | Operator-facing label shown in settings and provider pickers.                             |
+| `default_model`    | string                      | Built-in model or empty.                        | Any string.                                       | Model used when an agent omits `model`; Pi-backed providers receive it in session config. |
+| `harness`          | string                      | `acp` unless a built-in sets `pi_acp`.          | `acp`, `pi_acp`.                                  | Launch strategy. `pi_acp` routes the provider through Pi's ACP adapter.                   |
+| `runtime_provider` | string                      | Provider key.                                   | Harness-specific provider id.                     | Downstream provider id used by Pi and other harnesses.                                    |
+| `transport`        | string                      | empty.                                          | Harness-specific string.                          | Optional Pi models override transport/API family.                                         |
+| `base_url`         | string                      | empty.                                          | URL string.                                       | Optional Pi models override base URL for custom gateways.                                 |
+| `credential_slots` | array                       | Built-in slots for providers that need one.     | See below.                                        | Bound secret refs injected into provider subprocess environment variables at launch.      |
+| `mcp_servers`      | array of MCP server objects | empty.                                          | Same shape as `[[mcp_servers]]`.                  | Provider-specific MCP servers merged after top-level config and before agent MCP servers. |
 
-| Built-in   | Command                                               | Default model              | API key env         |
-| ---------- | ----------------------------------------------------- | -------------------------- | ------------------- |
-| `claude`   | `npx -y @agentclientprotocol/claude-agent-acp@0.24.2` | `claude-sonnet-4-20250514` | `ANTHROPIC_API_KEY` |
-| `codex`    | `npx @zed-industries/codex-acp@0.10.0`                | `gpt-4o`                   | `OPENAI_API_KEY`    |
-| `gemini`   | `gemini --acp`                                        | `gemini-2.5-pro`           | `GEMINI_API_KEY`    |
-| `opencode` | `npx -y opencode-ai acp`                              | empty                      | empty               |
-| `copilot`  | `copilot --acp --stdio`                               | empty                      | empty               |
-| `cursor`   | `cursor-agent acp`                                    | empty                      | empty               |
-| `kiro`     | `kiro-cli-chat acp`                                   | empty                      | empty               |
-| `pi`       | `npx pi-acp@0.0.22`                                   | empty                      | empty               |
+Credential slots use this shape:
+
+```toml
+[[providers.openrouter.credential_slots]]
+name = "api_key"
+target_env = "OPENROUTER_API_KEY"
+secret_ref = "vault:providers/openrouter/api-key"
+kind = "api_key"
+required = true
+```
+
+`secret_ref` supports `env:NAME` for operator-managed environment variables and
+`vault:providers/<provider>/<slot>` for AGH-managed encrypted provider credentials written through
+the settings API, `agh vault`, or web provider editor. The `vault:` form accepts lowercase
+provider/slot identifiers only, with letters, numbers, hyphens, underscores, or dots; arbitrary
+vault paths are not valid provider credential refs.
+
+The slot `required` flag is enforced at session start for both `env:` and `vault:` refs. Direct ACP
+built-ins keep their default API-key slots optional because the underlying CLI may already be logged
+in; Pi-backed API-key providers keep their built-in API-key slots required.
+
+| Built-in            | Harness  | Runtime provider    | Default model               | API key env                   |
+| ------------------- | -------- | ------------------- | --------------------------- | ----------------------------- |
+| `claude`            | `acp`    | `claude`            | `claude-sonnet-4-6`         | `ANTHROPIC_API_KEY`           |
+| `codex`             | `acp`    | `codex`             | `gpt-5.4`                   | `OPENAI_API_KEY`              |
+| `gemini`            | `acp`    | `gemini`            | `gemini-3.1-pro-preview`    | `GEMINI_API_KEY`              |
+| `opencode`          | `acp`    | `opencode`          | none                        | none                          |
+| `copilot`           | `acp`    | `copilot`           | none                        | none                          |
+| `cursor`            | `acp`    | `cursor`            | none                        | none                          |
+| `kiro`              | `acp`    | `kiro`              | none                        | none                          |
+| `blackbox`          | `acp`    | `blackbox`          | none                        | `BLACKBOX_API_KEY`            |
+| `cline`             | `acp`    | `cline`             | none                        | none                          |
+| `goose`             | `acp`    | `goose`             | none                        | none                          |
+| `hermes`            | `acp`    | `hermes`            | none                        | none                          |
+| `junie`             | `acp`    | `junie`             | none                        | none                          |
+| `kimi-cli`          | `acp`    | `kimi-cli`          | none                        | `KIMI_API_KEY`                |
+| `openclaw`          | `acp`    | `openclaw`          | none                        | none                          |
+| `openhands`         | `acp`    | `openhands`         | none                        | none                          |
+| `qoder`             | `acp`    | `qoder`             | none                        | `QODER_PERSONAL_ACCESS_TOKEN` |
+| `qwen-code`         | `acp`    | `qwen-code`         | `qwen3.6-plus`              | none                          |
+| `pi`                | `pi_acp` | `anthropic`         | `claude-opus-4-7`           | `ANTHROPIC_API_KEY`           |
+| `openrouter`        | `pi_acp` | `openrouter`        | `openai/gpt-5.4`            | `OPENROUTER_API_KEY`          |
+| `zai`               | `pi_acp` | `zai`               | `glm-4.6`                   | `ZAI_API_KEY`                 |
+| `moonshot`          | `pi_acp` | `kimi-coding`       | `kimi-k2-thinking`          | `KIMI_API_KEY`                |
+| `vercel-ai-gateway` | `pi_acp` | `vercel-ai-gateway` | `anthropic/claude-opus-4-7` | `AI_GATEWAY_API_KEY`          |
+| `xai`               | `pi_acp` | `xai`               | `grok-4-fast-non-reasoning` | `XAI_API_KEY`                 |
+| `minimax`           | `pi_acp` | `minimax`           | `MiniMax-M2.1`              | `MINIMAX_API_KEY`             |
+| `mistral`           | `pi_acp` | `mistral`           | `devstral-medium-latest`    | `MISTRAL_API_KEY`             |
+| `groq`              | `pi_acp` | `groq`              | `openai/gpt-oss-120b`       | `GROQ_API_KEY`                |
 
 ## `[observability]`
 
@@ -573,22 +710,25 @@ Jobs are appended by overlays; they do not replace earlier jobs with the same na
 
 Triggers are appended by overlays; they do not replace earlier triggers with the same name.
 
-| Field                | Type       | Default                                                            | Valid values                                                                                       | Description                                         |
-| -------------------- | ---------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `scope`              | string     | required                                                           | `global` or `workspace`                                                                            | Binding scope.                                      |
-| `name`               | string     | required                                                           | Non-empty.                                                                                         | Trigger name.                                       |
-| `agent`              | string     | required                                                           | Non-empty.                                                                                         | Agent that handles the trigger prompt.              |
-| `workspace`          | string     | required when `scope = "workspace"`, empty when `scope = "global"` | Workspace ID or root accepted by the automation resolver.                                          | Workspace binding.                                  |
-| `prompt`             | string     | required                                                           | Valid Go template over the activation envelope.                                                    | Prompt submitted when the trigger fires.            |
-| `event`              | string     | required                                                           | Non-empty; `webhook` has extra requirements.                                                       | Event name.                                         |
-| `filter`             | string map | empty                                                              | Keys `kind`, `scope`, `workspace_id`, `source`, or `data.<field>`; values non-empty.               | Activation-envelope filter.                         |
-| `enabled`            | boolean    | `true`                                                             | `true` or `false`                                                                                  | Enables this trigger.                               |
-| `retry.strategy`     | string     | `none`                                                             | `none` or `backoff`                                                                                | Retry behavior.                                     |
-| `retry.max_retries`  | integer    | `0`                                                                | `0` for `none`; positive for `backoff`.                                                            | Maximum retry count.                                |
-| `retry.base_delay`   | string     | empty                                                              | Empty for `none`; positive Go duration for `backoff`.                                              | Base backoff delay.                                 |
-| `fire_limit`         | object     | `[automation].default_fire_limit`                                  | `max` positive, `window` positive Go duration.                                                     | Per-trigger fire limit.                             |
-| `endpoint_slug`      | string     | empty                                                              | Required when `event = "webhook"`; empty otherwise.                                                | Webhook endpoint slug.                              |
-| `webhook_secret_env` | string     | empty                                                              | Required when `event = "webhook"` and must name a non-empty environment variable; empty otherwise. | Environment variable that holds the webhook secret. |
+| Field                | Type       | Default                                                            | Valid values                                                                                      | Description                                   |
+| -------------------- | ---------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `scope`              | string     | required                                                           | `global` or `workspace`                                                                           | Binding scope.                                |
+| `name`               | string     | required                                                           | Non-empty.                                                                                        | Trigger name.                                 |
+| `agent`              | string     | required                                                           | Non-empty.                                                                                        | Agent that handles the trigger prompt.        |
+| `workspace`          | string     | required when `scope = "workspace"`, empty when `scope = "global"` | Workspace ID or root accepted by the automation resolver.                                         | Workspace binding.                            |
+| `prompt`             | string     | required                                                           | Valid Go template over the activation envelope.                                                   | Prompt submitted when the trigger fires.      |
+| `event`              | string     | required                                                           | Non-empty; `webhook` has extra requirements.                                                      | Event name.                                   |
+| `filter`             | string map | empty                                                              | Keys `kind`, `scope`, `workspace_id`, `source`, or `data.<field>`; values non-empty.              | Activation-envelope filter.                   |
+| `enabled`            | boolean    | `true`                                                             | `true` or `false`                                                                                 | Enables this trigger.                         |
+| `retry.strategy`     | string     | `none`                                                             | `none` or `backoff`                                                                               | Retry behavior.                               |
+| `retry.max_retries`  | integer    | `0`                                                                | `0` for `none`; positive for `backoff`.                                                           | Maximum retry count.                          |
+| `retry.base_delay`   | string     | empty                                                              | Empty for `none`; positive Go duration for `backoff`.                                             | Base backoff delay.                           |
+| `fire_limit`         | object     | `[automation].default_fire_limit`                                  | `max` positive, `window` positive Go duration.                                                    | Per-trigger fire limit.                       |
+| `endpoint_slug`      | string     | empty                                                              | Required when `event = "webhook"`; empty otherwise.                                               | Webhook endpoint slug.                        |
+| `webhook_secret_ref` | string     | empty                                                              | Required when `event = "webhook"`; must be `env:NAME` or `vault:automation/...`; empty otherwise. | Secret ref used to validate webhook requests. |
+
+See [Vault](/runtime/core/configuration/vault) for the CLI, HTTP, UDS, web, and session-scoped
+surfaces that store and inspect encrypted AGH-managed secret refs.
 
 ## `[autonomy.coordinator]`
 

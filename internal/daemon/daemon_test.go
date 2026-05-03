@@ -30,6 +30,7 @@ import (
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	extensionpkg "github.com/pedronauck/agh/internal/extension"
 	extensionprotocol "github.com/pedronauck/agh/internal/extension/protocol"
+	"github.com/pedronauck/agh/internal/heartbeat"
 	hookspkg "github.com/pedronauck/agh/internal/hooks"
 	"github.com/pedronauck/agh/internal/memory"
 	"github.com/pedronauck/agh/internal/memory/consolidation"
@@ -4259,6 +4260,7 @@ type fakeSessionManager struct {
 	}
 	syntheticPromptCalls     []fakeSyntheticPromptCall
 	syntheticPromptHook      func(context.Context, string, session.SyntheticPromptOpts) (<-chan acp.AgentEvent, error)
+	healthRows               map[string]heartbeat.SessionHealth
 	promptStarted            chan struct{}
 	promptRelease            <-chan struct{}
 	promptCtxCancelled       chan struct{}
@@ -5648,7 +5650,7 @@ func (f *fakeAutomationManager) GetTrigger(_ context.Context, id string) (automa
 func (f *fakeAutomationManager) CreateTrigger(
 	_ context.Context,
 	trigger automationpkg.Trigger,
-	_ string,
+	_ automationpkg.WebhookSecretWrite,
 ) (automationpkg.Trigger, error) {
 	f.triggers = append(f.triggers, trigger)
 	return trigger, nil
@@ -5657,7 +5659,7 @@ func (f *fakeAutomationManager) CreateTrigger(
 func (f *fakeAutomationManager) UpdateTrigger(
 	_ context.Context,
 	trigger automationpkg.Trigger,
-	_ *string,
+	_ *automationpkg.WebhookSecretWrite,
 ) (automationpkg.Trigger, error) {
 	for i := range f.triggers {
 		if f.triggers[i].ID == strings.TrimSpace(trigger.ID) {
@@ -5732,7 +5734,6 @@ func (f *fakeAutomationManager) SyncManagedDefinitions(
 	source automationpkg.JobSource,
 	desiredJobs []automationpkg.Job,
 	desiredTriggers []automationpkg.Trigger,
-	_ map[string]string,
 ) (automationpkg.SyncStats, error) {
 	f.jobs = slices.DeleteFunc(append([]automationpkg.Job(nil), f.jobs...), func(job automationpkg.Job) bool {
 		return job.Source == source
@@ -6281,6 +6282,48 @@ func (f *fakeHookRuntime) DispatchSpawnReaped(
 	_ context.Context,
 	payload hookspkg.SpawnReapedPayload,
 ) (hookspkg.SpawnReapedPayload, error) {
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchAgentSoulSnapshotResolved(
+	_ context.Context,
+	payload hookspkg.AgentSoulSnapshotResolvedPayload,
+) (hookspkg.AgentSoulSnapshotResolvedPayload, error) {
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchAgentSoulMutationAfter(
+	_ context.Context,
+	payload hookspkg.AgentSoulMutationAfterPayload,
+) (hookspkg.AgentSoulMutationAfterPayload, error) {
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchAgentHeartbeatPolicyResolved(
+	_ context.Context,
+	payload hookspkg.AgentHeartbeatPolicyResolvedPayload,
+) (hookspkg.AgentHeartbeatPolicyResolvedPayload, error) {
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchAgentHeartbeatWakeBefore(
+	_ context.Context,
+	payload hookspkg.AgentHeartbeatWakeBeforePayload,
+) (hookspkg.AgentHeartbeatWakeBeforePayload, error) {
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchAgentHeartbeatWakeAfter(
+	_ context.Context,
+	payload hookspkg.AgentHeartbeatWakeAfterPayload,
+) (hookspkg.AgentHeartbeatWakeAfterPayload, error) {
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchSessionHealthUpdateAfter(
+	_ context.Context,
+	payload hookspkg.SessionHealthUpdateAfterPayload,
+) (hookspkg.SessionHealthUpdateAfterPayload, error) {
 	return payload, nil
 }
 

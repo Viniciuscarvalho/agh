@@ -36,6 +36,7 @@ import (
 	taskpkg "github.com/pedronauck/agh/internal/task"
 	"github.com/pedronauck/agh/internal/toolruntime"
 	toolspkg "github.com/pedronauck/agh/internal/tools"
+	"github.com/pedronauck/agh/internal/vault"
 	workspacepkg "github.com/pedronauck/agh/internal/workspace"
 )
 
@@ -63,6 +64,7 @@ type bootState struct {
 	workspaceResolver   *workspacepkg.Resolver
 	sessions            SessionManager
 	hostedMCP           *mcppkg.HostedService
+	providerVault       *vault.Service
 	tasks               *taskRuntime
 	spawnReaper         *spawnReaper
 	scheduler           *schedulerRuntime
@@ -354,6 +356,9 @@ func (d *Daemon) buildSituationContext(state *bootState) *situation.Service {
 		CoordinatorConfigFunc: func() situation.CoordinatorConfigResolver {
 			return state.deps.CoordinatorConfig
 		},
+		SoulSnapshotsFunc: func() situation.SoulSnapshotStore {
+			return soulSnapshotStoreDependency(state.registry)
+		},
 	})
 }
 
@@ -475,6 +480,11 @@ func (d *Daemon) bootRuntimeServices(
 		return err
 	}
 	state.sandboxRegistry = sandboxRegistry
+	providerVault, err := d.buildProviderVault(state)
+	if err != nil {
+		return err
+	}
+	state.providerVault = providerVault
 	state.bridges = d.composeBridgeRuntime(state, cleanup)
 	hostedMCP, err := d.buildHostedMCPService(state)
 	if err != nil {
@@ -514,7 +524,7 @@ func (d *Daemon) bootRuntimeServices(
 		return fmt.Errorf("daemon: create session manager: %w", err)
 	}
 	state.sessions = sessions
-	state.deps = d.runtimeDeps(state, sessions)
+	state.deps = d.runtimeDeps(ctx, state, sessions)
 	resourceService, err := d.buildResourceService(state)
 	if err != nil {
 		return err
@@ -576,7 +586,29 @@ func (d *Daemon) bootSessionRepair(ctx context.Context, state *bootState) error 
 			"error_issues", errorIssues,
 		)
 	}
+	if recoverer, ok := state.sessions.(sessionHealthRecoverer); ok {
+		result, recoveryErr := recoverer.RecoverSessionHealth(ctx)
+		if recoveryErr != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return fmt.Errorf("daemon: session health recovery canceled: %w", ctxErr)
+			}
+			state.logger.Warn("daemon: session health recovery failed", "error", recoveryErr)
+			return nil
+		}
+		if result.RefreshedActive > 0 || result.Recomputed > 0 || result.MarkedStale > 0 {
+			state.logger.Info(
+				"daemon: session health recovery complete",
+				"refreshed_active", result.RefreshedActive,
+				"recomputed", result.Recomputed,
+				"marked_stale", result.MarkedStale,
+			)
+		}
+	}
 	return nil
+}
+
+type sessionHealthRecoverer interface {
+	RecoverSessionHealth(ctx context.Context) (session.HealthRecoveryResult, error)
 }
 
 func bootShouldRepairSession(info *session.Info) bool {
@@ -613,14 +645,15 @@ func (d *Daemon) sessionManagerDeps(state *bootState) SessionManagerDeps {
 		Logger:    state.logger,
 		Notifier:  d.sessionNotifier(state),
 		Hooks: session.HookSet{
-			Session:      state.notifier,
-			Sandbox:      state.notifier,
-			Prompt:       state.notifier,
-			Events:       state.notifier,
-			Agent:        state.notifier,
-			Conversation: state.notifier,
-			Compaction:   state.notifier,
-			Spawn:        state.notifier,
+			Session:         state.notifier,
+			Sandbox:         state.notifier,
+			Prompt:          state.notifier,
+			Events:          state.notifier,
+			Agent:           state.notifier,
+			Conversation:    state.notifier,
+			Compaction:      state.notifier,
+			Spawn:           state.notifier,
+			AuthoredContext: state.notifier,
 		},
 		PromptAssembler:      state.promptAssembler,
 		StartupPromptOverlay: state.startupOverlay,
@@ -632,9 +665,61 @@ func (d *Daemon) sessionManagerDeps(state *bootState) SessionManagerDeps {
 		WorkspaceResolver:    state.workspaceResolver,
 		SandboxRegistry:      state.sandboxRegistry,
 		SessionSupervision:   state.cfg.Session.Supervision,
+		SessionHealthConfig:  state.cfg.Agents.Heartbeat,
 		ProcessRegistry:      state.processRegistry,
 		HostedMCP:            hostedMCPLauncher(state.hostedMCP),
+		ProviderSecrets:      sessionProviderVaultDependency(state.providerVault),
+		SoulStore:            soulSnapshotStoreDependency(state.registry),
+		SoulRunChecker:       soulRunActivityCheckerDependency(state.registry),
+		SessionHealthStore:   sessionHealthStoreDependency(state.registry),
 	}
+}
+
+func (d *Daemon) buildProviderVault(state *bootState) (*vault.Service, error) {
+	if state == nil || state.registry == nil {
+		return nil, errors.New("daemon: provider vault registry is required")
+	}
+	vaultStore, ok := state.registry.(vault.Store)
+	if !ok {
+		if state.logger != nil {
+			state.logger.Warn(
+				"daemon.provider_vault.disabled",
+				"reason",
+				"registry_missing_vault_store",
+				"registry_type",
+				fmt.Sprintf("%T", state.registry),
+			)
+		}
+		return nil, nil
+	}
+	lookupEnv := func(key string) (string, bool) {
+		value := d.getenv(key)
+		return value, strings.TrimSpace(value) != ""
+	}
+	service, err := vault.NewService(
+		vaultStore,
+		vault.NewFileKeyProvider(d.homePaths.HomeDir, lookupEnv),
+		vault.WithLookupEnv(lookupEnv),
+		vault.WithNow(d.now),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("daemon: create provider vault: %w", err)
+	}
+	return service, nil
+}
+
+func sessionProviderVaultDependency(service *vault.Service) session.ProviderSecretResolver {
+	if service == nil {
+		return nil
+	}
+	return service
+}
+
+func settingsProviderVaultDependency(service *vault.Service) settingspkg.ProviderSecretStore {
+	if service == nil {
+		return nil
+	}
+	return service
 }
 
 func (d *Daemon) bootProcessRegistry(ctx context.Context, state *bootState) error {
@@ -712,7 +797,7 @@ func mcpResolverDependency(resolver *skills.MCPResolver) session.MCPResolver {
 	return resolver
 }
 
-func (d *Daemon) runtimeDeps(state *bootState, sessions SessionManager) RuntimeDeps {
+func (d *Daemon) runtimeDeps(ctx context.Context, state *bootState, sessions SessionManager) RuntimeDeps {
 	if state != nil && state.dreamSvc != nil {
 		lockPath := memory.ConsolidationLockPath(state.globalMemoryDir)
 		state.dreamRuntime = consolidation.NewRuntime(
@@ -731,6 +816,7 @@ func (d *Daemon) runtimeDeps(state *bootState, sessions SessionManager) RuntimeD
 			},
 		)
 	}
+	authoredContext := authoredContextRuntimeDeps(ctx, state, sessions)
 
 	return RuntimeDeps{
 		Config:            state.cfg,
@@ -744,6 +830,13 @@ func (d *Daemon) runtimeDeps(state *bootState, sessions SessionManager) RuntimeD
 		WorkspaceService:  state.workspaceResolver,
 		AgentCatalog:      agentCatalogDependency(state.agentCatalog),
 		AgentContext:      state.situationContext,
+		SoulAuthoring:     authoredContext.SoulAuthoring,
+		SoulRefresher:     authoredContext.SoulRefresher,
+		HeartbeatAuthor:   authoredContext.HeartbeatAuthoring,
+		HeartbeatStatus:   authoredContext.HeartbeatStatus,
+		HeartbeatWake:     authoredContext.HeartbeatWake,
+		SessionHealth:     authoredContext.SessionHealth,
+		WakeEvents:        authoredContext.WakeEvents,
 		CoordinatorConfig: newCoordinatorConfigResolver(
 			&state.cfg,
 			state.workspaceResolver,
@@ -755,6 +848,7 @@ func (d *Daemon) runtimeDeps(state *bootState, sessions SessionManager) RuntimeD
 		ToolApprovals:  state.toolApprovals,
 		HostedMCP:      state.hostedMCP,
 		DreamTrigger:   dreamTriggerFromRuntime(state.dreamRuntime),
+		Vault:          state.providerVault,
 		StartedAt:      state.startedAt,
 	}
 }
@@ -1076,7 +1170,11 @@ func (d *Daemon) hookRuntimeOptions(
 		hookspkg.WithLogger(state.logger),
 		hookspkg.WithNow(d.now),
 		hookspkg.WithDebugPatchAudit(strings.EqualFold(state.cfg.Log.Level, "debug")),
-		hookspkg.WithExecutorResolver(daemonExecutorResolver(nativeExecutors, state.processRegistry)),
+		hookspkg.WithExecutorResolver(daemonExecutorResolverWithSecrets(
+			nativeExecutors,
+			state.providerVault,
+			state.processRegistry,
+		)),
 		hookspkg.WithTelemetrySink(state.hookTelemetrySinks),
 	}
 }
@@ -1153,6 +1251,7 @@ func (d *Daemon) bootAutomation(ctx context.Context, state *bootState, cleanup *
 		WorkspaceResolver:   state.workspaceResolver,
 		Config:              state.cfg.Automation,
 		Hooks:               state.hooks,
+		WebhookSecrets:      state.providerVault,
 		Logger:              state.logger.With("component", "automation"),
 		GlobalWorkspacePath: d.homePaths.HomeDir,
 		ResourceStore:       resourceRawStore(state.resourceKernel),
@@ -1357,7 +1456,15 @@ func (d *Daemon) extensionManagerDeps(
 			}
 			return state.resourceReconcile.Trigger(ctx, kind, reason)
 		},
+		SoulAuthoring:   state.deps.SoulAuthoring,
+		SoulRefresher:   state.deps.SoulRefresher,
+		HeartbeatAuthor: state.deps.HeartbeatAuthor,
+		HeartbeatStatus: state.deps.HeartbeatStatus,
+		HeartbeatWake:   state.deps.HeartbeatWake,
+		SessionHealth:   state.deps.SessionHealth,
+		WakeEvents:      state.deps.WakeEvents,
 		ProcessRegistry: state.processRegistry,
+		SecretResolver:  state.providerVault,
 	}
 }
 
@@ -1521,6 +1628,7 @@ func (d *Daemon) bootSettings(_ context.Context, state *bootState) error {
 		Extensions:                 surface,
 		TransportParity:            surface,
 		MCPAuth:                    surface,
+		ProviderSecrets:            settingsProviderVaultDependency(state.providerVault),
 		RestartActionAvailable:     true,
 		ConsolidateActionAvailable: state.dreamRuntime != nil && state.dreamRuntime.Enabled(),
 		LogTailAvailable:           strings.TrimSpace(d.homePaths.LogFile) != "",
@@ -1711,7 +1819,11 @@ func (d *Daemon) composeBridgeRuntime(state *bootState, cleanup *bootCleanup) *b
 		return nil
 	}
 
-	runtime := newBridgeRuntime(store, state.logger, d.now, d.bridgeSecretResolver)
+	resolver := d.bridgeSecretResolver
+	if !d.bridgeSecretResolverExplicit && state.providerVault != nil {
+		resolver = vaultBridgeSecretResolver{service: state.providerVault}
+	}
+	runtime := newBridgeRuntime(store, state.logger, d.now, resolver)
 	if runtime == nil {
 		return nil
 	}

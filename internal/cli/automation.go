@@ -14,18 +14,18 @@ import (
 )
 
 type automationTriggerCommandInput struct {
-	Name          string
-	ScopeRaw      string
-	EventRaw      string
-	WorkspaceRef  string
-	AgentName     string
-	Prompt        string
-	RetryRaw      string
-	FilterFlags   []string
-	Enabled       bool
-	WebhookID     string
-	EndpointSlug  string
-	WebhookSecret string
+	Name               string
+	ScopeRaw           string
+	EventRaw           string
+	WorkspaceRef       string
+	AgentName          string
+	Prompt             string
+	RetryRaw           string
+	FilterFlags        []string
+	Enabled            bool
+	WebhookID          string
+	EndpointSlug       string
+	WebhookSecretValue string
 }
 
 type automationJobUpdateInput struct {
@@ -190,7 +190,7 @@ func newAutomationJobsGetCommand(deps commandDeps) *cobra.Command {
 	return &cobra.Command{
 		Use:   "get <id>",
 		Short: "Show one automation job",
-		Args:  cobra.ExactArgs(1),
+		Args:  exactOneNonBlankArg(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := clientFromDeps(deps)
 			if err != nil {
@@ -220,7 +220,7 @@ func newAutomationJobsUpdateCommand(deps commandDeps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <id>",
 		Short: "Update an automation job",
-		Args:  cobra.ExactArgs(1),
+		Args:  exactOneNonBlankArg(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := clientFromDeps(deps)
 			if err != nil {
@@ -312,7 +312,7 @@ func newAutomationJobsDeleteCommand(deps commandDeps) *cobra.Command {
 	return &cobra.Command{
 		Use:   "delete <id>",
 		Short: "Delete an automation job",
-		Args:  cobra.ExactArgs(1),
+		Args:  exactOneNonBlankArg(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := clientFromDeps(deps)
 			if err != nil {
@@ -335,7 +335,7 @@ func newAutomationJobsTriggerCommand(deps commandDeps) *cobra.Command {
 	return &cobra.Command{
 		Use:   "trigger <id>",
 		Short: "Force an immediate automation job run",
-		Args:  cobra.ExactArgs(1),
+		Args:  exactOneNonBlankArg(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := clientFromDeps(deps)
 			if err != nil {
@@ -362,7 +362,7 @@ func newAutomationJobsHistoryCommand(deps commandDeps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "history <id>",
 		Short: "Show run history for one automation job",
-		Args:  cobra.ExactArgs(1),
+		Args:  exactOneNonBlankArg(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := clientFromDeps(deps)
 			if err != nil {
@@ -446,18 +446,18 @@ func newAutomationTriggersCommand(deps commandDeps) *cobra.Command {
 
 func newAutomationTriggersCreateCommand(deps commandDeps) *cobra.Command {
 	var (
-		name          string
-		scopeRaw      string
-		eventRaw      string
-		workspaceRef  string
-		agentName     string
-		prompt        string
-		retryRaw      string
-		filterFlags   []string
-		enabled       bool
-		webhookID     string
-		endpointSlug  string
-		webhookSecret string
+		name               string
+		scopeRaw           string
+		eventRaw           string
+		workspaceRef       string
+		agentName          string
+		prompt             string
+		retryRaw           string
+		filterFlags        []string
+		enabled            bool
+		webhookID          string
+		endpointSlug       string
+		webhookSecretValue string
 	)
 
 	cmd := &cobra.Command{
@@ -474,18 +474,18 @@ func newAutomationTriggersCreateCommand(deps commandDeps) *cobra.Command {
 				cmd,
 				client,
 				automationTriggerCommandInput{
-					Name:          name,
-					ScopeRaw:      scopeRaw,
-					EventRaw:      eventRaw,
-					WorkspaceRef:  workspaceRef,
-					AgentName:     agentName,
-					Prompt:        prompt,
-					RetryRaw:      retryRaw,
-					FilterFlags:   filterFlags,
-					Enabled:       enabled,
-					WebhookID:     webhookID,
-					EndpointSlug:  endpointSlug,
-					WebhookSecret: webhookSecret,
+					Name:               name,
+					ScopeRaw:           scopeRaw,
+					EventRaw:           eventRaw,
+					WorkspaceRef:       workspaceRef,
+					AgentName:          agentName,
+					Prompt:             prompt,
+					RetryRaw:           retryRaw,
+					FilterFlags:        filterFlags,
+					Enabled:            enabled,
+					WebhookID:          webhookID,
+					EndpointSlug:       endpointSlug,
+					WebhookSecretValue: webhookSecretValue,
 				},
 			)
 			if err != nil {
@@ -499,36 +499,66 @@ func newAutomationTriggersCreateCommand(deps commandDeps) *cobra.Command {
 			return writeCommandOutput(cmd, automationTriggerBundle(created))
 		},
 	}
-	cmd.Flags().StringVar(&name, "name", "", "Trigger name")
-	cmd.Flags().StringVar(&scopeRaw, "scope", "", "Trigger scope: global or workspace")
-	cmd.Flags().StringVar(&eventRaw, "event", "", "Trigger event name")
+	bindAutomationTriggerCreateFlags(
+		cmd,
+		&name,
+		&scopeRaw,
+		&eventRaw,
+		&workspaceRef,
+		&agentName,
+		&prompt,
+		&retryRaw,
+		&filterFlags,
+		&enabled,
+		&webhookID,
+		&endpointSlug,
+		&webhookSecretValue,
+	)
+	return cmd
+}
+
+func bindAutomationTriggerCreateFlags(
+	cmd *cobra.Command,
+	name *string,
+	scopeRaw *string,
+	eventRaw *string,
+	workspaceRef *string,
+	agentName *string,
+	prompt *string,
+	retryRaw *string,
+	filterFlags *[]string,
+	enabled *bool,
+	webhookID *string,
+	endpointSlug *string,
+	webhookSecretValue *string,
+) {
+	cmd.Flags().StringVar(name, "name", "", "Trigger name")
+	cmd.Flags().StringVar(scopeRaw, "scope", "", "Trigger scope: global or workspace")
+	cmd.Flags().StringVar(eventRaw, "event", "", "Trigger event name")
 	cmd.Flags().
-		StringVar(&workspaceRef, "workspace", "", "Workspace path, name, or ID (required when --scope=workspace)")
-	cmd.Flags().StringVar(&agentName, "agent", "", "Agent definition name")
-	cmd.Flags().StringVar(&prompt, "prompt", "", "Prompt template body")
+		StringVar(workspaceRef, "workspace", "", "Workspace path, name, or ID (required when --scope=workspace)")
+	cmd.Flags().StringVar(agentName, "agent", "", "Agent definition name")
+	cmd.Flags().StringVar(prompt, "prompt", "", "Prompt template body")
 	cmd.Flags().
-		StringArrayVar(&filterFlags, "filter", nil, "Exact-match filter(s): key=value or comma-separated key=value pairs")
+		StringArrayVar(filterFlags, "filter", nil, "Exact-match filter(s): key=value or comma-separated key=value pairs")
 	cmd.Flags().
-		StringVar(&retryRaw, "retry", "", `Retry policy: "none", "backoff", or "backoff:<max_retries>:<base_delay>"`)
-	cmd.Flags().BoolVar(&enabled, "enabled", false, "Create the trigger enabled or disabled")
-	cmd.Flags().
-		StringVar(&webhookID, "webhook-id", "", "Stable webhook identifier override for webhook events")
-	cmd.Flags().
-		StringVar(&endpointSlug, "endpoint-slug", "", "Public endpoint slug for webhook events")
-	cmd.Flags().StringVar(&webhookSecret, "webhook-secret", "", "Webhook secret for webhook events")
+		StringVar(retryRaw, "retry", "", `Retry policy: "none", "backoff", or "backoff:<max_retries>:<base_delay>"`)
+	cmd.Flags().BoolVar(enabled, "enabled", false, "Create the trigger enabled or disabled")
+	cmd.Flags().StringVar(webhookID, "webhook-id", "", "Stable webhook identifier override for webhook events")
+	cmd.Flags().StringVar(endpointSlug, "endpoint-slug", "", "Public endpoint slug for webhook events")
+	cmd.Flags().StringVar(webhookSecretValue, "webhook-secret-value", "", "Write-only webhook secret value")
 	mustMarkFlagRequired(cmd, "name")
 	mustMarkFlagRequired(cmd, "scope")
 	mustMarkFlagRequired(cmd, "event")
 	mustMarkFlagRequired(cmd, "agent")
 	mustMarkFlagRequired(cmd, "prompt")
-	return cmd
 }
 
 func newAutomationTriggersGetCommand(deps commandDeps) *cobra.Command {
 	return &cobra.Command{
 		Use:   "get <id>",
 		Short: "Show one automation trigger",
-		Args:  cobra.ExactArgs(1),
+		Args:  exactOneNonBlankArg(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := clientFromDeps(deps)
 			if err != nil {
@@ -546,23 +576,23 @@ func newAutomationTriggersGetCommand(deps commandDeps) *cobra.Command {
 
 func newAutomationTriggersUpdateCommand(deps commandDeps) *cobra.Command {
 	var (
-		name          string
-		agentName     string
-		workspaceRef  string
-		prompt        string
-		eventRaw      string
-		filterFlags   []string
-		retryRaw      string
-		enabled       bool
-		webhookID     string
-		endpointSlug  string
-		webhookSecret string
+		name               string
+		agentName          string
+		workspaceRef       string
+		prompt             string
+		eventRaw           string
+		filterFlags        []string
+		retryRaw           string
+		enabled            bool
+		webhookID          string
+		endpointSlug       string
+		webhookSecretValue string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "update <id>",
 		Short: "Update an automation trigger",
-		Args:  cobra.ExactArgs(1),
+		Args:  exactOneNonBlankArg(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := clientFromDeps(deps)
 			if err != nil {
@@ -573,17 +603,17 @@ func newAutomationTriggersUpdateCommand(deps commandDeps) *cobra.Command {
 				cmd,
 				client,
 				automationTriggerCommandInput{
-					Name:          name,
-					EventRaw:      eventRaw,
-					WorkspaceRef:  workspaceRef,
-					AgentName:     agentName,
-					Prompt:        prompt,
-					RetryRaw:      retryRaw,
-					FilterFlags:   filterFlags,
-					Enabled:       enabled,
-					WebhookID:     webhookID,
-					EndpointSlug:  endpointSlug,
-					WebhookSecret: webhookSecret,
+					Name:               name,
+					EventRaw:           eventRaw,
+					WorkspaceRef:       workspaceRef,
+					AgentName:          agentName,
+					Prompt:             prompt,
+					RetryRaw:           retryRaw,
+					FilterFlags:        filterFlags,
+					Enabled:            enabled,
+					WebhookID:          webhookID,
+					EndpointSlug:       endpointSlug,
+					WebhookSecretValue: webhookSecretValue,
 				},
 			)
 			if err != nil {
@@ -609,7 +639,8 @@ func newAutomationTriggersUpdateCommand(deps commandDeps) *cobra.Command {
 	cmd.Flags().BoolVar(&enabled, "enabled", false, "Update the enabled state")
 	cmd.Flags().StringVar(&webhookID, "webhook-id", "", "Update the stable webhook identifier")
 	cmd.Flags().StringVar(&endpointSlug, "endpoint-slug", "", "Update the webhook endpoint slug")
-	cmd.Flags().StringVar(&webhookSecret, "webhook-secret", "", "Update the webhook secret")
+	cmd.Flags().
+		StringVar(&webhookSecretValue, "webhook-secret-value", "", "Write-only webhook secret value")
 	return cmd
 }
 
@@ -617,7 +648,7 @@ func newAutomationTriggersDeleteCommand(deps commandDeps) *cobra.Command {
 	return &cobra.Command{
 		Use:   "delete <id>",
 		Short: "Delete an automation trigger",
-		Args:  cobra.ExactArgs(1),
+		Args:  exactOneNonBlankArg(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := clientFromDeps(deps)
 			if err != nil {
@@ -647,7 +678,7 @@ func newAutomationTriggersHistoryCommand(deps commandDeps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "history <id>",
 		Short: "Show run history for one automation trigger",
-		Args:  cobra.ExactArgs(1),
+		Args:  exactOneNonBlankArg(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := clientFromDeps(deps)
 			if err != nil {
@@ -725,7 +756,7 @@ func newAutomationRunsGetCommand(deps commandDeps) *cobra.Command {
 	return &cobra.Command{
 		Use:   "get <id>",
 		Short: "Show one automation run",
-		Args:  cobra.ExactArgs(1),
+		Args:  exactOneNonBlankArg(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := clientFromDeps(deps)
 			if err != nil {
@@ -1557,16 +1588,16 @@ func buildAutomationTriggerCreateRequest(
 	}
 
 	request := AutomationTriggerCreateRequest{
-		Scope:         scope,
-		Name:          strings.TrimSpace(input.Name),
-		AgentName:     strings.TrimSpace(input.AgentName),
-		WorkspaceID:   workspaceID,
-		Prompt:        strings.TrimSpace(input.Prompt),
-		Event:         strings.TrimSpace(input.EventRaw),
-		Filter:        filter,
-		WebhookID:     strings.TrimSpace(input.WebhookID),
-		EndpointSlug:  strings.TrimSpace(input.EndpointSlug),
-		WebhookSecret: strings.TrimSpace(input.WebhookSecret),
+		Scope:              scope,
+		Name:               strings.TrimSpace(input.Name),
+		AgentName:          strings.TrimSpace(input.AgentName),
+		WorkspaceID:        workspaceID,
+		Prompt:             strings.TrimSpace(input.Prompt),
+		Event:              strings.TrimSpace(input.EventRaw),
+		Filter:             filter,
+		WebhookID:          strings.TrimSpace(input.WebhookID),
+		EndpointSlug:       strings.TrimSpace(input.EndpointSlug),
+		WebhookSecretValue: input.WebhookSecretValue,
 	}
 	if cmd.Flags().Changed("enabled") {
 		request.Enabled = boolPointer(input.Enabled)
@@ -1630,8 +1661,8 @@ func buildAutomationTriggerUpdateRequest(
 	if cmd.Flags().Changed("endpoint-slug") {
 		request.EndpointSlug = stringPointer(strings.TrimSpace(input.EndpointSlug))
 	}
-	if cmd.Flags().Changed("webhook-secret") {
-		request.WebhookSecret = stringPointer(strings.TrimSpace(input.WebhookSecret))
+	if cmd.Flags().Changed("webhook-secret-value") {
+		request.WebhookSecretValue = stringPointer(input.WebhookSecretValue)
 	}
 	if !request.HasChanges() {
 		return AutomationTriggerUpdateRequest{}, errors.New(

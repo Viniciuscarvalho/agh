@@ -27,8 +27,17 @@ type handlerConfig struct {
 	toolApprovals   core.ToolApprovalIssuer
 	settings        core.SettingsService
 	settingsRestart core.SettingsRestartController
+	vault           core.VaultService
 	workspaces      core.WorkspaceService
 	agentCatalog    core.AgentCatalog
+	agentContext    core.AgentContextService
+	soulAuthoring   core.SoulAuthoringService
+	soulRefresher   core.SoulRefresher
+	heartbeatAuthor core.HeartbeatAuthoringService
+	heartbeatStatus core.HeartbeatStatusService
+	heartbeatWake   core.HeartbeatWakeService
+	sessionHealth   core.SessionHealthReader
+	wakeEvents      core.HeartbeatWakeEventReader
 	skillsRegistry  core.SkillsRegistry
 	memoryStore     *memory.Store
 	dreamTrigger    core.DreamTrigger
@@ -87,8 +96,17 @@ func newHandlers(cfg *handlerConfig) *Handlers {
 			ToolApprovals:                cfg.toolApprovals,
 			Settings:                     cfg.settings,
 			SettingsRestart:              cfg.settingsRestart,
+			Vault:                        cfg.vault,
 			Workspaces:                   cfg.workspaces,
 			AgentCatalog:                 cfg.agentCatalog,
+			AgentContextService:          cfg.agentContext,
+			SoulAuthoring:                cfg.soulAuthoring,
+			SoulRefresher:                cfg.soulRefresher,
+			HeartbeatAuthoring:           cfg.heartbeatAuthor,
+			HeartbeatStatus:              cfg.heartbeatStatus,
+			HeartbeatWake:                cfg.heartbeatWake,
+			SessionHealth:                cfg.sessionHealth,
+			HeartbeatWakeEvents:          cfg.wakeEvents,
 			SkillsRegistry:               cfg.skillsRegistry,
 			MemoryStore:                  cfg.memoryStore,
 			DreamTrigger:                 cfg.dreamTrigger,

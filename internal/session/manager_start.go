@@ -13,6 +13,7 @@ import (
 	"github.com/pedronauck/agh/internal/acp"
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	hookspkg "github.com/pedronauck/agh/internal/hooks"
+	"github.com/pedronauck/agh/internal/soul"
 	"github.com/pedronauck/agh/internal/store"
 	"github.com/pedronauck/agh/internal/workref"
 	workspacepkg "github.com/pedronauck/agh/internal/workspace"
@@ -40,6 +41,10 @@ type sessionStartSpec struct {
 	stopReason             store.StopReason
 	stopDetail             string
 	failure                *store.SessionFailure
+	soulSnapshotID         string
+	soulDigest             string
+	parentSoulDigest       string
+	soulSnapshot           *soul.Snapshot
 }
 
 type sessionStartRuntime struct {
@@ -95,6 +100,7 @@ func (m *Manager) prepareCreateStart(ctx context.Context, opts CreateOpts) (sess
 		promptOverlay:     strings.TrimSpace(opts.PromptOverlay),
 		sessionType:       normalizeSessionType(opts.Type),
 		lineage:           lineage,
+		parentSoulDigest:  strings.TrimSpace(opts.ParentSoulDigest),
 		postEvent:         hookspkg.HookSessionPostCreate,
 		startAction:       "create",
 		cleanupSessionDir: true,
@@ -132,6 +138,9 @@ func (m *Manager) prepareResumeStart(ctx context.Context, meta store.SessionMeta
 		stopReason:             sessionMetaStopReason(meta),
 		stopDetail:             strings.TrimSpace(meta.StopDetail),
 		failure:                store.CloneSessionFailure(meta.Failure),
+		soulSnapshotID:         strings.TrimSpace(meta.SoulSnapshotID),
+		soulDigest:             strings.TrimSpace(meta.SoulDigest),
+		parentSoulDigest:       strings.TrimSpace(meta.ParentSoulDigest),
 	}, nil
 }
 
@@ -177,8 +186,13 @@ func (m *Manager) startSession(ctx context.Context, spec *sessionStartSpec) (_ *
 	}()
 
 	session := spec.newStartingSession(runtime.agent, storage, now)
+	defer cleanupProviderRedactionsOnStartError(session, &err)
 
 	startOpts := m.sessionStartOpts(spec, session, runtime.agent, runtime.mcpServers)
+	startOpts, err = m.prepareProviderForStart(ctx, session, runtime.agent, startOpts)
+	if err != nil {
+		return nil, m.failSessionStart(ctx, spec, session, "session provider startup failed", err)
+	}
 	startOpts, err = m.prepareSandboxForStart(ctx, spec, session, startOpts)
 	if err != nil {
 		return nil, m.failSessionStart(ctx, spec, session, "session sandbox startup failed", err)
@@ -211,6 +225,12 @@ func (m *Manager) startSession(ctx context.Context, spec *sessionStartSpec) (_ *
 	}
 
 	return session, nil
+}
+
+func cleanupProviderRedactionsOnStartError(session *Session, err *error) {
+	if err != nil && *err != nil {
+		session.clearProviderSecretRedactions()
+	}
 }
 
 func (m *Manager) failSessionStart(
@@ -260,7 +280,11 @@ func (s *sessionStartSpec) startupSessionContext(updatedAt time.Time) hookspkg.S
 		Workspace:    ref.Workspace,
 		ACPSessionID: strings.TrimSpace(s.acpSessionID),
 		State:        string(StateStarting),
-		CreatedAt:    s.createdAt,
+		SessionSoulContext: hookSessionSoulContext(
+			s.soulSnapshotID,
+			s.soulDigest,
+		),
+		CreatedAt: s.createdAt,
 	}
 	if s.includePromptUpdatedAt {
 		ctx.UpdatedAt = updatedAt
@@ -271,16 +295,17 @@ func (s *sessionStartSpec) startupSessionContext(updatedAt time.Time) hookspkg.S
 func (s *sessionStartSpec) startupPromptContext(updatedAt time.Time) StartupPromptContext {
 	ref := workref.NewRoot(s.workspace.ID, s.workspace.RootDir)
 	return StartupPromptContext{
-		SessionID:   strings.TrimSpace(s.sessionID),
-		SessionName: strings.TrimSpace(s.sessionName),
-		AgentName:   strings.TrimSpace(s.agentName),
-		Provider:    strings.TrimSpace(s.provider),
-		WorkspaceID: ref.WorkspaceID,
-		Workspace:   ref.Workspace,
-		Channel:     strings.TrimSpace(s.channel),
-		SessionType: normalizeSessionType(s.sessionType),
-		CreatedAt:   s.createdAt,
-		UpdatedAt:   updatedAt,
+		SessionID:    strings.TrimSpace(s.sessionID),
+		SessionName:  strings.TrimSpace(s.sessionName),
+		AgentName:    strings.TrimSpace(s.agentName),
+		Provider:     strings.TrimSpace(s.provider),
+		WorkspaceID:  ref.WorkspaceID,
+		Workspace:    ref.Workspace,
+		Channel:      strings.TrimSpace(s.channel),
+		SessionType:  normalizeSessionType(s.sessionType),
+		SoulSnapshot: cloneSoulSnapshotPointer(s.soulSnapshot),
+		CreatedAt:    s.createdAt,
+		UpdatedAt:    updatedAt,
 	}
 }
 
@@ -292,6 +317,10 @@ func (m *Manager) prepareSessionStartRuntime(
 	agentDef, err := m.resolveWorkspaceAgent(spec.agentName, &spec.workspace)
 	if err != nil {
 		return sessionStartRuntime{}, fmt.Errorf("session: resolve workspace agent %q: %w", spec.agentName, err)
+	}
+
+	if err := m.prepareSessionStartSoul(ctx, spec, agentDef, updatedAt); err != nil {
+		return sessionStartRuntime{}, err
 	}
 
 	startupCtx := spec.startupPromptContext(updatedAt)
@@ -408,6 +437,9 @@ func (s *sessionStartSpec) newStartingSession(
 		failure:              store.CloneSessionFailure(s.failure),
 		ACPSessionID:         s.acpSessionID,
 		Sandbox:              cloneSessionSandboxMeta(s.sandbox),
+		SoulSnapshotID:       s.soulSnapshotID,
+		SoulDigest:           s.soulDigest,
+		ParentSoulDigest:     s.parentSoulDigest,
 		CreatedAt:            createdAt,
 		UpdatedAt:            now,
 		sessionDir:           storage.sessionDir,

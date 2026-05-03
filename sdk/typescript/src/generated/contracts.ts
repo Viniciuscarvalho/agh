@@ -2,6 +2,20 @@
 import type { ISODateTime, JSONValue } from "../base-types.js";
 
 export type HostAPIMethod =
+  | "agents/heartbeat/delete"
+  | "agents/heartbeat/get"
+  | "agents/heartbeat/history"
+  | "agents/heartbeat/put"
+  | "agents/heartbeat/rollback"
+  | "agents/heartbeat/status"
+  | "agents/heartbeat/validate"
+  | "agents/heartbeat/wake"
+  | "agents/soul/delete"
+  | "agents/soul/get"
+  | "agents/soul/history"
+  | "agents/soul/put"
+  | "agents/soul/rollback"
+  | "agents/soul/validate"
   | "automation/jobs"
   | "automation/jobs/create"
   | "automation/jobs/delete"
@@ -34,9 +48,12 @@ export type HostAPIMethod =
   | "sandbox/list"
   | "sessions/create"
   | "sessions/events"
+  | "sessions/health/get"
   | "sessions/list"
   | "sessions/prompt"
+  | "sessions/soul/refresh"
   | "sessions/status"
+  | "sessions/status/get"
   | "sessions/stop"
   | "skills/list"
   | "tasks"
@@ -94,6 +111,12 @@ export type HookEvent =
   | "agent.spawned"
   | "agent.crashed"
   | "agent.stopped"
+  | "agent.soul.snapshot.resolved"
+  | "agent.soul.mutation.after"
+  | "agent.heartbeat.policy.resolved"
+  | "agent.heartbeat.wake.before"
+  | "agent.heartbeat.wake.after"
+  | "session.health.update.after"
   | "turn.start"
   | "turn.end"
   | "message.start"
@@ -138,6 +161,8 @@ export interface AgentCrashedPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   command?: string;
@@ -147,6 +172,129 @@ export interface AgentCrashedPayload {
   provider?: string;
   model?: string;
   error?: string;
+}
+
+export interface AgentHeartbeatDeleteParams {
+  workspace_id?: string;
+  agent_name: string;
+  expected_digest: string;
+}
+
+export interface AgentHeartbeatGetParams {
+  workspace_id?: string;
+  agent_name: string;
+}
+
+export interface AgentHeartbeatHistoryParams {
+  workspace_id?: string;
+  agent_name: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface AgentHeartbeatPolicyResolvedPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  workspace_id?: string;
+  agent_name?: string;
+  source_path?: string;
+  snapshot_id?: string;
+  digest?: string;
+  config_digest?: string;
+  validation_status?: string;
+  valid: boolean;
+  active: boolean;
+  reason?: string;
+  summary?: string;
+}
+
+export interface AgentHeartbeatPutParams {
+  workspace_id?: string;
+  agent_name: string;
+  body: string;
+  expected_digest: string;
+  idempotency_key?: string;
+}
+
+export interface AgentHeartbeatRollbackParams {
+  workspace_id?: string;
+  agent_name: string;
+  revision_id?: string;
+  target_digest?: string;
+  expected_digest: string;
+  idempotency_key?: string;
+}
+
+export interface AgentHeartbeatStatusParams {
+  workspace_id?: string;
+  agent_name: string;
+  session_id?: string;
+  include_session_health?: boolean;
+  include_recent_wake_events?: boolean;
+}
+
+export interface AgentHeartbeatValidateParams {
+  workspace_id?: string;
+  agent_name?: string;
+  body: string;
+}
+
+export interface AgentHeartbeatWakeAfterPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  session_id?: string;
+  session_name?: string;
+  session_type?: string;
+  agent_name?: string;
+  workspace_id?: string;
+  workspace?: string;
+  acp_session_id?: string;
+  state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
+  wake_event_id?: string;
+  result?: string;
+  reason?: string;
+  policy_snapshot_id?: string;
+  policy_digest?: string;
+  config_digest?: string;
+  synthetic_prompt_id?: string;
+  source?: string;
+}
+
+export interface AgentHeartbeatWakeBeforePayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  session_id?: string;
+  session_name?: string;
+  session_type?: string;
+  agent_name?: string;
+  workspace_id?: string;
+  workspace?: string;
+  acp_session_id?: string;
+  state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
+  policy_snapshot_id?: string;
+  policy_digest?: string;
+  config_digest?: string;
+  source?: string;
+  dry_run?: boolean;
+}
+
+export type HeartbeatWakeSource = "scheduler" | "manual" | "harness_reentry";
+
+export interface AgentHeartbeatWakeParams {
+  workspace_id?: string;
+  agent_name: string;
+  session_id: string;
+  source: HeartbeatWakeSource;
+  dry_run?: boolean;
+  idempotency_key?: string;
 }
 
 export interface AgentLifecyclePatch {
@@ -164,6 +312,8 @@ export interface AgentLifecyclePayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   command?: string;
@@ -186,6 +336,8 @@ export interface AgentPreStartPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   command?: string;
@@ -193,6 +345,228 @@ export interface AgentPreStartPayload {
   cwd?: string;
   provider?: string;
   model?: string;
+}
+
+export interface AgentSoulDeleteParams {
+  workspace_id?: string;
+  agent_name: string;
+  expected_digest: string;
+}
+
+export interface AgentSoulDeleteRequest {
+  workspace_id?: string;
+  agent_name: string;
+  expected_digest: string;
+}
+
+export interface AgentSoulGetParams {
+  workspace_id?: string;
+  agent_name: string;
+}
+
+export interface AgentSoulHistoryParams {
+  workspace_id?: string;
+  agent_name: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface AgentSoulHistoryRequest {
+  workspace_id?: string;
+  agent_name: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export type AgentSoulRevisionAction = "put" | "delete" | "rollback";
+
+export type AuthoredDiagnosticSeverity = "info" | "warning" | "error";
+
+export interface AuthoredContextDiagnosticPayload {
+  code: string;
+  severity: AuthoredDiagnosticSeverity;
+  message: string;
+  field?: string;
+  section?: string;
+  source_path?: string;
+  line?: number;
+  column?: number;
+  owner_surface?: string;
+}
+
+export interface AuthoredContextActorPayload {
+  kind: string;
+  ref?: string;
+}
+
+export interface AgentSoulRevisionPayload {
+  id: string;
+  agent_name: string;
+  source_path: string;
+  action: AgentSoulRevisionAction;
+  previous_digest?: string;
+  new_digest?: string;
+  diagnostics?: AuthoredContextDiagnosticPayload[];
+  actor: AuthoredContextActorPayload;
+  origin?: AuthoredContextActorPayload;
+  created_at: ISODateTime;
+}
+
+export interface AgentSoulHistoryResponse {
+  revisions: AgentSoulRevisionPayload[];
+  next_cursor?: string;
+}
+
+export interface AgentSoulMutationAfterPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  workspace_id?: string;
+  agent_name?: string;
+  source_path?: string;
+  snapshot_id?: string;
+  digest?: string;
+  config_digest?: string;
+  validation_status?: string;
+  valid: boolean;
+  active: boolean;
+  reason?: string;
+  actor_kind?: string;
+  actor_ref?: string;
+  origin_kind?: string;
+  origin_ref?: string;
+  revision_id?: string;
+  action?: string;
+  previous_digest?: string;
+  new_digest?: string;
+}
+
+export type AuthoredValidationStatus = "missing" | "inactive" | "valid" | "invalid";
+
+export interface AgentSoulFrontmatterPayload {
+  version?: string;
+  role?: string;
+  tone?: string[];
+  principles?: string[];
+  constraints?: string[];
+  collaboration?: string[];
+  memory_policy?: string[];
+  tags?: string[];
+}
+
+export interface AuthoredContextLimitsPayload {
+  max_body_bytes: number;
+  context_projection_bytes?: number;
+  max_bytes?: number;
+}
+
+export interface AgentSoulConfigProvenancePayload {
+  digest: string;
+  source?: string;
+  enabled: boolean;
+  max_body_bytes: number;
+  context_projection_bytes: number;
+}
+
+export interface AgentSoulPayload {
+  agent_name?: string;
+  enabled: boolean;
+  present: boolean;
+  active: boolean;
+  valid: boolean;
+  validation_status: AuthoredValidationStatus;
+  snapshot_id?: string;
+  revision_id?: string;
+  digest?: string;
+  source_path?: string;
+  frontmatter: AgentSoulFrontmatterPayload;
+  body?: string;
+  truncated?: boolean;
+  limits: AuthoredContextLimitsPayload;
+  config_provenance: AgentSoulConfigProvenancePayload;
+  diagnostics?: AuthoredContextDiagnosticPayload[];
+  created_at?: ISODateTime;
+}
+
+export interface AgentSoulMutationResponse {
+  soul: AgentSoulPayload;
+  revision: AgentSoulRevisionPayload;
+}
+
+export interface AgentSoulPutParams {
+  workspace_id?: string;
+  agent_name: string;
+  body: string;
+  expected_digest: string;
+  idempotency_key?: string;
+}
+
+export interface AgentSoulPutRequest {
+  workspace_id?: string;
+  agent_name: string;
+  body: string;
+  expected_digest: string;
+  idempotency_key?: string;
+}
+
+export interface AgentSoulRollbackParams {
+  workspace_id?: string;
+  agent_name: string;
+  revision_id: string;
+  expected_digest: string;
+  idempotency_key?: string;
+}
+
+export interface AgentSoulRollbackRequest {
+  workspace_id?: string;
+  agent_name: string;
+  revision_id: string;
+  expected_digest: string;
+  idempotency_key?: string;
+}
+
+export interface AgentSoulSectionPayload {
+  enabled: boolean;
+  present: boolean;
+  active: boolean;
+  valid: boolean;
+  validation_status?: AuthoredValidationStatus;
+  snapshot_id?: string;
+  digest?: string;
+  config_digest?: string;
+  source_path?: string;
+  role?: string;
+  tone: string[];
+  principles: string[];
+  truncated?: boolean;
+  max_bytes?: number;
+  max_body_bytes?: number;
+}
+
+export interface AgentSoulSnapshotResolvedPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  workspace_id?: string;
+  agent_name?: string;
+  source_path?: string;
+  snapshot_id?: string;
+  digest?: string;
+  config_digest?: string;
+  validation_status?: string;
+  valid: boolean;
+  active: boolean;
+  reason?: string;
+}
+
+export interface AgentSoulValidateParams {
+  workspace_id?: string;
+  agent_name?: string;
+  body?: string;
+}
+
+export interface AgentSoulValidateRequest {
+  workspace_id?: string;
+  agent_name?: string;
+  body?: string;
 }
 
 export interface AgentSpawnedPatch {
@@ -210,6 +584,8 @@ export interface AgentSpawnedPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   command?: string;
@@ -244,6 +620,8 @@ export interface AgentStoppedPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   command?: string;
@@ -260,6 +638,30 @@ export interface ArtifactRef {
   name?: string;
   mime_type?: string;
   bytes?: number;
+}
+
+export interface AuthoredContextObservationPatch {
+  labels?: Record<string, string>;
+}
+
+export interface AuthoredContextProvenance {
+  workspace_id?: string;
+  agent_name?: string;
+  source_path?: string;
+  snapshot_id?: string;
+  digest?: string;
+  config_digest?: string;
+  validation_status?: string;
+  valid: boolean;
+  active: boolean;
+  reason?: string;
+}
+
+export interface AuthoredMutationProvenance {
+  actor_kind?: string;
+  actor_ref?: string;
+  origin_kind?: string;
+  origin_ref?: string;
 }
 
 export interface AutomationFirePatch {
@@ -425,7 +827,7 @@ export interface AutomationTriggerCreateParams {
   fire_limit?: FireLimitConfig;
   webhook_id?: string;
   endpoint_slug?: string;
-  webhook_secret?: string;
+  webhook_secret_value?: string;
 }
 
 export interface AutomationTriggerFireParams {
@@ -475,7 +877,7 @@ export interface AutomationTriggerUpdateParams {
   fire_limit?: FireLimitConfig;
   webhook_id?: string;
   endpoint_slug?: string;
-  webhook_secret?: string;
+  webhook_secret_value?: string;
 }
 
 export interface AutomationTriggersParams {
@@ -585,6 +987,8 @@ export interface ContextCompactPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   turn_id?: string;
@@ -621,6 +1025,8 @@ export interface ContextPostCompactPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   turn_id?: string;
@@ -649,6 +1055,8 @@ export interface ContextPreCompactPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   turn_id?: string;
@@ -897,6 +1305,8 @@ export interface EventPostRecordPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   turn_id?: string;
@@ -920,6 +1330,8 @@ export interface EventPreRecordPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   turn_id?: string;
@@ -943,6 +1355,8 @@ export interface EventRecordPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   turn_id?: string;
@@ -1008,6 +1422,289 @@ export interface ExtensionToolCallResponse {
   result: ToolResult;
 }
 
+export interface HeartbeatDeleteRequest {
+  workspace_id?: string;
+  agent_name: string;
+  expected_digest: string;
+}
+
+export interface HeartbeatHistoryRequest {
+  workspace_id?: string;
+  agent_name: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export type HeartbeatRevisionOperation = "write" | "delete" | "rollback";
+
+export type HeartbeatActorKind = "user" | "agent" | "extension" | "system";
+
+export interface HeartbeatActorPayload {
+  kind: HeartbeatActorKind;
+  ref?: string;
+}
+
+export interface HeartbeatRevisionPayload {
+  id: string;
+  agent_name: string;
+  source_path: string;
+  operation: HeartbeatRevisionOperation;
+  previous_digest?: string;
+  new_digest?: string;
+  new_snapshot_id?: string;
+  actor: HeartbeatActorPayload;
+  created_at: ISODateTime;
+}
+
+export interface HeartbeatHistoryResponse {
+  revisions: HeartbeatRevisionPayload[];
+  next_cursor?: string;
+}
+
+export interface HeartbeatTimeWindowPayload {
+  timezone: string;
+  start: string;
+  end: string;
+}
+
+export interface HeartbeatFrontmatterPreferencesPayload {
+  min_interval?: string;
+  active_hours?: HeartbeatTimeWindowPayload[];
+  quiet_windows?: HeartbeatTimeWindowPayload[];
+}
+
+export interface HeartbeatContextProjectionPayload {
+  include?: string[];
+}
+
+export interface HeartbeatFrontmatterPayload {
+  version: number;
+  enabled: boolean;
+  summary?: string;
+  preferences: HeartbeatFrontmatterPreferencesPayload;
+  context: HeartbeatContextProjectionPayload;
+}
+
+export interface HeartbeatPreferencesPayload {
+  min_interval: string;
+  active_hours?: HeartbeatTimeWindowPayload[];
+  quiet_windows?: HeartbeatTimeWindowPayload[];
+  context: HeartbeatContextProjectionPayload;
+}
+
+export interface HeartbeatConfigSubsetPayload {
+  enabled: boolean;
+  max_body_bytes: number;
+  context_projection_bytes: number;
+  min_interval: string;
+  default_interval: string;
+  wake_cooldown: string;
+  max_wakes_per_cycle: number;
+  active_session_only: boolean;
+  allow_active_hours_preferences: boolean;
+  wake_event_retention: string;
+  session_health_stale_after: string;
+  session_health_hook_min_interval: string;
+}
+
+export interface HeartbeatConfigProvenancePayload {
+  digest: string;
+  subset: HeartbeatConfigSubsetPayload;
+}
+
+export interface HeartbeatPromptContributionPayload {
+  active: boolean;
+  digest?: string;
+  config_digest?: string;
+  source_path?: string;
+  summary?: string;
+  guidance_markdown?: string;
+  preferences: HeartbeatPreferencesPayload;
+  truncated: boolean;
+  max_bytes: number;
+  max_body_bytes: number;
+  diagnostics?: AuthoredContextDiagnosticPayload[];
+  context: HeartbeatContextProjectionPayload;
+}
+
+export interface HeartbeatPolicyPayload {
+  agent_name?: string;
+  enabled: boolean;
+  present: boolean;
+  active: boolean;
+  valid: boolean;
+  validation_status: AuthoredValidationStatus;
+  source_path?: string;
+  digest?: string;
+  config_digest?: string;
+  snapshot_id?: string;
+  schema_version: number;
+  summary?: string;
+  guidance_markdown?: string;
+  frontmatter: HeartbeatFrontmatterPayload;
+  preferences: HeartbeatPreferencesPayload;
+  config_provenance: HeartbeatConfigProvenancePayload;
+  prompt: HeartbeatPromptContributionPayload;
+  diagnostics?: AuthoredContextDiagnosticPayload[];
+  limits: AuthoredContextLimitsPayload;
+  created_at?: ISODateTime;
+}
+
+export interface HeartbeatMutationResponse {
+  heartbeat: HeartbeatPolicyPayload;
+  revision: HeartbeatRevisionPayload;
+}
+
+export interface HeartbeatPutRequest {
+  workspace_id?: string;
+  agent_name: string;
+  body: string;
+  expected_digest: string;
+  idempotency_key?: string;
+}
+
+export interface HeartbeatRollbackRequest {
+  workspace_id?: string;
+  agent_name: string;
+  revision_id?: string;
+  target_digest?: string;
+  expected_digest: string;
+  idempotency_key?: string;
+}
+
+export interface HeartbeatStatusRequest {
+  workspace_id?: string;
+  agent_name: string;
+  session_id?: string;
+  include_session_health?: boolean;
+  include_recent_wake_events?: boolean;
+}
+
+export type HeartbeatWakeResult = "sent" | "skipped" | "coalesced" | "rate_limited" | "failed";
+
+export type HeartbeatWakeReason =
+  | "wake_sent"
+  | "heartbeat_disabled"
+  | "heartbeat_invalid"
+  | "heartbeat_no_policy"
+  | "heartbeat_rate_limited"
+  | "heartbeat_no_eligible_session"
+  | "cooldown_active"
+  | "quiet_window"
+  | "session_not_found"
+  | "session_unhealthy"
+  | "session_not_attachable"
+  | "session_prompt_active"
+  | "session_prompt_active_race"
+  | "synthetic_prompt_failed"
+  | "wake_coalesced";
+
+export interface HeartbeatWakeStatePayload {
+  workspace_id?: string;
+  agent_name?: string;
+  session_id: string;
+  policy_snapshot_id?: string;
+  last_wake_at?: ISODateTime;
+  next_allowed_at?: ISODateTime;
+  coalesced_count: number;
+  last_result: HeartbeatWakeResult;
+  last_reason?: HeartbeatWakeReason;
+  updated_at: ISODateTime;
+}
+
+export interface HeartbeatWakeEventPayload {
+  id: string;
+  workspace_id?: string;
+  agent_name?: string;
+  session_id?: string;
+  policy_snapshot_id?: string;
+  source: HeartbeatWakeSource;
+  result: HeartbeatWakeResult;
+  reason: HeartbeatWakeReason;
+  synthetic_prompt_id?: string;
+  created_at: ISODateTime;
+  expires_at: ISODateTime;
+}
+
+export type SessionHealthState = "idle" | "prompting" | "stopped" | "detached";
+
+export type SessionHealthStatus = "healthy" | "degraded" | "stale" | "dead" | "unknown";
+
+export type SessionHealthIneligibilityReason =
+  | "session_prompt_active"
+  | "session_not_attachable"
+  | "session_unhealthy"
+  | "session_health_stale"
+  | "session_health_hung"
+  | "session_health_dead"
+  | "session_health_unknown";
+
+export interface SessionHealthPayload {
+  session_id: string;
+  workspace_id: string;
+  agent_name: string;
+  state: SessionHealthState;
+  health: SessionHealthStatus;
+  active_prompt: boolean;
+  attachable: boolean;
+  eligible_for_wake: boolean;
+  ineligibility_reason?: SessionHealthIneligibilityReason;
+  last_activity_at?: ISODateTime;
+  last_presence_at?: ISODateTime;
+  last_error?: string;
+  updated_at: ISODateTime;
+}
+
+export interface HeartbeatStatusResponse {
+  agent_name: string;
+  source_path?: string;
+  enabled: boolean;
+  present: boolean;
+  active: boolean;
+  valid: boolean;
+  validation_status: AuthoredValidationStatus;
+  digest?: string;
+  config_digest?: string;
+  snapshot_id?: string;
+  summary?: string;
+  preferences: HeartbeatPreferencesPayload;
+  diagnostics?: AuthoredContextDiagnosticPayload[];
+  wake_state?: HeartbeatWakeStatePayload;
+  wake_events?: HeartbeatWakeEventPayload[];
+  session_health?: SessionHealthPayload;
+  revision_cursor?: string;
+}
+
+export interface HeartbeatValidateRequest {
+  workspace_id?: string;
+  agent_name?: string;
+  body: string;
+}
+
+export interface HeartbeatWakeDecisionPayload {
+  wake_event_id?: string;
+  result: HeartbeatWakeResult;
+  reason: HeartbeatWakeReason;
+  policy_snapshot_id?: string;
+  policy_digest?: string;
+  config_digest?: string;
+  synthetic_prompt_id?: string;
+  diagnostics?: AuthoredContextDiagnosticPayload[];
+}
+
+export interface HeartbeatWakeRequest {
+  workspace_id?: string;
+  agent_name: string;
+  session_id: string;
+  source: HeartbeatWakeSource;
+  dry_run?: boolean;
+  idempotency_key?: string;
+}
+
+export interface HeartbeatWakeResponse {
+  decision: HeartbeatWakeDecisionPayload;
+}
+
 export type HookMode = "sync" | "async";
 
 export interface HookMatcher {
@@ -1047,10 +1744,11 @@ export interface HookDecl {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
+  secret_env?: Record<string, string>;
   metadata?: Record<string, string>;
   timeout?: number;
-  priority?: number;
   enabled?: boolean;
+  priority?: number;
   source: HookSource;
   required?: boolean;
 }
@@ -1224,6 +1922,8 @@ export interface InputPreSubmitPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   turn_id?: string;
@@ -1299,6 +1999,8 @@ export interface MessageDeltaPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   turn_id?: string;
@@ -1328,6 +2030,8 @@ export interface MessageEndPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   turn_id?: string;
@@ -1357,6 +2061,8 @@ export interface MessagePayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   turn_id?: string;
@@ -1386,6 +2092,8 @@ export interface MessageStartPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   turn_id?: string;
@@ -1607,6 +2315,8 @@ export interface PermissionDeniedPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   turn_id?: string;
@@ -1645,6 +2355,8 @@ export interface PermissionRequestPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   turn_id?: string;
@@ -1669,6 +2381,8 @@ export interface PermissionResolutionPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   turn_id?: string;
@@ -1694,6 +2408,8 @@ export interface PermissionResolvedPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   turn_id?: string;
@@ -1733,6 +2449,8 @@ export interface PromptPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   turn_id?: string;
@@ -1874,6 +2592,7 @@ export interface SandboxProfilePayload {
   runtime_root?: string;
   destroy_on_stop?: boolean;
   env?: Record<string, string>;
+  secret_env?: Record<string, string>;
 }
 
 export interface SandboxPreparePayload {
@@ -1887,6 +2606,8 @@ export interface SandboxPreparePayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   sandbox_id?: string;
@@ -1916,6 +2637,8 @@ export interface SandboxReadyPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   sandbox_id?: string;
@@ -1942,6 +2665,8 @@ export interface SandboxStopPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   sandbox_id?: string;
@@ -1968,6 +2693,8 @@ export interface SandboxSyncAfterPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   sandbox_id?: string;
@@ -2000,6 +2727,8 @@ export interface SandboxSyncBeforePayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   sandbox_id?: string;
@@ -2024,6 +2753,8 @@ export interface SessionContext {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
 }
@@ -2059,6 +2790,49 @@ export interface SessionEventsParams {
   since: ISODateTime;
 }
 
+export interface SessionHealthGetParams {
+  session_id: string;
+}
+
+export interface SessionHealthResponse {
+  health: SessionHealthPayload;
+}
+
+export interface SessionHealthUpdateAfterPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  session_id?: string;
+  session_name?: string;
+  session_type?: string;
+  agent_name?: string;
+  workspace_id?: string;
+  workspace?: string;
+  acp_session_id?: string;
+  state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
+  health?: string;
+  active_prompt?: boolean;
+  attachable?: boolean;
+  eligible_for_wake?: boolean;
+  ineligibility_reason?: string;
+  last_activity_at: ISODateTime;
+  last_presence_at: ISODateTime;
+  last_error?: string;
+}
+
+export interface SessionInspectResponse {
+  session_id: string;
+  health: SessionHealthPayload;
+  wake_state?: HeartbeatWakeStatePayload;
+  wake_events?: HeartbeatWakeEventPayload[];
+  policy_digest?: string;
+  config_digest?: string;
+  diagnostics?: AuthoredContextDiagnosticPayload[];
+}
+
 export interface SessionLifecyclePayload {
   event: HookEvent;
   timestamp: ISODateTime;
@@ -2070,6 +2844,8 @@ export interface SessionLifecyclePayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
 }
@@ -2095,6 +2871,8 @@ export interface SessionPostCreatePayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
 }
@@ -2120,6 +2898,8 @@ export interface SessionPostResumePayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
 }
@@ -2145,6 +2925,8 @@ export interface SessionPostStopPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
 }
@@ -2160,6 +2942,8 @@ export interface SessionPreCreatePayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
 }
@@ -2185,6 +2969,8 @@ export interface SessionPreResumePayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
 }
@@ -2210,12 +2996,25 @@ export interface SessionPreStopPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
 }
 
 export interface SessionPromptResult {
   turn_id: string;
+}
+
+export interface SessionSoulRefreshParams {
+  session_id: string;
+  expected_digest: string;
+  idempotency_key?: string;
+}
+
+export interface SessionSoulRefreshRequest {
+  expected_digest: string;
+  idempotency_key?: string;
 }
 
 export type State = "starting" | "active" | "stopping" | "stopped";
@@ -2244,6 +3043,24 @@ export interface SessionStatus {
   stop_detail?: string;
   acp_session_id?: string;
   created_at: ISODateTime;
+  updated_at: ISODateTime;
+}
+
+export interface SessionStatusGetParams {
+  session_id: string;
+}
+
+export interface SessionStatusResponse {
+  session_id: string;
+  workspace_id: string;
+  agent_name: string;
+  state: SessionHealthState;
+  health: SessionHealthStatus;
+  active_prompt: boolean;
+  attachable: boolean;
+  eligible_for_wake: boolean;
+  ineligibility_reason?: SessionHealthIneligibilityReason;
+  wake_state?: HeartbeatWakeStatePayload;
   updated_at: ISODateTime;
 }
 
@@ -2311,6 +3128,9 @@ export interface SpawnContext {
   run_id?: string;
   workflow_id?: string;
   coordination_channel_id?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
+  parent_soul_digest?: string;
 }
 
 export interface SpawnCreatePatch {
@@ -2339,6 +3159,9 @@ export interface SpawnCreatedPayload {
   run_id?: string;
   workflow_id?: string;
   coordination_channel_id?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
+  parent_soul_digest?: string;
   parent_permissions?: PermissionSet;
   child_permissions?: PermissionSet;
   stop_reason?: string;
@@ -2363,6 +3186,9 @@ export interface SpawnLifecyclePayload {
   run_id?: string;
   workflow_id?: string;
   coordination_channel_id?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
+  parent_soul_digest?: string;
   parent_permissions?: PermissionSet;
   child_permissions?: PermissionSet;
   stop_reason?: string;
@@ -2391,6 +3217,9 @@ export interface SpawnParentStoppedPayload {
   run_id?: string;
   workflow_id?: string;
   coordination_channel_id?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
+  parent_soul_digest?: string;
   parent_permissions?: PermissionSet;
   child_permissions?: PermissionSet;
   stop_reason?: string;
@@ -2415,6 +3244,9 @@ export interface SpawnPreCreatePayload {
   run_id?: string;
   workflow_id?: string;
   coordination_channel_id?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
+  parent_soul_digest?: string;
   parent_permissions?: PermissionSet;
   child_permissions?: PermissionSet;
   denied?: boolean;
@@ -2438,6 +3270,9 @@ export interface SpawnReapedPayload {
   run_id?: string;
   workflow_id?: string;
   coordination_channel_id?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
+  parent_soul_digest?: string;
   parent_permissions?: PermissionSet;
   child_permissions?: PermissionSet;
   stop_reason?: string;
@@ -2462,6 +3297,9 @@ export interface SpawnTTLExpiredPayload {
   run_id?: string;
   workflow_id?: string;
   coordination_channel_id?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
+  parent_soul_digest?: string;
   parent_permissions?: PermissionSet;
   child_permissions?: PermissionSet;
   stop_reason?: string;
@@ -2918,6 +3756,8 @@ export interface TaskRunCompletedPayload {
   origin_ref?: string;
   task_status?: string;
   run_status?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   attempt?: number;
   lease_until: ISODateTime;
   release_reason?: string;
@@ -2943,6 +3783,8 @@ export interface TaskRunContext {
   origin_ref?: string;
   task_status?: string;
   run_status?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   attempt?: number;
   lease_until: ISODateTime;
   release_reason?: string;
@@ -3003,6 +3845,8 @@ export interface TaskRunEnqueuedPayload {
   origin_ref?: string;
   task_status?: string;
   run_status?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   attempt?: number;
   lease_until: ISODateTime;
   release_reason?: string;
@@ -3033,6 +3877,8 @@ export interface TaskRunFailedPayload {
   origin_ref?: string;
   task_status?: string;
   run_status?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   attempt?: number;
   lease_until: ISODateTime;
   release_reason?: string;
@@ -3064,6 +3910,8 @@ export interface TaskRunLeaseExpiredPayload {
   origin_ref?: string;
   task_status?: string;
   run_status?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   attempt?: number;
   lease_until: ISODateTime;
   release_reason?: string;
@@ -3091,6 +3939,8 @@ export interface TaskRunLeaseExtendedPayload {
   origin_ref?: string;
   task_status?: string;
   run_status?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   attempt?: number;
   lease_until: ISODateTime;
   release_reason?: string;
@@ -3118,6 +3968,8 @@ export interface TaskRunLeasePayload {
   origin_ref?: string;
   task_status?: string;
   run_status?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   attempt?: number;
   lease_until: ISODateTime;
   release_reason?: string;
@@ -3145,6 +3997,8 @@ export interface TaskRunLeaseRecoveredPayload {
   origin_ref?: string;
   task_status?: string;
   run_status?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   attempt?: number;
   lease_until: ISODateTime;
   release_reason?: string;
@@ -3176,6 +4030,8 @@ export interface TaskRunPostClaimPayload {
   origin_ref?: string;
   task_status?: string;
   run_status?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   attempt?: number;
   lease_until: ISODateTime;
   release_reason?: string;
@@ -3207,6 +4063,8 @@ export interface TaskRunPreClaimPayload {
   origin_ref?: string;
   task_status?: string;
   run_status?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   attempt?: number;
   lease_until: ISODateTime;
   release_reason?: string;
@@ -3233,6 +4091,8 @@ export interface TaskRunReleasedPayload {
   origin_ref?: string;
   task_status?: string;
   run_status?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   attempt?: number;
   lease_until: ISODateTime;
   release_reason?: string;
@@ -3398,6 +4258,8 @@ export interface ToolPostCallPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   turn_id?: string;
@@ -3428,6 +4290,8 @@ export interface ToolPostErrorPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   turn_id?: string;
@@ -3450,6 +4314,8 @@ export interface ToolPreCallPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   turn_id?: string;
@@ -3482,6 +4348,8 @@ export interface Trigger {
   source: JobSource;
   webhook_id?: string;
   endpoint_slug?: string;
+  webhook_secret_present: boolean;
+  webhook_secret_hash?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
 }
@@ -3512,6 +4380,8 @@ export interface TurnEndPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   turn_id?: string;
@@ -3536,6 +4406,8 @@ export interface TurnPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   turn_id?: string;
@@ -3560,6 +4432,8 @@ export interface TurnStartPayload {
   workspace?: string;
   acp_session_id?: string;
   state?: string;
+  soul_snapshot_id?: string;
+  soul_digest?: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
   turn_id?: string;
@@ -3593,6 +4467,12 @@ export interface HookPayloadByEvent {
   "agent.spawned": AgentSpawnedPayload;
   "agent.crashed": AgentCrashedPayload;
   "agent.stopped": AgentStoppedPayload;
+  "agent.soul.snapshot.resolved": AgentSoulSnapshotResolvedPayload;
+  "agent.soul.mutation.after": AgentSoulMutationAfterPayload;
+  "agent.heartbeat.policy.resolved": AgentHeartbeatPolicyResolvedPayload;
+  "agent.heartbeat.wake.before": AgentHeartbeatWakeBeforePayload;
+  "agent.heartbeat.wake.after": AgentHeartbeatWakeAfterPayload;
+  "session.health.update.after": SessionHealthUpdateAfterPayload;
   "turn.start": TurnStartPayload;
   "turn.end": TurnEndPayload;
   "message.start": MessageStartPayload;
@@ -3653,6 +4533,12 @@ export interface HookPatchByEvent {
   "agent.spawned": AgentSpawnedPatch;
   "agent.crashed": AgentCrashedPatch;
   "agent.stopped": AgentStoppedPatch;
+  "agent.soul.snapshot.resolved": AuthoredContextObservationPatch;
+  "agent.soul.mutation.after": AuthoredContextObservationPatch;
+  "agent.heartbeat.policy.resolved": AuthoredContextObservationPatch;
+  "agent.heartbeat.wake.before": AuthoredContextObservationPatch;
+  "agent.heartbeat.wake.after": AuthoredContextObservationPatch;
+  "session.health.update.after": AuthoredContextObservationPatch;
   "turn.start": TurnStartPatch;
   "turn.end": TurnEndPatch;
   "message.start": MessageStartPatch;
@@ -3712,6 +4598,18 @@ export interface HostAPIMethodMap {
     params: SessionEventsParams;
     result: SessionEvent[];
   };
+  "sessions/soul/refresh": {
+    params: SessionSoulRefreshParams;
+    result: AgentSoulPayload;
+  };
+  "sessions/health/get": {
+    params: SessionHealthGetParams;
+    result: SessionHealthResponse;
+  };
+  "sessions/status/get": {
+    params: SessionStatusGetParams;
+    result: SessionStatusResponse;
+  };
   "sandbox/list": {
     params: SandboxListParams | undefined;
     result: SandboxListResult;
@@ -3747,6 +4645,62 @@ export interface HostAPIMethodMap {
   "skills/list": {
     params: SkillsListParams | undefined;
     result: SkillSummary[];
+  };
+  "agents/soul/get": {
+    params: AgentSoulGetParams;
+    result: AgentSoulPayload;
+  };
+  "agents/soul/validate": {
+    params: AgentSoulValidateParams;
+    result: AgentSoulPayload;
+  };
+  "agents/soul/put": {
+    params: AgentSoulPutParams;
+    result: AgentSoulMutationResponse;
+  };
+  "agents/soul/delete": {
+    params: AgentSoulDeleteParams;
+    result: AgentSoulMutationResponse;
+  };
+  "agents/soul/history": {
+    params: AgentSoulHistoryParams;
+    result: AgentSoulHistoryResponse;
+  };
+  "agents/soul/rollback": {
+    params: AgentSoulRollbackParams;
+    result: AgentSoulMutationResponse;
+  };
+  "agents/heartbeat/get": {
+    params: AgentHeartbeatGetParams;
+    result: HeartbeatPolicyPayload;
+  };
+  "agents/heartbeat/validate": {
+    params: AgentHeartbeatValidateParams;
+    result: HeartbeatPolicyPayload;
+  };
+  "agents/heartbeat/put": {
+    params: AgentHeartbeatPutParams;
+    result: HeartbeatMutationResponse;
+  };
+  "agents/heartbeat/delete": {
+    params: AgentHeartbeatDeleteParams;
+    result: HeartbeatMutationResponse;
+  };
+  "agents/heartbeat/history": {
+    params: AgentHeartbeatHistoryParams;
+    result: HeartbeatHistoryResponse;
+  };
+  "agents/heartbeat/rollback": {
+    params: AgentHeartbeatRollbackParams;
+    result: HeartbeatMutationResponse;
+  };
+  "agents/heartbeat/status": {
+    params: AgentHeartbeatStatusParams;
+    result: HeartbeatStatusResponse;
+  };
+  "agents/heartbeat/wake": {
+    params: AgentHeartbeatWakeParams;
+    result: HeartbeatWakeResponse;
   };
   "automation/jobs": {
     params: AutomationJobsParams | undefined;

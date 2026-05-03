@@ -15,6 +15,8 @@ func newAgentCommand(deps commandDeps) *cobra.Command {
 
 	cmd.AddCommand(newAgentListCommand(deps))
 	cmd.AddCommand(newAgentInfoCommand(deps))
+	cmd.AddCommand(newAgentSoulCommand(deps))
+	cmd.AddCommand(newAgentHeartbeatCommand(deps))
 	return cmd
 }
 
@@ -63,7 +65,7 @@ func newAgentInfoCommand(deps commandDeps) *cobra.Command {
 
   # Inspect an agent definition as JSON
   agh agent info reviewer -o json`,
-		Args: cobra.ExactArgs(1),
+		Args: exactOneNonBlankArg(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := clientFromDeps(deps)
 			if err != nil {

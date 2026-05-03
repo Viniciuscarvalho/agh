@@ -455,7 +455,7 @@ func TestAutomationResourceManagerCRUDUsesTypedResourceStores(t *testing.T) {
 	trigger := testTrigger(AutomationScopeGlobal, "resource-crud-trigger", "")
 	trigger.Event = "session.stopped"
 	trigger.WebhookID = ""
-	createdTrigger, err := manager.CreateTrigger(h.ctx, trigger, "")
+	createdTrigger, err := manager.CreateTrigger(h.ctx, trigger, WebhookSecretWrite{})
 	if err != nil {
 		t.Fatalf("CreateTrigger(resource) error = %v", err)
 	}
@@ -520,13 +520,13 @@ func TestAutomationResourceSyncManagedDefinitionsPublishesAndPrunesSourceRecords
 	trigger := testTrigger(AutomationScopeGlobal, "managed-resource-trigger", "")
 	trigger.Event = "session.stopped"
 	trigger.WebhookID = ""
+	trigger.WebhookSecretRef = ""
 
 	stats, err := manager.SyncManagedDefinitions(
 		h.ctx,
 		JobSourceConfig,
 		[]Job{job},
 		[]Trigger{trigger},
-		nil,
 	)
 	if err != nil {
 		t.Fatalf("SyncManagedDefinitions(create) error = %v", err)
@@ -552,7 +552,7 @@ func TestAutomationResourceSyncManagedDefinitionsPublishesAndPrunesSourceRecords
 	}
 
 	job.Prompt = "Review the updated config resource"
-	stats, err = manager.SyncManagedDefinitions(h.ctx, JobSourceConfig, []Job{job}, nil, nil)
+	stats, err = manager.SyncManagedDefinitions(h.ctx, JobSourceConfig, []Job{job}, nil)
 	if err != nil {
 		t.Fatalf("SyncManagedDefinitions(update) error = %v", err)
 	}
@@ -591,7 +591,7 @@ func TestAutomationResourceSyncManagedDefinitionsSkipsUnchangedTaskBackedJob(t *
 		Owner:          &taskpkg.Ownership{Kind: taskpkg.OwnerKindPool, Ref: "ops"},
 	}
 
-	if _, err := manager.SyncManagedDefinitions(h.ctx, JobSourceConfig, []Job{job}, nil, nil); err != nil {
+	if _, err := manager.SyncManagedDefinitions(h.ctx, JobSourceConfig, []Job{job}, nil); err != nil {
 		t.Fatalf("SyncManagedDefinitions(first) error = %v", err)
 	}
 	configActor := manager.resourceActorForSource(JobSourceConfig)
@@ -600,7 +600,7 @@ func TestAutomationResourceSyncManagedDefinitionsSkipsUnchangedTaskBackedJob(t *
 		t.Fatalf("jobStore.Get(first) error = %v", err)
 	}
 
-	stats, err := manager.SyncManagedDefinitions(h.ctx, JobSourceConfig, []Job{job}, nil, nil)
+	stats, err := manager.SyncManagedDefinitions(h.ctx, JobSourceConfig, []Job{job}, nil)
 	if err != nil {
 		t.Fatalf("SyncManagedDefinitions(second) error = %v", err)
 	}
@@ -637,12 +637,12 @@ func TestAutomationResourceConfigEnabledChangesUseOperationalOverlays(t *testing
 	trigger := testTrigger(AutomationScopeGlobal, "config-resource-trigger", "")
 	trigger.Event = "session.stopped"
 	trigger.WebhookID = ""
+	trigger.WebhookSecretRef = ""
 	if _, err := manager.SyncManagedDefinitions(
 		h.ctx,
 		JobSourceConfig,
 		[]Job{job},
 		[]Trigger{trigger},
-		nil,
 	); err != nil {
 		t.Fatalf("SyncManagedDefinitions(config) error = %v", err)
 	}

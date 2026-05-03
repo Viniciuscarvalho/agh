@@ -82,15 +82,16 @@ func (m *Manager) Spawn(ctx context.Context, opts SpawnOpts) (*Session, error) {
 	workspaceRef, workspacePath := spawnWorkspaceCreateRefs(parent)
 
 	child, err := m.Create(ctx, CreateOpts{
-		AgentName:     normalized.AgentName,
-		Provider:      normalized.Provider,
-		Name:          normalized.Name,
-		Workspace:     workspaceRef,
-		WorkspacePath: workspacePath,
-		Channel:       spawnChannel(normalized, parent),
-		PromptOverlay: normalized.PromptOverlay,
-		Type:          SessionTypeSpawned,
-		Lineage:       lineage,
+		AgentName:        normalized.AgentName,
+		Provider:         normalized.Provider,
+		Name:             normalized.Name,
+		Workspace:        workspaceRef,
+		WorkspacePath:    workspacePath,
+		Channel:          spawnChannel(normalized, parent),
+		PromptOverlay:    normalized.PromptOverlay,
+		Type:             SessionTypeSpawned,
+		Lineage:          lineage,
+		ParentSoulDigest: strings.TrimSpace(parent.SoulDigest),
 	})
 	if err != nil {
 		return nil, err
@@ -372,11 +373,17 @@ func spawnHookContext(
 	if parent != nil {
 		ctx.WorkspaceID = strings.TrimSpace(parent.WorkspaceID)
 		ctx.Workspace = strings.TrimSpace(parent.Workspace)
+		ctx.ParentSoulDigest = strings.TrimSpace(parent.SoulDigest)
 	}
 	if child != nil {
 		ctx.ChildSessionID = strings.TrimSpace(child.ID)
 		ctx.WorkspaceID = strings.TrimSpace(child.WorkspaceID)
 		ctx.Workspace = strings.TrimSpace(child.Workspace)
+		ctx.SoulSnapshotID = strings.TrimSpace(child.SoulSnapshotID)
+		ctx.SoulDigest = strings.TrimSpace(child.SoulDigest)
+		if value := strings.TrimSpace(child.ParentSoulDigest); value != "" {
+			ctx.ParentSoulDigest = value
+		}
 	}
 	return ctx
 }

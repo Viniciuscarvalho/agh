@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -38,15 +39,16 @@ var (
 
 // CreateOpts defines the inputs required to create a new session.
 type CreateOpts struct {
-	AgentName     string
-	Provider      string
-	Name          string
-	Workspace     string
-	WorkspacePath string
-	Channel       string
-	PromptOverlay string
-	Type          Type
-	Lineage       *store.SessionLineage
+	AgentName        string
+	Provider         string
+	Name             string
+	Workspace        string
+	WorkspacePath    string
+	Channel          string
+	PromptOverlay    string
+	Type             Type
+	Lineage          *store.SessionLineage
+	ParentSoulDigest string
 }
 
 // StoreOpener opens the per-session events store for a session directory.
@@ -69,6 +71,11 @@ type HostedMCPLaunchRequest struct {
 	AgentName   string
 }
 
+// ProviderSecretResolver resolves provider-bound secret refs at launch time.
+type ProviderSecretResolver interface {
+	ResolveRef(ctx context.Context, ref string) (string, error)
+}
+
 // Option customizes the session manager.
 type Option func(*Manager)
 
@@ -80,35 +87,46 @@ type Manager struct {
 	finalizing map[string]chan struct{}
 	spawnMu    sync.Mutex
 
-	syntheticMu          sync.Mutex
-	syntheticQueues      map[string][]queuedSyntheticPrompt
-	syntheticDispatching map[string]bool
+	syntheticMu           sync.Mutex
+	syntheticQueues       map[string][]queuedSyntheticPrompt
+	syntheticDispatching  map[string]bool
+	soulLocksMu           sync.Mutex
+	soulLocks             map[string]chan struct{}
+	sessionHealthHookMu   sync.Mutex
+	sessionHealthHookLast map[string]time.Time
 
-	logger          *slog.Logger
-	driver          AgentDriver
-	notifier        Notifier
-	networkPeers    NetworkPeerLifecycle
-	turnEndNotifier TurnEndNotifier
-	inputAugmenter  PromptInputAugmenter
-	startupOverlay  StartupPromptOverlay
-	hooks           HookSet
-	sandbox         *sandbox.Registry
-	agentResolver   AgentResolver
-	skillRegistry   SkillRegistry
-	mcpResolver     MCPResolver
-	hostedMCP       HostedMCPLauncher
-	homePaths       aghconfig.HomePaths
-	workspace       workspacepkg.RuntimeResolver
-	openStore       StoreOpener
-	assembler       PromptAssembler
-	supervision     aghconfig.SessionSupervisionConfig
-	lifecycleCtx    context.Context
-	now             func() time.Time
-	newSessionID    IDGenerator
-	newSandboxID    IDGenerator
-	newTurnID       IDGenerator
-	maxSessions     int
-	promptBufSize   int
+	logger                       *slog.Logger
+	driver                       AgentDriver
+	notifier                     Notifier
+	networkPeers                 NetworkPeerLifecycle
+	turnEndNotifier              TurnEndNotifier
+	inputAugmenter               PromptInputAugmenter
+	startupOverlay               StartupPromptOverlay
+	hooks                        HookSet
+	sandbox                      *sandbox.Registry
+	agentResolver                AgentResolver
+	providerSecrets              ProviderSecretResolver
+	skillRegistry                SkillRegistry
+	mcpResolver                  MCPResolver
+	hostedMCP                    HostedMCPLauncher
+	soulStore                    SoulSnapshotStore
+	soulRunChecker               SoulRunActivityChecker
+	sessionHealthStore           HealthStore
+	homePaths                    aghconfig.HomePaths
+	workspace                    workspacepkg.RuntimeResolver
+	openStore                    StoreOpener
+	assembler                    PromptAssembler
+	supervision                  aghconfig.SessionSupervisionConfig
+	sessionHealthStaleAfter      time.Duration
+	lifecycleCtx                 context.Context
+	now                          func() time.Time
+	newSessionID                 IDGenerator
+	newSandboxID                 IDGenerator
+	newTurnID                    IDGenerator
+	maxSessions                  int
+	promptBufSize                int
+	soulRefreshTimeout           time.Duration
+	sessionHealthHookMinInterval time.Duration
 }
 
 // WithSandboxRegistry injects the runtime sandbox provider registry.
@@ -175,6 +193,13 @@ func WithAgentResolver(resolver AgentResolver) Option {
 	}
 }
 
+// WithProviderSecretResolver injects the launch-time provider secret resolver.
+func WithProviderSecretResolver(resolver ProviderSecretResolver) Option {
+	return func(manager *Manager) {
+		manager.providerSecrets = resolver
+	}
+}
+
 // WithMCPResolver injects the skill MCP resolver used during session start.
 func WithMCPResolver(resolver MCPResolver) Option {
 	return func(manager *Manager) {
@@ -186,6 +211,35 @@ func WithMCPResolver(resolver MCPResolver) Option {
 func WithHostedMCPLauncher(launcher HostedMCPLauncher) Option {
 	return func(manager *Manager) {
 		manager.hostedMCP = launcher
+	}
+}
+
+// WithSoulSnapshotStore injects durable Soul snapshot/session provenance storage.
+func WithSoulSnapshotStore(store SoulSnapshotStore) Option {
+	return func(manager *Manager) {
+		manager.soulStore = store
+	}
+}
+
+// WithSoulRunActivityChecker injects the active-run predicate used by Soul refresh.
+func WithSoulRunActivityChecker(checker SoulRunActivityChecker) Option {
+	return func(manager *Manager) {
+		manager.soulRunChecker = checker
+	}
+}
+
+// WithSessionHealthStore injects durable metadata-only session health storage.
+func WithSessionHealthStore(store HealthStore) Option {
+	return func(manager *Manager) {
+		manager.sessionHealthStore = store
+	}
+}
+
+// WithSessionHealthConfig injects Agent Heartbeat bounds used by session health.
+func WithSessionHealthConfig(config aghconfig.HeartbeatConfig) Option {
+	return func(manager *Manager) {
+		manager.sessionHealthStaleAfter = config.SessionHealthStaleAfter
+		manager.sessionHealthHookMinInterval = config.SessionHealthHookMinInterval
 	}
 }
 
@@ -281,19 +335,23 @@ func NewManager(opts ...Option) (*Manager, error) {
 	}
 
 	manager := &Manager{
-		sessions:             make(map[string]*Session),
-		pending:              make(map[string]struct{}),
-		finalizing:           make(map[string]chan struct{}),
-		syntheticQueues:      make(map[string][]queuedSyntheticPrompt),
-		syntheticDispatching: make(map[string]bool),
-		logger:               slog.Default(),
-		driver:               NewACPDriverAdapter(acp.New()),
-		homePaths:            homePaths,
+		sessions:              make(map[string]*Session),
+		pending:               make(map[string]struct{}),
+		finalizing:            make(map[string]chan struct{}),
+		syntheticQueues:       make(map[string][]queuedSyntheticPrompt),
+		syntheticDispatching:  make(map[string]bool),
+		soulLocks:             make(map[string]chan struct{}),
+		sessionHealthHookLast: make(map[string]time.Time),
+		logger:                slog.Default(),
+		driver:                NewACPDriverAdapter(acp.New()),
+		homePaths:             homePaths,
 		openStore: func(ctx context.Context, sessionID string, path string) (EventRecorder, error) {
 			return sessiondb.OpenSessionDB(ctx, sessionID, path)
 		},
-		supervision:  aghconfig.DefaultSessionSupervisionConfig(),
-		lifecycleCtx: context.Background(),
+		supervision:                  aghconfig.DefaultSessionSupervisionConfig(),
+		sessionHealthStaleAfter:      aghconfig.DefaultHeartbeatConfig().SessionHealthStaleAfter,
+		sessionHealthHookMinInterval: aghconfig.DefaultHeartbeatConfig().SessionHealthHookMinInterval,
+		lifecycleCtx:                 context.Background(),
 		now: func() time.Time {
 			return time.Now().UTC()
 		},
@@ -306,7 +364,8 @@ func NewManager(opts ...Option) (*Manager, error) {
 		newTurnID: func() string {
 			return newID("turn")
 		},
-		promptBufSize: defaultPromptBufferSize,
+		promptBufSize:      defaultPromptBufferSize,
+		soulRefreshTimeout: defaultLifecycleTimeout,
 	}
 
 	for _, opt := range opts {
@@ -335,6 +394,9 @@ func (m *Manager) applyRuntimeDefaults() error {
 	if m.openStore == nil {
 		return errors.New("session: store opener is required")
 	}
+	if m.providerSecrets == nil {
+		m.providerSecrets = envProviderSecretResolver{lookupEnv: os.LookupEnv}
+	}
 	if m.lifecycleCtx == nil {
 		m.lifecycleCtx = context.Background()
 	}
@@ -361,11 +423,26 @@ func (m *Manager) applyRuntimeDefaults() error {
 	if m.promptBufSize <= 0 {
 		m.promptBufSize = defaultPromptBufferSize
 	}
+	if m.soulLocks == nil {
+		m.soulLocks = make(map[string]chan struct{})
+	}
+	if m.sessionHealthHookLast == nil {
+		m.sessionHealthHookLast = make(map[string]time.Time)
+	}
+	if m.soulRefreshTimeout <= 0 {
+		m.soulRefreshTimeout = defaultLifecycleTimeout
+	}
 	if m.supervision == (aghconfig.SessionSupervisionConfig{}) {
 		m.supervision = aghconfig.DefaultSessionSupervisionConfig()
 	}
 	if err := m.supervision.Validate(); err != nil {
 		return fmt.Errorf("session: %w", err)
+	}
+	if m.sessionHealthStaleAfter <= 0 {
+		m.sessionHealthStaleAfter = aghconfig.DefaultHeartbeatConfig().SessionHealthStaleAfter
+	}
+	if m.sessionHealthHookMinInterval <= 0 {
+		m.sessionHealthHookMinInterval = aghconfig.DefaultHeartbeatConfig().SessionHealthHookMinInterval
 	}
 	return nil
 }
@@ -545,6 +622,10 @@ func (m *Manager) remove(id string) {
 	delete(m.finalizing, target)
 	m.mu.Unlock()
 
+	m.soulLocksMu.Lock()
+	delete(m.soulLocks, target)
+	m.soulLocksMu.Unlock()
+
 	m.emitDroppedSyntheticPrompts(m.takeQueuedSyntheticPrompts(target), ErrSessionNotFound)
 }
 
@@ -555,6 +636,10 @@ func (m *Manager) removeActive(id string) {
 	delete(m.sessions, target)
 	delete(m.pending, target)
 	m.mu.Unlock()
+
+	m.soulLocksMu.Lock()
+	delete(m.soulLocks, target)
+	m.soulLocksMu.Unlock()
 
 	m.emitDroppedSyntheticPrompts(m.takeQueuedSyntheticPrompts(target), ErrSessionNotActive)
 }

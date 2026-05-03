@@ -40,6 +40,25 @@ port = 3030
 agent = "researcher"
 provider = "claude"
 
+[agents.soul]
+enabled = false
+max_body_bytes = 16384
+context_projection_bytes = 1024
+
+[agents.heartbeat]
+enabled = true
+max_body_bytes = 24576
+context_projection_bytes = 2048
+min_interval = "10m"
+default_interval = "45m"
+wake_cooldown = "2m"
+max_wakes_per_cycle = 8
+active_session_only = false
+allow_active_hours_preferences = false
+wake_event_retention = "72h"
+session_health_stale_after = "3m"
+session_health_hook_min_interval = "90s"
+
 [limits]
 max_sessions = 11
 max_concurrent_agents = 22
@@ -67,14 +86,19 @@ external_default = "ask"
 approval_timeout_seconds = 90
 trusted_sources = ["mcp:linear", "extension:linear"]
 
-[providers.claude]
-default_model = "claude-opus"
-api_key_env = "ANTHROPIC_KEY"
-[[providers.claude.mcp_servers]]
-name = "github"
+	[providers.claude]
+	default_model = "claude-opus"
+	[[providers.claude.credential_slots]]
+	name = "api_key"
+	target_env = "ANTHROPIC_KEY"
+	secret_ref = "env:ANTHROPIC_KEY"
+	kind = "api_key"
+	required = true
+	[[providers.claude.mcp_servers]]
+	name = "github"
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-github"]
-env = { GITHUB_TOKEN = "x" }
+secret_env = { GITHUB_TOKEN = "env:GITHUB_TOKEN" }
 
 [observability]
 enabled = true
@@ -142,6 +166,51 @@ max_queue_depth = 250
 	}
 	if cfg.Defaults.Provider != "claude" {
 		t.Fatalf("Load() Defaults.Provider = %q, want %q", cfg.Defaults.Provider, "claude")
+	}
+	if cfg.Agents.Soul.Enabled {
+		t.Fatal("Load() Agents.Soul.Enabled = true, want false")
+	}
+	if got, want := cfg.Agents.Soul.MaxBodyBytes, int64(16384); got != want {
+		t.Fatalf("Load() Agents.Soul.MaxBodyBytes = %d, want %d", got, want)
+	}
+	if got, want := cfg.Agents.Soul.ContextProjectionBytes, int64(1024); got != want {
+		t.Fatalf("Load() Agents.Soul.ContextProjectionBytes = %d, want %d", got, want)
+	}
+	if !cfg.Agents.Heartbeat.Enabled {
+		t.Fatal("Load() Agents.Heartbeat.Enabled = false, want true")
+	}
+	if got, want := cfg.Agents.Heartbeat.MaxBodyBytes, int64(24576); got != want {
+		t.Fatalf("Load() Agents.Heartbeat.MaxBodyBytes = %d, want %d", got, want)
+	}
+	if got, want := cfg.Agents.Heartbeat.ContextProjectionBytes, int64(2048); got != want {
+		t.Fatalf("Load() Agents.Heartbeat.ContextProjectionBytes = %d, want %d", got, want)
+	}
+	if got, want := cfg.Agents.Heartbeat.MinInterval, 10*time.Minute; got != want {
+		t.Fatalf("Load() Agents.Heartbeat.MinInterval = %s, want %s", got, want)
+	}
+	if got, want := cfg.Agents.Heartbeat.DefaultInterval, 45*time.Minute; got != want {
+		t.Fatalf("Load() Agents.Heartbeat.DefaultInterval = %s, want %s", got, want)
+	}
+	if got, want := cfg.Agents.Heartbeat.WakeCooldown, 2*time.Minute; got != want {
+		t.Fatalf("Load() Agents.Heartbeat.WakeCooldown = %s, want %s", got, want)
+	}
+	if got, want := cfg.Agents.Heartbeat.MaxWakesPerCycle, 8; got != want {
+		t.Fatalf("Load() Agents.Heartbeat.MaxWakesPerCycle = %d, want %d", got, want)
+	}
+	if cfg.Agents.Heartbeat.ActiveSessionOnly {
+		t.Fatal("Load() Agents.Heartbeat.ActiveSessionOnly = true, want false")
+	}
+	if cfg.Agents.Heartbeat.AllowActiveHoursPreferences {
+		t.Fatal("Load() Agents.Heartbeat.AllowActiveHoursPreferences = true, want false")
+	}
+	if got, want := cfg.Agents.Heartbeat.WakeEventRetention, 72*time.Hour; got != want {
+		t.Fatalf("Load() Agents.Heartbeat.WakeEventRetention = %s, want %s", got, want)
+	}
+	if got, want := cfg.Agents.Heartbeat.SessionHealthStaleAfter, 3*time.Minute; got != want {
+		t.Fatalf("Load() Agents.Heartbeat.SessionHealthStaleAfter = %s, want %s", got, want)
+	}
+	if got, want := cfg.Agents.Heartbeat.SessionHealthHookMinInterval, 90*time.Second; got != want {
+		t.Fatalf("Load() Agents.Heartbeat.SessionHealthHookMinInterval = %s, want %s", got, want)
 	}
 	if cfg.Limits.MaxSessions != 11 || cfg.Limits.MaxConcurrentAgents != 22 {
 		t.Fatalf("Load() Limits = %#v", cfg.Limits)
@@ -273,8 +342,13 @@ max_queue_depth = 250
 	if err != nil {
 		t.Fatalf("ResolveProvider() error = %v", err)
 	}
-	if claude.Command == "" || claude.DefaultModel != "claude-opus" || claude.APIKeyEnv != "ANTHROPIC_KEY" {
+	if claude.Command == "" || claude.DefaultModel != "claude-opus" {
 		t.Fatalf("ResolveProvider() = %#v", claude)
+	}
+	if slots := claude.EffectiveCredentialSlots(); len(slots) != 1 ||
+		slots[0].TargetEnv != "ANTHROPIC_KEY" ||
+		slots[0].SecretRef != "env:ANTHROPIC_KEY" {
+		t.Fatalf("ResolveProvider() CredentialSlots = %#v, want ANTHROPIC_KEY slot", slots)
 	}
 	if len(claude.MCPServers) != 1 || claude.MCPServers[0].Name != "github" {
 		t.Fatalf("ResolveProvider() MCPServers = %#v", claude.MCPServers)
@@ -411,6 +485,222 @@ func TestSandboxProfileValidationRejectsInvalidBackend(t *testing.T) {
 	}
 }
 
+func TestDefaultWithHomeIncludesSoulDefaults(t *testing.T) {
+	t.Parallel()
+
+	homePaths, err := ResolveHomePathsFrom(filepath.Join(t.TempDir(), "home"))
+	if err != nil {
+		t.Fatalf("ResolveHomePathsFrom() error = %v", err)
+	}
+
+	cfg := DefaultWithHome(homePaths)
+	if !cfg.Agents.Soul.Enabled {
+		t.Fatal("DefaultWithHome() Agents.Soul.Enabled = false, want true")
+	}
+	if got, want := cfg.Agents.Soul.MaxBodyBytes, int64(32768); got != want {
+		t.Fatalf("DefaultWithHome() Agents.Soul.MaxBodyBytes = %d, want %d", got, want)
+	}
+	if got, want := cfg.Agents.Soul.ContextProjectionBytes, int64(2048); got != want {
+		t.Fatalf("DefaultWithHome() Agents.Soul.ContextProjectionBytes = %d, want %d", got, want)
+	}
+}
+
+func TestSoulConfigValidation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		config  SoulConfig
+		wantErr string
+	}{
+		{
+			name:    "Should reject zero max body bytes",
+			config:  SoulConfig{Enabled: true, MaxBodyBytes: 0, ContextProjectionBytes: 1},
+			wantErr: "agents.soul.max_body_bytes",
+		},
+		{
+			name:    "Should reject zero context projection bytes",
+			config:  SoulConfig{Enabled: true, MaxBodyBytes: 1, ContextProjectionBytes: 0},
+			wantErr: "agents.soul.context_projection_bytes",
+		},
+		{
+			name:    "Should reject context projection above max body bytes",
+			config:  SoulConfig{Enabled: true, MaxBodyBytes: 10, ContextProjectionBytes: 11},
+			wantErr: "agents.soul.context_projection_bytes must be <=",
+		},
+		{
+			name:   "Should accept disabled soul with valid limits",
+			config: SoulConfig{Enabled: false, MaxBodyBytes: 10, ContextProjectionBytes: 5},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := tt.config.Validate()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Validate() error = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("Validate() error = nil, want non-nil")
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Validate() error = %v, want %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestHeartbeatConfigDefaultsAndValidation(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Should include built in heartbeat defaults", func(t *testing.T) {
+		t.Parallel()
+
+		homePaths, err := ResolveHomePathsFrom(filepath.Join(t.TempDir(), "home"))
+		if err != nil {
+			t.Fatalf("ResolveHomePathsFrom() error = %v", err)
+		}
+
+		cfg := DefaultWithHome(homePaths)
+		if !cfg.Agents.Heartbeat.Enabled {
+			t.Fatal("DefaultWithHome() Agents.Heartbeat.Enabled = false, want true")
+		}
+		if got, want := cfg.Agents.Heartbeat.MaxBodyBytes, int64(32768); got != want {
+			t.Fatalf("DefaultWithHome() Agents.Heartbeat.MaxBodyBytes = %d, want %d", got, want)
+		}
+		if got, want := cfg.Agents.Heartbeat.ContextProjectionBytes, int64(4096); got != want {
+			t.Fatalf("DefaultWithHome() Agents.Heartbeat.ContextProjectionBytes = %d, want %d", got, want)
+		}
+		if got, want := cfg.Agents.Heartbeat.MinInterval, 5*time.Minute; got != want {
+			t.Fatalf("DefaultWithHome() Agents.Heartbeat.MinInterval = %s, want %s", got, want)
+		}
+		if got, want := cfg.Agents.Heartbeat.DefaultInterval, 30*time.Minute; got != want {
+			t.Fatalf("DefaultWithHome() Agents.Heartbeat.DefaultInterval = %s, want %s", got, want)
+		}
+		if got, want := cfg.Agents.Heartbeat.WakeCooldown, time.Minute; got != want {
+			t.Fatalf("DefaultWithHome() Agents.Heartbeat.WakeCooldown = %s, want %s", got, want)
+		}
+		if got, want := cfg.Agents.Heartbeat.MaxWakesPerCycle, 25; got != want {
+			t.Fatalf("DefaultWithHome() Agents.Heartbeat.MaxWakesPerCycle = %d, want %d", got, want)
+		}
+		if !cfg.Agents.Heartbeat.ActiveSessionOnly {
+			t.Fatal("DefaultWithHome() Agents.Heartbeat.ActiveSessionOnly = false, want true")
+		}
+		if !cfg.Agents.Heartbeat.AllowActiveHoursPreferences {
+			t.Fatal("DefaultWithHome() Agents.Heartbeat.AllowActiveHoursPreferences = false, want true")
+		}
+		if got, want := cfg.Agents.Heartbeat.WakeEventRetention, 168*time.Hour; got != want {
+			t.Fatalf("DefaultWithHome() Agents.Heartbeat.WakeEventRetention = %s, want %s", got, want)
+		}
+		if got, want := cfg.Agents.Heartbeat.SessionHealthStaleAfter, 2*time.Minute; got != want {
+			t.Fatalf("DefaultWithHome() Agents.Heartbeat.SessionHealthStaleAfter = %s, want %s", got, want)
+		}
+		if got, want := cfg.Agents.Heartbeat.SessionHealthHookMinInterval, time.Minute; got != want {
+			t.Fatalf("DefaultWithHome() Agents.Heartbeat.SessionHealthHookMinInterval = %s, want %s", got, want)
+		}
+	})
+
+	base := DefaultHeartbeatConfig()
+	tests := []struct {
+		name    string
+		mutate  func(*HeartbeatConfig)
+		wantErr string
+	}{
+		{
+			name:    "Should reject zero max body bytes",
+			mutate:  func(cfg *HeartbeatConfig) { cfg.MaxBodyBytes = 0 },
+			wantErr: "agents.heartbeat.max_body_bytes",
+		},
+		{
+			name:    "Should reject unbounded max body bytes",
+			mutate:  func(cfg *HeartbeatConfig) { cfg.MaxBodyBytes = 2 << 20 },
+			wantErr: "agents.heartbeat.max_body_bytes must be <=",
+		},
+		{
+			name:    "Should reject zero context projection bytes",
+			mutate:  func(cfg *HeartbeatConfig) { cfg.ContextProjectionBytes = 0 },
+			wantErr: "agents.heartbeat.context_projection_bytes",
+		},
+		{
+			name: "Should reject context projection above max body bytes",
+			mutate: func(cfg *HeartbeatConfig) {
+				cfg.MaxBodyBytes = 128
+				cfg.ContextProjectionBytes = 256
+			},
+			wantErr: "agents.heartbeat.context_projection_bytes must be <=",
+		},
+		{
+			name:    "Should reject zero min interval",
+			mutate:  func(cfg *HeartbeatConfig) { cfg.MinInterval = 0 },
+			wantErr: "agents.heartbeat.min_interval",
+		},
+		{
+			name: "Should reject min interval above default interval",
+			mutate: func(cfg *HeartbeatConfig) {
+				cfg.MinInterval = time.Hour
+				cfg.DefaultInterval = time.Minute
+			},
+			wantErr: "agents.heartbeat.min_interval must be <=",
+		},
+		{
+			name:    "Should reject zero wake cooldown",
+			mutate:  func(cfg *HeartbeatConfig) { cfg.WakeCooldown = 0 },
+			wantErr: "agents.heartbeat.wake_cooldown",
+		},
+		{
+			name:    "Should reject zero max wakes per cycle",
+			mutate:  func(cfg *HeartbeatConfig) { cfg.MaxWakesPerCycle = 0 },
+			wantErr: "agents.heartbeat.max_wakes_per_cycle",
+		},
+		{
+			name:    "Should reject wake event retention below one hour",
+			mutate:  func(cfg *HeartbeatConfig) { cfg.WakeEventRetention = 59 * time.Minute },
+			wantErr: "agents.heartbeat.wake_event_retention",
+		},
+		{
+			name:    "Should reject zero session health stale interval",
+			mutate:  func(cfg *HeartbeatConfig) { cfg.SessionHealthStaleAfter = 0 },
+			wantErr: "agents.heartbeat.session_health_stale_after",
+		},
+		{
+			name:    "Should reject zero session health hook interval",
+			mutate:  func(cfg *HeartbeatConfig) { cfg.SessionHealthHookMinInterval = 0 },
+			wantErr: "agents.heartbeat.session_health_hook_min_interval",
+		},
+		{
+			name:   "Should accept disabled heartbeat with valid limits",
+			mutate: func(cfg *HeartbeatConfig) { cfg.Enabled = false },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := base
+			tt.mutate(&cfg)
+			err := cfg.Validate()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Validate() error = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("Validate() error = nil, want non-nil")
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Validate() error = %v, want %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestLoadDreamAgentInheritsCustomizedDefaultAgentWhenUnspecified(t *testing.T) {
 	homeRoot := filepath.Join(t.TempDir(), "home")
 	t.Setenv("AGH_HOME", homeRoot)
@@ -538,9 +828,14 @@ func TestLoadWorkspaceOverridesGlobalValues(t *testing.T) {
 host = "localhost"
 port = 2123
 
-[providers.claude]
-default_model = "global-model"
-api_key_env = "GLOBAL_KEY"
+	[providers.claude]
+	default_model = "global-model"
+	[[providers.claude.credential_slots]]
+	name = "api_key"
+	target_env = "GLOBAL_KEY"
+	secret_ref = "env:GLOBAL_KEY"
+	kind = "api_key"
+	required = true
 
 [session.limits]
 timeout = "20m"
@@ -597,8 +892,10 @@ base_url = "https://workspace.example.test/api/v1"
 	if claude.DefaultModel != "workspace-model" {
 		t.Fatalf("ResolveProvider() DefaultModel = %q, want %q", claude.DefaultModel, "workspace-model")
 	}
-	if claude.APIKeyEnv != "GLOBAL_KEY" {
-		t.Fatalf("ResolveProvider() APIKeyEnv = %q, want %q", claude.APIKeyEnv, "GLOBAL_KEY")
+	if slots := claude.EffectiveCredentialSlots(); len(slots) != 1 ||
+		slots[0].TargetEnv != "GLOBAL_KEY" ||
+		slots[0].SecretRef != "env:GLOBAL_KEY" {
+		t.Fatalf("ResolveProvider() CredentialSlots = %#v, want GLOBAL_KEY slot", slots)
 	}
 	if cfg.Skills.Enabled {
 		t.Fatal("Load() Skills.Enabled = true, want false")
@@ -621,6 +918,126 @@ base_url = "https://workspace.example.test/api/v1"
 	if got, want := cfg.Skills.DisabledSkills, []string{"workspace-skill"}; !slices.Equal(got, want) {
 		t.Fatalf("Load() Skills.DisabledSkills = %#v, want %#v", got, want)
 	}
+}
+
+func TestLoadWorkspaceOverridesAgentsSoulConfig(t *testing.T) {
+	t.Parallel()
+
+	workspaceRoot := t.TempDir()
+	homePaths, err := ResolveHomePathsFrom(filepath.Join(t.TempDir(), "home"))
+	if err != nil {
+		t.Fatalf("ResolveHomePathsFrom() error = %v", err)
+	}
+	if err := EnsureHomeLayout(homePaths); err != nil {
+		t.Fatalf("EnsureHomeLayout() error = %v", err)
+	}
+
+	writeFile(t, homePaths.ConfigFile, `
+[agents.soul]
+enabled = false
+max_body_bytes = 40000
+context_projection_bytes = 2000
+`)
+	writeFile(t, filepath.Join(workspaceRoot, DirName, ConfigName), `
+[agents.soul]
+context_projection_bytes = 4096
+`)
+
+	cfg, err := LoadForHome(homePaths, WithWorkspaceRoot(workspaceRoot))
+	if err != nil {
+		t.Fatalf("LoadForHome() error = %v", err)
+	}
+
+	if cfg.Agents.Soul.Enabled {
+		t.Fatal("LoadForHome() Agents.Soul.Enabled = true, want global false")
+	}
+	if got, want := cfg.Agents.Soul.MaxBodyBytes, int64(40000); got != want {
+		t.Fatalf("LoadForHome() Agents.Soul.MaxBodyBytes = %d, want %d", got, want)
+	}
+	if got, want := cfg.Agents.Soul.ContextProjectionBytes, int64(4096); got != want {
+		t.Fatalf("LoadForHome() Agents.Soul.ContextProjectionBytes = %d, want %d", got, want)
+	}
+}
+
+func TestLoadWorkspaceOverridesAgentsHeartbeatConfig(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Should merge global and workspace heartbeat overlays", func(t *testing.T) {
+		t.Parallel()
+
+		workspaceRoot := t.TempDir()
+		homePaths, err := ResolveHomePathsFrom(filepath.Join(t.TempDir(), "home"))
+		if err != nil {
+			t.Fatalf("ResolveHomePathsFrom() error = %v", err)
+		}
+		if err := EnsureHomeLayout(homePaths); err != nil {
+			t.Fatalf("EnsureHomeLayout() error = %v", err)
+		}
+
+		writeFile(t, homePaths.ConfigFile, `
+[agents.heartbeat]
+enabled = false
+max_body_bytes = 60000
+context_projection_bytes = 3000
+min_interval = "15m"
+default_interval = "45m"
+wake_cooldown = "3m"
+max_wakes_per_cycle = 4
+active_session_only = true
+allow_active_hours_preferences = true
+wake_event_retention = "48h"
+session_health_stale_after = "4m"
+session_health_hook_min_interval = "2m"
+`)
+		writeFile(t, filepath.Join(workspaceRoot, DirName, ConfigName), `
+[agents.heartbeat]
+context_projection_bytes = 4096
+default_interval = "1h"
+allow_active_hours_preferences = false
+`)
+
+		cfg, err := LoadForHome(homePaths, WithWorkspaceRoot(workspaceRoot))
+		if err != nil {
+			t.Fatalf("LoadForHome() error = %v", err)
+		}
+
+		if cfg.Agents.Heartbeat.Enabled {
+			t.Fatal("LoadForHome() Agents.Heartbeat.Enabled = true, want global false")
+		}
+		if got, want := cfg.Agents.Heartbeat.MaxBodyBytes, int64(60000); got != want {
+			t.Fatalf("LoadForHome() Agents.Heartbeat.MaxBodyBytes = %d, want %d", got, want)
+		}
+		if got, want := cfg.Agents.Heartbeat.ContextProjectionBytes, int64(4096); got != want {
+			t.Fatalf("LoadForHome() Agents.Heartbeat.ContextProjectionBytes = %d, want %d", got, want)
+		}
+		if got, want := cfg.Agents.Heartbeat.MinInterval, 15*time.Minute; got != want {
+			t.Fatalf("LoadForHome() Agents.Heartbeat.MinInterval = %s, want %s", got, want)
+		}
+		if got, want := cfg.Agents.Heartbeat.DefaultInterval, time.Hour; got != want {
+			t.Fatalf("LoadForHome() Agents.Heartbeat.DefaultInterval = %s, want %s", got, want)
+		}
+		if got, want := cfg.Agents.Heartbeat.WakeCooldown, 3*time.Minute; got != want {
+			t.Fatalf("LoadForHome() Agents.Heartbeat.WakeCooldown = %s, want %s", got, want)
+		}
+		if got, want := cfg.Agents.Heartbeat.MaxWakesPerCycle, 4; got != want {
+			t.Fatalf("LoadForHome() Agents.Heartbeat.MaxWakesPerCycle = %d, want %d", got, want)
+		}
+		if !cfg.Agents.Heartbeat.ActiveSessionOnly {
+			t.Fatal("LoadForHome() Agents.Heartbeat.ActiveSessionOnly = false, want true")
+		}
+		if cfg.Agents.Heartbeat.AllowActiveHoursPreferences {
+			t.Fatal("LoadForHome() Agents.Heartbeat.AllowActiveHoursPreferences = true, want workspace false")
+		}
+		if got, want := cfg.Agents.Heartbeat.WakeEventRetention, 48*time.Hour; got != want {
+			t.Fatalf("LoadForHome() Agents.Heartbeat.WakeEventRetention = %s, want %s", got, want)
+		}
+		if got, want := cfg.Agents.Heartbeat.SessionHealthStaleAfter, 4*time.Minute; got != want {
+			t.Fatalf("LoadForHome() Agents.Heartbeat.SessionHealthStaleAfter = %s, want %s", got, want)
+		}
+		if got, want := cfg.Agents.Heartbeat.SessionHealthHookMinInterval, 2*time.Minute; got != want {
+			t.Fatalf("LoadForHome() Agents.Heartbeat.SessionHealthHookMinInterval = %s, want %s", got, want)
+		}
+	})
 }
 
 func TestLoadMergesTopLevelMCPServersAcrossConfigAndJSONSidecars(t *testing.T) {
@@ -739,7 +1156,7 @@ type = "oauth2_pkce"
 authorization_url = "https://auth.example/authorize"
 token_url = "https://auth.example/token"
 client_id = "client-id"
-client_secret_env = "LINEAR_CLIENT_SECRET"
+client_secret_ref = "env:LINEAR_CLIENT_SECRET"
 scopes = ["read"]
 
 [[providers.codex.mcp_servers]]
@@ -778,8 +1195,8 @@ scopes = ["tools"]
 	if got, want := linear.Auth.TokenURL, "https://auth.example/token"; got != want {
 		t.Fatalf("Load() linear.Auth.TokenURL = %q, want %q", got, want)
 	}
-	if got, want := linear.Auth.ClientSecretEnv, "LINEAR_CLIENT_SECRET"; got != want {
-		t.Fatalf("Load() linear.Auth.ClientSecretEnv = %q, want %q", got, want)
+	if got, want := linear.Auth.ClientSecretRef, "env:LINEAR_CLIENT_SECRET"; got != want {
+		t.Fatalf("Load() linear.Auth.ClientSecretRef = %q, want %q", got, want)
 	}
 	if got, want := linear.Auth.Scopes, []string{"read"}; !slices.Equal(got, want) {
 		t.Fatalf("Load() linear.Auth.Scopes = %#v, want %#v", got, want)
@@ -924,9 +1341,14 @@ default_model = "global-model"
 [observability.transcripts]
 segment_bytes = 256
 
-[providers.claude]
-api_key_env = "WORKSPACE_KEY"
-`)
+	[providers.claude]
+	[[providers.claude.credential_slots]]
+	name = "api_key"
+	target_env = "WORKSPACE_KEY"
+	secret_ref = "env:WORKSPACE_KEY"
+	kind = "api_key"
+	required = true
+	`)
 
 	cfg, err := Load(WithWorkspaceRoot(workspaceRoot))
 	if err != nil {
@@ -945,8 +1367,13 @@ api_key_env = "WORKSPACE_KEY"
 	if err != nil {
 		t.Fatalf("ResolveProvider() error = %v", err)
 	}
-	if claude.DefaultModel != "global-model" || claude.APIKeyEnv != "WORKSPACE_KEY" {
+	if claude.DefaultModel != "global-model" {
 		t.Fatalf("ResolveProvider() = %#v", claude)
+	}
+	if slots := claude.EffectiveCredentialSlots(); len(slots) != 1 ||
+		slots[0].TargetEnv != "WORKSPACE_KEY" ||
+		slots[0].SecretRef != "env:WORKSPACE_KEY" {
+		t.Fatalf("ResolveProvider() CredentialSlots = %#v, want WORKSPACE_KEY slot", slots)
 	}
 }
 
@@ -1625,7 +2052,7 @@ agent = "dotenv-agent"
 	}
 }
 
-func TestLoadForHomeDoesNotLeakDotEnvSecretsAcrossWorkspaceLoads(t *testing.T) {
+func TestLoadForHomeKeepsWebhookSecretRefsUnresolvedAcrossWorkspaceLoads(t *testing.T) {
 	const secretEnv = "AGH_CONFIG_TASK09_WEBHOOK_SECRET"
 
 	unsetEnvForTest(t, secretEnv)
@@ -1651,25 +2078,27 @@ event = "webhook"
 endpoint_slug = "deploy-review"
 agent = "summarizer"
 prompt = "Review {{ index .Data \"payload\" }}"
-webhook_secret_env = "`+secretEnv+`"
-`)
+	webhook_secret_ref = "env:`+secretEnv+`"
+	`)
 
 	workspaceWithEnv := t.TempDir()
 	writeFile(t, filepath.Join(workspaceWithEnv, ".env"), secretEnv+"=workspace-only-secret\n")
 
-	if _, err := LoadForHome(homePaths, WithWorkspaceRoot(workspaceWithEnv)); err != nil {
+	cfg, err := LoadForHome(homePaths, WithWorkspaceRoot(workspaceWithEnv))
+	if err != nil {
 		t.Fatalf("LoadForHome(workspaceWithEnv) error = %v", err)
+	}
+	if got, want := cfg.Automation.Triggers[0].WebhookSecretRef, "env:"+secretEnv; got != want {
+		t.Fatalf("LoadForHome(workspaceWithEnv) WebhookSecretRef = %q, want %q", got, want)
 	}
 
 	workspaceWithoutEnv := t.TempDir()
-	_, err = LoadForHome(homePaths, WithWorkspaceRoot(workspaceWithoutEnv))
-	if err == nil {
-		t.Fatal(
-			"LoadForHome(workspaceWithoutEnv) error = nil, want missing webhook secret env after isolated dotenv load",
-		)
+	cfg, err = LoadForHome(homePaths, WithWorkspaceRoot(workspaceWithoutEnv))
+	if err != nil {
+		t.Fatalf("LoadForHome(workspaceWithoutEnv) error = %v", err)
 	}
-	if got := err.Error(); !strings.Contains(got, "webhook_secret_env") {
-		t.Fatalf("LoadForHome(workspaceWithoutEnv) error = %q, want webhook_secret_env detail", got)
+	if got, want := cfg.Automation.Triggers[0].WebhookSecretRef, "env:"+secretEnv; got != want {
+		t.Fatalf("LoadForHome(workspaceWithoutEnv) WebhookSecretRef = %q, want %q", got, want)
 	}
 }
 

@@ -47,53 +47,59 @@ const (
 
 // Info is the external read model returned by session list/get operations.
 type Info struct {
-	ID           string
-	Name         string
-	AgentName    string
-	Provider     string
-	Model        string
-	WorkspaceID  string
-	Workspace    string
-	Channel      string
-	Type         Type
-	Lineage      *store.SessionLineage
-	State        State
-	StopReason   store.StopReason
-	StopDetail   string
-	Failure      *store.SessionFailure
-	ACPSessionID string
-	ACPCaps      acp.Caps
-	Liveness     *store.SessionLivenessMeta
-	Sandbox      *store.SessionSandboxMeta
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID               string
+	Name             string
+	AgentName        string
+	Provider         string
+	Model            string
+	WorkspaceID      string
+	Workspace        string
+	Channel          string
+	Type             Type
+	Lineage          *store.SessionLineage
+	State            State
+	StopReason       store.StopReason
+	StopDetail       string
+	Failure          *store.SessionFailure
+	ACPSessionID     string
+	ACPCaps          acp.Caps
+	Liveness         *store.SessionLivenessMeta
+	Sandbox          *store.SessionSandboxMeta
+	SoulSnapshotID   string
+	SoulDigest       string
+	ParentSoulDigest string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // Session is the in-memory runtime representation of one active or stopping session.
 type Session struct {
 	mu sync.RWMutex
 
-	ID           string
-	Name         string
-	AgentName    string
-	Provider     string
-	Model        string
-	WorkspaceID  string
-	Workspace    string
-	Channel      string
-	Type         Type
-	Lineage      *store.SessionLineage
-	State        State
-	stopCause    StopCause
-	stopReason   store.StopReason
-	stopDetail   string
-	failure      *store.SessionFailure
-	ACPSessionID string
-	ACPCaps      acp.Caps
-	Liveness     *store.SessionLivenessMeta
-	Sandbox      *store.SessionSandboxMeta
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID               string
+	Name             string
+	AgentName        string
+	Provider         string
+	Model            string
+	WorkspaceID      string
+	Workspace        string
+	Channel          string
+	Type             Type
+	Lineage          *store.SessionLineage
+	State            State
+	stopCause        StopCause
+	stopReason       store.StopReason
+	stopDetail       string
+	failure          *store.SessionFailure
+	ACPSessionID     string
+	ACPCaps          acp.Caps
+	Liveness         *store.SessionLivenessMeta
+	Sandbox          *store.SessionSandboxMeta
+	SoulSnapshotID   string
+	SoulDigest       string
+	ParentSoulDigest string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 
 	sessionDir string
 	metaPath   string
@@ -107,6 +113,7 @@ type Session struct {
 	currentTurnID        string
 	currentTurnSource    TurnSource
 	currentPromptMeta    acp.PromptMeta
+	providerRedactions   []func()
 }
 
 // Info returns a consistent snapshot of the current session state.
@@ -119,26 +126,29 @@ func (s *Session) Info() *Info {
 	defer s.mu.RUnlock()
 
 	return &Info{
-		ID:           s.ID,
-		Name:         s.Name,
-		AgentName:    s.AgentName,
-		Provider:     s.Provider,
-		Model:        s.Model,
-		WorkspaceID:  s.WorkspaceID,
-		Workspace:    s.Workspace,
-		Channel:      s.Channel,
-		Type:         normalizeSessionType(s.Type),
-		Lineage:      store.NormalizeSessionLineage(s.ID, s.Lineage),
-		State:        s.State,
-		StopReason:   s.stopReason,
-		StopDetail:   s.stopDetail,
-		Failure:      store.CloneSessionFailure(s.failure),
-		ACPSessionID: s.ACPSessionID,
-		ACPCaps:      cloneCaps(s.ACPCaps),
-		Liveness:     store.CloneSessionLivenessMeta(s.Liveness),
-		Sandbox:      cloneSessionSandboxMeta(s.Sandbox),
-		CreatedAt:    s.CreatedAt,
-		UpdatedAt:    s.UpdatedAt,
+		ID:               s.ID,
+		Name:             s.Name,
+		AgentName:        s.AgentName,
+		Provider:         s.Provider,
+		Model:            s.Model,
+		WorkspaceID:      s.WorkspaceID,
+		Workspace:        s.Workspace,
+		Channel:          s.Channel,
+		Type:             normalizeSessionType(s.Type),
+		Lineage:          store.NormalizeSessionLineage(s.ID, s.Lineage),
+		State:            s.State,
+		StopReason:       s.stopReason,
+		StopDetail:       s.stopDetail,
+		Failure:          store.CloneSessionFailure(s.failure),
+		ACPSessionID:     s.ACPSessionID,
+		ACPCaps:          cloneCaps(s.ACPCaps),
+		Liveness:         store.CloneSessionLivenessMeta(s.Liveness),
+		Sandbox:          cloneSessionSandboxMeta(s.Sandbox),
+		SoulSnapshotID:   s.SoulSnapshotID,
+		SoulDigest:       s.SoulDigest,
+		ParentSoulDigest: s.ParentSoulDigest,
+		CreatedAt:        s.CreatedAt,
+		UpdatedAt:        s.UpdatedAt,
 	}
 }
 
@@ -183,6 +193,26 @@ func (s *Session) processHandle() *AgentProcess {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.process
+}
+
+func (s *Session) addProviderSecretRedactions(cleanups []func()) {
+	if s == nil || len(cleanups) == 0 {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.providerRedactions = append(s.providerRedactions, cleanups...)
+}
+
+func (s *Session) clearProviderSecretRedactions() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	cleanups := append([]func(){}, s.providerRedactions...)
+	s.providerRedactions = nil
+	s.mu.Unlock()
+	runProviderSecretRedactions(cleanups)
 }
 
 // ApprovePermission resolves one pending permission request for an active session.
@@ -798,24 +828,27 @@ func (s *Session) Meta() store.SessionMeta {
 	defer s.mu.RUnlock()
 
 	return store.SessionMeta{
-		ID:           s.ID,
-		Name:         s.Name,
-		AgentName:    s.AgentName,
-		Provider:     s.Provider,
-		Model:        s.Model,
-		WorkspaceID:  s.WorkspaceID,
-		Channel:      s.Channel,
-		SessionType:  string(normalizeSessionType(s.Type)),
-		Lineage:      store.NormalizeSessionLineage(s.ID, s.Lineage),
-		State:        string(s.State),
-		StopReason:   stopReasonPointer(s.stopReason),
-		StopDetail:   s.stopDetail,
-		Failure:      store.CloneSessionFailure(s.failure),
-		ACPSessionID: stringPointer(s.ACPSessionID),
-		Liveness:     store.CloneSessionLivenessMeta(s.Liveness),
-		Sandbox:      cloneSessionSandboxMeta(s.Sandbox),
-		CreatedAt:    s.CreatedAt,
-		UpdatedAt:    s.UpdatedAt,
+		ID:               s.ID,
+		Name:             s.Name,
+		AgentName:        s.AgentName,
+		Provider:         s.Provider,
+		Model:            s.Model,
+		WorkspaceID:      s.WorkspaceID,
+		Channel:          s.Channel,
+		SessionType:      string(normalizeSessionType(s.Type)),
+		Lineage:          store.NormalizeSessionLineage(s.ID, s.Lineage),
+		State:            string(s.State),
+		StopReason:       stopReasonPointer(s.stopReason),
+		StopDetail:       s.stopDetail,
+		Failure:          store.CloneSessionFailure(s.failure),
+		ACPSessionID:     stringPointer(s.ACPSessionID),
+		Liveness:         store.CloneSessionLivenessMeta(s.Liveness),
+		Sandbox:          cloneSessionSandboxMeta(s.Sandbox),
+		SoulSnapshotID:   s.SoulSnapshotID,
+		SoulDigest:       s.SoulDigest,
+		ParentSoulDigest: s.ParentSoulDigest,
+		CreatedAt:        s.CreatedAt,
+		UpdatedAt:        s.UpdatedAt,
 	}
 }
 

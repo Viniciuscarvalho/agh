@@ -6,10 +6,23 @@ description: The durable runtime unit AGH creates, resumes, audits, and governs.
 A session is the unit AGH actually manages. It binds one agent subprocess to a workspace,
 permission policy, event store, and resume record under one stable AGH session ID.
 
+Session-scoped Vault refs use `vault:sessions/<session_id>/<name>`. They are ordinary encrypted
+Vault records filtered by the session prefix, and the session inspector shows only redacted metadata
+for those refs.
+
+Use this section when a live run needs supervision or forensic detail: why it started, what state it
+entered, which events were persisted, whether it can resume, and which permission checks apply while
+the agent works. If the problem is choosing an agent definition, use Agents first. If the problem is
+the daemon or database itself, use Operations after you identify the affected session.
+
 <OperatorNote>
   Reach for this section when you need the operational contract around one live session: how it
   starts, what gets stored, how replay works, and how approvals are enforced while the agent runs.
 </OperatorNote>
+
+The reading order follows the lifecycle. Start with lifecycle for state names and stop
+classification, move to events when you need the durable record, then use resume and permissions for
+the two most common operator questions: "can this continue?" and "why did AGH ask before acting?"
 
 <figure className="not-prose my-8 overflow-hidden rounded-lg border border-(--color-divider) bg-(--color-surface) p-2">
   <img
@@ -32,6 +45,13 @@ permission policy, event store, and resume record under one stable AGH session I
     meta="State model"
   />
   <RouteRow
+    href="/runtime/core/sessions/health"
+    label="Health"
+    title="Session presence, attachability, and wake eligibility"
+    description="Use this page for metadata-only health, the authority boundary against task-run leases and HEARTBEAT.md, and the session health/status/inspect CLI/API surfaces."
+    meta="Liveness"
+  />
+  <RouteRow
     href="/runtime/core/sessions/resume"
     label="Resume"
     title="Resume stopped sessions and replay stored work"
@@ -51,5 +71,12 @@ permission policy, event store, and resume record under one stable AGH session I
     title="Static modes, workspace boundaries, and approval flow"
     description="Use this page to understand what `deny-all`, `approve-reads`, and `approve-all` actually permit and how interactive approvals work."
     meta="Governance"
+  />
+  <RouteRow
+    href="/runtime/core/configuration/vault"
+    label="Vault"
+    title="Session-scoped secret metadata"
+    description="Use this page when a session needs write-only encrypted refs such as `vault:sessions/<session_id>/<name>`."
+    meta="Secrets"
   />
 </RouteList>

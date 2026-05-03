@@ -309,12 +309,16 @@ func (h *BaseHandlers) CreateAutomationTrigger(c *gin.Context) {
 	}
 
 	trigger := triggerFromCreateRequest(req)
-	if err := trigger.Validate("trigger"); err != nil {
+	webhookSecret := webhookSecretWriteFromCreateRequest(req)
+	validationTrigger := trigger
+	if strings.TrimSpace(validationTrigger.WebhookSecretRef) == "" && webhookSecret.Value != nil {
+		validationTrigger.WebhookSecretRef = "vault:automation/triggers/create-validation/webhook-secret"
+	}
+	if err := validationTrigger.Validate("trigger"); err != nil {
 		h.respondError(c, http.StatusBadRequest, NewAutomationValidationError(err))
 		return
 	}
-
-	created, err := manager.CreateTrigger(c.Request.Context(), trigger, req.WebhookSecret)
+	created, err := manager.CreateTrigger(c.Request.Context(), trigger, webhookSecret)
 	if err != nil {
 		h.respondError(c, StatusForAutomationError(err), err)
 		return
@@ -381,11 +385,8 @@ func (h *BaseHandlers) UpdateAutomationTrigger(c *gin.Context) {
 		updated, err = manager.SetTriggerEnabled(c.Request.Context(), current.ID, *req.Enabled)
 	default:
 		next := applyTriggerPatch(current, req)
-		if err := next.Validate("trigger"); err != nil {
-			h.respondError(c, http.StatusBadRequest, NewAutomationValidationError(err))
-			return
-		}
-		updated, err = manager.UpdateTrigger(c.Request.Context(), next, req.WebhookSecret)
+		webhookSecret := webhookSecretWriteFromUpdateRequest(req)
+		updated, err = manager.UpdateTrigger(c.Request.Context(), next, webhookSecret)
 	}
 	if err != nil {
 		h.respondError(c, StatusForAutomationError(err), err)
@@ -989,8 +990,30 @@ func applyTriggerPatch(current automationpkg.Trigger, req contract.UpdateTrigger
 	} else if !strings.EqualFold(event, "webhook") {
 		next.EndpointSlug = ""
 	}
+	if !strings.EqualFold(event, "webhook") {
+		next.WebhookSecretRef = ""
+	}
 
 	return next
+}
+
+func webhookSecretWriteFromCreateRequest(req contract.CreateTriggerRequest) automationpkg.WebhookSecretWrite {
+	write := automationpkg.WebhookSecretWrite{}
+	if req.WebhookSecretValue != "" {
+		value := req.WebhookSecretValue
+		write.Value = &value
+	}
+	return write
+}
+
+func webhookSecretWriteFromUpdateRequest(req contract.UpdateTriggerRequest) *automationpkg.WebhookSecretWrite {
+	if req.WebhookSecretValue == nil {
+		return nil
+	}
+	write := automationpkg.WebhookSecretWrite{}
+	value := *req.WebhookSecretValue
+	write.Value = &value
+	return &write
 }
 
 // ValidateAutomationConfigTriggerUpdate enforces the config-backed trigger mutation policy.
@@ -1012,7 +1035,7 @@ func validateConfigTriggerUpdate(req contract.UpdateTriggerRequest) error {
 		req.FireLimit != nil ||
 		req.WebhookID != nil ||
 		req.EndpointSlug != nil ||
-		req.WebhookSecret != nil:
+		req.WebhookSecretValue != nil:
 		return errors.New("config-backed automation triggers only accept enabled updates")
 	default:
 		return nil

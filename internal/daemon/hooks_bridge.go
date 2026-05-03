@@ -194,6 +194,30 @@ type hookRuntime interface {
 		context.Context,
 		hookspkg.SpawnReapedPayload,
 	) (hookspkg.SpawnReapedPayload, error)
+	DispatchAgentSoulSnapshotResolved(
+		context.Context,
+		hookspkg.AgentSoulSnapshotResolvedPayload,
+	) (hookspkg.AgentSoulSnapshotResolvedPayload, error)
+	DispatchAgentSoulMutationAfter(
+		context.Context,
+		hookspkg.AgentSoulMutationAfterPayload,
+	) (hookspkg.AgentSoulMutationAfterPayload, error)
+	DispatchAgentHeartbeatPolicyResolved(
+		context.Context,
+		hookspkg.AgentHeartbeatPolicyResolvedPayload,
+	) (hookspkg.AgentHeartbeatPolicyResolvedPayload, error)
+	DispatchAgentHeartbeatWakeBefore(
+		context.Context,
+		hookspkg.AgentHeartbeatWakeBeforePayload,
+	) (hookspkg.AgentHeartbeatWakeBeforePayload, error)
+	DispatchAgentHeartbeatWakeAfter(
+		context.Context,
+		hookspkg.AgentHeartbeatWakeAfterPayload,
+	) (hookspkg.AgentHeartbeatWakeAfterPayload, error)
+	DispatchSessionHealthUpdateAfter(
+		context.Context,
+		hookspkg.SessionHealthUpdateAfterPayload,
+	) (hookspkg.SessionHealthUpdateAfterPayload, error)
 }
 
 type sessionLifecycleObserver interface {
@@ -316,6 +340,7 @@ var _ session.AgentHooks = (*hooksNotifier)(nil)
 var _ session.ConversationHooks = (*hooksNotifier)(nil)
 var _ session.CompactionHooks = (*hooksNotifier)(nil)
 var _ session.SpawnHooks = (*hooksNotifier)(nil)
+var _ session.AuthoredContextHooks = (*hooksNotifier)(nil)
 var _ taskpkg.RunHookDispatcher = (*hooksNotifier)(nil)
 var _ session.AgentEventNotifier = (*hooksNotifier)(nil)
 var _ session.SandboxLifecycleNotifier = (*hooksNotifier)(nil)
@@ -360,12 +385,30 @@ func (n *hooksNotifier) taskRunEnqueuedObservers() []taskRunEnqueuedObserver {
 	return append([]taskRunEnqueuedObserver(nil), n.taskRunEnqueuedHooks...)
 }
 
-// OnSessionCreated is a no-op; lifecycle observation is handled via hook dispatch.
-func (n *hooksNotifier) OnSessionCreated(_ context.Context, _ *session.Session) {
+// OnSessionCreated forwards the full runtime session to the downstream
+// observer after hook dispatch has already run. The native hook payload keeps
+// lifecycle ordering, while this pass preserves catalog fields that are not
+// exposed on public hook payloads.
+func (n *hooksNotifier) OnSessionCreated(ctx context.Context, sess *session.Session) {
+	if sess == nil {
+		return
+	}
+	_, agentEventNotify := n.runtime()
+	if agentEventNotify != nil {
+		agentEventNotify.OnSessionCreated(ctx, sess)
+	}
 }
 
-// OnSessionStopped is a no-op; lifecycle observation is handled via hook dispatch.
-func (n *hooksNotifier) OnSessionStopped(_ context.Context, _ *session.Session) {
+// OnSessionStopped forwards the full runtime session to the downstream
+// observer after hook dispatch has already run.
+func (n *hooksNotifier) OnSessionStopped(ctx context.Context, sess *session.Session) {
+	if sess == nil {
+		return
+	}
+	_, agentEventNotify := n.runtime()
+	if agentEventNotify != nil {
+		agentEventNotify.OnSessionStopped(ctx, sess)
+	}
 }
 
 func (n *hooksNotifier) DispatchSessionPreCreate(
@@ -960,6 +1003,84 @@ func (n *hooksNotifier) DispatchSpawnReaped(
 	)
 }
 
+func (n *hooksNotifier) DispatchAgentSoulSnapshotResolved(
+	ctx context.Context,
+	payload hookspkg.AgentSoulSnapshotResolvedPayload,
+) (hookspkg.AgentSoulSnapshotResolvedPayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookAgentSoulSnapshotResolved,
+		payload,
+		hookRuntime.DispatchAgentSoulSnapshotResolved,
+	)
+}
+
+func (n *hooksNotifier) DispatchAgentSoulMutationAfter(
+	ctx context.Context,
+	payload hookspkg.AgentSoulMutationAfterPayload,
+) (hookspkg.AgentSoulMutationAfterPayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookAgentSoulMutationAfter,
+		payload,
+		hookRuntime.DispatchAgentSoulMutationAfter,
+	)
+}
+
+func (n *hooksNotifier) DispatchAgentHeartbeatPolicyResolved(
+	ctx context.Context,
+	payload hookspkg.AgentHeartbeatPolicyResolvedPayload,
+) (hookspkg.AgentHeartbeatPolicyResolvedPayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookAgentHeartbeatPolicyResolved,
+		payload,
+		hookRuntime.DispatchAgentHeartbeatPolicyResolved,
+	)
+}
+
+func (n *hooksNotifier) DispatchAgentHeartbeatWakeBefore(
+	ctx context.Context,
+	payload hookspkg.AgentHeartbeatWakeBeforePayload,
+) (hookspkg.AgentHeartbeatWakeBeforePayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookAgentHeartbeatWakeBefore,
+		payload,
+		hookRuntime.DispatchAgentHeartbeatWakeBefore,
+	)
+}
+
+func (n *hooksNotifier) DispatchAgentHeartbeatWakeAfter(
+	ctx context.Context,
+	payload hookspkg.AgentHeartbeatWakeAfterPayload,
+) (hookspkg.AgentHeartbeatWakeAfterPayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookAgentHeartbeatWakeAfter,
+		payload,
+		hookRuntime.DispatchAgentHeartbeatWakeAfter,
+	)
+}
+
+func (n *hooksNotifier) DispatchSessionHealthUpdateAfter(
+	ctx context.Context,
+	payload hookspkg.SessionHealthUpdateAfterPayload,
+) (hookspkg.SessionHealthUpdateAfterPayload, error) {
+	return dispatchRuntime(
+		ctx,
+		n,
+		hookspkg.HookSessionHealthUpdateAfter,
+		payload,
+		hookRuntime.DispatchSessionHealthUpdateAfter,
+	)
+}
+
 func (n *hooksNotifier) OnAgentEvent(ctx context.Context, sessionID string, event any) {
 	n.dispatchAgentEvent(ctx, hookspkg.SessionContext{SessionID: strings.TrimSpace(sessionID)}, event)
 }
@@ -1051,8 +1172,24 @@ func hookSessionContext(sess *session.Session) hookspkg.SessionContext {
 		Workspace:    strings.TrimSpace(info.Workspace),
 		ACPSessionID: strings.TrimSpace(info.ACPSessionID),
 		State:        string(info.State),
-		CreatedAt:    info.CreatedAt,
-		UpdatedAt:    info.UpdatedAt,
+		SessionSoulContext: hookSessionSoulContext(
+			info.SoulSnapshotID,
+			info.SoulDigest,
+		),
+		CreatedAt: info.CreatedAt,
+		UpdatedAt: info.UpdatedAt,
+	}
+}
+
+func hookSessionSoulContext(snapshotID string, digest string) *hookspkg.SessionSoulContext {
+	trimmedSnapshotID := strings.TrimSpace(snapshotID)
+	trimmedDigest := strings.TrimSpace(digest)
+	if trimmedSnapshotID == "" && trimmedDigest == "" {
+		return nil
+	}
+	return &hookspkg.SessionSoulContext{
+		SoulSnapshotID: trimmedSnapshotID,
+		SoulDigest:     trimmedDigest,
 	}
 }
 
@@ -1167,8 +1304,13 @@ func daemonNativeHooks(
 	return decls, executors
 }
 
-func daemonExecutorResolver(
+func daemonExecutorResolver(nativeExecutors map[string]hookspkg.Executor) hookspkg.ExecutorResolver {
+	return daemonExecutorResolverWithSecrets(nativeExecutors, nil)
+}
+
+func daemonExecutorResolverWithSecrets(
 	nativeExecutors map[string]hookspkg.Executor,
+	secretResolver hookspkg.SecretRefResolver,
 	registries ...*toolruntime.Registry,
 ) hookspkg.ExecutorResolver {
 	var registry *toolruntime.Registry
@@ -1183,22 +1325,24 @@ func daemonExecutorResolver(
 			}
 			return executor, nil
 		}
-		return defaultDaemonExecutorResolverWithRegistry(decl, registry)
+		return defaultDaemonExecutorResolverWithRegistry(decl, secretResolver, registry)
 	}
 }
 
 func defaultDaemonExecutorResolver(decl hookspkg.HookDecl) (hookspkg.Executor, error) {
-	return defaultDaemonExecutorResolverWithRegistry(decl, nil)
+	return defaultDaemonExecutorResolverWithRegistry(decl, nil, nil)
 }
 
 func defaultDaemonExecutorResolverWithRegistry(
 	decl hookspkg.HookDecl,
+	secretResolver hookspkg.SecretRefResolver,
 	registry *toolruntime.Registry,
 ) (hookspkg.Executor, error) {
 	switch decl.ExecutorKind {
 	case hookspkg.HookExecutorSubprocess:
 		opts := []hookspkg.SubprocessExecutorOption{
 			hookspkg.WithSubprocessEnv(decl.Env),
+			hookspkg.WithSubprocessSecretEnv(decl.SecretEnv, secretResolver),
 		}
 		if registry != nil {
 			opts = append(opts, hookspkg.WithSubprocessProcessRegistry(registry))
@@ -1443,6 +1587,7 @@ func cloneDaemonHookDecl(src hookspkg.HookDecl) hookspkg.HookDecl {
 	cloned := src
 	cloned.Args = append([]string(nil), src.Args...)
 	cloned.Env = cloneStringMap(src.Env)
+	cloned.SecretEnv = cloneStringMap(src.SecretEnv)
 	cloned.Metadata = cloneStringMap(src.Metadata)
 	if src.Matcher.ToolReadOnly != nil {
 		value := *src.Matcher.ToolReadOnly

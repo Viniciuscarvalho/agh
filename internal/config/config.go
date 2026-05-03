@@ -16,6 +16,7 @@ import (
 	"github.com/pedronauck/agh/internal/extension/surfaces"
 	"github.com/pedronauck/agh/internal/resources"
 	"github.com/pedronauck/agh/internal/sandbox"
+	"github.com/pedronauck/agh/internal/vault"
 )
 
 const (
@@ -45,6 +46,35 @@ type DefaultsConfig struct {
 	Agent    string `toml:"agent"`
 	Provider string `toml:"provider,omitempty"`
 	Sandbox  string `toml:"sandbox,omitempty"`
+}
+
+// AgentsConfig holds authored agent context settings.
+type AgentsConfig struct {
+	Soul      SoulConfig      `toml:"soul"`
+	Heartbeat HeartbeatConfig `toml:"heartbeat"`
+}
+
+// SoulConfig controls optional SOUL.md parsing and projection limits.
+type SoulConfig struct {
+	Enabled                bool  `toml:"enabled"`
+	MaxBodyBytes           int64 `toml:"max_body_bytes"`
+	ContextProjectionBytes int64 `toml:"context_projection_bytes"`
+}
+
+// HeartbeatConfig controls optional HEARTBEAT.md wake-policy parsing and runtime bounds.
+type HeartbeatConfig struct {
+	Enabled                      bool          `toml:"enabled"`
+	MaxBodyBytes                 int64         `toml:"max_body_bytes"`
+	ContextProjectionBytes       int64         `toml:"context_projection_bytes"`
+	MinInterval                  time.Duration `toml:"min_interval"`
+	DefaultInterval              time.Duration `toml:"default_interval"`
+	WakeCooldown                 time.Duration `toml:"wake_cooldown"`
+	MaxWakesPerCycle             int           `toml:"max_wakes_per_cycle"`
+	ActiveSessionOnly            bool          `toml:"active_session_only"`
+	AllowActiveHoursPreferences  bool          `toml:"allow_active_hours_preferences"`
+	WakeEventRetention           time.Duration `toml:"wake_event_retention"`
+	SessionHealthStaleAfter      time.Duration `toml:"session_health_stale_after"`
+	SessionHealthHookMinInterval time.Duration `toml:"session_health_hook_min_interval"`
 }
 
 // LimitsConfig defines runtime safety bounds.
@@ -189,6 +219,7 @@ type SandboxProfile struct {
 	Persistence string            `toml:"persistence,omitempty"`
 	RuntimeRoot string            `toml:"runtime_root,omitempty"`
 	Env         map[string]string `toml:"env,omitempty"`
+	SecretEnv   map[string]string `toml:"secret_env,omitempty"`
 	Network     NetworkProfile    `toml:"network,omitempty"`
 	Daytona     DaytonaProfile    `toml:"daytona,omitempty"`
 }
@@ -218,6 +249,7 @@ type Config struct {
 	Daemon        DaemonConfig              `toml:"daemon"`
 	HTTP          HTTPConfig                `toml:"http"`
 	Defaults      DefaultsConfig            `toml:"defaults"`
+	Agents        AgentsConfig              `toml:"agents"`
 	Limits        LimitsConfig              `toml:"limits"`
 	Session       SessionConfig             `toml:"session"`
 	Permissions   PermissionsConfig         `toml:"permissions"`
@@ -395,6 +427,10 @@ func DefaultWithHome(homePaths HomePaths) Config {
 		Defaults: DefaultsConfig{
 			Agent: DefaultAgentName,
 		},
+		Agents: AgentsConfig{
+			Soul:      DefaultSoulConfig(),
+			Heartbeat: DefaultHeartbeatConfig(),
+		},
 		Limits: LimitsConfig{
 			MaxSessions:         10,
 			MaxConcurrentAgents: 20,
@@ -519,6 +555,9 @@ func (c *Config) validateFeatures(lookup envLookup) error {
 		return err
 	}
 	if err := c.Memory.Validate(); err != nil {
+		return err
+	}
+	if err := c.Agents.Validate(); err != nil {
 		return err
 	}
 	if err := c.Skills.Validate(); err != nil {
@@ -652,6 +691,12 @@ func (p SandboxProfile) Validate(path string) error {
 			)
 		}
 	}
+	if err := vault.ValidateNonSecretEnvMap(path, p.Env); err != nil {
+		return err
+	}
+	if err := vault.ValidateSecretEnvMap(path, "sandbox", p.SecretEnv); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -680,6 +725,7 @@ func (p SandboxProfile) Resolve(profileName string) (sandbox.Resolved, error) {
 		RuntimeRootDir: strings.TrimSpace(p.RuntimeRoot),
 		DestroyOnStop:  persistence != sandbox.PersistenceReuse,
 		Env:            mergeStringMaps(nil, p.Env),
+		SecretEnv:      mergeStringMaps(nil, p.SecretEnv),
 		Network: sandbox.NetworkPolicy{
 			AllowPublicIngress: p.Network.AllowPublicIngress,
 			AllowOutbound:      p.Network.AllowOutbound,
@@ -753,6 +799,123 @@ func (c DefaultsConfig) Validate() error {
 	}
 
 	return nil
+}
+
+// DefaultSoulConfig returns the built-in Agent Soul resolver limits.
+func DefaultSoulConfig() SoulConfig {
+	return SoulConfig{
+		Enabled:                true,
+		MaxBodyBytes:           32768,
+		ContextProjectionBytes: 2048,
+	}
+}
+
+// DefaultHeartbeatConfig returns built-in Agent Heartbeat wake-policy limits.
+func DefaultHeartbeatConfig() HeartbeatConfig {
+	return HeartbeatConfig{
+		Enabled:                      true,
+		MaxBodyBytes:                 32768,
+		ContextProjectionBytes:       4096,
+		MinInterval:                  5 * time.Minute,
+		DefaultInterval:              30 * time.Minute,
+		WakeCooldown:                 time.Minute,
+		MaxWakesPerCycle:             25,
+		ActiveSessionOnly:            true,
+		AllowActiveHoursPreferences:  true,
+		WakeEventRetention:           168 * time.Hour,
+		SessionHealthStaleAfter:      2 * time.Minute,
+		SessionHealthHookMinInterval: time.Minute,
+	}
+}
+
+// Validate ensures authored agent context settings are internally consistent.
+func (c AgentsConfig) Validate() error {
+	if err := c.Soul.Validate(); err != nil {
+		return err
+	}
+	return c.Heartbeat.Validate()
+}
+
+// Validate ensures SOUL.md limits are internally consistent.
+func (c SoulConfig) Validate() error {
+	switch {
+	case c.MaxBodyBytes <= 0:
+		return fmt.Errorf("agents.soul.max_body_bytes must be positive: %d", c.MaxBodyBytes)
+	case c.ContextProjectionBytes <= 0:
+		return fmt.Errorf(
+			"agents.soul.context_projection_bytes must be positive: %d",
+			c.ContextProjectionBytes,
+		)
+	case c.ContextProjectionBytes > c.MaxBodyBytes:
+		return fmt.Errorf(
+			"agents.soul.context_projection_bytes must be <= agents.soul.max_body_bytes: %d > %d",
+			c.ContextProjectionBytes,
+			c.MaxBodyBytes,
+		)
+	default:
+		return nil
+	}
+}
+
+// Validate ensures HEARTBEAT.md limits and timing bounds are internally consistent.
+func (c HeartbeatConfig) Validate() error {
+	const (
+		maxHeartbeatBodyBytes = int64(1 << 20)
+		minWakeEventRetention = time.Hour
+	)
+	switch {
+	case c.MaxBodyBytes <= 0:
+		return fmt.Errorf("agents.heartbeat.max_body_bytes must be positive: %d", c.MaxBodyBytes)
+	case c.MaxBodyBytes > maxHeartbeatBodyBytes:
+		return fmt.Errorf(
+			"agents.heartbeat.max_body_bytes must be <= %d: %d",
+			maxHeartbeatBodyBytes,
+			c.MaxBodyBytes,
+		)
+	case c.ContextProjectionBytes <= 0:
+		return fmt.Errorf(
+			"agents.heartbeat.context_projection_bytes must be positive: %d",
+			c.ContextProjectionBytes,
+		)
+	case c.ContextProjectionBytes > c.MaxBodyBytes:
+		return fmt.Errorf(
+			"agents.heartbeat.context_projection_bytes must be <= agents.heartbeat.max_body_bytes: %d > %d",
+			c.ContextProjectionBytes,
+			c.MaxBodyBytes,
+		)
+	case c.MinInterval <= 0:
+		return fmt.Errorf("agents.heartbeat.min_interval must be positive: %s", c.MinInterval)
+	case c.DefaultInterval <= 0:
+		return fmt.Errorf("agents.heartbeat.default_interval must be positive: %s", c.DefaultInterval)
+	case c.MinInterval > c.DefaultInterval:
+		return fmt.Errorf(
+			"agents.heartbeat.min_interval must be <= agents.heartbeat.default_interval: %s > %s",
+			c.MinInterval,
+			c.DefaultInterval,
+		)
+	case c.WakeCooldown <= 0:
+		return fmt.Errorf("agents.heartbeat.wake_cooldown must be positive: %s", c.WakeCooldown)
+	case c.MaxWakesPerCycle <= 0:
+		return fmt.Errorf("agents.heartbeat.max_wakes_per_cycle must be positive: %d", c.MaxWakesPerCycle)
+	case c.WakeEventRetention < minWakeEventRetention:
+		return fmt.Errorf(
+			"agents.heartbeat.wake_event_retention must be >= %s: %s",
+			minWakeEventRetention,
+			c.WakeEventRetention,
+		)
+	case c.SessionHealthStaleAfter <= 0:
+		return fmt.Errorf(
+			"agents.heartbeat.session_health_stale_after must be positive: %s",
+			c.SessionHealthStaleAfter,
+		)
+	case c.SessionHealthHookMinInterval <= 0:
+		return fmt.Errorf(
+			"agents.heartbeat.session_health_hook_min_interval must be positive: %s",
+			c.SessionHealthHookMinInterval,
+		)
+	default:
+		return nil
+	}
 }
 
 // Validate ensures the configured limits are positive.

@@ -125,11 +125,19 @@ type RuntimeDeps struct {
 	WorkspaceService  core.WorkspaceService
 	AgentCatalog      core.AgentCatalog
 	AgentContext      *situation.Service
+	SoulAuthoring     core.SoulAuthoringService
+	SoulRefresher     core.SoulRefresher
+	HeartbeatAuthor   core.HeartbeatAuthoringService
+	HeartbeatStatus   core.HeartbeatStatusService
+	HeartbeatWake     core.HeartbeatWakeService
+	SessionHealth     core.SessionHealthReader
+	WakeEvents        core.HeartbeatWakeEventReader
 	CoordinatorConfig CoordinatorConfigResolver
 	SkillsRegistry    core.SkillsRegistry
 	DreamTrigger      DreamTrigger
 	Settings          core.SettingsService
 	SettingsRestart   core.SettingsRestartController
+	Vault             core.VaultService
 	Extensions        udsapi.ExtensionService
 	Bundles           core.BundleService
 	Resources         core.ResourceService
@@ -245,7 +253,15 @@ type extensionManagerDeps struct {
 	SourceSessions    resources.SourceSessionManager
 	ResourceCodecs    *resources.CodecRegistry
 	ResourceTrigger   func(context.Context, resources.ResourceKind, resources.ReconcileReason) error
+	SoulAuthoring     core.SoulAuthoringService
+	SoulRefresher     core.SoulRefresher
+	HeartbeatAuthor   core.HeartbeatAuthoringService
+	HeartbeatStatus   core.HeartbeatStatusService
+	HeartbeatWake     core.HeartbeatWakeService
+	SessionHealth     core.SessionHealthReader
+	WakeEvents        core.HeartbeatWakeEventReader
 	ProcessRegistry   *toolruntime.Registry
+	SecretResolver    extensionpkg.SecretRefResolver
 }
 
 type automationRuntime interface {
@@ -265,6 +281,7 @@ type automationManagerDeps struct {
 	WorkspaceResolver   workspacepkg.RuntimeResolver
 	Config              aghconfig.AutomationConfig
 	Hooks               automationpkg.HookDispatcher
+	WebhookSecrets      automationpkg.WebhookSecretStore
 	Logger              *slog.Logger
 	GlobalWorkspacePath string
 	ResourceStore       resources.RawStore
@@ -288,76 +305,82 @@ type SessionManagerDeps struct {
 	WorkspaceResolver    workspacepkg.RuntimeResolver
 	SandboxRegistry      *sandbox.Registry
 	SessionSupervision   aghconfig.SessionSupervisionConfig
+	SessionHealthConfig  aghconfig.HeartbeatConfig
 	ProcessRegistry      *toolruntime.Registry
 	HostedMCP            session.HostedMCPLauncher
+	ProviderSecrets      session.ProviderSecretResolver
+	SoulStore            session.SoulSnapshotStore
+	SoulRunChecker       session.SoulRunActivityChecker
+	SessionHealthStore   session.HealthStore
 }
 
 // Daemon is the sole AGH composition root.
 type Daemon struct {
 	mu sync.Mutex
 
-	homePaths            aghconfig.HomePaths
-	loadConfig           ConfigLoader
-	logger               *slog.Logger
-	closeLogger          func() error
-	now                  func() time.Time
-	pid                  func() int
-	acquireLock          func(path string, pid int) (*Lock, error)
-	openRegistry         registryOpener
-	newSessionManager    sessionManagerFactory
-	newDreamService      consolidation.ServiceFactory
-	newObserver          observerFactory
-	newExtensionManager  extensionManagerFactory
-	newAutomationManager automationManagerFactory
-	newResourceReconcile resourceReconcileDriverFactory
-	httpFactory          ServerFactory
-	udsFactory           ServerFactory
-	listProcesses        func(context.Context) ([]processInfo, error)
-	signalProcess        func(int, syscall.Signal) error
-	processAlive         func(int) bool
-	executable           func() (string, error)
-	startDetached        detachedStartFunc
-	signalCh             <-chan os.Signal
-	verifyBoundaries     bool
-	boundaryRoot         string
-	getenv               func(string) string
-	bridgeSecretResolver BridgeSecretResolver
-	readyCh              chan struct{}
-	readyClosed          bool
-	booting              bool
-	orphanGraceWait      time.Duration
-	orphanPollWait       time.Duration
-	config               aghconfig.Config
-	startedAt            time.Time
-	info                 Info
-	lock                 *Lock
-	harnessResolver      *HarnessContextResolver
-	registry             Registry
-	memoryStore          *memory.Store
-	situationContext     *situation.Service
-	sessions             SessionManager
-	tasks                *taskRuntime
-	spawnReaper          *spawnReaper
-	scheduler            *schedulerRuntime
-	network              networkRuntime
-	toolRegistry         toolspkg.Registry
-	hooks                hookRuntime
-	extensions           extensionRuntime
-	observer             Observer
-	resourceReconcile    resources.ReconcileDriver
-	agentCatalog         *resourceCatalog[aghconfig.AgentDef]
-	toolCatalog          *resourceCatalog[toolspkg.Tool]
-	mcpServerCatalog     *resourceCatalog[aghconfig.MCPServer]
-	automation           automationRuntime
-	bridges              *bridgeRuntime
-	httpServer           Server
-	udsServer            Server
-	dreamRuntime         *consolidation.Runtime
-	workspaceResolver    workspacepkg.RuntimeResolver
-	sandboxRegistry      *sandbox.Registry
-	skillsRegistry       *skills.Registry
-	skillsCancel         context.CancelFunc
-	skillsDone           chan struct{}
+	homePaths                    aghconfig.HomePaths
+	loadConfig                   ConfigLoader
+	logger                       *slog.Logger
+	closeLogger                  func() error
+	now                          func() time.Time
+	pid                          func() int
+	acquireLock                  func(path string, pid int) (*Lock, error)
+	openRegistry                 registryOpener
+	newSessionManager            sessionManagerFactory
+	newDreamService              consolidation.ServiceFactory
+	newObserver                  observerFactory
+	newExtensionManager          extensionManagerFactory
+	newAutomationManager         automationManagerFactory
+	newResourceReconcile         resourceReconcileDriverFactory
+	httpFactory                  ServerFactory
+	udsFactory                   ServerFactory
+	listProcesses                func(context.Context) ([]processInfo, error)
+	signalProcess                func(int, syscall.Signal) error
+	processAlive                 func(int) bool
+	executable                   func() (string, error)
+	startDetached                detachedStartFunc
+	signalCh                     <-chan os.Signal
+	verifyBoundaries             bool
+	boundaryRoot                 string
+	getenv                       func(string) string
+	bridgeSecretResolver         BridgeSecretResolver
+	bridgeSecretResolverExplicit bool
+	readyCh                      chan struct{}
+	readyClosed                  bool
+	booting                      bool
+	orphanGraceWait              time.Duration
+	orphanPollWait               time.Duration
+	config                       aghconfig.Config
+	startedAt                    time.Time
+	info                         Info
+	lock                         *Lock
+	harnessResolver              *HarnessContextResolver
+	registry                     Registry
+	memoryStore                  *memory.Store
+	situationContext             *situation.Service
+	sessions                     SessionManager
+	tasks                        *taskRuntime
+	spawnReaper                  *spawnReaper
+	scheduler                    *schedulerRuntime
+	network                      networkRuntime
+	toolRegistry                 toolspkg.Registry
+	hooks                        hookRuntime
+	extensions                   extensionRuntime
+	observer                     Observer
+	resourceReconcile            resources.ReconcileDriver
+	agentCatalog                 *resourceCatalog[aghconfig.AgentDef]
+	toolCatalog                  *resourceCatalog[toolspkg.Tool]
+	mcpServerCatalog             *resourceCatalog[aghconfig.MCPServer]
+	automation                   automationRuntime
+	bridges                      *bridgeRuntime
+	httpServer                   Server
+	udsServer                    Server
+	dreamRuntime                 *consolidation.Runtime
+	workspaceResolver            workspacepkg.RuntimeResolver
+	sandboxRegistry              *sandbox.Registry
+	skillsRegistry               *skills.Registry
+	skillsCancel                 context.CancelFunc
+	skillsDone                   chan struct{}
 }
 
 type shutdownTargets struct {
@@ -420,11 +443,11 @@ func WithLogger(logger *slog.Logger) Option {
 
 // WithBridgeSecretResolver injects the daemon-owned resolver used to convert
 // bridge secret bindings into launch-time bound secret material. When this
-// option is not supplied, the stock daemon installs an env-backed resolver that
-// supports `env:NAME` refs.
+// option is not supplied, daemon boot wires the canonical vault-backed resolver.
 func WithBridgeSecretResolver(resolver BridgeSecretResolver) Option {
 	return func(d *Daemon) {
 		d.bridgeSecretResolver = resolver
+		d.bridgeSecretResolverExplicit = true
 	}
 }
 
@@ -545,7 +568,12 @@ func (d *Daemon) applySessionManagerFactoryDefault() {
 			session.WithWorkspaceResolver(deps.WorkspaceResolver),
 			session.WithSandboxRegistry(deps.SandboxRegistry),
 			session.WithSessionSupervision(deps.SessionSupervision),
+			session.WithSessionHealthConfig(deps.SessionHealthConfig),
+			session.WithSessionHealthStore(deps.SessionHealthStore),
 			session.WithHostedMCPLauncher(deps.HostedMCP),
+			session.WithProviderSecretResolver(deps.ProviderSecrets),
+			session.WithSoulSnapshotStore(deps.SoulStore),
+			session.WithSoulRunActivityChecker(deps.SoulRunChecker),
 			session.WithDriver(session.NewACPDriverAdapter(acp.New(
 				acp.WithLogger(deps.Logger),
 				acp.WithProcessRegistry(deps.ProcessRegistry),
@@ -620,6 +648,13 @@ func buildHostAPIOptions(
 		extensionpkg.WithHostAPIResourceStore(resourceStore),
 		extensionpkg.WithHostAPIResourceCodecRegistry(deps.ResourceCodecs),
 		extensionpkg.WithHostAPIResourceTrigger(deps.ResourceTrigger),
+		extensionpkg.WithHostAPISoulAuthoring(deps.SoulAuthoring),
+		extensionpkg.WithHostAPISoulRefresher(deps.SoulRefresher),
+		extensionpkg.WithHostAPIHeartbeatAuthoring(deps.HeartbeatAuthor),
+		extensionpkg.WithHostAPIHeartbeatStatus(deps.HeartbeatStatus),
+		extensionpkg.WithHostAPIHeartbeatWake(deps.HeartbeatWake),
+		extensionpkg.WithHostAPISessionHealth(deps.SessionHealth),
+		extensionpkg.WithHostAPIHeartbeatWakeEvents(deps.WakeEvents),
 	}
 	if deps.BridgeRegistry != nil {
 		opts = append(opts, extensionpkg.WithHostAPIBridgeRegistry(deps.BridgeRegistry))
@@ -650,6 +685,9 @@ func buildExtensionManagerOptions(
 	}
 	if deps.BridgeRuntime != nil {
 		opts = append(opts, extensionpkg.WithBridgeRuntimeResolver(deps.BridgeRuntime))
+	}
+	if deps.SecretResolver != nil {
+		opts = append(opts, extensionpkg.WithSecretResolver(deps.SecretResolver))
 	}
 	for method, handler := range hostAPI.MethodHandlers() {
 		opts = append(opts, extensionpkg.WithHostMethodHandler(method, handler))
@@ -683,6 +721,7 @@ func (d *Daemon) applyAutomationManagerFactoryDefault() {
 			automationpkg.WithWorkspaceResolver(deps.WorkspaceResolver),
 			automationpkg.WithConfig(deps.Config),
 			automationpkg.WithHooks(deps.Hooks),
+			automationpkg.WithWebhookSecretStore(deps.WebhookSecrets),
 			automationpkg.WithLogger(deps.Logger),
 			automationpkg.WithGlobalWorkspacePath(deps.GlobalWorkspacePath),
 		}
@@ -890,9 +929,18 @@ func (d *Daemon) applyServerFactoryDefaults() {
 				httpapi.WithToolApprovalIssuer(deps.ToolApprovals),
 				httpapi.WithSettingsService(deps.Settings),
 				httpapi.WithSettingsRestartController(deps.SettingsRestart),
+				httpapi.WithVaultService(deps.Vault),
 				httpapi.WithResourceService(deps.Resources),
 				httpapi.WithWorkspaceResolver(deps.WorkspaceService),
 				httpapi.WithAgentCatalog(deps.AgentCatalog),
+				httpapi.WithAgentContext(deps.AgentContext),
+				httpapi.WithSoulAuthoring(deps.SoulAuthoring),
+				httpapi.WithSoulRefresher(deps.SoulRefresher),
+				httpapi.WithHeartbeatAuthoring(deps.HeartbeatAuthor),
+				httpapi.WithHeartbeatStatus(deps.HeartbeatStatus),
+				httpapi.WithHeartbeatWake(deps.HeartbeatWake),
+				httpapi.WithSessionHealthReader(deps.SessionHealth),
+				httpapi.WithHeartbeatWakeEventReader(deps.WakeEvents),
 				httpapi.WithSkillsRegistry(deps.SkillsRegistry),
 				httpapi.WithMemoryStore(deps.MemoryStore),
 				httpapi.WithDreamTrigger(deps.DreamTrigger),
@@ -920,10 +968,18 @@ func (d *Daemon) applyServerFactoryDefaults() {
 				udsapi.WithToolApprovalIssuer(deps.ToolApprovals),
 				udsapi.WithSettingsService(deps.Settings),
 				udsapi.WithSettingsRestartController(deps.SettingsRestart),
+				udsapi.WithVaultService(deps.Vault),
 				udsapi.WithResourceService(deps.Resources),
 				udsapi.WithWorkspaceResolver(deps.WorkspaceService),
 				udsapi.WithAgentCatalog(deps.AgentCatalog),
 				udsapi.WithAgentContext(deps.AgentContext),
+				udsapi.WithSoulAuthoring(deps.SoulAuthoring),
+				udsapi.WithSoulRefresher(deps.SoulRefresher),
+				udsapi.WithHeartbeatAuthoring(deps.HeartbeatAuthor),
+				udsapi.WithHeartbeatStatus(deps.HeartbeatStatus),
+				udsapi.WithHeartbeatWake(deps.HeartbeatWake),
+				udsapi.WithSessionHealthReader(deps.SessionHealth),
+				udsapi.WithHeartbeatWakeEventReader(deps.WakeEvents),
 				udsapi.WithCoordinatorConfig(deps.CoordinatorConfig),
 				udsapi.WithSkillsRegistry(deps.SkillsRegistry),
 				udsapi.WithMemoryStore(deps.MemoryStore),
@@ -953,9 +1009,6 @@ func (d *Daemon) applySystemDefaults() {
 	}
 	if d.getenv == nil {
 		d.getenv = os.Getenv
-	}
-	if d.bridgeSecretResolver == nil {
-		d.bridgeSecretResolver = envBridgeSecretResolver{getenv: d.getenv}
 	}
 	if d.closeLogger == nil {
 		d.closeLogger = func() error { return nil }

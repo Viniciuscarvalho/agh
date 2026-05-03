@@ -138,6 +138,21 @@ var (
 		"automation.enabled":                                      configSetBool,
 		"automation.timezone":                                     configSetString,
 		"automation.max_concurrent_jobs":                          configSetInt,
+		"agents.soul.enabled":                                     configSetBool,
+		"agents.soul.max_body_bytes":                              configSetInt64,
+		"agents.soul.context_projection_bytes":                    configSetInt64,
+		"agents.heartbeat.enabled":                                configSetBool,
+		"agents.heartbeat.max_body_bytes":                         configSetInt64,
+		"agents.heartbeat.context_projection_bytes":               configSetInt64,
+		"agents.heartbeat.min_interval":                           configSetDuration,
+		"agents.heartbeat.default_interval":                       configSetDuration,
+		"agents.heartbeat.wake_cooldown":                          configSetDuration,
+		"agents.heartbeat.max_wakes_per_cycle":                    configSetInt,
+		"agents.heartbeat.active_session_only":                    configSetBool,
+		"agents.heartbeat.allow_active_hours_preferences":         configSetBool,
+		"agents.heartbeat.wake_event_retention":                   configSetDuration,
+		"agents.heartbeat.session_health_stale_after":             configSetDuration,
+		"agents.heartbeat.session_health_hook_min_interval":       configSetDuration,
 		"network.enabled":                                         configSetBool,
 		"network.default_channel":                                 configSetString,
 		"network.port":                                            configSetInt,
@@ -219,7 +234,7 @@ func newConfigGetCommand(deps commandDeps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get <path>",
 		Short: "Get one redacted effective config value",
-		Args:  cobra.ExactArgs(1),
+		Args:  exactOneNonBlankArg(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, _, err := loadConfigForDisplay(deps, workspaceRoot)
 			if err != nil {
@@ -630,7 +645,7 @@ func configMapNode(value reflect.Value, fieldName string) (any, bool) {
 	result := make(map[string]any, value.Len())
 	for _, key := range sortedReflectMapKeys(value) {
 		mapKey := fmt.Sprint(key.Interface())
-		if strings.EqualFold(fieldName, "env") {
+		if strings.EqualFold(fieldName, "env") || strings.EqualFold(fieldName, "secret_env") {
 			result[mapKey] = aghconfig.RedactedValue()
 			continue
 		}
@@ -732,7 +747,7 @@ func flattenConfigValue(entries *[]configEntry, path string, value any, redacted
 			if path != "" {
 				nextPath = path + "." + key
 			}
-			flattenConfigValue(entries, nextPath, typed[key], redacted || key == "env")
+			flattenConfigValue(entries, nextPath, typed[key], redacted || key == "env" || key == "secret_env")
 		}
 	case []any:
 		if len(typed) == 0 {
@@ -1027,7 +1042,7 @@ func classifyConfigMutationPath(path []string) (configSetValueKind, bool, error)
 func isProviderMutationPath(path []string) bool {
 	if len(path) == 3 && path[0] == "providers" {
 		switch path[2] {
-		case "command", "default_model", "api_key_env":
+		case "command", "default_model":
 			return true
 		}
 	}
@@ -1037,7 +1052,7 @@ func isProviderMutationPath(path []string) bool {
 func classifySandboxMutationPath(path []string) (configSetValueKind, bool, bool) {
 	if len(path) == 4 && path[0] == "sandboxes" {
 		switch path[2] {
-		case "env":
+		case "env", "secret_env":
 			return configSetString, true, true
 		case "network":
 			return classifySandboxNetworkMutationPath(path[3])

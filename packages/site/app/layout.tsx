@@ -2,6 +2,7 @@ import "./global.css";
 import { Inter, JetBrains_Mono, Playfair_Display } from "next/font/google";
 import type { ReactNode } from "react";
 import type { Metadata, Viewport } from "next";
+import { SiteFooter } from "@/components/site/site-footer";
 import { siteConfig } from "@/lib/site-config";
 
 const inter = Inter({
@@ -71,7 +72,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#E8572B",
+  themeColor: "#E8572A",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -81,7 +82,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       className={`dark ${inter.variable} ${playfairDisplay.variable} ${jetbrainsMono.variable}`}
     >
       <body className="flex min-h-screen flex-col bg-fd-background font-sans text-fd-foreground antialiased">
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:rounded-lg focus:border focus:border-(--color-divider) focus:bg-(--color-surface-elevated) focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-(--color-text-primary)"
+        >
+          Skip to content
+        </a>
         {children}
+        <SiteFooter />
       </body>
     </html>
   );

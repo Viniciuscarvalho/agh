@@ -245,6 +245,7 @@ type AgentContextPayload struct {
 	Self                AgentIdentityPayload                   `json:"self"`
 	Workspace           AgentWorkspacePayload                  `json:"workspace"`
 	Session             AgentSessionPayload                    `json:"session"`
+	Soul                AgentSoulSectionPayload                `json:"soul"`
 	Task                AgentTaskContextPayload                `json:"task"`
 	CoordinationChannel AgentCoordinationChannelContextPayload `json:"coordination_channel"`
 	InboxSummary        AgentInboxSummaryPayload               `json:"inbox_summary"`
@@ -380,6 +381,8 @@ func NormalizeAgentContextPayload(source *AgentContextPayload) AgentContextPaylo
 	}
 	payload := *source
 	payload.Session.Lineage = NormalizeSessionLineagePayload(payload.Session.Lineage)
+	payload.Soul.Tone = normalizeStrings(payload.Soul.Tone)
+	payload.Soul.Principles = normalizeStrings(payload.Soul.Principles)
 	if payload.Task.Lease != nil {
 		lease := NormalizeTaskRunLeaseSummaryPayload(*payload.Task.Lease)
 		payload.Task.Lease = &lease

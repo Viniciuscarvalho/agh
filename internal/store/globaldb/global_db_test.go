@@ -169,7 +169,7 @@ func TestOpenGlobalDBRecordsSchemaMigrationAndRepeatedBootIsIdempotent(t *testin
 	if err != nil {
 		t.Fatalf("AppliedMigrations(first) error = %v", err)
 	}
-	if got, want := len(firstRecords), 9; got != want {
+	if got, want := len(firstRecords), 13; got != want {
 		t.Fatalf("len(firstRecords) = %d, want %d", got, want)
 	}
 	if firstRecords[0].Version != 1 || firstRecords[0].Name != "create_global_schema" {
@@ -199,6 +199,18 @@ func TestOpenGlobalDBRecordsSchemaMigrationAndRepeatedBootIsIdempotent(t *testin
 	if firstRecords[8].Version != 9 || firstRecords[8].Name != "rename_environment_columns_to_sandbox" {
 		t.Fatalf("firstRecords[8] = %#v, want rename_environment_columns_to_sandbox v9", firstRecords[8])
 	}
+	if firstRecords[9].Version != 10 || firstRecords[9].Name != "add_vault_secrets" {
+		t.Fatalf("firstRecords[9] = %#v, want add_vault_secrets v10", firstRecords[9])
+	}
+	if firstRecords[10].Version != 11 || firstRecords[10].Name != "unify_secret_refs" {
+		t.Fatalf("firstRecords[10] = %#v, want unify_secret_refs v11", firstRecords[10])
+	}
+	if firstRecords[11].Version != 12 || firstRecords[11].Name != "add_agent_soul_snapshots" {
+		t.Fatalf("firstRecords[11] = %#v, want add_agent_soul_snapshots v12", firstRecords[11])
+	}
+	if firstRecords[12].Version != 13 || firstRecords[12].Name != "add_agent_heartbeat_storage" {
+		t.Fatalf("firstRecords[12] = %#v, want add_agent_heartbeat_storage v13", firstRecords[12])
+	}
 	if err := first.Close(ctx); err != nil {
 		t.Fatalf("Close(first) error = %v", err)
 	}
@@ -216,7 +228,7 @@ func TestOpenGlobalDBRecordsSchemaMigrationAndRepeatedBootIsIdempotent(t *testin
 	if err != nil {
 		t.Fatalf("AppliedMigrations(second) error = %v", err)
 	}
-	if got, want := len(secondRecords), 9; got != want {
+	if got, want := len(secondRecords), 13; got != want {
 		t.Fatalf("len(secondRecords) = %d, want %d", got, want)
 	}
 	for i := range firstRecords {
@@ -1345,6 +1357,9 @@ func TestGlobalDBRegisterAndListSessionsUseWorkspaceID(t *testing.T) {
 			"auto_stop_on_parent",
 			"spawn_budget_json",
 			"permission_policy_json",
+			"soul_snapshot_id",
+			"soul_digest",
+			"parent_soul_digest",
 		},
 	)
 }
@@ -1588,6 +1603,9 @@ func TestOpenGlobalDBMigratesLegacyWorkspaceColumn(t *testing.T) {
 			"auto_stop_on_parent",
 			"spawn_budget_json",
 			"permission_policy_json",
+			"soul_snapshot_id",
+			"soul_digest",
+			"parent_soul_digest",
 		},
 	)
 	assertTableColumns(
@@ -2448,6 +2466,9 @@ func TestOpenGlobalDBAddsStopColumnsToCurrentSessionSchema(t *testing.T) {
 			"auto_stop_on_parent",
 			"spawn_budget_json",
 			"permission_policy_json",
+			"soul_snapshot_id",
+			"soul_digest",
+			"parent_soul_digest",
 		},
 	)
 	assertTableColumns(

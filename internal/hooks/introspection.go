@@ -21,7 +21,7 @@ type CatalogEntry struct {
 	SkillSource  HookSkillSource
 	Mode         HookMode
 	Required     bool
-	Priority     int
+	Priority     int32
 	Timeout      time.Duration
 	ExecutorKind HookExecutorKind
 	Matcher      HookMatcher
@@ -218,6 +218,48 @@ var hookEventDescriptors = map[HookEvent]EventDescriptor{
 		SyncEligible:  true,
 		PayloadSchema: "AgentStoppedPayload",
 		PatchSchema:   "AgentStoppedPatch",
+	},
+	HookAgentSoulSnapshotResolved: {
+		Event:         HookAgentSoulSnapshotResolved,
+		Family:        HookEventFamilyAgent,
+		SyncEligible:  false,
+		PayloadSchema: "AgentSoulSnapshotResolvedPayload",
+		PatchSchema:   "AuthoredContextObservationPatch",
+	},
+	HookAgentSoulMutationAfter: {
+		Event:         HookAgentSoulMutationAfter,
+		Family:        HookEventFamilyAgent,
+		SyncEligible:  false,
+		PayloadSchema: "AgentSoulMutationAfterPayload",
+		PatchSchema:   "AuthoredContextObservationPatch",
+	},
+	HookAgentHeartbeatPolicyResolved: {
+		Event:         HookAgentHeartbeatPolicyResolved,
+		Family:        HookEventFamilyAgent,
+		SyncEligible:  false,
+		PayloadSchema: "AgentHeartbeatPolicyResolvedPayload",
+		PatchSchema:   "AuthoredContextObservationPatch",
+	},
+	HookAgentHeartbeatWakeBefore: {
+		Event:         HookAgentHeartbeatWakeBefore,
+		Family:        HookEventFamilyAgent,
+		SyncEligible:  true,
+		PayloadSchema: "AgentHeartbeatWakeBeforePayload",
+		PatchSchema:   "AuthoredContextObservationPatch",
+	},
+	HookAgentHeartbeatWakeAfter: {
+		Event:         HookAgentHeartbeatWakeAfter,
+		Family:        HookEventFamilyAgent,
+		SyncEligible:  false,
+		PayloadSchema: "AgentHeartbeatWakeAfterPayload",
+		PatchSchema:   "AuthoredContextObservationPatch",
+	},
+	HookSessionHealthUpdateAfter: {
+		Event:         HookSessionHealthUpdateAfter,
+		Family:        HookEventFamilySession,
+		SyncEligible:  false,
+		PayloadSchema: "SessionHealthUpdateAfterPayload",
+		PatchSchema:   "AuthoredContextObservationPatch",
 	},
 	HookTurnStart: {
 		Event:         HookTurnStart,

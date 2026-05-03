@@ -1,16 +1,19 @@
-import { FileCode2, Plug, Sparkles, Timer } from "lucide-react";
+import Link from "next/link";
+import { ArrowUpRight, BookOpen, Box, FileCode2, Plug, Sparkles, Timer } from "lucide-react";
 import { FeatureCard } from "./primitives/feature-card";
 import { SectionFrame } from "./primitives/section-frame";
 import { SectionHeader } from "./primitives/section-header";
+
+const EXTENSIONS_DOCS_HREF = "/runtime/core/extensions";
 
 const FEATURES = [
   {
     icon: <FileCode2 className="h-4 w-4" />,
     eyebrow: "Hooks",
-    title: "Observe and mutate lifecycle events",
+    title: "Typed dispatch on every state transition",
     description:
-      "Run shell, builtin, or sub-agent actions on ~40 lifecycle events — session start, tool call, permission request, network receipt.",
-    cite: { href: "/runtime", label: "hooks catalog" },
+      "Not an event bus. ~24 typed lifecycle hooks fire at the call site that owns the transition — session, prompt, tool, permission, autonomy. Hooks can deny or narrow, never bypass.",
+    cite: { href: "/runtime/core/hooks", label: "hooks catalog" },
   },
   {
     icon: <Sparkles className="h-4 w-4" />,
@@ -18,7 +21,7 @@ const FEATURES = [
     title: "Drop-in SKILL.md bundles",
     description:
       "Share reusable instruction sets with YAML frontmatter and Markdown body. Bundled defaults + global + workspace scopes.",
-    cite: { href: "/runtime", label: "skills guide" },
+    cite: { href: "/runtime/core/skills", label: "skills guide" },
   },
   {
     icon: <Timer className="h-4 w-4" />,
@@ -26,7 +29,15 @@ const FEATURES = [
     title: "Cron + webhook + event triggers",
     description:
       "Durable jobs and triggers stored in SQLite. Schedule work. Delegate to peers. Track runs.",
-    cite: { href: "/runtime", label: "automation" },
+    cite: { href: "/runtime/core/automation", label: "automation" },
+  },
+  {
+    icon: <Box className="h-4 w-4" />,
+    eyebrow: "Sandbox",
+    title: "Run agents away from the host filesystem",
+    description:
+      "Stay local when isolation isn't needed, or bind a workspace to a Daytona sandbox with explicit sync, lifecycle, and provider metadata.",
+    cite: { href: "/runtime/core/sandbox/profiles", label: "sandbox profiles" },
   },
   {
     icon: <Plug className="h-4 w-4" />,
@@ -34,21 +45,21 @@ const FEATURES = [
     title: "Install from local or marketplace",
     description:
       "Extensions bundle skills, hooks, bridge adapters, and MCP servers. Ship them as zip files or via a GitHub registry.",
-    cite: { href: "/runtime", label: "extensions" },
+    cite: { href: EXTENSIONS_DOCS_HREF, label: "extensions" },
   },
 ];
 
 export function ExtensibilitySection() {
   return (
-    <SectionFrame background="canvas" padY="lg">
+    <SectionFrame background="canvas" padY="lg" className="border-b border-(--color-divider)">
       <SectionHeader
         align="start"
         eyebrow="Extensibility"
-        title="Hooks, skills, automation, extensions."
+        title="Hooks, skills, automation, sandbox, extensions."
         description="The daemon is extensible at every seam you actually need. No plugins to write — contracts are plain files."
       />
 
-      <div className="mt-20 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-20 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {FEATURES.map(feature => (
           <FeatureCard
             key={feature.eyebrow}
@@ -59,6 +70,30 @@ export function ExtensibilitySection() {
             cite={feature.cite}
           />
         ))}
+        <article className="group relative flex min-h-[220px] flex-col items-start justify-center gap-4 rounded-(--radius-diagram) border border-dashed border-(--color-divider) bg-transparent p-6 transition-colors hover:border-[color-mix(in_srgb,var(--color-accent)_55%,var(--color-divider))] hover:bg-[color-mix(in_srgb,var(--color-accent)_4%,transparent)]">
+          <span className="flex h-12 w-12 items-center justify-center rounded-[12px] border border-dashed border-(--color-divider) text-(--color-text-secondary) transition-colors group-hover:border-(--color-accent) group-hover:text-(--color-accent)">
+            <BookOpen aria-hidden className="h-5 w-5" />
+          </span>
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-(--tracking-mono) text-(--color-text-tertiary)">
+            Reference
+          </p>
+          <h3 className="text-base font-medium leading-snug text-(--color-text-primary)">
+            Every extensibility surface, in one reference.
+          </h3>
+          <p className="text-sm leading-relaxed text-(--color-text-secondary)">
+            Hooks, skills, automation, sandbox, extensions — schemas, CLI verbs, examples.
+          </p>
+          <Link
+            href={EXTENSIONS_DOCS_HREF}
+            className="mt-1 inline-flex items-center gap-1.5 font-mono text-[11px] font-semibold uppercase tracking-(--tracking-mono) text-(--color-accent) before:absolute before:inset-0 before:rounded-(--radius-diagram) before:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent)"
+          >
+            Read extensions docs
+            <ArrowUpRight
+              aria-hidden
+              className="h-3.5 w-3.5 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
+            />
+          </Link>
+        </article>
       </div>
 
       <div className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)] lg:items-center lg:gap-10">

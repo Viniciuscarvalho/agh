@@ -2,6 +2,7 @@ import { Check, Minus } from "lucide-react";
 import { cn } from "@agh/ui/utils";
 import { SectionFrame } from "./primitives/section-frame";
 import { SectionHeader } from "./primitives/section-header";
+import { PROVIDERS } from "./supported-agents";
 
 type Approach = {
   approach: string;
@@ -10,46 +11,46 @@ type Approach = {
   coordination: string;
   deployment: string;
   agents: string;
-  /** Whether this approach ships a cross-runtime protocol today. */
+  /** Whether this approach exposes an implemented cross-runtime protocol. */
   crossRuntime: boolean;
   highlight?: boolean;
 };
 
 const APPROACHES: Approach[] = [
   {
-    approach: "Assistant gateway",
-    focus: "Personal AI across chat channels",
-    agentModel: "Single assistant with plugins",
-    coordination: "None — one agent per user",
-    deployment: "Cloud-hosted",
-    agents: "1 (built-in)",
+    approach: "Letta",
+    focus: "Memory-first stateful agents",
+    agentModel: "Letta agents in cloud or self-host",
+    coordination: "None — single agent",
+    deployment: "Cloud-hosted or self-host",
+    agents: "1 (managed)",
     crossRuntime: false,
   },
   {
-    approach: "All-in-one agent OS",
-    focus: "Broad built-in capabilities",
-    agentModel: "Custom agents in platform",
-    coordination: "Internal only",
-    deployment: "Cloud or self-hosted",
-    agents: "custom",
+    approach: "LangGraph / CrewAI",
+    focus: "Multi-agent orchestration framework",
+    agentModel: "Agents you author in Python",
+    coordination: "In-process graph or crew",
+    deployment: "Library you embed",
+    agents: "your code",
     crossRuntime: false,
   },
   {
-    approach: "Multi-tenant gateway",
-    focus: "Enterprise AI platform",
+    approach: "OpenAI Assistants / Devin",
+    focus: "Hosted agent platform",
     agentModel: "Managed agents behind an API",
     coordination: "Centralized routing",
-    deployment: "Cloud-hosted",
+    deployment: "Cloud-only",
     agents: "managed",
     crossRuntime: false,
   },
   {
     approach: "AGH",
-    focus: "Orchestrate real agent CLIs",
+    focus: "Run + connect real agent CLIs",
     agentModel: "Your existing ACP agents",
-    coordination: "agh-network/v0 — shipped",
+    coordination: "agh-network/v0 — implemented",
     deployment: "Local-first, single binary",
-    agents: "8 ACP CLIs",
+    agents: `${PROVIDERS.length} ACP drivers`,
     crossRuntime: true,
     highlight: true,
   },
@@ -58,19 +59,19 @@ const APPROACHES: Approach[] = [
 const DIMENSIONS = [
   { key: "focus" as const, label: "Primary focus" },
   { key: "agentModel" as const, label: "Agent model" },
-  { key: "agents" as const, label: "Agents today" },
+  { key: "agents" as const, label: "Agent support" },
   { key: "coordination" as const, label: "Coordination" },
   { key: "deployment" as const, label: "Deployment" },
 ];
 
 export function Comparison() {
   return (
-    <SectionFrame background="canvas" padY="lg">
+    <SectionFrame background="canvas" padY="lg" className="border-b border-(--color-divider)">
       <SectionHeader
         align="start"
         eyebrow="Positioning"
         title="Other tools stop at the runtime boundary."
-        description="AGH is the only approach with a shipped cross-runtime protocol. The rest centralize coordination or skip it entirely."
+        description="AGH is the only approach here with an implemented cross-runtime protocol. The rest centralize coordination or skip it entirely."
       />
 
       <div className="mt-10 overflow-hidden rounded-(--radius-diagram) border border-(--color-divider) bg-(--color-surface)">
