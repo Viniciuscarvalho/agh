@@ -32,6 +32,7 @@ import (
 const (
 	teamsListenAddrEnv            = "AGH_BRIDGE_TEAMS_LISTEN_ADDR"
 	teamsOpenIDMetadataURLEnv     = "AGH_BRIDGE_TEAMS_OPENID_METADATA_URL"
+	teamsTestLoopbackAuthEnv      = "AGH_BRIDGE_TEAMS_ALLOW_LOOPBACK_AUTH_FOR_TESTING"
 	teamsDefaultOpenIDMetadata    = "https://login.botframework.com/v1/.well-known/openidconfiguration"
 	teamsDefaultServiceURL        = "https://smba.trafficmanager.net/teams/"
 	teamsDefaultScope             = "https://api.botframework.com/.default"
@@ -41,6 +42,13 @@ const (
 )
 
 var messageIDStripPattern = regexp.MustCompile(`;messageid=.+$`)
+
+var teamsAuthHTTPClient = &http.Client{
+	Timeout: 10 * time.Second,
+	CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	},
+}
 
 type teamsProvider struct {
 	sdk     *bridgesdk.Runtime
@@ -1525,8 +1533,12 @@ func validateTeamsResolvedConfig(resolved *resolvedInstanceConfig) {
 		)
 	case resolved.openIDMetadataURL == "":
 		resolved.configError = errors.New("teams: openid metadata url is required")
+	case !validTeamsCredentialedURL(resolved.openIDMetadataURL):
+		resolved.configError = fmt.Errorf("teams: openid metadata url %q is invalid", resolved.openIDMetadataURL)
 	case resolved.tokenURL == "":
 		resolved.configError = errors.New("teams: token url is required")
+	case !validTeamsCredentialedURL(resolved.tokenURL):
+		resolved.configError = fmt.Errorf("teams: token url %q is invalid", resolved.tokenURL)
 	case resolved.appTenantID != "" && !looksLikeTenantID(resolved.appTenantID):
 		resolved.configError = fmt.Errorf(
 			"teams: app_tenant_id %q is malformed",
@@ -2117,11 +2129,15 @@ func fetchTeamsOpenIDMetadata(
 	if strings.TrimSpace(metadataURL) == "" {
 		return nil, errors.New("teams: openid metadata url is required")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, metadataURL, http.NoBody)
+	endpoint, err := validatedTeamsCredentialedURL(metadataURL, "openid metadata url")
 	if err != nil {
 		return nil, err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, http.NoBody)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := teamsAuthHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -2140,15 +2156,22 @@ func fetchTeamsOpenIDMetadata(
 	if strings.TrimSpace(metadata.JWKSURI) == "" {
 		return nil, errors.New("teams: openid metadata jwks_uri is required")
 	}
+	if !validTeamsCredentialedURL(metadata.JWKSURI) {
+		return nil, fmt.Errorf("teams: openid metadata jwks_uri %q is invalid", metadata.JWKSURI)
+	}
 	return &metadata, nil
 }
 
 func fetchTeamsJWKS(ctx context.Context, jwksURL string) (*teamsJWKS, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, jwksURL, http.NoBody)
+	endpoint, err := validatedTeamsCredentialedURL(jwksURL, "jwks url")
 	if err != nil {
 		return nil, err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, http.NoBody)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := teamsAuthHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -2168,6 +2191,22 @@ func fetchTeamsJWKS(ctx context.Context, jwksURL string) (*teamsJWKS, error) {
 		return nil, errors.New("teams: jwks document omitted signing keys")
 	}
 	return &keys, nil
+}
+
+func teamsCredentialedHTTPClient(base *http.Client) *http.Client {
+	if base == nil {
+		return &http.Client{
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+	}
+
+	client := *base
+	client.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	return &client
 }
 
 func (k teamsJWKS) keyByID(keyID string) (*teamsJWK, error) {
@@ -2312,17 +2351,21 @@ func (c *teamsBotClient) accessToken(ctx context.Context) (string, error) {
 	form.Set("client_secret", c.cfg.appPassword)
 	form.Set("scope", teamsDefaultScope)
 
+	tokenURL, err := validatedTeamsCredentialedURL(c.cfg.tokenURL, "token url")
+	if err != nil {
+		return "", err
+	}
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
-		c.cfg.tokenURL,
+		tokenURL,
 		strings.NewReader(form.Encode()),
 	)
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := c.httpClient.Do(req)
+	resp, err := teamsCredentialedHTTPClient(c.httpClient).Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -2763,6 +2806,42 @@ func validTeamsServiceURL(value string) bool {
 		return false
 	}
 	host := strings.TrimSpace(parsed.Hostname())
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func validatedTeamsCredentialedURL(value string, label string) (string, error) {
+	normalized := normalizeURL(value)
+	if !validTeamsCredentialedURL(normalized) {
+		return "", fmt.Errorf("teams: %s %q is invalid", label, normalized)
+	}
+	return normalized, nil
+}
+
+func validTeamsCredentialedURL(value string) bool {
+	parsed, err := url.Parse(normalizeURL(value))
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	switch parsed.Scheme {
+	case "https":
+		return host == "login.botframework.com" || host == "login.microsoftonline.com"
+	case "http":
+		return teamsLoopbackCredentialedURLsEnabledForTesting() && isLoopbackTeamsHost(host)
+	default:
+		return false
+	}
+}
+
+func teamsLoopbackCredentialedURLsEnabledForTesting() bool {
+	return strings.TrimSpace(os.Getenv(teamsTestLoopbackAuthEnv)) == "1"
+}
+
+func isLoopbackTeamsHost(host string) bool {
 	if strings.EqualFold(host, "localhost") {
 		return true
 	}

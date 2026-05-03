@@ -29,6 +29,11 @@ import (
 	"github.com/pedronauck/agh/internal/subprocess"
 )
 
+func enableTeamsLoopbackCredentialedURLsForTesting(t *testing.T) {
+	t.Helper()
+	t.Setenv(teamsTestLoopbackAuthEnv, "1")
+}
+
 func TestMapTeamsActivityFamiliesAndDMPolicy(t *testing.T) {
 	t.Parallel()
 
@@ -741,6 +746,117 @@ func TestWebhookAuthorizationRejectsInvalidTokenAndIngestsActivities(t *testing.
 	mu.Unlock()
 }
 
+func TestTeamsCredentialedRequestsRejectRedirects(t *testing.T) {
+	enableTeamsLoopbackCredentialedURLsForTesting(t)
+
+	t.Run("Should not follow OpenID metadata redirects", func(t *testing.T) {
+		var (
+			mu       sync.Mutex
+			evilHits int
+		)
+		evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			mu.Lock()
+			evilHits++
+			mu.Unlock()
+			http.Error(w, "unexpected redirect follow", http.StatusInternalServerError)
+		}))
+		defer evil.Close()
+
+		trusted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, evil.URL, http.StatusTemporaryRedirect)
+		}))
+		defer trusted.Close()
+
+		_, err := fetchTeamsOpenIDMetadata(context.Background(), trusted.URL)
+		var httpErr *bridgesdk.HTTPError
+		if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusTemporaryRedirect {
+			t.Fatalf(
+				"fetchTeamsOpenIDMetadata(redirect) error = %v, want blocked redirect HTTP 307",
+				err,
+			)
+		}
+
+		mu.Lock()
+		got := evilHits
+		mu.Unlock()
+		if got != 0 {
+			t.Fatalf("redirect target hits = %d, want 0", got)
+		}
+	})
+
+	t.Run("Should not follow JWKS redirects", func(t *testing.T) {
+		var (
+			mu       sync.Mutex
+			evilHits int
+		)
+		evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			mu.Lock()
+			evilHits++
+			mu.Unlock()
+			http.Error(w, "unexpected redirect follow", http.StatusInternalServerError)
+		}))
+		defer evil.Close()
+
+		trusted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, evil.URL, http.StatusTemporaryRedirect)
+		}))
+		defer trusted.Close()
+
+		_, err := fetchTeamsJWKS(context.Background(), trusted.URL)
+		var httpErr *bridgesdk.HTTPError
+		if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusTemporaryRedirect {
+			t.Fatalf("fetchTeamsJWKS(redirect) error = %v, want blocked redirect HTTP 307", err)
+		}
+
+		mu.Lock()
+		got := evilHits
+		mu.Unlock()
+		if got != 0 {
+			t.Fatalf("redirect target hits = %d, want 0", got)
+		}
+	})
+
+	t.Run("Should not follow token redirects", func(t *testing.T) {
+		var (
+			mu       sync.Mutex
+			evilHits int
+		)
+		evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			mu.Lock()
+			evilHits++
+			mu.Unlock()
+			http.Error(w, "unexpected redirect follow", http.StatusInternalServerError)
+		}))
+		defer evil.Close()
+
+		trusted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, evil.URL, http.StatusTemporaryRedirect)
+		}))
+		defer trusted.Close()
+
+		client := &teamsBotClient{
+			cfg: resolvedInstanceConfig{
+				tokenURL:    trusted.URL,
+				appID:       "app-id",
+				appPassword: "app-password",
+			},
+			httpClient: http.DefaultClient,
+		}
+		_, err := client.accessToken(context.Background())
+		var httpErr *bridgesdk.HTTPError
+		if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusTemporaryRedirect {
+			t.Fatalf("accessToken(redirect) error = %v, want blocked redirect HTTP 307", err)
+		}
+
+		mu.Lock()
+		got := evilHits
+		mu.Unlock()
+		if got != 0 {
+			t.Fatalf("redirect target hits = %d, want 0", got)
+		}
+	})
+}
+
 func TestRuntimeDeliveriesCallTeamsAPI(t *testing.T) {
 	env := setProviderTestEnv(t)
 	listenAddr := reserveListenAddr(t)
@@ -823,8 +939,6 @@ func TestRuntimeDeliveriesCallTeamsAPI(t *testing.T) {
 }
 
 func TestClassifyTeamsHTTPErrorAndHelpers(t *testing.T) {
-	t.Parallel()
-
 	rate := classifyTeamsHTTPError(http.StatusTooManyRequests, "5", "slow down")
 	var rateErr *bridgesdk.RateLimitError
 	if !errors.As(rate, &rateErr) {
@@ -854,6 +968,25 @@ func TestClassifyTeamsHTTPErrorAndHelpers(t *testing.T) {
 	}
 	if validTeamsServiceURL("http://example.test") {
 		t.Fatal("validTeamsServiceURL(http) = true, want false")
+	}
+	if !validTeamsCredentialedURL("https://login.botframework.com/v1/.well-known/openidconfiguration") {
+		t.Fatal("validTeamsCredentialedURL(botframework) = false, want true")
+	}
+	if !validTeamsCredentialedURL("https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token") {
+		t.Fatal("validTeamsCredentialedURL(microsoftonline) = false, want true")
+	}
+	if validTeamsCredentialedURL("http://127.0.0.1:3000/openid") {
+		t.Fatal("validTeamsCredentialedURL(loopback http without opt-in) = true, want false")
+	}
+	enableTeamsLoopbackCredentialedURLsForTesting(t)
+	if !validTeamsCredentialedURL("http://127.0.0.1:3000/openid") {
+		t.Fatal("validTeamsCredentialedURL(loopback http with opt-in) = false, want true")
+	}
+	if validTeamsCredentialedURL("https://evil.example/openid") {
+		t.Fatal("validTeamsCredentialedURL(untrusted https host) = true, want false")
+	}
+	if validTeamsCredentialedURL("http://169.254.169.254/latest/meta-data") {
+		t.Fatal("validTeamsCredentialedURL(link-local http) = true, want false")
 	}
 }
 
@@ -1344,7 +1477,7 @@ func TestHandleBridgesDeliverCoverageAndRunCommand(t *testing.T) {
 }
 
 func TestTeamsOpenIDAndAuthHelperCoverage(t *testing.T) {
-	t.Parallel()
+	enableTeamsLoopbackCredentialedURLsForTesting(t)
 
 	if _, err := fetchTeamsOpenIDMetadata(context.Background(), ""); err == nil {
 		t.Fatal("fetchTeamsOpenIDMetadata(empty) error = nil, want non-nil")
@@ -1777,6 +1910,7 @@ type teamsProviderAPICall struct {
 
 func newTeamsProviderServer(t *testing.T, _ teamsProviderServerConfig) *teamsProviderServer {
 	t.Helper()
+	enableTeamsLoopbackCredentialedURLsForTesting(t)
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -2166,6 +2300,7 @@ func testInitializeRequest(
 
 func setProviderTestEnv(t *testing.T) markerEnv {
 	t.Helper()
+	enableTeamsLoopbackCredentialedURLsForTesting(t)
 
 	root := filepath.Join(t.TempDir(), "markers")
 	env := markerEnv{

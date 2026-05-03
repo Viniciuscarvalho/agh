@@ -33,8 +33,8 @@ func TestResolveLinearInstanceConfigValidatesProviderOwnedModes(t *testing.T) {
 		webhookSecret: "webhook-secret",
 		apiKey:        "linear-api-key",
 	}, resolveLinearEnv{
-		apiBaseURL: "https://linear.example/api/",
-		tokenURL:   "https://linear.example/oauth/token/",
+		apiBaseURL: "https://api.linear.app/api/",
+		tokenURL:   "https://api.linear.app/oauth/token/",
 	})
 	if cfg.configError != nil {
 		t.Fatalf("resolveLinearInstanceConfig(valid comments/api_key) configError = %v", cfg.configError)
@@ -51,7 +51,7 @@ func TestResolveLinearInstanceConfigValidatesProviderOwnedModes(t *testing.T) {
 	if got, want := cfg.webhookPath, "/linear"; got != want {
 		t.Fatalf("webhookPath = %q, want %q", got, want)
 	}
-	if got, want := cfg.apiBaseURL, "https://linear.example/api"; got != want {
+	if got, want := cfg.apiBaseURL, "https://api.linear.app/api"; got != want {
 		t.Fatalf("apiBaseURL = %q, want %q", got, want)
 	}
 
@@ -66,7 +66,7 @@ func TestResolveLinearInstanceConfigValidatesProviderOwnedModes(t *testing.T) {
 		clientID:      "client-id",
 		clientSecret:  "client-secret",
 	}, resolveLinearEnv{
-		tokenURL: "https://linear.example/oauth/token",
+		tokenURL: "https://api.linear.app/oauth/token",
 	})
 	if cfg.configError != nil {
 		t.Fatalf("resolveLinearInstanceConfig(valid agent_sessions/oauth) configError = %v", cfg.configError)
@@ -76,6 +76,15 @@ func TestResolveLinearInstanceConfigValidatesProviderOwnedModes(t *testing.T) {
 	}
 	if got, want := cfg.authMode, linearAuthModeOAuth; got != want {
 		t.Fatalf("authMode = %q, want %q", got, want)
+	}
+	if !validLinearCredentialedURL("http://127.0.0.1:3000") {
+		t.Fatal("validLinearCredentialedURL(loopback http) = false, want true")
+	}
+	if validLinearCredentialedURL("http://169.254.169.254/latest/meta-data") {
+		t.Fatal("validLinearCredentialedURL(link-local http) = true, want false")
+	}
+	if validLinearCredentialedURL("https://evil.example/graphql") {
+		t.Fatal("validLinearCredentialedURL(untrusted https host) = true, want false")
 	}
 
 	invalidCases := []struct {
@@ -749,6 +758,103 @@ func TestLinearClientClassifiesHTTPFailures(t *testing.T) {
 			t.Fatalf("CreateComment() error = %#v, want rate limit error", err)
 		}
 	}
+}
+
+func TestLinearClientRejectsCredentialedRedirects(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Should not follow GraphQL redirects", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			mu       sync.Mutex
+			evilHits int
+		)
+		evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			mu.Lock()
+			evilHits++
+			mu.Unlock()
+			http.Error(w, "unexpected redirect follow", http.StatusInternalServerError)
+		}))
+		defer evil.Close()
+
+		trusted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/graphql" {
+				http.NotFound(w, r)
+				return
+			}
+			http.Redirect(w, r, evil.URL+"/graphql", http.StatusTemporaryRedirect)
+		}))
+		defer trusted.Close()
+
+		client := &linearClient{
+			cfg: resolvedInstanceConfig{
+				authMode:   linearAuthModeAPIKey,
+				apiKey:     "linear-api-key",
+				apiBaseURL: trusted.URL,
+			},
+			httpClient: trusted.Client(),
+			now:        func() time.Time { return time.Now().UTC() },
+		}
+		if _, err := client.ValidateAuth(context.Background()); err == nil {
+			t.Fatal("ValidateAuth(redirect) error = nil, want non-nil")
+		}
+
+		mu.Lock()
+		got := evilHits
+		mu.Unlock()
+		if got != 0 {
+			t.Fatalf("redirect target hits = %d, want 0", got)
+		}
+	})
+
+	t.Run("Should not follow OAuth token redirects", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			mu       sync.Mutex
+			evilHits int
+		)
+		evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			mu.Lock()
+			evilHits++
+			mu.Unlock()
+			http.Error(w, "unexpected redirect follow", http.StatusInternalServerError)
+		}))
+		defer evil.Close()
+
+		trusted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/oauth/token" {
+				http.NotFound(w, r)
+				return
+			}
+			http.Redirect(w, r, evil.URL+"/oauth/token", http.StatusTemporaryRedirect)
+		}))
+		defer trusted.Close()
+
+		client := &linearClient{
+			cfg: resolvedInstanceConfig{
+				authMode:        linearAuthModeOAuth,
+				apiBaseURL:      trusted.URL,
+				oauthTokenURL:   trusted.URL + "/oauth/token",
+				clientID:        "client-id",
+				clientSecret:    "client-secret",
+				oauthTokenCache: &linearOAuthTokenCache{},
+			},
+			httpClient: trusted.Client(),
+			now:        func() time.Time { return time.Now().UTC() },
+		}
+		if got := client.authToken(context.Background()); got != "" {
+			t.Fatalf("authToken(redirect) = %q, want empty", got)
+		}
+
+		mu.Lock()
+		got := evilHits
+		mu.Unlock()
+		if got != 0 {
+			t.Fatalf("redirect target hits = %d, want 0", got)
+		}
+	})
 }
 
 type linearFakeAPI struct {
