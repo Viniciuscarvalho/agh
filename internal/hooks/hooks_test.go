@@ -1568,7 +1568,7 @@ func TestDispatchPermissionAndContextHooksApplyPatches(t *testing.T) {
 				Event:        HookContextPreCompact,
 				Mode:         HookModeSync,
 				ExecutorKind: HookExecutorNative,
-				Matcher:      HookMatcher{CompactionReason: "token_limit"},
+				Matcher:      HookMatcher{CompactionMatcher: &CompactionMatcher{Reason: "token_limit"}},
 			},
 		}),
 		WithExecutorResolver(testExecutorResolver(map[string]Executor{
@@ -1649,19 +1649,42 @@ func TestDispatchPermissionAndContextHooksApplyPatches(t *testing.T) {
 		t.Fatal("permission-denied async hook was not called")
 	}
 
-	contextPayload, err := hooks.DispatchContextPreCompact(t.Context(), ContextPreCompactPayload{
-		PayloadBase: PayloadBase{Event: HookContextPreCompact},
-		Reason:      "token_limit",
+	t.Run("Should patch context compaction when a hook matches", func(t *testing.T) {
+		t.Parallel()
+
+		contextPayload, err := hooks.DispatchContextPreCompact(t.Context(), ContextPreCompactPayload{
+			PayloadBase: PayloadBase{Event: HookContextPreCompact},
+			Reason:      "token_limit",
+		})
+		if err != nil {
+			t.Fatalf("DispatchContextPreCompact() error = %v, want nil", err)
+		}
+		if contextPayload.Reason != "manual" || contextPayload.Strategy != "summarize" {
+			t.Fatalf("contextPayload = %#v, want patched reason/strategy", contextPayload)
+		}
+		if got := len(contextPayload.ContextBlocks); got != 1 {
+			t.Fatalf("len(contextPayload.ContextBlocks) = %d, want 1", got)
+		}
 	})
-	if err != nil {
-		t.Fatalf("DispatchContextPreCompact() error = %v, want nil", err)
-	}
-	if contextPayload.Reason != "manual" || contextPayload.Strategy != "summarize" {
-		t.Fatalf("contextPayload = %#v, want patched reason/strategy", contextPayload)
-	}
-	if got := len(contextPayload.ContextBlocks); got != 1 {
-		t.Fatalf("len(contextPayload.ContextBlocks) = %d, want 1", got)
-	}
+
+	t.Run("Should leave compaction untouched when no hook matches", func(t *testing.T) {
+		t.Parallel()
+
+		unmatchedPayload, err := hooks.DispatchContextPreCompact(t.Context(), ContextPreCompactPayload{
+			PayloadBase: PayloadBase{Event: HookContextPreCompact},
+			Reason:      "manual",
+			Strategy:    "summarize",
+		})
+		if err != nil {
+			t.Fatalf("DispatchContextPreCompact(unmatched) error = %v, want nil", err)
+		}
+		if unmatchedPayload.Reason != "manual" || unmatchedPayload.Strategy != "summarize" {
+			t.Fatalf("unmatchedPayload = %#v, want unchanged compaction reason/strategy", unmatchedPayload)
+		}
+		if got := len(unmatchedPayload.ContextBlocks); got != 0 {
+			t.Fatalf("len(unmatchedPayload.ContextBlocks) = %d, want 0 for unmatched hook", got)
+		}
+	})
 }
 
 func TestHooksDispatchSessionPostCreate(t *testing.T) {

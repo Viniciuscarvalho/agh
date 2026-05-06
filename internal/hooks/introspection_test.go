@@ -177,6 +177,28 @@ func TestAllEventDescriptorsReturnsFullTaxonomy(t *testing.T) {
 			)
 		}
 	}
+
+	networkDescriptors := map[HookEvent]string{
+		HookNetworkThreadOpened:     "NetworkThreadOpenedPayload",
+		HookNetworkDirectRoomOpened: "NetworkDirectRoomOpenedPayload",
+		HookNetworkMessagePersisted: "NetworkMessagePersistedPayload",
+		HookNetworkWorkOpened:       "NetworkWorkOpenedPayload",
+		HookNetworkWorkTransitioned: "NetworkWorkTransitionedPayload",
+		HookNetworkWorkClosed:       "NetworkWorkClosedPayload",
+	}
+	for event, wantPayload := range networkDescriptors {
+		t.Run("Should describe "+string(event), func(t *testing.T) {
+			t.Parallel()
+
+			descriptor := byEvent[event]
+			if descriptor.Family != HookEventFamilyNetwork ||
+				descriptor.SyncEligible ||
+				descriptor.PayloadSchema != wantPayload ||
+				descriptor.PatchSchema != "NetworkObservationPatch" {
+				t.Fatalf("%s descriptor = %#v, want async network payload=%q", event, descriptor, wantPayload)
+			}
+		})
+	}
 }
 
 func TestHooksCatalogFiltersByEventSourceModeAndExposesExecutorKind(t *testing.T) {

@@ -13,6 +13,7 @@ import (
 
 	bridgepkg "github.com/pedronauck/agh/internal/bridges"
 	extensionprotocol "github.com/pedronauck/agh/internal/extension/protocol"
+	hookspkg "github.com/pedronauck/agh/internal/hooks"
 	"github.com/pedronauck/agh/internal/resources"
 	"github.com/pedronauck/agh/internal/version"
 )
@@ -104,6 +105,103 @@ capabilities = ["memory.read", "   "]
 	if !reflect.DeepEqual(manifest.Security.Capabilities, []string{"memory.read"}) {
 		t.Fatalf("Security.Capabilities = %#v, want %#v", manifest.Security.Capabilities, []string{"memory.read"})
 	}
+}
+
+func TestLoadManifestParsesNetworkHookMatcher(t *testing.T) {
+	t.Run("Should parse network hook matcher", func(t *testing.T) {
+		withDaemonVersion(t, "0.6.0")
+
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, manifestTOMLFileName), `[extension]
+name = "network-observer"
+version = "0.1.0"
+description = "Network hook observer"
+min_agh_version = "0.5.0"
+
+[[resources.hooks]]
+name = "observe-network"
+event = "network.message.persisted"
+mode = "async"
+executor.kind = "subprocess"
+executor.command = "node"
+
+[resources.hooks.matcher]
+channel = "builders"
+surface = "thread"
+kind = "trace"
+direction = "received"
+work_state = "completed"
+`)
+
+		manifest, err := LoadManifest(dir)
+		if err != nil {
+			t.Fatalf("LoadManifest() error = %v", err)
+		}
+		if got, want := len(manifest.Resources.Hooks), 1; got != want {
+			t.Fatalf("len(Resources.Hooks) = %d, want %d", got, want)
+		}
+		matcher := manifest.Resources.Hooks[0].Matcher
+		if matcher.Channel != "builders" ||
+			matcher.Surface != "thread" ||
+			matcher.Kind != "trace" ||
+			matcher.Direction != "received" ||
+			matcher.WorkState != "completed" {
+			t.Fatalf("Hook matcher = %#v, want parsed network fields", matcher)
+		}
+
+		hookMatcher := hookConfigMatcher(matcher)
+		if hookMatcher.NetworkMatcher == nil ||
+			hookMatcher.Channel != "builders" ||
+			hookMatcher.Surface != "thread" ||
+			hookMatcher.Kind != "trace" ||
+			hookMatcher.Direction != "received" ||
+			hookMatcher.WorkState != "completed" {
+			t.Fatalf("hookConfigMatcher() = %#v, want network matcher fields", hookMatcher)
+		}
+	})
+}
+
+func TestCloneHookDeclDeepCopiesMatcherPointers(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Should clone matcher pointers independently", func(t *testing.T) {
+		t.Parallel()
+
+		toolReadOnly := true
+		decl := hookspkg.HookDecl{
+			Matcher: hookspkg.HookMatcher{
+				ToolReadOnly: &toolReadOnly,
+				NetworkMatcher: &hookspkg.NetworkMatcher{
+					Channel: "builders",
+				},
+				CompactionMatcher: &hookspkg.CompactionMatcher{
+					Reason: "size",
+				},
+				Autonomy: &hookspkg.AutonomyMatcher{
+					TaskID: "task-1",
+				},
+			},
+		}
+
+		cloned := cloneHookDecl(decl)
+		cloned.Matcher.Channel = "ops"
+		cloned.Matcher.Reason = "time"
+		cloned.Matcher.Autonomy.TaskID = "task-2"
+		*cloned.Matcher.ToolReadOnly = false
+
+		if got, want := decl.Matcher.Channel, "builders"; got != want {
+			t.Fatalf("source NetworkMatcher.Channel = %q, want %q", got, want)
+		}
+		if got, want := decl.Matcher.Reason, "size"; got != want {
+			t.Fatalf("source CompactionMatcher.Reason = %q, want %q", got, want)
+		}
+		if got, want := decl.Matcher.Autonomy.TaskID, "task-1"; got != want {
+			t.Fatalf("source Autonomy.TaskID = %q, want %q", got, want)
+		}
+		if got, want := *decl.Matcher.ToolReadOnly, true; got != want {
+			t.Fatalf("source ToolReadOnly = %v, want %v", got, want)
+		}
+	})
 }
 
 func TestLoadManifestRequiresEnvValidationAndMissingDetection(t *testing.T) {

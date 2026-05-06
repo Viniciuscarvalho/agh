@@ -14,6 +14,22 @@ import (
 	sessionpkg "github.com/pedronauck/agh/internal/session"
 )
 
+func withCanonicalDirectedEnvelope(t *testing.T, env Envelope) Envelope {
+	t.Helper()
+
+	if env.To == nil {
+		t.Fatal("withCanonicalDirectedEnvelope() requires env.To")
+	}
+
+	env = withDirectSurface(env)
+	directID, _, _, err := DirectRoomIdentity(env.Channel, env.From, *env.To)
+	if err != nil {
+		t.Fatalf("DirectRoomIdentity() error = %v", err)
+	}
+	env.DirectID = stringPtr(directID)
+	return env
+}
+
 func TestRouterSendEnforcesPresencePreflight(t *testing.T) {
 	t.Parallel()
 
@@ -33,14 +49,14 @@ func TestRouterSendEnforcesPresencePreflight(t *testing.T) {
 		t.Fatalf("NewRouter() error = %v", err)
 	}
 
-	req := SendRequest{
-		SessionID:     "sess-a",
-		Channel:       "builders",
-		Kind:          KindDirect,
-		To:            stringPtr("reviewer.sess-missing"),
-		InteractionID: stringPtr("int_missing"),
-		Body:          mustRawJSON(t, DirectBody{Text: "please review"}),
-	}
+	req := withTestConversation(SendRequest{
+		SessionID: "sess-a",
+		Channel:   "builders",
+		Kind:      KindSay,
+		To:        stringPtr("reviewer.sess-missing"),
+		WorkID:    stringPtr("work_missing"),
+		Body:      mustRawJSON(t, SayBody{Text: "please review"}),
+	})
 	if _, err := router.Send(context.Background(), req); !errors.Is(err, ErrTargetPeerNotFound) {
 		t.Fatalf("Send(absent target) error = %v, want ErrTargetPeerNotFound", err)
 	}
@@ -66,7 +82,7 @@ func TestRouterSendEnforcesPresencePreflight(t *testing.T) {
 		t.Fatalf("NewRouter(expired) error = %v", err)
 	}
 	req.To = stringPtr(expiringPeer.PeerID)
-	req.InteractionID = stringPtr("int_expired")
+	req.WorkID = stringPtr("work_expired")
 	if _, err := expiredRouter.Send(context.Background(), req); !errors.Is(err, ErrTargetPeerNotFound) {
 		t.Fatalf("Send(expired target) error = %v, want ErrTargetPeerNotFound", err)
 	}
@@ -98,12 +114,12 @@ func TestRouterRoutesBroadcastAndDirectToCorrectSubjectsAndTargets(t *testing.T)
 		t.Fatalf("NewRouter() error = %v", err)
 	}
 
-	sayResult, err := router.Send(context.Background(), SendRequest{
+	sayResult, err := router.Send(context.Background(), withTestConversation(SendRequest{
 		SessionID: "sess-a",
 		Channel:   "builders",
 		Kind:      KindSay,
 		Body:      mustRawJSON(t, SayBody{Text: "status update"}),
-	})
+	}))
 	if err != nil {
 		t.Fatalf("Send(say) error = %v", err)
 	}
@@ -111,13 +127,19 @@ func TestRouterRoutesBroadcastAndDirectToCorrectSubjectsAndTargets(t *testing.T)
 		t.Fatalf("Send(say).Subject = %q, want %q", got, want)
 	}
 
+	directID, _, _, err := DirectRoomIdentity("builders", sender.PeerID, target.PeerID)
+	if err != nil {
+		t.Fatalf("DirectRoomIdentity() error = %v", err)
+	}
 	directResult, err := router.Send(context.Background(), SendRequest{
-		SessionID:     "sess-a",
-		Channel:       "builders",
-		Kind:          KindDirect,
-		To:            stringPtr(target.PeerID),
-		InteractionID: stringPtr("int_route"),
-		Body:          mustRawJSON(t, DirectBody{Text: "please review"}),
+		SessionID: "sess-a",
+		Channel:   "builders",
+		Kind:      KindSay,
+		Surface:   surfacePtr(SurfaceDirect),
+		DirectID:  stringPtr(directID),
+		To:        stringPtr(target.PeerID),
+		WorkID:    stringPtr("work_route"),
+		Body:      mustRawJSON(t, SayBody{Text: "please review"}),
 	})
 	if err != nil {
 		t.Fatalf("Send(direct) error = %v", err)
@@ -157,6 +179,133 @@ func TestRouterRoutesBroadcastAndDirectToCorrectSubjectsAndTargets(t *testing.T)
 	}
 }
 
+func TestRouterRoutesDirectSurfaceBroadcastByRoomMembership(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Should route direct surface broadcast by deterministic room membership", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2026, 5, 5, 12, 10, 0, 0, time.UTC)
+		registry, err := NewPeerRegistry(10*time.Second, WithPeerRegistryClock(func() time.Time { return now }))
+		if err != nil {
+			t.Fatalf("NewPeerRegistry() error = %v", err)
+		}
+		if _, err := registry.RegisterLocal(
+			"sess-reviewer",
+			"builders",
+			mustPeerCard(t, "reviewer.sess-b"),
+			now,
+		); err != nil {
+			t.Fatalf("RegisterLocal(reviewer) error = %v", err)
+		}
+		if _, err := registry.RegisterLocal(
+			"sess-observer",
+			"builders",
+			mustPeerCard(t, "observer.sess-c"),
+			now,
+		); err != nil {
+			t.Fatalf("RegisterLocal(observer) error = %v", err)
+		}
+		directID, _, _, err := DirectRoomIdentity("builders", "coder.sess-remote", "reviewer.sess-b")
+		if err != nil {
+			t.Fatalf("DirectRoomIdentity() error = %v", err)
+		}
+		router, err := NewRouter(
+			registry,
+			&spyRouterTransport{},
+			DefaultMaxReplayAge,
+			WithRouterClock(func() time.Time { return now }),
+		)
+		if err != nil {
+			t.Fatalf("NewRouter() error = %v", err)
+		}
+		payload, err := json.Marshal(Envelope{
+			Protocol: ProtocolV0,
+			ID:       "msg_direct_room_broadcast",
+			Kind:     KindSay,
+			Channel:  "builders",
+			Surface:  surfacePtr(SurfaceDirect),
+			DirectID: stringPtr(directID),
+			From:     "coder.sess-remote",
+			TS:       now.Unix(),
+			Body:     mustRawJSON(t, SayBody{Text: "room-only update"}),
+		})
+		if err != nil {
+			t.Fatalf("json.Marshal(direct room broadcast) error = %v", err)
+		}
+
+		result, err := router.Receive(context.Background(), payload)
+		if err != nil {
+			t.Fatalf("Receive(direct room broadcast) error = %v", err)
+		}
+		if got, want := len(result.Deliveries), 1; got != want {
+			t.Fatalf("len(direct room deliveries) = %d, want %d", got, want)
+		}
+		if got, want := result.Deliveries[0].SessionID, "sess-reviewer"; got != want {
+			t.Fatalf("direct room delivery session = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("Should not deliver directed direct-room traffic with a mismatched direct_id", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2026, 5, 5, 12, 11, 0, 0, time.UTC)
+		registry, err := NewPeerRegistry(10*time.Second, WithPeerRegistryClock(func() time.Time { return now }))
+		if err != nil {
+			t.Fatalf("NewPeerRegistry() error = %v", err)
+		}
+		reviewer := mustPeerCard(t, "reviewer.sess-b")
+		if _, err := registry.RegisterLocal("sess-reviewer", "builders", reviewer, now); err != nil {
+			t.Fatalf("RegisterLocal(reviewer) error = %v", err)
+		}
+		if _, err := registry.RegisterLocal(
+			"sess-observer",
+			"builders",
+			mustPeerCard(t, "observer.sess-c"),
+			now,
+		); err != nil {
+			t.Fatalf("RegisterLocal(observer) error = %v", err)
+		}
+		mismatchedDirectID, _, _, err := DirectRoomIdentity("builders", "coder.sess-remote", "observer.sess-c")
+		if err != nil {
+			t.Fatalf("DirectRoomIdentity(observer) error = %v", err)
+		}
+		router, err := NewRouter(
+			registry,
+			&spyRouterTransport{},
+			DefaultMaxReplayAge,
+			WithRouterClock(func() time.Time { return now }),
+		)
+		if err != nil {
+			t.Fatalf("NewRouter() error = %v", err)
+		}
+
+		payload, err := json.Marshal(Envelope{
+			Protocol: ProtocolV0,
+			ID:       "msg_direct_room_mismatch",
+			Kind:     KindSay,
+			Channel:  "builders",
+			Surface:  surfacePtr(SurfaceDirect),
+			DirectID: stringPtr(mismatchedDirectID),
+			From:     "coder.sess-remote",
+			To:       stringPtr(reviewer.PeerID),
+			TS:       now.Unix(),
+			Body:     mustRawJSON(t, SayBody{Text: "wrong room"}),
+		})
+		if err != nil {
+			t.Fatalf("json.Marshal(directed mismatch) error = %v", err)
+		}
+
+		result, err := router.Receive(context.Background(), payload)
+		if err != nil {
+			t.Fatalf("Receive(directed mismatch) error = %v", err)
+		}
+		if got, want := len(result.Deliveries), 0; got != want {
+			t.Fatalf("len(mismatched direct deliveries) = %d, want %d", got, want)
+		}
+	})
+}
+
 func TestRouterDoesNotDeliverLocalEchoesToSender(t *testing.T) {
 	t.Parallel()
 
@@ -190,12 +339,12 @@ func TestRouterDoesNotDeliverLocalEchoesToSender(t *testing.T) {
 		t.Parallel()
 
 		router, transport, _ := setup(t)
-		if _, err := router.Send(context.Background(), SendRequest{
+		if _, err := router.Send(context.Background(), withTestConversation(SendRequest{
 			SessionID: "sess-a",
 			Channel:   "marketing",
 			Kind:      KindSay,
 			Body:      mustRawJSON(t, SayBody{Text: "local status"}),
-		}); err != nil {
+		})); err != nil {
 			t.Fatalf("Send(say self echo) error = %v", err)
 		}
 		broadcastResult, err := router.Receive(context.Background(), transport.Message(0).payload)
@@ -207,26 +356,22 @@ func TestRouterDoesNotDeliverLocalEchoesToSender(t *testing.T) {
 		}
 	})
 
-	t.Run("Should suppress directed self-echo deliveries", func(t *testing.T) {
+	t.Run("Should reject directed self-echo direct rooms during send preflight", func(t *testing.T) {
 		t.Parallel()
 
 		router, transport, sender := setup(t)
-		if _, err := router.Send(context.Background(), SendRequest{
-			SessionID:     "sess-a",
-			Channel:       "marketing",
-			Kind:          KindDirect,
-			To:            stringPtr(sender.PeerID),
-			InteractionID: stringPtr("int-self"),
-			Body:          mustRawJSON(t, DirectBody{Text: "self-directed loop"}),
-		}); err != nil {
-			t.Fatalf("Send(direct self echo) error = %v", err)
+		if _, err := router.Send(context.Background(), withTestConversation(SendRequest{
+			SessionID: "sess-a",
+			Channel:   "marketing",
+			Kind:      KindSay,
+			To:        stringPtr(sender.PeerID),
+			WorkID:    stringPtr("work_self"),
+			Body:      mustRawJSON(t, SayBody{Text: "self-directed loop"}),
+		})); !errors.Is(err, ErrInvalidField) {
+			t.Fatalf("Send(direct self echo) error = %v, want ErrInvalidField", err)
 		}
-		directResult, err := router.Receive(context.Background(), transport.Message(0).payload)
-		if err != nil {
-			t.Fatalf("Receive(direct self echo) error = %v", err)
-		}
-		if got := len(directResult.Deliveries); got != 0 {
-			t.Fatalf("len(self direct deliveries) = %d, want 0", got)
+		if got := transport.Count(); got != 0 {
+			t.Fatalf("transport publish count = %d, want 0 after self-directed preflight rejection", got)
 		}
 	})
 }
@@ -309,17 +454,17 @@ func TestRouterRejectsDuplicateBeforeReprocessingLifecycleState(t *testing.T) {
 		t.Fatalf("NewRouter() error = %v", err)
 	}
 
-	directPayload, err := json.Marshal(Envelope{
-		Protocol:      ProtocolV0,
-		ID:            "msg_direct_dup",
-		Kind:          KindDirect,
-		Channel:       "builders",
-		From:          "coder.sess-a",
-		To:            stringPtr(target.PeerID),
-		InteractionID: stringPtr("int_dup"),
-		TS:            now.Unix(),
-		Body:          mustRawJSON(t, DirectBody{Text: "please review"}),
-	})
+	directPayload, err := json.Marshal(withCanonicalDirectedEnvelope(t, Envelope{
+		Protocol: ProtocolV0,
+		ID:       "msg_direct_dup",
+		Kind:     KindSay,
+		Channel:  "builders",
+		From:     "coder.sess-a",
+		To:       stringPtr(target.PeerID),
+		WorkID:   stringPtr("work_dup"),
+		TS:       now.Unix(),
+		Body:     mustRawJSON(t, SayBody{Text: "please review"}),
+	}))
 	if err != nil {
 		t.Fatalf("json.Marshal(direct) error = %v", err)
 	}
@@ -331,21 +476,21 @@ func TestRouterRejectsDuplicateBeforeReprocessingLifecycleState(t *testing.T) {
 		t.Fatalf("len(first direct deliveries) = %d, want %d", got, want)
 	}
 
-	receiptPayload, err := json.Marshal(Envelope{
-		Protocol:      ProtocolV0,
-		ID:            "msg_receipt_cancel",
-		Kind:          KindReceipt,
-		Channel:       "builders",
-		From:          "coder.sess-a",
-		To:            stringPtr(target.PeerID),
-		InteractionID: stringPtr("int_dup"),
-		ReplyTo:       stringPtr("msg_direct_dup"),
-		TS:            now.Unix(),
+	receiptPayload, err := json.Marshal(withCanonicalDirectedEnvelope(t, Envelope{
+		Protocol: ProtocolV0,
+		ID:       "msg_receipt_cancel",
+		Kind:     KindReceipt,
+		Channel:  "builders",
+		From:     "coder.sess-a",
+		To:       stringPtr(target.PeerID),
+		WorkID:   stringPtr("work_dup"),
+		ReplyTo:  stringPtr("msg_direct_dup"),
+		TS:       now.Unix(),
 		Body: mustRawJSON(t, ReceiptBody{
 			ForID:  "msg_direct_dup",
 			Status: ReceiptStatusCanceled,
 		}),
-	})
+	}))
 	if err != nil {
 		t.Fatalf("json.Marshal(receipt) error = %v", err)
 	}
@@ -1060,17 +1205,17 @@ func TestRouterReceiveRejectsNotTargetAndMapsMalformedErrors(t *testing.T) {
 		t.Fatalf("NewRouter() error = %v", err)
 	}
 
-	notTargetPayload, err := json.Marshal(Envelope{
-		Protocol:      ProtocolV0,
-		ID:            "msg_not_target",
-		Kind:          KindDirect,
-		Channel:       "builders",
-		From:          "coder.sess-a",
-		To:            stringPtr("reviewer.sess-other"),
-		InteractionID: stringPtr("int_not_target"),
-		TS:            now.Unix(),
-		Body:          mustRawJSON(t, DirectBody{Text: "please review"}),
-	})
+	notTargetPayload, err := json.Marshal(withCanonicalDirectedEnvelope(t, Envelope{
+		Protocol: ProtocolV0,
+		ID:       "msg_not_target",
+		Kind:     KindSay,
+		Channel:  "builders",
+		From:     "coder.sess-a",
+		To:       stringPtr("reviewer.sess-other"),
+		WorkID:   stringPtr("work_not_target"),
+		TS:       now.Unix(),
+		Body:     mustRawJSON(t, SayBody{Text: "please review"}),
+	}))
 	if err != nil {
 		t.Fatalf("json.Marshal(not_target) error = %v", err)
 	}
@@ -1131,15 +1276,15 @@ func TestRouterReceiveRejectsCapabilityDigestMismatchBeforeDelivery(t *testing.T
 		t.Fatalf("NewRouter() error = %v", err)
 	}
 
-	payload, err := json.Marshal(Envelope{
-		Protocol:      ProtocolV0,
-		ID:            "msg_capability_bad_digest",
-		Kind:          KindCapability,
-		Channel:       "builders",
-		From:          "coder.sess-a",
-		To:            stringPtr(local.PeerID),
-		InteractionID: stringPtr("int_capability_bad_digest"),
-		TS:            now.Unix(),
+	payload, err := json.Marshal(withCanonicalDirectedEnvelope(t, Envelope{
+		Protocol: ProtocolV0,
+		ID:       "msg_capability_bad_digest",
+		Kind:     KindCapability,
+		Channel:  "builders",
+		From:     "coder.sess-a",
+		To:       stringPtr(local.PeerID),
+		WorkID:   stringPtr("work_capability_bad_digest"),
+		TS:       now.Unix(),
 		Body: mustRawJSON(t, CapabilityBody{
 			Capability: CapabilityEnvelopePayload{
 				ID:               "review-fix",
@@ -1151,7 +1296,7 @@ func TestRouterReceiveRejectsCapabilityDigestMismatchBeforeDelivery(t *testing.T
 				Requirements:     []string{"workspace-write"},
 			},
 		}),
-	})
+	}))
 	if err != nil {
 		t.Fatalf("json.Marshal(capability mismatch) error = %v", err)
 	}
@@ -1194,18 +1339,18 @@ func TestRouterReceiveExpiredDirectGeneratesExpiredReceipt(t *testing.T) {
 	}
 
 	expiredAt := now.Add(-time.Second).Unix()
-	payload, err := json.Marshal(Envelope{
-		Protocol:      ProtocolV0,
-		ID:            "msg_expired_direct",
-		Kind:          KindDirect,
-		Channel:       "builders",
-		From:          "coder.sess-a",
-		To:            stringPtr(local.PeerID),
-		InteractionID: stringPtr("int_expired"),
-		TS:            now.Add(-2 * time.Second).Unix(),
-		ExpiresAt:     &expiredAt,
-		Body:          mustRawJSON(t, DirectBody{Text: "too late"}),
-	})
+	payload, err := json.Marshal(withCanonicalDirectedEnvelope(t, Envelope{
+		Protocol:  ProtocolV0,
+		ID:        "msg_expired_direct",
+		Kind:      KindSay,
+		Channel:   "builders",
+		From:      "coder.sess-a",
+		To:        stringPtr(local.PeerID),
+		WorkID:    stringPtr("work_expired"),
+		TS:        now.Add(-2 * time.Second).Unix(),
+		ExpiresAt: &expiredAt,
+		Body:      mustRawJSON(t, SayBody{Text: "too late"}),
+	}))
 	if err != nil {
 		t.Fatalf("json.Marshal(expired direct) error = %v", err)
 	}
@@ -1381,19 +1526,30 @@ func TestRouterConstructionAndHelperErrors(t *testing.T) {
 	}
 }
 
-func TestInteractionValidationErrors(t *testing.T) {
+func TestWorkValidationErrors(t *testing.T) {
 	t.Parallel()
 
-	if err := (Interaction{}).Validate(); err == nil {
-		t.Fatal("Interaction{}.Validate() error = nil, want non-nil")
+	if err := (Work{}).Validate(); !errors.Is(err, ErrMissingField) {
+		t.Fatalf("Work{}.Validate() error = %v, want ErrMissingField", err)
 	}
 
-	if _, err := OpenInteraction(Envelope{Kind: KindSay}, time.Time{}); err == nil {
-		t.Fatal("OpenInteraction(non-opener) error = nil, want non-nil")
+	nonOpener := withCanonicalDirectedEnvelope(t, Envelope{
+		Protocol: ProtocolV0,
+		ID:       "msg_trace_non_opener",
+		Kind:     KindTrace,
+		Channel:  "builders",
+		From:     "reviewer.sess-xyz",
+		To:       stringPtr("coder.sess-abc"),
+		WorkID:   stringPtr("work_patch_42"),
+		TS:       nowWithUnix(1775822400).Unix(),
+		Body:     mustRawJSON(t, TraceBody{State: WorkStateWorking}),
+	})
+	if _, err := OpenWork(nonOpener, time.Time{}); !errors.Is(err, ErrInvalidField) {
+		t.Fatalf("OpenWork(non-opener) error = %v, want ErrInvalidField", err)
 	}
 }
 
-func TestRouterDirectedCapabilityOpensInteractionForReceiptAndTrace(t *testing.T) {
+func TestRouterDirectedCapabilityOpensWorkForReceiptAndTrace(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 4, 10, 13, 37, 0, 0, time.UTC)
@@ -1420,15 +1576,15 @@ func TestRouterDirectedCapabilityOpensInteractionForReceiptAndTrace(t *testing.T
 		t.Fatalf("NewRouter() error = %v", err)
 	}
 
-	capabilityPayload, err := json.Marshal(Envelope{
-		Protocol:      ProtocolV0,
-		ID:            "msg_capability_open",
-		Kind:          KindCapability,
-		Channel:       "builders",
-		From:          alpha.PeerID,
-		To:            stringPtr(delta.PeerID),
-		InteractionID: stringPtr("int_capability_open"),
-		TS:            now.Unix(),
+	capabilityPayload, err := json.Marshal(withCanonicalDirectedEnvelope(t, Envelope{
+		Protocol: ProtocolV0,
+		ID:       "msg_capability_open",
+		Kind:     KindCapability,
+		Channel:  "builders",
+		From:     alpha.PeerID,
+		To:       stringPtr(delta.PeerID),
+		WorkID:   stringPtr("work_capability_open"),
+		TS:       now.Unix(),
 		Body: mustCapabilityBodyJSON(t, CapabilityEnvelopePayload{
 			ID:               "review-fix",
 			Summary:          "Review fix flow",
@@ -1437,7 +1593,7 @@ func TestRouterDirectedCapabilityOpensInteractionForReceiptAndTrace(t *testing.T
 			ExecutionOutline: []string{"Inspect the issue", "Draft the fix"},
 			Requirements:     []string{"workspace-write"},
 		}),
-	})
+	}))
 	if err != nil {
 		t.Fatalf("json.Marshal(capability) error = %v", err)
 	}
@@ -1453,21 +1609,21 @@ func TestRouterDirectedCapabilityOpensInteractionForReceiptAndTrace(t *testing.T
 		t.Fatalf("capability delivery session = %q, want %q", got, want)
 	}
 
-	receiptPayload, err := json.Marshal(Envelope{
-		Protocol:      ProtocolV0,
-		ID:            "msg_capability_receipt",
-		Kind:          KindReceipt,
-		Channel:       "builders",
-		From:          delta.PeerID,
-		To:            stringPtr(alpha.PeerID),
-		InteractionID: stringPtr("int_capability_open"),
-		ReplyTo:       stringPtr("msg_capability_open"),
-		TS:            now.Unix(),
+	receiptPayload, err := json.Marshal(withCanonicalDirectedEnvelope(t, Envelope{
+		Protocol: ProtocolV0,
+		ID:       "msg_capability_receipt",
+		Kind:     KindReceipt,
+		Channel:  "builders",
+		From:     delta.PeerID,
+		To:       stringPtr(alpha.PeerID),
+		WorkID:   stringPtr("work_capability_open"),
+		ReplyTo:  stringPtr("msg_capability_open"),
+		TS:       now.Unix(),
 		Body: mustRawJSON(t, ReceiptBody{
 			ForID:  "msg_capability_open",
 			Status: ReceiptStatusAccepted,
 		}),
-	})
+	}))
 	if err != nil {
 		t.Fatalf("json.Marshal(receipt) error = %v", err)
 	}
@@ -1486,20 +1642,20 @@ func TestRouterDirectedCapabilityOpensInteractionForReceiptAndTrace(t *testing.T
 		t.Fatalf("capability receipt delivery session = %q, want %q", got, want)
 	}
 
-	tracePayload, err := json.Marshal(Envelope{
-		Protocol:      ProtocolV0,
-		ID:            "msg_capability_trace",
-		Kind:          KindTrace,
-		Channel:       "builders",
-		From:          delta.PeerID,
-		To:            stringPtr(alpha.PeerID),
-		InteractionID: stringPtr("int_capability_open"),
-		ReplyTo:       stringPtr("msg_capability_open"),
-		TS:            now.Unix(),
+	tracePayload, err := json.Marshal(withCanonicalDirectedEnvelope(t, Envelope{
+		Protocol: ProtocolV0,
+		ID:       "msg_capability_trace",
+		Kind:     KindTrace,
+		Channel:  "builders",
+		From:     delta.PeerID,
+		To:       stringPtr(alpha.PeerID),
+		WorkID:   stringPtr("work_capability_open"),
+		ReplyTo:  stringPtr("msg_capability_open"),
+		TS:       now.Unix(),
 		Body: mustRawJSON(t, TraceBody{
-			State: StateWorking,
+			State: WorkStateWorking,
 		}),
-	})
+	}))
 	if err != nil {
 		t.Fatalf("json.Marshal(trace) error = %v", err)
 	}
@@ -1549,12 +1705,12 @@ func TestRouterSendTracksDirectedCapabilityLifecycleLocally(t *testing.T) {
 		t.Fatalf("NewRouter() error = %v", err)
 	}
 
-	sent, err := router.Send(context.Background(), SendRequest{
-		SessionID:     "sess-alpha",
-		Channel:       "builders",
-		Kind:          KindCapability,
-		To:            stringPtr(remote.PeerID),
-		InteractionID: stringPtr("int_capability_send"),
+	sent, err := router.Send(context.Background(), withTestConversation(SendRequest{
+		SessionID: "sess-alpha",
+		Channel:   "builders",
+		Kind:      KindCapability,
+		To:        stringPtr(remote.PeerID),
+		WorkID:    stringPtr("work_capability_send"),
 		Body: mustCapabilityBodyJSON(t, CapabilityEnvelopePayload{
 			ID:               "review-fix",
 			Summary:          "Review fix flow",
@@ -1563,26 +1719,26 @@ func TestRouterSendTracksDirectedCapabilityLifecycleLocally(t *testing.T) {
 			ExecutionOutline: []string{"Inspect the issue", "Draft the fix"},
 			Requirements:     []string{"workspace-write"},
 		}),
-	})
+	}))
 	if err != nil {
 		t.Fatalf("Send(capability) error = %v", err)
 	}
 
-	tracePayload, err := json.Marshal(Envelope{
-		Protocol:      ProtocolV0,
-		ID:            "msg_capability_trace_needs_input",
-		Kind:          KindTrace,
-		Channel:       "builders",
-		From:          remote.PeerID,
-		To:            stringPtr(sender.PeerID),
-		InteractionID: stringPtr("int_capability_send"),
-		ReplyTo:       stringPtr(sent.ID),
-		TS:            now.Unix(),
+	tracePayload, err := json.Marshal(withCanonicalDirectedEnvelope(t, Envelope{
+		Protocol: ProtocolV0,
+		ID:       "msg_capability_trace_needs_input",
+		Kind:     KindTrace,
+		Channel:  "builders",
+		From:     remote.PeerID,
+		To:       stringPtr(sender.PeerID),
+		WorkID:   stringPtr("work_capability_send"),
+		ReplyTo:  stringPtr(sent.ID),
+		TS:       now.Unix(),
 		Body: mustRawJSON(t, TraceBody{
-			State:   StateNeedsInput,
+			State:   WorkStateNeedsInput,
 			Message: "need more detail",
 		}),
-	})
+	}))
 	if err != nil {
 		t.Fatalf("json.Marshal(trace needs_input) error = %v", err)
 	}
@@ -1601,21 +1757,21 @@ func TestRouterSendTracksDirectedCapabilityLifecycleLocally(t *testing.T) {
 		t.Fatalf("trace needs_input delivery session = %q, want %q", got, want)
 	}
 
-	completedPayload, err := json.Marshal(Envelope{
-		Protocol:      ProtocolV0,
-		ID:            "msg_capability_trace_completed",
-		Kind:          KindTrace,
-		Channel:       "builders",
-		From:          remote.PeerID,
-		To:            stringPtr(sender.PeerID),
-		InteractionID: stringPtr("int_capability_send"),
-		ReplyTo:       stringPtr(sent.ID),
-		TS:            now.Unix(),
+	completedPayload, err := json.Marshal(withCanonicalDirectedEnvelope(t, Envelope{
+		Protocol: ProtocolV0,
+		ID:       "msg_capability_trace_completed",
+		Kind:     KindTrace,
+		Channel:  "builders",
+		From:     remote.PeerID,
+		To:       stringPtr(sender.PeerID),
+		WorkID:   stringPtr("work_capability_send"),
+		ReplyTo:  stringPtr(sent.ID),
+		TS:       now.Unix(),
 		Body: mustRawJSON(t, TraceBody{
-			State:   StateCompleted,
+			State:   WorkStateCompleted,
 			Message: "completed",
 		}),
-	})
+	}))
 	if err != nil {
 		t.Fatalf("json.Marshal(trace completed) error = %v", err)
 	}
@@ -1628,13 +1784,13 @@ func TestRouterSendTracksDirectedCapabilityLifecycleLocally(t *testing.T) {
 		t.Fatalf("trace completed result = %#v, want delivered terminal trace", completedResult)
 	}
 
-	if _, err := router.Send(context.Background(), SendRequest{
-		SessionID:     "sess-alpha",
-		Channel:       "builders",
-		Kind:          KindCapability,
-		To:            stringPtr(remote.PeerID),
-		InteractionID: stringPtr("int_capability_send"),
-		ReplyTo:       stringPtr(sent.ID),
+	if _, err := router.Send(context.Background(), withTestConversation(SendRequest{
+		SessionID: "sess-alpha",
+		Channel:   "builders",
+		Kind:      KindCapability,
+		To:        stringPtr(remote.PeerID),
+		WorkID:    stringPtr("work_capability_send"),
+		ReplyTo:   stringPtr(sent.ID),
 		Body: mustCapabilityBodyJSON(t, CapabilityEnvelopePayload{
 			ID:               "review-fix-follow-up",
 			Summary:          "Review follow-up flow",
@@ -1643,8 +1799,8 @@ func TestRouterSendTracksDirectedCapabilityLifecycleLocally(t *testing.T) {
 			ExecutionOutline: []string{"Inspect the issue", "Draft the fix"},
 			Requirements:     []string{"workspace-write"},
 		}),
-	}); !errors.Is(err, ErrInteractionClosed) {
-		t.Fatalf("Send(post-terminal capability) error = %v, want ErrInteractionClosed", err)
+	})); !errors.Is(err, ErrWorkClosed) {
+		t.Fatalf("Send(post-terminal capability) error = %v, want ErrWorkClosed", err)
 	}
 }
 
@@ -1670,17 +1826,17 @@ func TestRouterReceiveRejectsInvalidLifecycleTransition(t *testing.T) {
 		t.Fatalf("NewRouter() error = %v", err)
 	}
 
-	directPayload, err := json.Marshal(Envelope{
-		Protocol:      ProtocolV0,
-		ID:            "msg_direct_invalid_trace",
-		Kind:          KindDirect,
-		Channel:       "builders",
-		From:          "coder.sess-a",
-		To:            stringPtr(local.PeerID),
-		InteractionID: stringPtr("int_invalid_trace"),
-		TS:            now.Unix(),
-		Body:          mustRawJSON(t, DirectBody{Text: "please review"}),
-	})
+	directPayload, err := json.Marshal(withCanonicalDirectedEnvelope(t, Envelope{
+		Protocol: ProtocolV0,
+		ID:       "msg_direct_invalid_trace",
+		Kind:     KindSay,
+		Channel:  "builders",
+		From:     "coder.sess-a",
+		To:       stringPtr(local.PeerID),
+		WorkID:   stringPtr("work_invalid_trace"),
+		TS:       now.Unix(),
+		Body:     mustRawJSON(t, SayBody{Text: "please review"}),
+	}))
 	if err != nil {
 		t.Fatalf("json.Marshal(direct) error = %v", err)
 	}
@@ -1688,19 +1844,19 @@ func TestRouterReceiveRejectsInvalidLifecycleTransition(t *testing.T) {
 		t.Fatalf("Receive(direct) error = %v", err)
 	}
 
-	tracePayload, err := json.Marshal(Envelope{
-		Protocol:      ProtocolV0,
-		ID:            "msg_trace_invalid_state",
-		Kind:          KindTrace,
-		Channel:       "builders",
-		From:          "coder.sess-a",
-		To:            stringPtr(local.PeerID),
-		InteractionID: stringPtr("int_invalid_trace"),
-		TS:            now.Unix(),
+	tracePayload, err := json.Marshal(withCanonicalDirectedEnvelope(t, Envelope{
+		Protocol: ProtocolV0,
+		ID:       "msg_trace_invalid_state",
+		Kind:     KindTrace,
+		Channel:  "builders",
+		From:     "coder.sess-a",
+		To:       stringPtr(local.PeerID),
+		WorkID:   stringPtr("work_invalid_trace"),
+		TS:       now.Unix(),
 		Body: mustRawJSON(t, TraceBody{
-			State: StateSubmitted,
+			State: WorkStateSubmitted,
 		}),
-	})
+	}))
 	if err != nil {
 		t.Fatalf("json.Marshal(trace) error = %v", err)
 	}
@@ -1714,6 +1870,79 @@ func TestRouterReceiveRejectsInvalidLifecycleTransition(t *testing.T) {
 	}
 	if got, want := len(result.Deliveries), 0; got != want {
 		t.Fatalf("len(invalid lifecycle deliveries) = %d, want %d", got, want)
+	}
+}
+
+func TestRouterReceiveRejectsCrossContainerWorkContinuation(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 4, 10, 13, 36, 0, 0, time.UTC)
+	registry, err := NewPeerRegistry(10*time.Second, WithPeerRegistryClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatalf("NewPeerRegistry() error = %v", err)
+	}
+	local := mustPeerCard(t, "reviewer.sess-b")
+	if _, err := registry.RegisterLocal("sess-b", "builders", local, now); err != nil {
+		t.Fatalf("RegisterLocal(local) error = %v", err)
+	}
+	router, err := NewRouter(
+		registry,
+		&spyRouterTransport{},
+		DefaultMaxReplayAge,
+		WithRouterClock(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("NewRouter() error = %v", err)
+	}
+
+	directPayload, err := json.Marshal(withCanonicalDirectedEnvelope(t, Envelope{
+		Protocol: ProtocolV0,
+		ID:       "msg_direct_cross_container",
+		Kind:     KindSay,
+		Channel:  "builders",
+		From:     "coder.sess-a",
+		To:       stringPtr(local.PeerID),
+		WorkID:   stringPtr("work_cross_container"),
+		TS:       now.Unix(),
+		Body:     mustRawJSON(t, SayBody{Text: "please review"}),
+	}))
+	if err != nil {
+		t.Fatalf("json.Marshal(direct) error = %v", err)
+	}
+	if _, err := router.Receive(context.Background(), directPayload); err != nil {
+		t.Fatalf("Receive(direct) error = %v", err)
+	}
+
+	threadTrace := Envelope{
+		Protocol: ProtocolV0,
+		ID:       "msg_trace_cross_container",
+		Kind:     KindTrace,
+		Channel:  "builders",
+		Surface:  surfacePtr(SurfaceThread),
+		ThreadID: stringPtr("thread_patch_42"),
+		From:     "coder.sess-a",
+		To:       stringPtr(local.PeerID),
+		WorkID:   stringPtr("work_cross_container"),
+		TS:       now.Unix(),
+		Body:     mustRawJSON(t, TraceBody{State: WorkStateWorking}),
+	}
+	tracePayload, err := json.Marshal(threadTrace)
+	if err != nil {
+		t.Fatalf("json.Marshal(trace) error = %v", err)
+	}
+
+	result, err := router.Receive(context.Background(), tracePayload)
+	if err != nil {
+		t.Fatalf("Receive(cross-container trace) error = %v", err)
+	}
+	if !result.Rejected || result.ReasonCode == nil || *result.ReasonCode != ReasonCodeWorkContainerMismatch {
+		t.Fatalf("cross-container lifecycle result = %#v, want reason %q", result, ReasonCodeWorkContainerMismatch)
+	}
+	if got, want := len(result.Deliveries), 0; got != want {
+		t.Fatalf("len(cross-container deliveries) = %d, want %d", got, want)
+	}
+	if got, want := len(result.Generated), 0; got != want {
+		t.Fatalf("len(cross-container generated) = %d, want %d", got, want)
 	}
 }
 

@@ -60,6 +60,10 @@ type networkChannelMetadataFields struct {
 type networkPresenceEpisodeKey struct {
 	direction string
 	channel   string
+	surface   string
+	threadID  string
+	directID  string
+	workID    string
 	peerFrom  string
 	peerTo    string
 }
@@ -985,18 +989,16 @@ func networkKindSortRank(kind string) int {
 	switch strings.TrimSpace(kind) {
 	case string(network.KindSay):
 		return 0
-	case string(network.KindDirect):
-		return 1
 	case string(network.KindReceipt):
-		return 2
+		return 1
 	case string(network.KindCapability):
-		return 3
+		return 2
 	case string(network.KindGreet):
-		return 4
+		return 3
 	case string(network.KindWhois):
-		return 5
+		return 4
 	case string(network.KindTrace):
-		return 6
+		return 5
 	default:
 		return 100
 	}
@@ -1149,6 +1151,9 @@ func NetworkChannelMessagePayloadFromView(
 	return contract.NetworkChannelMessagePayload{
 		MessageID:          strings.TrimSpace(entry.MessageID),
 		Channel:            strings.TrimSpace(entry.Channel),
+		Surface:            strings.TrimSpace(entry.Surface),
+		ThreadID:           strings.TrimSpace(entry.ThreadID),
+		DirectID:           strings.TrimSpace(entry.DirectID),
 		Kind:               strings.TrimSpace(entry.Kind),
 		Direction:          strings.TrimSpace(entry.Direction),
 		PeerFrom:           strings.TrimSpace(entry.PeerFrom),
@@ -1156,7 +1161,7 @@ func NetworkChannelMessagePayloadFromView(
 		DisplayName:        displayName,
 		SessionID:          payloadSessionID,
 		Local:              local,
-		InteractionID:      strings.TrimSpace(entry.InteractionID),
+		WorkID:             strings.TrimSpace(entry.WorkID),
 		ReplyTo:            strings.TrimSpace(entry.ReplyTo),
 		TraceID:            strings.TrimSpace(entry.TraceID),
 		CausationID:        strings.TrimSpace(entry.CausationID),
@@ -1332,6 +1337,18 @@ func canExtendPresenceEpisode(
 	if strings.TrimSpace(current.entry.Channel) != strings.TrimSpace(next.Channel) {
 		return false
 	}
+	if strings.TrimSpace(current.entry.Surface) != strings.TrimSpace(next.Surface) {
+		return false
+	}
+	if strings.TrimSpace(current.entry.ThreadID) != strings.TrimSpace(next.ThreadID) {
+		return false
+	}
+	if strings.TrimSpace(current.entry.DirectID) != strings.TrimSpace(next.DirectID) {
+		return false
+	}
+	if strings.TrimSpace(current.entry.WorkID) != strings.TrimSpace(next.WorkID) {
+		return false
+	}
 	if strings.TrimSpace(current.entry.PeerFrom) != strings.TrimSpace(next.PeerFrom) {
 		return false
 	}
@@ -1345,6 +1362,10 @@ func networkPresenceEpisodeKeyForMessage(message store.NetworkMessageEntry) netw
 	return networkPresenceEpisodeKey{
 		direction: strings.TrimSpace(message.Direction),
 		channel:   strings.TrimSpace(message.Channel),
+		surface:   strings.TrimSpace(message.Surface),
+		threadID:  strings.TrimSpace(message.ThreadID),
+		directID:  strings.TrimSpace(message.DirectID),
+		workID:    strings.TrimSpace(message.WorkID),
 		peerFrom:  strings.TrimSpace(message.PeerFrom),
 		peerTo:    strings.TrimSpace(message.PeerTo),
 	}
@@ -1364,22 +1385,25 @@ func extendPresenceEpisode(current *networkTimelineMessageView, next store.Netwo
 
 func cloneNetworkMessageEntry(entry store.NetworkMessageEntry) store.NetworkMessageEntry {
 	return store.NetworkMessageEntry{
-		MessageID:     strings.TrimSpace(entry.MessageID),
-		SessionID:     strings.TrimSpace(entry.SessionID),
-		Channel:       strings.TrimSpace(entry.Channel),
-		Direction:     strings.TrimSpace(entry.Direction),
-		PeerFrom:      strings.TrimSpace(entry.PeerFrom),
-		PeerTo:        strings.TrimSpace(entry.PeerTo),
-		Kind:          strings.TrimSpace(entry.Kind),
-		InteractionID: strings.TrimSpace(entry.InteractionID),
-		ReplyTo:       strings.TrimSpace(entry.ReplyTo),
-		TraceID:       strings.TrimSpace(entry.TraceID),
-		CausationID:   strings.TrimSpace(entry.CausationID),
-		Intent:        strings.TrimSpace(entry.Intent),
-		Text:          entry.Text,
-		PreviewText:   strings.TrimSpace(entry.PreviewText),
-		Body:          cloneRawMessage(entry.Body),
-		Timestamp:     entry.Timestamp.UTC(),
+		MessageID:   strings.TrimSpace(entry.MessageID),
+		SessionID:   strings.TrimSpace(entry.SessionID),
+		Channel:     strings.TrimSpace(entry.Channel),
+		Surface:     strings.TrimSpace(entry.Surface),
+		ThreadID:    strings.TrimSpace(entry.ThreadID),
+		DirectID:    strings.TrimSpace(entry.DirectID),
+		Direction:   strings.TrimSpace(entry.Direction),
+		PeerFrom:    strings.TrimSpace(entry.PeerFrom),
+		PeerTo:      strings.TrimSpace(entry.PeerTo),
+		Kind:        strings.TrimSpace(entry.Kind),
+		WorkID:      strings.TrimSpace(entry.WorkID),
+		ReplyTo:     strings.TrimSpace(entry.ReplyTo),
+		TraceID:     strings.TrimSpace(entry.TraceID),
+		CausationID: strings.TrimSpace(entry.CausationID),
+		Intent:      strings.TrimSpace(entry.Intent),
+		Text:        entry.Text,
+		PreviewText: strings.TrimSpace(entry.PreviewText),
+		Body:        cloneRawMessage(entry.Body),
+		Timestamp:   entry.Timestamp.UTC(),
 	}
 }
 
@@ -1441,7 +1465,13 @@ func isPublicConversationMessage(message store.NetworkMessageEntry) bool {
 }
 
 func isDirectedChannelMessage(message store.NetworkMessageEntry) bool {
-	return strings.TrimSpace(message.PeerTo) != ""
+	if strings.TrimSpace(message.PeerTo) != "" {
+		return true
+	}
+	if strings.TrimSpace(message.DirectID) != "" {
+		return true
+	}
+	return strings.TrimSpace(message.Surface) == string(network.SurfaceDirect)
 }
 
 func filterVisiblePeerMessages(messages []store.NetworkMessageEntry, includePresence bool) []store.NetworkMessageEntry {

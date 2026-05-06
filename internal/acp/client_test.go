@@ -19,6 +19,7 @@ import (
 
 	acpsdk "github.com/coder/acp-go-sdk"
 	aghconfig "github.com/pedronauck/agh/internal/config"
+	"github.com/pedronauck/agh/internal/store"
 	"github.com/pedronauck/agh/internal/subprocess"
 	"github.com/pedronauck/agh/internal/testutil"
 	"github.com/pedronauck/agh/internal/toolruntime"
@@ -422,15 +423,18 @@ func TestPromptTransmitsStructuredMetadata(t *testing.T) {
 		Meta: PromptMeta{
 			TurnSource: PromptTurnSourceNetwork,
 			Network: &PromptNetworkMeta{
-				MessageID:     "msg-meta-1",
-				Kind:          "direct",
-				Channel:       "builders",
-				From:          "ops.peer",
-				To:            "worker.peer",
-				InteractionID: "int-meta-1",
-				ReplyTo:       "msg-root-1",
-				TraceID:       "trace-meta-1",
-				CausationID:   "msg-root-1",
+				MessageID:   "msg-meta-1",
+				Kind:        "say",
+				Channel:     "builders",
+				Surface:     "direct",
+				DirectID:    "direct_meta_1",
+				From:        "ops.peer",
+				To:          "worker.peer",
+				WorkID:      "work-meta-1",
+				ReplyTo:     "msg-root-1",
+				TraceID:     "trace-meta-1",
+				CausationID: "msg-root-1",
+				Trust:       "untrusted",
 			},
 		},
 	})
@@ -455,6 +459,18 @@ func TestPromptTransmitsStructuredMetadata(t *testing.T) {
 	}
 	if got, want := payload.Network.MessageID, "msg-meta-1"; got != want {
 		t.Fatalf("payload.Network.MessageID = %q, want %q", got, want)
+	}
+	if got, want := payload.Network.Surface, "direct"; got != want {
+		t.Fatalf("payload.Network.Surface = %q, want %q", got, want)
+	}
+	if got, want := payload.Network.DirectID, "direct_meta_1"; got != want {
+		t.Fatalf("payload.Network.DirectID = %q, want %q", got, want)
+	}
+	if got, want := payload.Network.WorkID, "work-meta-1"; got != want {
+		t.Fatalf("payload.Network.WorkID = %q, want %q", got, want)
+	}
+	if got, want := payload.Network.Trust, "untrusted"; got != want {
+		t.Fatalf("payload.Network.Trust = %q, want %q", got, want)
 	}
 }
 
@@ -1075,6 +1091,114 @@ func TestProcessCrashDetected(t *testing.T) {
 	}
 }
 
+func TestPromptStopDoesNotEmitRuntimeError(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Should not emit runtime error after explicit stop", func(t *testing.T) {
+		t.Parallel()
+
+		driver := New()
+		proc := startHelperProcess(t, driver, "block_prompt_until_cancel", "", StartOpts{})
+		stopped := false
+		t.Cleanup(func() {
+			if stopped {
+				return
+			}
+			stopProcess(t, driver, proc)
+		})
+
+		eventsCh, err := driver.Prompt(testutil.Context(t), proc, PromptRequest{
+			TurnID:  "turn-stop",
+			Message: "block until stopped",
+		})
+		if err != nil {
+			t.Fatalf("Prompt() error = %v", err)
+		}
+
+		select {
+		case event := <-eventsCh:
+			if got, want := event.Type, EventTypeAgentMessage; got != want {
+				t.Fatalf("first prompt event = %q, want %q", got, want)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("timeout waiting for blocking prompt to start")
+		}
+
+		if err := driver.Stop(testutil.Context(t), proc); err != nil {
+			t.Fatalf("Stop() error = %v", err)
+		}
+		stopped = true
+		for _, event := range collectEvents(t, eventsCh) {
+			if event.Type == EventTypeError {
+				t.Fatalf("prompt events contain %q after explicit stop: %#v", EventTypeError, event)
+			}
+		}
+	})
+}
+
+func TestShouldSuppressPromptErrorOnStop(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "Should suppress context canceled errors",
+			err:  context.Canceled,
+			want: true,
+		},
+		{
+			name: "Should suppress deadline exceeded errors",
+			err:  context.DeadlineExceeded,
+			want: true,
+		},
+		{
+			name: "Should suppress wrapped canceled failures",
+			err:  WrapFailure(store.FailureCanceled, "stopped", context.Canceled),
+			want: true,
+		},
+		{
+			name: "Should suppress request errors carrying canceled details",
+			err: &acpsdk.RequestError{
+				Code:    -32603,
+				Message: "Internal error",
+				Data:    map[string]any{"error": "context canceled"},
+			},
+			want: true,
+		},
+		{
+			name: "Should suppress peer disconnect request errors after stop",
+			err: &acpsdk.RequestError{
+				Code:    -32603,
+				Message: "Internal error",
+				Data:    map[string]any{"error": "peer disconnected before response"},
+			},
+			want: true,
+		},
+		{
+			name: "Should not suppress generic request failures",
+			err: &acpsdk.RequestError{
+				Code:    -32603,
+				Message: "Internal error",
+				Data:    map[string]any{"details": "Tool invocation failed"},
+			},
+			want: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := shouldSuppressPromptErrorOnStop(tc.err); got != tc.want {
+				t.Fatalf("shouldSuppressPromptErrorOnStop() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestDriverApprovePermissionValidationAndForwarding(t *testing.T) {
 	t.Parallel()
 
@@ -1599,6 +1723,15 @@ func (a *helperACPAgent) Prompt(ctx context.Context, params acpsdk.PromptRequest
 	switch a.scenario {
 	case "crash_on_prompt":
 		os.Exit(23)
+	case "block_prompt_until_cancel":
+		if sendErr := a.conn.SessionUpdate(ctx, acpsdk.SessionNotification{
+			SessionId: params.SessionId,
+			Update:    acpsdk.UpdateAgentMessageText("blocking"),
+		}); sendErr != nil {
+			return acpsdk.PromptResponse{}, sendErr
+		}
+		<-ctx.Done()
+		return acpsdk.PromptResponse{}, ctx.Err()
 	case "echo_prompt":
 		text := ""
 		if len(params.Prompt) > 0 && params.Prompt[0].Text != nil {
