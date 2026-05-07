@@ -1,0 +1,26 @@
+sidecar: git@github.com:compozy/specs.git
+
+settings:
+  guardrails:
+    max_files: 10000
+    max_bytes: 209715200 # 200 MiB
+
+namespaces:
+  - name: agh
+    patterns:
+      # Markdown specs across tasks, docs, and codex ledger
+      - .compozy/tasks/**/*.md
+      - docs/rfcs/**
+      - docs/_refacs/**
+      - docs/prs/**
+      - docs/ideas/**
+      - docs/proposals/**
+      - .codex/ledger/**
+      # Task coordination state used by cy-* skills
+      - .compozy/tasks/*/state.yaml
+      # QA structured artifacts (qa/{evidence,logs,runs,screenshots,fixtures} are excluded by ignoring them at filesystem level)
+      - .compozy/tasks/**/qa/*.json
+      - .compozy/tasks/**/qa/*.yaml
+      - .compozy/tasks/**/qa/*.jsonl
+      # UI evidence artifacts currently tracked (PNG screenshots, route JSON, system snapshots)
+      - .compozy/tasks/**/_evidence/**

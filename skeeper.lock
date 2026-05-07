@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "sidecar": "git@github.com:compozy/specs.git",
+  "source_branch": "main",
+  "namespaces": [
+    {
+      "name": "agh",
+      "sidecar_branch": "agh/__branches__/main",
+      "commit": "3ddf95e4c760bc1008f5cccdaff922d1bc487bab",
+      "digest": "sha256:6f7bf38e9fa07a48c1986293e8067e19342c9073f876e776eb3caa2063ed9807",
+      "files": 4889,
+      "bytes": 35227732
+    }
+  ]
+}

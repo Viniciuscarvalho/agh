@@ -709,6 +709,12 @@
             "sourceType": "github",
             "computedHash": "f3c467866ff7db31add63d1cc90b8b86cea8aa64f22a2afbc0fdc1f72e777874"
         },
+        "skeeper": {
+            "source": "compozy/skeeper",
+            "sourceType": "github",
+            "skillPath": "skills/skeeper/SKILL.md",
+            "computedHash": "c6709e7b9ac1ee4aaf904fd8697fb6273d91c7a91815d5c82b94975b19433a9a"
+        },
         "skill-best-practices": {
             "source": "pedronauck/skills",
             "sourceType": "github",

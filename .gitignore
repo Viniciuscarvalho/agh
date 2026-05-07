@@ -76,3 +76,14 @@ next-env.d.ts
 
 # Vercel
 .vercel
+
+# >>> skeeper ignored specs >>>
+.skeeper/
+.compozy/tasks/**
+docs/rfcs/**
+docs/_refacs/**
+docs/prs/**
+docs/ideas/**
+docs/proposals/**
+.codex/ledger/**
+# <<< skeeper ignored specs <<<
