@@ -18,9 +18,8 @@ import (
 )
 
 var (
-	_ acpsdk.Agent             = (*mockAgent)(nil)
-	_ acpsdk.AgentLoader       = (*mockAgent)(nil)
-	_ acpsdk.AgentExperimental = (*mockAgent)(nil)
+	_ acpsdk.Agent       = (*mockAgent)(nil)
+	_ acpsdk.AgentLoader = (*mockAgent)(nil)
 )
 
 type cliArgs struct {
@@ -30,12 +29,14 @@ type cliArgs struct {
 }
 
 type sessionState struct {
-	PromptCount int
+	PromptCount   int
+	ConfigOptions []acpsdk.SessionConfigOption
 }
 
 type mockAgent struct {
 	conn            *acpsdk.AgentSideConnection
 	agent           acpmock.AgentFixture
+	configTemplate  []acpsdk.SessionConfigOption
 	diagnosticsPath string
 	lifecycleCtx    context.Context
 	cancelLifecycle context.CancelFunc
@@ -74,6 +75,7 @@ func main() {
 
 	agent := &mockAgent{
 		agent:           agentFixture,
+		configTemplate:  sessionConfigOptionsFromFixture(agentFixture.ConfigOptions),
 		diagnosticsPath: strings.TrimSpace(args.DiagnosticsPath),
 		lifecycleCtx:    lifecycleCtx,
 		cancelLifecycle: cancelLifecycle,
@@ -129,16 +131,48 @@ func (a *mockAgent) Cancel(context.Context, acpsdk.CancelNotification) error {
 	return nil
 }
 
+func (a *mockAgent) CloseSession(
+	context.Context,
+	acpsdk.CloseSessionRequest,
+) (acpsdk.CloseSessionResponse, error) {
+	return acpsdk.CloseSessionResponse{}, nil
+}
+
+func (a *mockAgent) ListSessions(
+	context.Context,
+	acpsdk.ListSessionsRequest,
+) (acpsdk.ListSessionsResponse, error) {
+	return acpsdk.ListSessionsResponse{}, nil
+}
+
+func (a *mockAgent) ResumeSession(
+	_ context.Context,
+	params acpsdk.ResumeSessionRequest,
+) (acpsdk.ResumeSessionResponse, error) {
+	sessionID := strings.TrimSpace(string(params.SessionId))
+	if sessionID == "" {
+		return acpsdk.ResumeSessionResponse{}, errors.New("acpmock-driver: session id is required")
+	}
+	return acpsdk.ResumeSessionResponse{
+		ConfigOptions: a.sessionConfigOptions(sessionID),
+	}, nil
+}
+
 func (a *mockAgent) NewSession(_ context.Context, params acpsdk.NewSessionRequest) (acpsdk.NewSessionResponse, error) {
 	a.mu.Lock()
 	a.nextSession++
 	sessionID := fmt.Sprintf("%s-session-%d", a.agent.Name, a.nextSession)
-	a.sessions[sessionID] = &sessionState{}
+	a.sessions[sessionID] = &sessionState{
+		ConfigOptions: cloneSessionConfigOptions(a.configTemplate),
+	}
 	a.mu.Unlock()
 	if err := a.writeSessionDiagnostics("session_new", sessionID, params.McpServers); err != nil {
 		return acpsdk.NewSessionResponse{}, err
 	}
-	return acpsdk.NewSessionResponse{SessionId: acpsdk.SessionId(sessionID)}, nil
+	return acpsdk.NewSessionResponse{
+		SessionId:     acpsdk.SessionId(sessionID),
+		ConfigOptions: a.sessionConfigOptions(sessionID),
+	}, nil
 }
 
 func (a *mockAgent) LoadSession(
@@ -148,13 +182,16 @@ func (a *mockAgent) LoadSession(
 	a.mu.Lock()
 	sessionID := strings.TrimSpace(string(params.SessionId))
 	if sessionID != "" && a.sessions[sessionID] == nil {
-		a.sessions[sessionID] = &sessionState{}
+		a.sessions[sessionID] = &sessionState{
+			ConfigOptions: cloneSessionConfigOptions(a.configTemplate),
+		}
 	}
+	configOptions := cloneSessionConfigOptions(a.sessions[sessionID].ConfigOptions)
 	a.mu.Unlock()
 	if err := a.writeSessionDiagnostics("session_load", sessionID, params.McpServers); err != nil {
 		return acpsdk.LoadSessionResponse{}, err
 	}
-	return acpsdk.LoadSessionResponse{}, nil
+	return acpsdk.LoadSessionResponse{ConfigOptions: configOptions}, nil
 }
 
 func (a *mockAgent) writeSessionDiagnostics(
@@ -180,11 +217,156 @@ func (a *mockAgent) SetSessionMode(
 	return acpsdk.SetSessionModeResponse{}, nil
 }
 
-func (a *mockAgent) SetSessionModel(
+func (a *mockAgent) SetSessionConfigOption(
+	_ context.Context,
+	request acpsdk.SetSessionConfigOptionRequest,
+) (acpsdk.SetSessionConfigOptionResponse, error) {
+	if request.ValueId == nil {
+		return acpsdk.SetSessionConfigOptionResponse{}, errors.New(
+			"acpmock-driver: only value-id session config options are supported",
+		)
+	}
+	if err := a.setConfigOptionValue(
+		string(request.ValueId.SessionId),
+		string(request.ValueId.ConfigId),
+		string(request.ValueId.Value),
+	); err != nil {
+		return acpsdk.SetSessionConfigOptionResponse{}, err
+	}
+	return acpsdk.SetSessionConfigOptionResponse{
+		ConfigOptions: a.sessionConfigOptions(string(request.ValueId.SessionId)),
+	}, nil
+}
+
+func (a *mockAgent) UnstableSetSessionModel(
 	context.Context,
-	acpsdk.SetSessionModelRequest,
-) (acpsdk.SetSessionModelResponse, error) {
-	return acpsdk.SetSessionModelResponse{}, nil
+	acpsdk.UnstableSetSessionModelRequest,
+) (acpsdk.UnstableSetSessionModelResponse, error) {
+	return acpsdk.UnstableSetSessionModelResponse{}, nil
+}
+
+func sessionConfigOptionsFromFixture(
+	options []acpmock.SessionConfigOptionFixture,
+) []acpsdk.SessionConfigOption {
+	if len(options) == 0 {
+		return nil
+	}
+	result := make([]acpsdk.SessionConfigOption, 0, len(options))
+	for _, option := range options {
+		values := make(acpsdk.SessionConfigSelectOptionsUngrouped, 0, len(option.Values))
+		for _, value := range option.Values {
+			label := strings.TrimSpace(value.Label)
+			if label == "" {
+				label = strings.TrimSpace(value.Value)
+			}
+			values = append(values, acpsdk.SessionConfigSelectOption{
+				Name:  label,
+				Value: acpsdk.SessionConfigValueId(strings.TrimSpace(value.Value)),
+			})
+		}
+		result = append(result, acpsdk.SessionConfigOption{
+			Select: &acpsdk.SessionConfigOptionSelect{
+				Id:           acpsdk.SessionConfigId(strings.TrimSpace(option.ID)),
+				Name:         strings.TrimSpace(option.Name),
+				CurrentValue: acpsdk.SessionConfigValueId(strings.TrimSpace(option.Current)),
+				Options: acpsdk.SessionConfigSelectOptions{
+					Ungrouped: &values,
+				},
+				Type: "select",
+			},
+		})
+	}
+	return result
+}
+
+func (a *mockAgent) setConfigOptionValue(sessionID string, configID string, value string) error {
+	trimmedSessionID := strings.TrimSpace(sessionID)
+	trimmedConfigID := strings.TrimSpace(configID)
+	trimmedValue := strings.TrimSpace(value)
+	if trimmedSessionID == "" {
+		return errors.New("acpmock-driver: session id is required")
+	}
+	if trimmedConfigID == "" {
+		return errors.New("acpmock-driver: session config option id is required")
+	}
+	if trimmedValue == "" {
+		return errors.New("acpmock-driver: session config option value is required")
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	session := a.sessions[trimmedSessionID]
+	if session == nil {
+		session = &sessionState{
+			ConfigOptions: cloneSessionConfigOptions(a.configTemplate),
+		}
+		a.sessions[trimmedSessionID] = session
+	}
+	for idx := range session.ConfigOptions {
+		option := session.ConfigOptions[idx].Select
+		if option == nil || string(option.Id) != trimmedConfigID {
+			continue
+		}
+		if option.Options.Ungrouped == nil {
+			return fmt.Errorf("acpmock-driver: config option %q has no selectable values", trimmedConfigID)
+		}
+		for _, candidate := range *option.Options.Ungrouped {
+			if string(candidate.Value) == trimmedValue {
+				option.CurrentValue = acpsdk.SessionConfigValueId(trimmedValue)
+				return nil
+			}
+		}
+		return fmt.Errorf(
+			"acpmock-driver: config option %q value %q is not available",
+			trimmedConfigID,
+			trimmedValue,
+		)
+	}
+	return fmt.Errorf("acpmock-driver: config option %q is not available", trimmedConfigID)
+}
+
+func (a *mockAgent) ensureSessionState(sessionID string) *sessionState {
+	trimmedSessionID := strings.TrimSpace(sessionID)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	session := a.sessions[trimmedSessionID]
+	if session == nil {
+		session = &sessionState{
+			ConfigOptions: cloneSessionConfigOptions(a.configTemplate),
+		}
+		a.sessions[trimmedSessionID] = session
+	}
+	return session
+}
+
+func (a *mockAgent) sessionConfigOptions(sessionID string) []acpsdk.SessionConfigOption {
+	session := a.ensureSessionState(sessionID)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return cloneSessionConfigOptions(session.ConfigOptions)
+}
+
+func cloneSessionConfigOptions(options []acpsdk.SessionConfigOption) []acpsdk.SessionConfigOption {
+	if len(options) == 0 {
+		return nil
+	}
+	cloned := make([]acpsdk.SessionConfigOption, 0, len(options))
+	for _, option := range options {
+		if option.Select != nil {
+			selectCopy := *option.Select
+			if option.Select.Options.Ungrouped != nil {
+				values := append(acpsdk.SessionConfigSelectOptionsUngrouped(nil), (*option.Select.Options.Ungrouped)...)
+				selectCopy.Options.Ungrouped = &values
+			}
+			cloned = append(cloned, acpsdk.SessionConfigOption{Select: &selectCopy})
+			continue
+		}
+		if option.Boolean != nil {
+			booleanCopy := *option.Boolean
+			cloned = append(cloned, acpsdk.SessionConfigOption{Boolean: &booleanCopy})
+		}
+	}
+	return cloned
 }
 
 func (a *mockAgent) Prompt(ctx context.Context, params acpsdk.PromptRequest) (acpsdk.PromptResponse, error) {
@@ -388,7 +570,7 @@ func (a *mockAgent) requestPermission(
 	response, err := a.conn.RequestPermission(ctx, acpsdk.RequestPermissionRequest{
 		SessionId: sessionID,
 		Options:   defaultPermissionOptions(),
-		ToolCall: acpsdk.RequestPermissionToolCall{
+		ToolCall: acpsdk.ToolCallUpdate{
 			ToolCallId: acpsdk.ToolCallId(strings.TrimSpace(step.ToolCallID)),
 			Title:      acpsdk.Ptr(title),
 			Kind:       acpsdk.Ptr(toolKindValue),

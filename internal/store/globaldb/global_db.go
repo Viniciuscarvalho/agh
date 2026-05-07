@@ -841,33 +841,33 @@ var globalSchemaMigrations = []store.Migration{
 	},
 	{
 		Version:  17,
-		Name:     "rebuild_network_conversation_containers",
-		Up:       migrateNetworkConversationContainers,
-		Checksum: "2026-05-05-rebuild-network-conversation-containers",
-	},
-	{
-		Version:  18,
 		Name:     "add_task_orchestration_profile_schema",
 		Up:       migrateTaskOrchestrationProfileSchema,
 		Checksum: "2026-05-05-add-task-orchestration-profile-schema",
 	},
 	{
-		Version:  19,
+		Version:  18,
 		Name:     "add_task_review_gate_schema",
 		Up:       migrateTaskReviewGateSchema,
 		Checksum: "2026-05-05-add-task-review-gate-schema",
 	},
 	{
-		Version:  20,
+		Version:  19,
 		Name:     "add_notification_cursors",
 		Up:       migrateNotificationCursors,
 		Checksum: "2026-05-05-add-notification-cursors",
 	},
 	{
-		Version:  21,
+		Version:  20,
 		Name:     "add_bridge_task_subscriptions",
 		Up:       migrateBridgeTaskSubscriptions,
 		Checksum: "2026-05-05-add-bridge-task-subscriptions",
+	},
+	{
+		Version:  21,
+		Name:     "rebuild_network_conversation_containers",
+		Up:       migrateNetworkConversationContainers,
+		Checksum: "2026-05-05-rebuild-network-conversation-containers",
 	},
 	{
 		Version:  22,
@@ -875,6 +875,36 @@ var globalSchemaMigrations = []store.Migration{
 		Up:       migrateMemoryV2Events,
 		Checksum: "2026-05-05-memv2-memory-events",
 	},
+	{
+		Version:  23,
+		Name:     "add_model_catalog_persistence",
+		Up:       migrateModelCatalogPersistence,
+		Checksum: "2026-05-07-add-model-catalog-persistence",
+	},
+	{
+		Version:  24,
+		Name:     "rebuild_model_catalog_source_constraints",
+		Up:       migrateModelCatalogSourceConstraints,
+		Checksum: "2026-05-07-rebuild-model-catalog-source-constraints",
+	},
+}
+
+func migrateModelCatalogSourceConstraints(ctx context.Context, tx *sql.Tx) error {
+	statements := []string{
+		`DROP TABLE IF EXISTS model_catalog_reasoning_efforts;`,
+		`DROP TABLE IF EXISTS model_catalog_rows;`,
+		`DROP TABLE IF EXISTS model_catalog_sources;`,
+		modelCatalogSourcesSchemaStatement(),
+		modelCatalogRowsSchemaStatementWithSourceForeignKey(),
+		modelCatalogReasoningEffortsSchemaStatement(),
+	}
+	statements = append(statements, modelCatalogIndexStatements()...)
+	for _, statement := range statements {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
+			return fmt.Errorf("store: rebuild model catalog source constraints: %w", err)
+		}
+	}
+	return nil
 }
 
 func migrateNetworkConversationContainers(ctx context.Context, tx *sql.Tx) error {

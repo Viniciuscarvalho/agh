@@ -451,7 +451,7 @@ func TestOverlayEditorSetTableMutations(t *testing.T) {
 		editor, err := newOverlayEditor(ConfigName, []byte(`
 	# provider block
 	[providers.openai]
-	default_model = "gpt-4o"
+	models = { default = "gpt-4o" }
 	command = "openai"
 
 [defaults]
@@ -462,8 +462,8 @@ agent = "general"
 		}
 
 		err = editor.SetTable([]string{"providers", "openai"}, map[string]any{
-			"default_model": "gpt-5",
-			"command":       "openai-next",
+			"models":  map[string]any{"default": "gpt-5"},
+			"command": "openai-next",
 		})
 		if err != nil {
 			t.Fatalf("editor.SetTable() error = %v", err)
@@ -477,7 +477,7 @@ agent = "general"
 
 		for _, want := range []string{
 			"[providers.openai]",
-			`default_model = "gpt-5"`,
+			`default = "gpt-5"`,
 			`command = "openai-next"`,
 			"[defaults]",
 			`agent = "general"`,
@@ -486,7 +486,7 @@ agent = "general"
 				t.Fatalf("rendered config missing %q\n%s", want, text)
 			}
 		}
-		if strings.Contains(text, `default_model = "gpt-4o"`) {
+		if strings.Contains(text, `default = "gpt-4o"`) {
 			t.Fatalf("rendered config still contains old model\n%s", text)
 		}
 	})
@@ -496,17 +496,17 @@ agent = "general"
 
 		editor, err := newOverlayEditor(ConfigName, []byte(`
 [providers.openai]
-default_model = "gpt-4o"
+command = "openai"
 
-[providers.openai.options]
-temperature = 0.2
+[providers.openai.models]
+default = "gpt-4o"
 `))
 		if err != nil {
 			t.Fatalf("newOverlayEditor() error = %v", err)
 		}
 
 		err = editor.SetTable([]string{"providers", "openai"}, map[string]any{
-			"default_model": "gpt-5",
+			"models": map[string]any{"default": "gpt-5"},
 		})
 		if err == nil {
 			t.Fatal("editor.SetTable() error = nil, want nested-subtable rejection")
@@ -516,6 +516,36 @@ temperature = 0.2
 		}
 		if !strings.Contains(err.Error(), `providers.openai`) {
 			t.Fatalf("editor.SetTable() error = %q, want path context", err.Error())
+		}
+	})
+
+	t.Run("render explicit empty array-of-tables values", func(t *testing.T) {
+		t.Parallel()
+
+		editor, err := newOverlayEditor(ConfigName, []byte{})
+		if err != nil {
+			t.Fatalf("newOverlayEditor() error = %v", err)
+		}
+
+		err = editor.SetTable([]string{"providers", "openai", "models"}, map[string]any{
+			"curated": []map[string]any{},
+		})
+		if err != nil {
+			t.Fatalf("editor.SetTable() error = %v", err)
+		}
+
+		rendered, err := editor.Bytes()
+		if err != nil {
+			t.Fatalf("editor.Bytes() error = %v", err)
+		}
+		text := string(rendered)
+		for _, want := range []string{
+			"[providers.openai.models]",
+			`curated = []`,
+		} {
+			if !strings.Contains(text, want) {
+				t.Fatalf("rendered config missing %q\n%s", want, text)
+			}
 		}
 	})
 }
@@ -676,7 +706,7 @@ agent = "general"
 provider = "openai"
 
 	[providers.openai]
-	default_model = "gpt-4o"
+	models = { default = "gpt-4o" }
 	command = "openai"
 	`))
 	if err != nil {
@@ -728,7 +758,7 @@ provider = "openai"
 	for _, unwanted := range []string{
 		`provider = "openai"`,
 		"[providers.openai]",
-		`default_model = "gpt-4o"`,
+		`default = "gpt-4o"`,
 		`command = "openai"`,
 	} {
 		if strings.Contains(text, unwanted) {
