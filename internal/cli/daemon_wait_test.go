@@ -16,37 +16,79 @@ import (
 )
 
 type stubDaemonProcess struct {
-	waitCh chan error
+	done    chan struct{}
+	waitErr error
 }
 
 func (p *stubDaemonProcess) PID() int {
 	return 42
 }
 
+func (p *stubDaemonProcess) Done() <-chan struct{} {
+	return p.done
+}
+
 func (p *stubDaemonProcess) Wait() error {
-	return <-p.waitCh
+	<-p.done
+	return p.waitErr
+}
+
+func (p *stubDaemonProcess) complete(err error) {
+	p.waitErr = err
+	close(p.done)
 }
 
 func TestWaitForDaemonStartReturnsStatusWhenDaemonBecomesReady(t *testing.T) {
 	t.Parallel()
 
-	child := &stubDaemonProcess{waitCh: make(chan error, 1)}
-	deps := newTestDeps(t, &stubClient{
-		daemonStatusFn: func(context.Context) (DaemonStatus, error) {
-			return DaemonStatus{Status: "ready", PID: 42}, nil
-		},
-	})
-	deps.pollInterval = time.Millisecond
-	deps.startTimeout = 100 * time.Millisecond
+	t.Run("Should return daemon status when daemon becomes ready", func(t *testing.T) {
+		t.Parallel()
 
-	status, err := waitForDaemonStart(testutil.Context(t), deps, child)
-	child.waitCh <- nil
-	if err != nil {
-		t.Fatalf("waitForDaemonStart() error = %v", err)
-	}
-	if status.Status != "ready" || status.PID != 42 {
-		t.Fatalf("waitForDaemonStart() status = %#v, want ready pid 42", status)
-	}
+		child := &stubDaemonProcess{done: make(chan struct{})}
+		deps := newTestDeps(t, &stubClient{
+			daemonStatusFn: func(context.Context) (DaemonStatus, error) {
+				return DaemonStatus{Status: "ready", PID: 42}, nil
+			},
+		})
+		deps.pollInterval = time.Millisecond
+		deps.startTimeout = 100 * time.Millisecond
+
+		status, err := waitForDaemonStart(testutil.Context(t), deps, child)
+		child.complete(nil)
+		if err != nil {
+			t.Fatalf("waitForDaemonStart() error = %v", err)
+		}
+		if status.Status != "ready" || status.PID != 42 {
+			t.Fatalf("waitForDaemonStart() status = %#v, want ready pid 42", status)
+		}
+	})
+}
+
+func TestWaitForDaemonStartReturnsDeadlineExceededWhenReadyTimeoutExpires(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Should wrap deadline exceeded when daemon readiness times out", func(t *testing.T) {
+		t.Parallel()
+
+		child := &stubDaemonProcess{done: make(chan struct{})}
+		deps := newTestDeps(t, &stubClient{
+			daemonStatusFn: func(context.Context) (DaemonStatus, error) {
+				return DaemonStatus{}, errors.New("daemon unavailable")
+			},
+		})
+		deps.pollInterval = time.Millisecond
+		deps.startTimeout = 5 * time.Millisecond
+		deps.processAlive = func(int) bool { return true }
+
+		_, err := waitForDaemonStart(testutil.Context(t), deps, child)
+		child.complete(nil)
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("waitForDaemonStart() error = %v, want context.DeadlineExceeded", err)
+		}
+		if !strings.Contains(err.Error(), "daemon did not become ready before timeout") {
+			t.Fatalf("waitForDaemonStart() error = %v, want readiness timeout context", err)
+		}
+	})
 }
 
 func TestWaitForDaemonStopReturnsStoppedStatusWhenProcessExits(t *testing.T) {
@@ -249,29 +291,33 @@ func TestRunDaemonForegroundRunsDaemonWhenNotAlreadyRunning(t *testing.T) {
 func TestRunDaemonDetachedReturnsReadyStatus(t *testing.T) {
 	t.Parallel()
 
-	child := &stubDaemonProcess{waitCh: make(chan error, 1)}
-	deps := newTestDeps(t, &stubClient{
-		daemonStatusFn: func(context.Context) (DaemonStatus, error) {
-			return DaemonStatus{Status: "ready", PID: 42}, nil
-		},
-	})
-	deps.pollInterval = time.Millisecond
-	deps.startTimeout = 100 * time.Millisecond
-	deps.readDaemonInfo = func(string) (aghdaemon.Info, error) {
-		return aghdaemon.Info{}, os.ErrNotExist
-	}
-	deps.spawnDetached = func(context.Context, aghconfig.HomePaths) (daemonProcess, error) {
-		return child, nil
-	}
+	t.Run("Should return ready status when detached daemon becomes ready", func(t *testing.T) {
+		t.Parallel()
 
-	status, err := runDaemonDetached(testutil.Context(t), deps)
-	child.waitCh <- nil
-	if err != nil {
-		t.Fatalf("runDaemonDetached() error = %v", err)
-	}
-	if status.Status != "ready" || status.PID != 42 {
-		t.Fatalf("runDaemonDetached() status = %#v, want ready pid 42", status)
-	}
+		child := &stubDaemonProcess{done: make(chan struct{})}
+		deps := newTestDeps(t, &stubClient{
+			daemonStatusFn: func(context.Context) (DaemonStatus, error) {
+				return DaemonStatus{Status: "ready", PID: 42}, nil
+			},
+		})
+		deps.pollInterval = time.Millisecond
+		deps.startTimeout = 100 * time.Millisecond
+		deps.readDaemonInfo = func(string) (aghdaemon.Info, error) {
+			return aghdaemon.Info{}, os.ErrNotExist
+		}
+		deps.spawnDetached = func(context.Context, aghconfig.HomePaths) (daemonProcess, error) {
+			return child, nil
+		}
+
+		status, err := runDaemonDetached(testutil.Context(t), deps)
+		child.complete(nil)
+		if err != nil {
+			t.Fatalf("runDaemonDetached() error = %v", err)
+		}
+		if status.Status != "ready" || status.PID != 42 {
+			t.Fatalf("runDaemonDetached() status = %#v, want ready pid 42", status)
+		}
+	})
 }
 
 func TestDaemonRelaunchCommandInvokesHelper(t *testing.T) {
