@@ -86,4 +86,5 @@ docs/prs/**
 docs/ideas/**
 docs/proposals/**
 .codex/ledger/**
+.codex/plans/**
 # <<< skeeper ignored specs <<<
