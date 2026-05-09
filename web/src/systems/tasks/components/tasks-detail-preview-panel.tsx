@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
-import { AlertCircle, Loader2, Radio } from "lucide-react";
+import { AlertCircle, Radio } from "lucide-react";
 
-import { Button, CodeBlock, Metric, Pill, Section } from "@agh/ui";
+import { BlockLoading, Button, CodeBlock, Metric, Pill, Section } from "@agh/ui";
 import { pillToneFromLegacyTone } from "@/lib/pill-variant";
 
 import {
@@ -75,7 +75,7 @@ export function TasksDetailPreviewPanel({
   if (!task) {
     return (
       <div
-        className="flex flex-1 items-center justify-center px-6 py-10 text-sm text-[color:var(--color-text-tertiary)]"
+        className="flex flex-1 items-center justify-center px-6 py-10 text-sm text-(--color-text-tertiary)"
         data-testid="tasks-detail-preview-empty"
       >
         Select a task to inspect its overview.
@@ -85,12 +85,13 @@ export function TasksDetailPreviewPanel({
 
   if (isLoading && !detail) {
     return (
-      <div
-        className="flex flex-1 items-center justify-center"
+      <BlockLoading
+        className="flex-1"
+        label="Loading task preview"
+        size="md"
+        surface="bare"
         data-testid="tasks-detail-preview-loading"
-      >
-        <Loader2 className="size-5 animate-spin text-[color:var(--color-text-tertiary)]" />
-      </div>
+      />
     );
   }
 
@@ -101,8 +102,8 @@ export function TasksDetailPreviewPanel({
         data-testid="tasks-detail-preview-error"
       >
         <div className="flex flex-col items-center gap-2 text-center">
-          <AlertCircle className="size-6 text-[color:var(--color-danger)]" />
-          <p className="text-sm text-[color:var(--color-text-tertiary)]">{errorMessage}</p>
+          <AlertCircle className="size-6 text-(--color-danger)" />
+          <p className="text-sm text-(--color-text-tertiary)">{errorMessage}</p>
         </div>
       </div>
     );
@@ -144,7 +145,7 @@ export function TasksDetailPreviewPanel({
 
   return (
     <section
-      className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto bg-[color:var(--color-canvas)] px-6 py-5"
+      className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto bg-(--color-canvas) px-6 py-5"
       data-testid="tasks-detail-preview-panel"
     >
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -152,14 +153,14 @@ export function TasksDetailPreviewPanel({
           <div className="flex min-w-0 items-center gap-2">
             <Pill.Dot tone={signal.tone} pulse={signal.pulse} />
             <h2
-              className="truncate text-[1.35rem] font-semibold tracking-[-0.02em] text-[color:var(--color-text-primary)]"
+              className="truncate text-ui-title-lg font-semibold tracking-tight text-(--color-text-primary)"
               data-testid="tasks-detail-preview-title"
             >
               {record.title}
             </h2>
             <Pill mono>{identifier}</Pill>
           </div>
-          <div className="flex flex-wrap items-center gap-2 text-[13px] text-[color:var(--color-text-secondary)]">
+          <div className="flex flex-wrap items-center gap-2 text-small-body text-(--color-text-secondary)">
             <Pill tone={pillToneFromLegacyTone(taskStatusTone(record.status))}>
               {taskStatusLabel(record.status)}
             </Pill>
@@ -181,7 +182,7 @@ export function TasksDetailPreviewPanel({
             {channelLabel ? (
               <Pill
                 data-testid="tasks-detail-preview-coordination"
-                title="Coordination channel is bound to the active run. Channel messages support coordination only — task ownership stays in the task service."
+                title="Coordination channel is bound to the active run. Channel messages support coordination only -- task ownership stays in the task service."
                 tone={pillToneFromLegacyTone("violet")}
               >
                 <span className="inline-flex items-center gap-1">
@@ -259,7 +260,7 @@ export function TasksDetailPreviewPanel({
       </header>
 
       <p
-        className="text-[12px] text-[color:var(--color-text-tertiary)]"
+        className="text-xs text-(--color-text-tertiary)"
         data-testid="tasks-detail-preview-lifecycle-hint"
       >
         {taskLifecyclePhaseDescription(lifecyclePhase)}
@@ -288,22 +289,20 @@ export function TasksDetailPreviewPanel({
         data-testid="tasks-detail-preview-overview"
         label="Overview"
         right={
-          <Link
-            className="font-mono text-[11px] uppercase tracking-[0.14em] text-[color:var(--color-accent)] hover:underline"
+          <Pill.Link
             data-testid="tasks-detail-preview-deeplink"
-            params={{ id: record.id }}
-            to="/tasks/$id"
+            render={<Link params={{ id: record.id }} to="/tasks/$id" />}
           >
             Open detail
-          </Link>
+          </Pill.Link>
         }
       >
         {description ? (
-          <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-[color:var(--color-text-secondary)]">
+          <p className="whitespace-pre-wrap text-small-body leading-relaxed text-(--color-text-secondary)">
             {description}
           </p>
         ) : (
-          <p className="text-[13px] italic text-[color:var(--color-text-tertiary)]">
+          <p className="text-small-body italic text-(--color-text-tertiary)">
             No description provided yet. Open the full detail view to inspect timeline, runs, and
             dependencies.
           </p>
@@ -333,7 +332,7 @@ function buildPreviewCode({ record, description, ownerLabel }: BuildPreviewCodeP
   const scope = record.scope ?? "workspace";
   const owner = ownerLabel.toLowerCase().replace(/\s+/g, "-");
   const origin = record.origin?.kind ?? "unknown";
-  const prompt = (description ?? "").trim() || "—";
+  const prompt = (description ?? "").trim() || "--";
   return [
     `# scope    ${scope}`,
     `# owner    ${owner}`,

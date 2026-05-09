@@ -1,6 +1,6 @@
 import { Activity, AlertTriangle, Clock, Wrench } from "lucide-react";
 
-import { Pill, cn } from "@agh/ui";
+import { Alert, AlertDescription, AlertMeta, AlertTitle, Pill, cn } from "@agh/ui";
 
 import type { AgentEventPayload, RuntimeActivityPayload } from "../types";
 
@@ -82,45 +82,20 @@ export function RuntimeActivityNotice({ event }: { event: AgentEventPayload }) {
   const meta = activityMeta(activity);
 
   return (
-    <div
+    <Alert
       role={isWarning ? "alert" : "status"}
       data-testid="runtime-activity-notice"
       data-tone={isWarning ? "warning" : "progress"}
-      className={cn(
-        "my-2 flex max-w-3xl items-start gap-2 rounded-[var(--radius-md)] border px-3 py-2",
-        "text-xs",
-        isWarning
-          ? "border-[color:var(--color-warning)]/35 bg-[color:var(--color-warning-tint)]"
-          : "border-[color:var(--color-accent)]/25 bg-[color:var(--color-accent-tint)]"
-      )}
+      className="my-2 max-w-3xl px-3 py-2"
+      variant={isWarning ? "warning" : "accent"}
     >
-      <Icon
-        aria-hidden="true"
-        className={cn(
-          "mt-0.5 size-3.5 shrink-0",
-          isWarning ? "text-[color:var(--color-warning)]" : "text-[color:var(--color-accent)]"
-        )}
-      />
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="font-medium text-[color:var(--color-text-primary)]">{title}</span>
-          {meta ? (
-            <span
-              data-testid="runtime-activity-meta"
-              className="font-mono text-[10px] tracking-[0.06em] text-[color:var(--color-text-tertiary)] uppercase"
-            >
-              {meta}
-            </span>
-          ) : null}
-        </div>
-        <p
-          data-testid="runtime-activity-detail"
-          className="mt-1 truncate text-[color:var(--color-text-secondary)]"
-        >
-          {detail}
-        </p>
-      </div>
-    </div>
+      <Icon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
+      <AlertTitle>{title}</AlertTitle>
+      {meta ? <AlertMeta data-testid="runtime-activity-meta">{meta}</AlertMeta> : null}
+      <AlertDescription className="truncate" data-testid="runtime-activity-detail">
+        {detail}
+      </AlertDescription>
+    </Alert>
   );
 }
 
@@ -136,18 +111,15 @@ export function SessionActivityInline({ activity }: { activity?: RuntimeActivity
     <span
       data-testid="session-activity-inline"
       className={cn(
-        "hidden min-w-0 max-w-[20rem] items-center gap-1.5 rounded-[var(--radius-sm)] border px-2 py-1 md:flex",
-        "border-[color:var(--color-divider)] bg-[color:var(--color-canvas-deep)]",
-        "text-[11px] text-[color:var(--color-text-secondary)]"
+        "hidden min-w-0 max-w-[20rem] items-center gap-1.5 rounded-sm border px-2 py-1 md:flex",
+        "border-(--color-divider) bg-(--color-canvas-deep)",
+        "text-eyebrow text-(--color-text-secondary)"
       )}
     >
       {activity.current_tool ? (
-        <Wrench aria-hidden="true" className="size-3 shrink-0 text-[color:var(--color-accent)]" />
+        <Wrench aria-hidden="true" className="size-3 shrink-0 text-accent" />
       ) : (
-        <Clock
-          aria-hidden="true"
-          className="size-3 shrink-0 text-[color:var(--color-text-tertiary)]"
-        />
+        <Clock aria-hidden="true" className="size-3 shrink-0 text-(--color-text-tertiary)" />
       )}
       <span className="truncate" title={detail}>
         {detail}

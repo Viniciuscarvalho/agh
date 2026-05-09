@@ -12,6 +12,8 @@ import {
   Pill,
   NativeSelect,
   NativeSelectOption,
+  PageShell,
+  Section,
   Switch,
   Table,
   TableBody,
@@ -33,9 +35,7 @@ import {
   SettingsFieldRow,
   SettingsNumberInput,
   SettingsPageActions,
-  SettingsPageShell,
   SettingsRestartBanner,
-  SettingsSectionCard,
   SettingsStatusLine,
 } from "@/systems/settings/components";
 
@@ -66,7 +66,7 @@ function HooksExtensionsSettingsPage() {
         className="flex flex-1 items-center justify-center"
         data-testid="settings-page-hooks-extensions-loading"
       >
-        <Loader2 className="size-5 animate-spin text-[color:var(--color-text-tertiary)]" />
+        <Loader2 className="size-5 animate-spin text-(--color-text-tertiary)" />
       </div>
     );
   }
@@ -78,8 +78,8 @@ function HooksExtensionsSettingsPage() {
         data-testid="settings-page-hooks-extensions-error"
       >
         <div className="flex flex-col items-center gap-2 text-center">
-          <AlertCircle className="size-6 text-[color:var(--color-danger)]" />
-          <p className="text-sm text-[color:var(--color-text-tertiary)]">
+          <AlertCircle className="size-6 text-(--color-danger)" />
+          <p className="text-sm text-(--color-text-tertiary)">
             {page.error?.message ?? "Failed to load hooks & extensions settings"}
           </p>
           <Button onClick={page.handleRetry} size="sm" type="button" variant="outline">
@@ -93,13 +93,13 @@ function HooksExtensionsSettingsPage() {
   const { draft, hooks, extensions, transportParity } = page;
 
   return (
-    <SettingsPageShell
+    <PageShell
       slug="hooks-extensions"
       title="Hooks & Extensions"
       statusLine={
         <SettingsStatusLine
           data-testid="settings-page-hooks-extensions-status-line"
-          daemonAvailable
+          status="connected"
           items={[
             <span key="hooks" data-testid="settings-page-hooks-extensions-hooks-total">
               {page.hooksCounts.enabled}/{page.hooksCounts.total} hooks enabled
@@ -150,7 +150,7 @@ function HooksExtensionsSettingsPage() {
         onSave={page.handleSavePolicy}
         onReset={page.handleResetPolicy}
       />
-    </SettingsPageShell>
+    </PageShell>
   );
 }
 
@@ -171,7 +171,7 @@ function TransportParityBanner({
     >
       <AlertTriangle className="size-3.5" />
       <AlertDescription className="text-xs">
-        <span className="font-medium text-[color:var(--color-warning)]">
+        <span className="font-medium text-(--color-warning)">
           Some operations are unavailable over HTTP.
         </span>{" "}
         HTTP is bound outside the loopback host. {unavailable} stay available over UDS but return
@@ -211,14 +211,14 @@ function HooksSection({
   onToggle,
 }: HooksSectionProps) {
   return (
-    <SettingsSectionCard
+    <Section
       data-testid="settings-page-hooks-extensions-hooks-section"
-      eyebrow="Lifecycle hooks"
+      label="Lifecycle hooks"
       note="restart required to re-read declarations · toggles persist now"
     >
       {hookError ? (
         <span
-          className="text-xs text-[color:var(--color-danger)]"
+          className="text-xs text-(--color-danger)"
           data-testid="settings-page-hooks-extensions-hooks-error"
         >
           {hookError}
@@ -233,25 +233,25 @@ function HooksSection({
         />
       ) : (
         <div
-          className="overflow-hidden rounded-lg border border-[color:var(--color-divider)]"
+          className="overflow-hidden rounded-lg border border-(--color-divider)"
           data-testid="settings-page-hooks-extensions-hooks-list"
         >
           <Table>
             <TableHeader>
-              <TableRow className="bg-[color:var(--color-surface-elevated)]">
-                <TableHead className="text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--color-text-label)]">
+              <TableRow className="bg-(--color-surface-elevated)">
+                <TableHead className="text-badge uppercase tracking-mono text-(--color-text-label)">
                   Name
                 </TableHead>
-                <TableHead className="text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--color-text-label)]">
+                <TableHead className="text-badge uppercase tracking-mono text-(--color-text-label)">
                   Event
                 </TableHead>
-                <TableHead className="text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--color-text-label)]">
+                <TableHead className="text-badge uppercase tracking-mono text-(--color-text-label)">
                   Mode
                 </TableHead>
-                <TableHead className="text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--color-text-label)]">
+                <TableHead className="text-badge uppercase tracking-mono text-(--color-text-label)">
                   Matcher
                 </TableHead>
-                <TableHead className="w-[1%] text-right text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--color-text-label)]">
+                <TableHead className="w-[1%] text-right text-badge uppercase tracking-mono text-(--color-text-label)">
                   Enabled
                 </TableHead>
               </TableRow>
@@ -270,7 +270,7 @@ function HooksSection({
           </Table>
         </div>
       )}
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
@@ -294,11 +294,9 @@ function HookRow({
     <TableRow data-testid={`settings-page-hooks-extensions-hooks-row-${entry.name}`}>
       <TableCell>
         <div className="flex flex-col gap-0.5">
-          <span className="font-mono text-sm text-[color:var(--color-text-primary)]">
-            {entry.name}
-          </span>
+          <span className="font-mono text-sm text-(--color-text-primary)">{entry.name}</span>
           {declaration.command ? (
-            <span className="font-mono text-[0.62rem] text-[color:var(--color-text-tertiary)]">
+            <span className="font-mono text-badge text-(--color-text-tertiary)">
               {[declaration.command, ...(declaration.args ?? [])].join(" ")}
             </span>
           ) : null}
@@ -309,19 +307,17 @@ function HookRow({
           {declaration.event}
         </Pill>
       </TableCell>
-      <TableCell className="font-mono text-xs text-[color:var(--color-text-secondary)]">
-        {mode}
-      </TableCell>
+      <TableCell className="font-mono text-xs text-(--color-text-secondary)">{mode}</TableCell>
       <TableCell
-        className="font-mono text-xs text-[color:var(--color-text-secondary)]"
+        className="font-mono text-xs text-(--color-text-secondary)"
         data-testid={`settings-page-hooks-extensions-hooks-row-${entry.name}-matcher`}
       >
-        {matcherSummary || "—"}
+        {matcherSummary || "--"}
       </TableCell>
       <TableCell>
         <div className="flex items-center justify-end gap-2">
           {pending ? (
-            <Loader2 className="size-3.5 animate-spin text-[color:var(--color-text-tertiary)]" />
+            <Loader2 className="size-3.5 animate-spin text-(--color-text-tertiary)" />
           ) : null}
           <Switch
             data-testid={`settings-page-hooks-extensions-hooks-row-${entry.name}-toggle`}
@@ -362,14 +358,14 @@ function ExtensionsSection({
   onToggle,
 }: ExtensionsSectionProps) {
   return (
-    <SettingsSectionCard
+    <Section
       data-testid="settings-page-hooks-extensions-extensions-section"
-      eyebrow="Installed extensions"
+      label="Installed extensions"
       note="toggles apply immediately · no restart"
     >
       {error ? (
         <span
-          className="text-xs text-[color:var(--color-danger)]"
+          className="text-xs text-(--color-danger)"
           data-testid="settings-page-hooks-extensions-extensions-error"
         >
           {error}
@@ -377,7 +373,7 @@ function ExtensionsSection({
       ) : null}
       {isLoading && extensions.length === 0 ? (
         <div
-          className="flex items-center gap-2 text-xs text-[color:var(--color-text-tertiary)]"
+          className="flex items-center gap-2 text-xs text-(--color-text-tertiary)"
           data-testid="settings-page-hooks-extensions-extensions-loading"
         >
           <Loader2 className="size-3.5 animate-spin" />
@@ -406,7 +402,7 @@ function ExtensionsSection({
           ))}
         </ul>
       )}
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
@@ -433,16 +429,16 @@ function ExtensionRow({
 
   return (
     <li
-      className="flex items-center justify-between gap-3 rounded-md border border-[color:var(--color-divider)] bg-[color:var(--color-surface-elevated)] px-3 py-2"
+      className="flex items-center justify-between gap-3 rounded-md border border-(--color-divider) bg-(--color-surface-elevated) px-3 py-2"
       data-testid={`settings-page-hooks-extensions-extensions-item-${entry.name}`}
     >
       <div className="flex min-w-0 items-center gap-3">
         <Pill.Dot tone={healthTone} size="md" pulse={entry.health === "degraded"} />
         <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="truncate font-mono text-sm text-[color:var(--color-text-primary)]">
+          <span className="truncate font-mono text-sm text-(--color-text-primary)">
             {entry.name}
           </span>
-          <span className="flex flex-wrap items-center gap-1.5 font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[color:var(--color-text-tertiary)]">
+          <span className="flex flex-wrap items-center gap-1.5 font-mono text-badge uppercase tracking-mono text-(--color-text-tertiary)">
             <span>{entry.state || (entry.enabled ? "running" : "stopped")}</span>
             {entry.version ? (
               <Pill mono tone="neutral">
@@ -462,7 +458,7 @@ function ExtensionRow({
           </span>
           {entry.last_error ? (
             <span
-              className="text-[0.62rem] text-[color:var(--color-danger)]"
+              className="text-badge text-(--color-danger)"
               data-testid={`settings-page-hooks-extensions-extensions-item-${entry.name}-error`}
             >
               {entry.last_error}
@@ -470,7 +466,7 @@ function ExtensionRow({
           ) : null}
           {missingEnv.length > 0 ? (
             <span
-              className="max-w-full break-all font-mono text-[0.62rem] text-[color:var(--color-warning)]"
+              className="max-w-full break-all font-mono text-badge text-(--color-warning)"
               data-testid={`settings-page-hooks-extensions-extensions-item-${entry.name}-missing-env`}
             >
               Missing env: {missingEnv.join(", ")}
@@ -480,7 +476,7 @@ function ExtensionRow({
       </div>
       <div className="flex items-center gap-2">
         {pending ? (
-          <Loader2 className="size-3.5 animate-spin text-[color:var(--color-text-tertiary)]" />
+          <Loader2 className="size-3.5 animate-spin text-(--color-text-tertiary)" />
         ) : null}
         <Switch
           data-testid={`settings-page-hooks-extensions-extensions-item-${entry.name}-toggle`}
@@ -534,16 +530,13 @@ function PolicySection({
   );
 
   return (
-    <SettingsSectionCard
+    <Section
       data-testid="settings-page-hooks-extensions-policy-section"
-      eyebrow="Extensions policy"
+      label="Extensions policy"
       note="restart required to apply"
-      headerAction={
+      right={
         <SaveControls
-          isDirty={isDirty}
-          isSaving={isSaving}
-          isInvalid={isInvalid}
-          canMutate={canMutate}
+          state={{ isDirty, isSaving, isInvalid, canMutate }}
           error={error}
           warnings={warnings}
           onSave={onSave}
@@ -563,9 +556,12 @@ function PolicySection({
             value={draft.marketplace.registry ?? ""}
             disabled={!canMutate}
             onChange={event =>
-              setDraft({
-                ...draft,
-                marketplace: { ...draft.marketplace, registry: event.target.value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  marketplace: { ...current.marketplace, registry: event.target.value },
+                };
               })
             }
           />
@@ -584,9 +580,12 @@ function PolicySection({
             placeholder="https://"
             disabled={!canMutate}
             onChange={event =>
-              setDraft({
-                ...draft,
-                marketplace: { ...draft.marketplace, base_url: event.target.value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  marketplace: { ...current.marketplace, base_url: event.target.value },
+                };
               })
             }
           />
@@ -609,12 +608,15 @@ function PolicySection({
             value={draft.resources.max_scope ?? "workspace"}
             disabled={!canMutate}
             onChange={event =>
-              setDraft({
-                ...draft,
-                resources: {
-                  ...draft.resources,
-                  max_scope: event.target.value as PolicyConfig["resources"]["max_scope"],
-                },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  resources: {
+                    ...current.resources,
+                    max_scope: event.target.value as PolicyConfig["resources"]["max_scope"],
+                  },
+                };
               })
             }
           >
@@ -639,9 +641,12 @@ function PolicySection({
         onRequestsValidityChange={setValidationError("snapshotRateRequests")}
         onQueueValidityChange={setValidationError("snapshotRateQueue")}
         onChange={next =>
-          setDraft({
-            ...draft,
-            resources: { ...draft.resources, snapshot_rate_limit: next },
+          setDraft(prev => {
+            const current = prev ?? draft;
+            return {
+              ...current,
+              resources: { ...current.resources, snapshot_rate_limit: next },
+            };
           })
         }
       />
@@ -658,13 +663,16 @@ function PolicySection({
         onRequestsValidityChange={setValidationError("operatorRateRequests")}
         onQueueValidityChange={setValidationError("operatorRateQueue")}
         onChange={next =>
-          setDraft({
-            ...draft,
-            resources: { ...draft.resources, operator_write_rate_limit: next },
+          setDraft(prev => {
+            const current = prev ?? draft;
+            return {
+              ...current,
+              resources: { ...current.resources, operator_write_rate_limit: next },
+            };
           })
         }
       />
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
@@ -757,7 +765,7 @@ function RateLimitRow({
             onValidityChange={onRequestsValidityChange}
             onValueChange={next => onChange({ ...value, requests: next })}
           />
-          <span className="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-[color:var(--color-text-label)]">
+          <span className="font-mono text-badge uppercase tracking-mono text-(--color-text-label)">
             per
           </span>
           <Input
@@ -768,7 +776,7 @@ function RateLimitRow({
             disabled={!canMutate}
             onChange={event => onChange({ ...value, window: event.target.value })}
           />
-          <span className="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-[color:var(--color-text-label)]">
+          <span className="font-mono text-badge uppercase tracking-mono text-(--color-text-label)">
             queue
           </span>
           <SettingsNumberInput
@@ -788,26 +796,20 @@ function RateLimitRow({
 }
 
 interface SaveControlsProps {
-  isDirty: boolean;
-  isSaving: boolean;
-  isInvalid: boolean;
-  canMutate: boolean;
+  state: {
+    isDirty: boolean;
+    isSaving: boolean;
+    isInvalid: boolean;
+    canMutate: boolean;
+  };
   error: string | null;
   warnings?: string[];
   onSave: () => void;
   onReset: () => void;
 }
 
-function SaveControls({
-  isDirty,
-  isSaving,
-  isInvalid,
-  canMutate,
-  error,
-  warnings,
-  onSave,
-  onReset,
-}: SaveControlsProps) {
+function SaveControls({ state, error, warnings, onSave, onReset }: SaveControlsProps) {
+  const { isDirty, isSaving, isInvalid, canMutate } = state;
   const disabled = !isDirty || isSaving || isInvalid || !canMutate;
   return (
     <div
@@ -818,35 +820,35 @@ function SaveControls({
       <div className="min-w-0" role="status" aria-live={error ? "assertive" : "polite"}>
         {error ? (
           <span
-            className="text-xs text-[color:var(--color-danger)]"
+            className="text-xs text-(--color-danger)"
             data-testid="settings-page-hooks-extensions-policy-error"
           >
             {error}
           </span>
         ) : warnings && warnings.length > 0 ? (
           <span
-            className="text-xs text-[color:var(--color-warning)]"
+            className="text-xs text-(--color-warning)"
             data-testid="settings-page-hooks-extensions-policy-warning"
           >
             {warnings.join(" · ")}
           </span>
         ) : !canMutate ? (
           <span
-            className="text-xs text-[color:var(--color-warning)]"
+            className="text-xs text-(--color-warning)"
             data-testid="settings-page-hooks-extensions-policy-unavailable"
           >
             Policy edits are unavailable over HTTP
           </span>
         ) : isInvalid ? (
           <span
-            className="text-xs text-[color:var(--color-warning)]"
+            className="text-xs text-(--color-warning)"
             data-testid="settings-page-hooks-extensions-policy-invalid"
           >
             Resolve validation errors before saving
           </span>
         ) : isDirty ? (
           <span
-            className="text-xs text-[color:var(--color-text-tertiary)]"
+            className="text-xs text-(--color-text-tertiary)"
             data-testid="settings-page-hooks-extensions-policy-dirty"
           >
             Unsaved changes

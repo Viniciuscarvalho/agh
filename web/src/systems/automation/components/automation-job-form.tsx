@@ -2,6 +2,7 @@ import type { FormEvent } from "react";
 
 import {
   Button,
+  DialogFooter,
   Field,
   FieldContent,
   FieldDescription,
@@ -31,7 +32,15 @@ function currentSchedule(draft: CreateAutomationJobRequest) {
   return draft.schedule ?? { mode: "cron" as const, expr: "0 9 * * *" };
 }
 
-export function AutomationJobForm({
+function currentIsoTimestamp(): string {
+  return new Date().toISOString();
+}
+
+export function AutomationJobForm(props: AutomationJobFormProps) {
+  return renderAutomationJobForm(props);
+}
+
+function renderAutomationJobForm({
   activeWorkspaceId,
   draft,
   isPending,
@@ -63,9 +72,9 @@ export function AutomationJobForm({
       data-testid="automation-job-form"
       onSubmit={handleSubmit}
     >
-      <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5">
+      <div className="flex-1 space-y-6 overflow-y-auto p-5">
         <Section label="Core">
-          <div className="space-y-4 rounded-[var(--radius-md)] border border-[color:var(--color-divider)] bg-[color:var(--color-surface)] p-4">
+          <div className="space-y-4 rounded-md border border-(--color-divider) bg-(--color-surface) p-4">
             <div className="grid gap-4 md:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="job-name">Name</FieldLabel>
@@ -132,7 +141,7 @@ export function AutomationJobForm({
         </Section>
 
         <Section label="Schedule">
-          <div className="space-y-4 rounded-[var(--radius-md)] border border-[color:var(--color-divider)] bg-[color:var(--color-surface)] p-4">
+          <div className="space-y-4 rounded-md border border-(--color-divider) bg-(--color-surface) p-4">
             <Field>
               <FieldTitle>Mode</FieldTitle>
               <PillGroup
@@ -156,7 +165,7 @@ export function AutomationJobForm({
                   } else {
                     onChange({
                       ...draft,
-                      schedule: { mode: "at", time: schedule.time ?? new Date().toISOString() },
+                      schedule: { mode: "at", time: schedule.time ?? currentIsoTimestamp() },
                     });
                   }
                 }}
@@ -217,7 +226,7 @@ export function AutomationJobForm({
         </Section>
 
         <Section label="Governance">
-          <div className="space-y-4 rounded-[var(--radius-md)] border border-[color:var(--color-divider)] bg-[color:var(--color-surface)] p-4">
+          <div className="space-y-4 rounded-md border border-(--color-divider) bg-(--color-surface) p-4">
             <div className="grid gap-4 md:grid-cols-3">
               <Field>
                 <FieldTitle>Retry policy</FieldTitle>
@@ -330,7 +339,7 @@ export function AutomationJobForm({
         </Section>
       </div>
 
-      <div className="flex items-center justify-end gap-2 border-t border-[color:var(--color-divider)] bg-[color:var(--color-surface-panel)] px-5 py-3">
+      <DialogFooter variant="ruled">
         <Button onClick={onCancel} type="button" variant="outline">
           Cancel
         </Button>
@@ -342,7 +351,7 @@ export function AutomationJobForm({
         >
           {isPending ? "Saving..." : mode === "create" ? "Create Job" : "Save Changes"}
         </Button>
-      </div>
+      </DialogFooter>
     </form>
   );
 }

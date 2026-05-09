@@ -141,11 +141,12 @@ function SessionCreateDialog({
   return (
     <Dialog onOpenChange={handleOpenChange} open={open}>
       <DialogContent
-        className="gap-0 p-0 text-[color:var(--color-text-primary)] sm:max-w-xl"
+        className="text-(--color-text-primary) sm:max-w-xl"
         data-testid="session-create-dialog"
         showCloseButton={!isSubmitting}
+        unframed
       >
-        <DialogHeader className="border-b border-[color:var(--color-divider)] px-5 py-4">
+        <DialogHeader variant="ruled">
           <DialogTitle>Start a new session</DialogTitle>
           <DialogDescription>
             {workspaceSelected
@@ -155,7 +156,7 @@ function SessionCreateDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit}>
-          <div className="space-y-5 px-5 py-5">
+          <div className="space-y-5 p-5">
             <Field>
               <FieldLabel htmlFor="session-create-agent">Agent</FieldLabel>
               <FieldDescription>
@@ -172,11 +173,11 @@ function SessionCreateDialog({
               />
               {activeAgent ? (
                 <div
-                  className="mt-1 flex items-center gap-1.5 text-xs text-[color:var(--color-text-tertiary)]"
+                  className="mt-1 flex items-center gap-1.5 text-xs text-(--color-text-tertiary)"
                   data-testid="session-create-agent-default"
                 >
                   <AgentIcon
-                    className="size-3.5 text-[color:var(--color-text-tertiary)]"
+                    className="size-3.5 text-(--color-text-tertiary)"
                     provider={activeAgent.provider}
                   />
                   <span>Agent default provider: {activeAgent.provider}</span>
@@ -203,7 +204,7 @@ function SessionCreateDialog({
               />
               {activeProvider ? (
                 <div
-                  className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] text-[color:var(--color-text-tertiary)]"
+                  className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-eyebrow text-(--color-text-tertiary)"
                   data-testid="session-create-provider-runtime"
                 >
                   <span>{activeProvider.harness ?? "acp"}</span>
@@ -214,7 +215,7 @@ function SessionCreateDialog({
               ) : null}
               {providersError ? (
                 <p
-                  className="mt-1 text-xs text-[color:var(--color-danger)]"
+                  className="mt-1 text-xs text-(--color-danger)"
                   data-testid="session-create-providers-error"
                   role="alert"
                 >
@@ -223,7 +224,7 @@ function SessionCreateDialog({
               ) : null}
               {workspaceSelected && !providersLoading && !providersError && !hasProviderOptions ? (
                 <p
-                  className="mt-1 text-xs text-[color:var(--color-warning)]"
+                  className="mt-1 text-xs text-(--color-warning)"
                   data-testid="session-create-providers-empty"
                 >
                   No providers are configured for this workspace.
@@ -299,7 +300,7 @@ function SessionCreateDialog({
                 />
                 {defaultReasoning ? (
                   <p
-                    className="mt-1 text-xs text-[color:var(--color-text-tertiary)]"
+                    className="mt-1 text-xs text-(--color-text-tertiary)"
                     data-testid="session-create-reasoning-default"
                   >
                     Default reasoning: {defaultReasoning}
@@ -310,7 +311,7 @@ function SessionCreateDialog({
 
             {submitError ? (
               <p
-                className="text-xs text-[color:var(--color-danger)]"
+                className="text-xs text-(--color-danger)"
                 data-testid="session-create-submit-error"
                 role="alert"
               >
@@ -319,7 +320,7 @@ function SessionCreateDialog({
             ) : null}
           </div>
 
-          <DialogFooter className="mx-0 mb-0 flex flex-wrap items-center justify-end gap-2 rounded-b-xl border-t border-[color:var(--color-divider)] bg-[color:var(--color-surface-panel)] px-5 py-3">
+          <DialogFooter variant="ruled">
             <Button
               data-testid="session-create-dialog-cancel"
               disabled={isSubmitting}
@@ -360,7 +361,7 @@ function CatalogStatusLine({
   if (refreshError) {
     return (
       <p
-        className="mt-1 text-xs text-[color:var(--color-danger)]"
+        className="mt-1 text-xs text-(--color-danger)"
         data-testid="session-create-catalog-refresh-error"
         role="alert"
       >
@@ -371,7 +372,7 @@ function CatalogStatusLine({
   if (error) {
     return (
       <p
-        className="mt-1 text-xs text-[color:var(--color-danger)]"
+        className="mt-1 text-xs text-(--color-danger)"
         data-testid="session-create-catalog-error"
         role="alert"
       >
@@ -382,7 +383,7 @@ function CatalogStatusLine({
   if (refreshing) {
     return (
       <p
-        className="mt-1 text-xs text-[color:var(--color-text-tertiary)]"
+        className="mt-1 text-xs text-(--color-text-tertiary)"
         data-testid="session-create-catalog-refreshing"
       >
         Refreshing model catalog…
@@ -392,7 +393,7 @@ function CatalogStatusLine({
   if (loading) {
     return (
       <p
-        className="mt-1 text-xs text-[color:var(--color-text-tertiary)]"
+        className="mt-1 text-xs text-(--color-text-tertiary)"
         data-testid="session-create-catalog-loading"
       >
         Loading provider models…
@@ -401,21 +402,18 @@ function CatalogStatusLine({
   }
   if (stale) {
     return (
-      <p
-        className="mt-1 text-xs text-[color:var(--color-warning)]"
-        data-testid="session-create-catalog-stale"
-      >
-        Some models are stale — refresh to confirm availability.
+      <p className="mt-1 text-xs text-(--color-warning)" data-testid="session-create-catalog-stale">
+        Some models are stale , refresh to confirm availability.
       </p>
     );
   }
   if (optionCount === 0) {
     return (
       <p
-        className="mt-1 text-xs text-[color:var(--color-text-tertiary)]"
+        className="mt-1 text-xs text-(--color-text-tertiary)"
         data-testid="session-create-catalog-empty"
       >
-        No catalog models — type a model name to continue.
+        No catalog models , type a model name to continue.
       </p>
     );
   }

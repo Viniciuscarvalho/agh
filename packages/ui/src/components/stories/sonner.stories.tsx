@@ -5,7 +5,7 @@ import { Button } from "../button";
 import { Toaster, toast } from "../sonner";
 
 const meta: Meta<typeof Toaster> = {
-  title: "ui/Sonner",
+  title: "components/ui/Sonner",
   component: Toaster,
   parameters: {
     layout: "centered",
@@ -82,7 +82,7 @@ export const ErrorPlay: Story = {
     docs: {
       description: {
         story:
-          "Interaction test — clicking the trigger fires `toast.error` and the toast body renders with the danger message.",
+          "Interaction test, clicking the trigger fires `toast.error` and the toast body renders with the danger message.",
       },
     },
   },

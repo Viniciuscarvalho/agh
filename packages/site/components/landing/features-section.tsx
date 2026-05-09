@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { SectionFrame } from "./primitives/section-frame";
 import { SectionHeader } from "./primitives/section-header";
 
@@ -43,7 +44,7 @@ export function FeaturesSection() {
         align="start"
         eyebrow="Operator surface"
         title="The runtime your agents already know how to drive."
-        description="Sessions, capabilities, workspaces, automation, observability — every surface is reachable from CLI, HTTP, and UDS. Same primitives for you and for the agents you run."
+        description="Sessions, capabilities, workspaces, automation, observability: every surface is reachable from CLI, HTTP, and UDS. Same primitives for you and for the agents you run."
       />
 
       <ul className="mt-12 grid gap-4 md:grid-cols-2">
@@ -51,22 +52,25 @@ export function FeaturesSection() {
           <li key={feature.eyebrow}>
             <article
               data-testid="feature-card"
-              className="group flex h-full min-h-[420px] flex-col overflow-hidden rounded-(--radius-diagram) border border-(--color-divider) bg-(--color-surface) p-4 transition-colors duration-300 hover:border-[color-mix(in_srgb,var(--color-accent)_40%,var(--color-divider))] sm:p-5"
+              className="group flex h-full min-h-[420px] flex-col overflow-hidden rounded-(--radius-diagram) border border-(--color-divider) bg-(--color-surface) p-4 transition-colors duration-300 hover:border-accent/40 sm:p-5"
             >
-              <div className="overflow-hidden rounded-[8px]">
-                <img
+              <div className="overflow-hidden rounded-md">
+                <Image
                   src={feature.image}
                   alt={feature.imageAlt}
-                  loading="lazy"
+                  width={960}
+                  height={600}
                   decoding="async"
-                  className="block aspect-[16/10] w-full object-contain opacity-95 transition-transform duration-500 ease-out group-hover:scale-[1.02]"
+                  sizes="(min-width: 768px) 50vw, 100vw"
+                  unoptimized
+                  className="block aspect-16/10 w-full object-contain opacity-95 transition-transform duration-500 ease-out group-hover:scale-[1.02]"
                 />
               </div>
               <div className="flex flex-1 flex-col pt-5">
-                <p className="font-mono text-[10px] font-semibold uppercase tracking-(--tracking-mono) text-(--color-accent)">
+                <p className="font-mono text-badge font-semibold uppercase tracking-mono text-accent">
                   {feature.eyebrow}
                 </p>
-                <h3 className="mt-3 text-[1.0625rem] font-medium leading-snug tracking-[-0.01em] text-(--color-text-primary)">
+                <h3 className="mt-3 text-base font-medium leading-snug tracking-tight text-(--color-text-primary)">
                   {feature.title}
                 </h3>
                 <p className="mt-3 text-sm leading-relaxed text-(--color-text-secondary)">

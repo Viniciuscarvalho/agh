@@ -2,11 +2,12 @@
 
 import * as React from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, m } from "motion/react";
 import { XIcon } from "lucide-react";
 
 import { cn } from "../lib/utils";
 import { Button } from "./button";
+import { useInitialState } from "./use-initial-state";
 
 type DialogActionsRef = React.RefObject<DialogPrimitive.Root.Actions | null>;
 
@@ -18,7 +19,7 @@ interface DialogMotionContextValue {
 const DialogMotionContext = React.createContext<DialogMotionContextValue | null>(null);
 
 function useDialogMotion(): DialogMotionContextValue {
-  const ctx = React.useContext(DialogMotionContext);
+  const ctx = React.use(DialogMotionContext);
   if (!ctx) {
     throw new Error("Dialog.* components must be used inside <Dialog>.");
   }
@@ -35,7 +36,7 @@ function Dialog({
   ...props
 }: DialogRootProps) {
   const actionsRef = React.useRef<DialogPrimitive.Root.Actions | null>(null);
-  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(defaultOpen);
+  const [uncontrolledOpen, setUncontrolledOpen] = useInitialState(defaultOpen);
   const isControlled = controlledOpen !== undefined;
   const open = isControlled ? Boolean(controlledOpen) : uncontrolledOpen;
 
@@ -77,7 +78,7 @@ function DialogClose({ ...props }: DialogPrimitive.Close.Props) {
 function DialogOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props) {
   const overlayRender = React.useMemo(
     () => (
-      <motion.div
+      <m.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -97,14 +98,37 @@ function DialogOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props) 
   );
 }
 
+type DialogChromeVariant = "default" | "ruled";
+
+const DIALOG_CONTENT_BASE =
+  "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card text-sm text-card-foreground outline-none sm:max-w-sm";
+const DIALOG_CONTENT_FRAMED = "gap-4 p-4";
+const DIALOG_CONTENT_UNFRAMED = "gap-0 p-0";
+
+const DIALOG_HEADER_DEFAULT = "flex flex-col gap-2";
+const DIALOG_HEADER_RULED =
+  "flex flex-col gap-2 border-b border-[color:var(--color-divider)] bg-[color:var(--color-surface-panel)] px-5 py-4";
+
+const DIALOG_FOOTER_DEFAULT =
+  "-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-popover p-4 sm:flex-row sm:justify-end";
+const DIALOG_FOOTER_RULED =
+  "flex flex-col-reverse gap-2 border-t border-[color:var(--color-divider)] bg-[color:var(--color-surface-panel)] px-5 py-3 sm:flex-row sm:justify-end";
+
 interface DialogContentProps extends DialogPrimitive.Popup.Props {
   showCloseButton?: boolean;
+  /**
+   * When `true`, drops the default `gap-4 p-4` chrome so callers can compose
+   * flush headers, bodies, and footers (typically alongside `DialogHeader`/
+   * `DialogFooter` `variant="ruled"`).
+   */
+  unframed?: boolean;
 }
 
 function DialogContent({
   className,
   children,
   showCloseButton = true,
+  unframed = false,
   ...props
 }: DialogContentProps) {
   const { actionsRef, open } = useDialogMotion();
@@ -114,7 +138,7 @@ function DialogContent({
   }, [actionsRef]);
   const popupRender = React.useMemo(
     () => (
-      <motion.div
+      <m.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -131,9 +155,12 @@ function DialogContent({
           <DialogOverlay />
           <DialogPrimitive.Popup
             data-slot="dialog-content"
+            data-frame={unframed ? "unframed" : "framed"}
             render={popupRender}
             className={cn(
-              "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-border bg-card p-4 text-sm text-card-foreground outline-none sm:max-w-sm",
+              DIALOG_CONTENT_BASE,
+              unframed ? DIALOG_CONTENT_UNFRAMED : DIALOG_CONTENT_FRAMED,
+              unframed && "overflow-hidden",
               className
             )}
             {...props}
@@ -157,27 +184,38 @@ function DialogContent({
   );
 }
 
-function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
+interface DialogHeaderProps extends React.ComponentProps<"div"> {
+  variant?: DialogChromeVariant;
+}
+
+function DialogHeader({ className, variant = "default", ...props }: DialogHeaderProps) {
   return (
-    <div data-slot="dialog-header" className={cn("flex flex-col gap-2", className)} {...props} />
+    <div
+      data-slot="dialog-header"
+      data-variant={variant}
+      className={cn(variant === "ruled" ? DIALOG_HEADER_RULED : DIALOG_HEADER_DEFAULT, className)}
+      {...props}
+    />
   );
+}
+
+interface DialogFooterProps extends React.ComponentProps<"div"> {
+  showCloseButton?: boolean;
+  variant?: DialogChromeVariant;
 }
 
 function DialogFooter({
   className,
   showCloseButton = false,
+  variant = "default",
   children,
   ...props
-}: React.ComponentProps<"div"> & {
-  showCloseButton?: boolean;
-}) {
+}: DialogFooterProps) {
   return (
     <div
       data-slot="dialog-footer"
-      className={cn(
-        "-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-popover p-4 sm:flex-row sm:justify-end",
-        className
-      )}
+      data-variant={variant}
+      className={cn(variant === "ruled" ? DIALOG_FOOTER_RULED : DIALOG_FOOTER_DEFAULT, className)}
       {...props}
     >
       {children}
@@ -223,3 +261,4 @@ export {
   DialogTitle,
   DialogTrigger,
 };
+export type { DialogContentProps, DialogFooterProps, DialogHeaderProps, DialogChromeVariant };

@@ -96,6 +96,11 @@ function hasTextLikeExpression(content: string): boolean {
 }
 
 describe("public link safety", () => {
+  it("skips placeholder URLs that still contain an ellipsis marker", () => {
+    expect(parseConcreteUrl("https://example.com/docs/...")).toBeNull();
+    expect(parseConcreteUrl("https://example.com/docs/…")).toBeNull();
+  });
+
   it("uses HTTPS for external URLs in public source files", () => {
     const violations = urlCheckedRoots.flatMap(listSourceFiles).flatMap(file => {
       const relativePath = relative(siteRoot, file);

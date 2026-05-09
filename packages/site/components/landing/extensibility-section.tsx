@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowUpRight, BookOpen, Box, FileCode2, Plug, Sparkles, Timer } from "lucide-react";
 import { FeatureCard } from "./primitives/feature-card";
 import { SectionFrame } from "./primitives/section-frame";
@@ -8,15 +9,15 @@ const EXTENSIONS_DOCS_HREF = "/runtime/core/extensions";
 
 const FEATURES = [
   {
-    icon: <FileCode2 className="h-4 w-4" />,
+    icon: <FileCode2 className="size-4" />,
     eyebrow: "Hooks",
     title: "Typed dispatch on every state transition",
     description:
-      "Not an event bus. ~24 typed lifecycle hooks fire at the call site that owns the transition — session, prompt, tool, permission, autonomy. Hooks can deny or narrow, never bypass.",
+      "Not an event bus. ~24 typed lifecycle hooks fire at the call site that owns the transition: session, prompt, tool, permission, autonomy. Hooks can deny or narrow, never bypass.",
     cite: { href: "/runtime/core/hooks", label: "hooks catalog" },
   },
   {
-    icon: <Sparkles className="h-4 w-4" />,
+    icon: <Sparkles className="size-4" />,
     eyebrow: "Skills",
     title: "Drop-in SKILL.md bundles",
     description:
@@ -24,7 +25,7 @@ const FEATURES = [
     cite: { href: "/runtime/core/skills", label: "skills guide" },
   },
   {
-    icon: <Timer className="h-4 w-4" />,
+    icon: <Timer className="size-4" />,
     eyebrow: "Automation",
     title: "Cron + webhook + event triggers",
     description:
@@ -32,7 +33,7 @@ const FEATURES = [
     cite: { href: "/runtime/core/automation", label: "automation" },
   },
   {
-    icon: <Box className="h-4 w-4" />,
+    icon: <Box className="size-4" />,
     eyebrow: "Sandbox",
     title: "Run agents away from the host filesystem",
     description:
@@ -40,7 +41,7 @@ const FEATURES = [
     cite: { href: "/runtime/core/sandbox/profiles", label: "sandbox profiles" },
   },
   {
-    icon: <Plug className="h-4 w-4" />,
+    icon: <Plug className="size-4" />,
     eyebrow: "Extensions",
     title: "Install from local or marketplace",
     description:
@@ -56,7 +57,7 @@ export function ExtensibilitySection() {
         align="start"
         eyebrow="Extensibility"
         title="Hooks, skills, automation, sandbox, extensions."
-        description="The daemon is extensible at every seam you actually need. No plugins to write — contracts are plain files."
+        description="The daemon is extensible at every seam you actually need. No plugins to write; contracts are plain files."
       />
 
       <div className="mt-20 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -70,27 +71,27 @@ export function ExtensibilitySection() {
             cite={feature.cite}
           />
         ))}
-        <article className="group relative flex min-h-[220px] flex-col items-start justify-center gap-4 rounded-(--radius-diagram) border border-dashed border-(--color-divider) bg-transparent p-6 transition-colors hover:border-[color-mix(in_srgb,var(--color-accent)_55%,var(--color-divider))] hover:bg-[color-mix(in_srgb,var(--color-accent)_4%,transparent)]">
-          <span className="flex h-12 w-12 items-center justify-center rounded-[12px] border border-dashed border-(--color-divider) text-(--color-text-secondary) transition-colors group-hover:border-(--color-accent) group-hover:text-(--color-accent)">
-            <BookOpen aria-hidden className="h-5 w-5" />
+        <article className="group relative flex min-h-[220px] flex-col items-start justify-center gap-4 rounded-(--radius-diagram) border border-dashed border-(--color-divider) bg-transparent p-6 transition-colors hover:border-accent/55 hover:bg-accent/4">
+          <span className="flex size-12 items-center justify-center rounded-diagram border border-dashed border-(--color-divider) text-(--color-text-secondary) transition-colors group-hover:border-accent group-hover:text-accent">
+            <BookOpen aria-hidden className="size-5" />
           </span>
-          <p className="font-mono text-[10px] font-semibold uppercase tracking-(--tracking-mono) text-(--color-text-tertiary)">
+          <p className="font-mono text-badge font-semibold uppercase tracking-mono text-(--color-text-tertiary)">
             Reference
           </p>
           <h3 className="text-base font-medium leading-snug text-(--color-text-primary)">
             Every extensibility surface, in one reference.
           </h3>
           <p className="text-sm leading-relaxed text-(--color-text-secondary)">
-            Hooks, skills, automation, sandbox, extensions — schemas, CLI verbs, examples.
+            Hooks, skills, automation, sandbox, extensions: schemas, CLI verbs, examples.
           </p>
           <Link
             href={EXTENSIONS_DOCS_HREF}
-            className="mt-1 inline-flex items-center gap-1.5 font-mono text-[11px] font-semibold uppercase tracking-(--tracking-mono) text-(--color-accent) before:absolute before:inset-0 before:rounded-(--radius-diagram) before:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent)"
+            className="mt-1 inline-flex items-center gap-1.5 font-mono text-eyebrow font-semibold uppercase tracking-mono text-accent before:absolute before:inset-0 before:rounded-(--radius-diagram) before:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             Read extensions docs
             <ArrowUpRight
               aria-hidden
-              className="h-3.5 w-3.5 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
+              className="size-3.5 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
             />
           </Link>
         </article>
@@ -107,15 +108,18 @@ export function ExtensibilitySection() {
             <code className="font-mono text-(--color-text-primary)">agh hooks list</code>, and{" "}
             <code className="font-mono text-(--color-text-primary)">agh extension list</code>.
           </p>
-          <p className="mt-4 font-mono text-[11px] uppercase tracking-(--tracking-mono) text-(--color-text-tertiary)">
-            Contract on disk — not a plugin API.
+          <p className="mt-4 font-mono text-eyebrow uppercase tracking-mono text-(--color-text-tertiary)">
+            Contract on disk, not a plugin API.
           </p>
         </div>
-        <img
+        <Image
           src="/images/extensibility-skill-contract-v1.png"
           alt="deploy-staging.skill.md shown as a Markdown skill contract with frontmatter, deployment capabilities, and a staged execution trace."
-          loading="lazy"
+          width={1200}
+          height={760}
           decoding="async"
+          sizes="(min-width: 1024px) 60vw, 100vw"
+          unoptimized
           className="block w-full object-cover object-center opacity-95"
         />
       </div>

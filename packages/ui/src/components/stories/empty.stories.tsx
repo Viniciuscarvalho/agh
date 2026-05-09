@@ -5,14 +5,14 @@ import { Button } from "../button";
 import { Empty } from "../empty";
 
 const meta: Meta<typeof Empty> = {
-  title: "ui/Empty",
+  title: "components/ui/Empty",
   component: Empty,
   parameters: {
     layout: "padded",
     docs: {
       description: {
         component:
-          "Empty state — icon well + muted title + optional description + optional action(s).",
+          "Empty state with an icon container, muted title, optional description, and optional actions.",
       },
     },
   },

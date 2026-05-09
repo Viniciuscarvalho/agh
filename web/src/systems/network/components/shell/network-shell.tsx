@@ -16,9 +16,11 @@ export interface NetworkShellProps {
   unpinnedChannels: ReadonlyArray<NetworkChannelSummary>;
   recents: ReadonlyArray<NetworkRecentEntry>;
   directs: ReadonlyArray<NetworkDirectRoomSummary>;
-  isChannelsLoading: boolean;
-  isRecentsLoading: boolean;
-  isDirectsLoading: boolean;
+  loading: {
+    channels: boolean;
+    recents: boolean;
+    directs: boolean;
+  };
   activeChannel: NetworkChannelSummary | null;
   activeChannelDetail: NetworkChannel | null;
   activeTab: ChannelTab;
@@ -43,9 +45,7 @@ export function NetworkShell({
   unpinnedChannels,
   recents,
   directs,
-  isChannelsLoading,
-  isRecentsLoading,
-  isDirectsLoading,
+  loading,
   activeChannel,
   activeChannelDetail,
   activeTab,
@@ -65,16 +65,14 @@ export function NetworkShell({
   children,
 }: NetworkShellProps) {
   return (
-    <div className="flex min-h-0 flex-1 bg-[color:var(--color-canvas)]" data-testid="network-shell">
+    <div className="flex min-h-0 flex-1 bg-(--color-canvas)" data-testid="network-shell">
       <ChannelRail
         activeChannel={activeChannel?.channel ?? null}
         activeDirectId={activeDirectId}
         directs={directs}
         hasUnread={hasUnread}
-        isChannelsLoading={isChannelsLoading}
-        isDirectsLoading={isDirectsLoading}
+        loading={loading}
         isPinned={isPinned}
-        isRecentsLoading={isRecentsLoading}
         onTogglePinned={onTogglePinned}
         pinnedChannels={pinnedChannels}
         recents={recents}

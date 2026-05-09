@@ -2,19 +2,15 @@ import { AlertCircle, ExternalLink, Loader2 } from "lucide-react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 
-import { Button, Input, Switch } from "@agh/ui";
+import { Button, Input, Metric, MetricGrid, PageShell, Section, Switch } from "@agh/ui";
 import { useSettingsAutomationPage } from "@/hooks/routes/use-settings-automation-page";
 import type { SettingsAutomationSection } from "@/systems/settings";
 import {
   SettingsFieldRow,
   SettingsNumberInput,
   SettingsPageActions,
-  SettingsPageShell,
   SettingsRestartBanner,
   SettingsSaveBar,
-  SettingsSectionCard,
-  SettingsStatGrid,
-  SettingsStatItem,
   SettingsStatusLine,
 } from "@/systems/settings/components";
 
@@ -47,7 +43,7 @@ function AutomationSettingsPage() {
         className="flex flex-1 items-center justify-center"
         data-testid="settings-page-automation-loading"
       >
-        <Loader2 className="size-5 animate-spin text-[color:var(--color-text-tertiary)]" />
+        <Loader2 className="size-5 animate-spin text-(--color-text-tertiary)" />
       </div>
     );
   }
@@ -59,8 +55,8 @@ function AutomationSettingsPage() {
         data-testid="settings-page-automation-error"
       >
         <div className="flex flex-col items-center gap-2 text-center">
-          <AlertCircle className="size-6 text-[color:var(--color-danger)]" />
-          <p className="text-sm text-[color:var(--color-text-tertiary)]">
+          <AlertCircle className="size-6 text-(--color-danger)" />
+          <p className="text-sm text-(--color-text-tertiary)">
             {page.error?.message ?? "Failed to load automation settings"}
           </p>
           <Button onClick={page.handleRetry} size="sm" type="button" variant="outline">
@@ -75,13 +71,13 @@ function AutomationSettingsPage() {
   const runtime = envelope.runtime;
 
   return (
-    <SettingsPageShell
+    <PageShell
       slug="automation"
       title="Automation"
       statusLine={
         <SettingsStatusLine
           data-testid="settings-page-automation-status-line"
-          daemonAvailable={runtime.available}
+          status={runtime.available ? "connected" : "error"}
           items={[
             <span key="jobs">
               {runtime.job_enabled}/{runtime.job_total} jobs active
@@ -117,79 +113,79 @@ function AutomationSettingsPage() {
         validationErrors={validationErrors}
         setValidationError={setValidationError}
       />
-    </SettingsPageShell>
+    </PageShell>
   );
 }
 
 function OperationalLinksRow() {
   return (
-    <SettingsSectionCard eyebrow="Operational" note="manage jobs, triggers, and run history">
+    <Section divided label="Operational" note="manage jobs, triggers, and run history">
       <div
         className="flex flex-wrap gap-2"
         data-testid="settings-page-automation-operational-links"
       >
         <Link
           to="/jobs"
-          className="inline-flex items-center gap-1.5 rounded-md border border-[color:var(--color-divider)] bg-[color:var(--color-surface-elevated)] px-3 py-1.5 text-xs font-medium text-[color:var(--color-text-primary)] hover:bg-[color:var(--color-hover)]"
+          className="inline-flex items-center gap-1.5 rounded-md border border-(--color-divider) bg-(--color-surface-elevated) px-3 py-1.5 text-xs font-medium text-(--color-text-primary) hover:bg-(--color-hover)"
           data-testid="settings-page-automation-link-jobs"
         >
-          <ExternalLink className="size-3.5 text-[color:var(--color-text-tertiary)]" />
+          <ExternalLink className="size-3.5 text-(--color-text-tertiary)" />
           Open Jobs
         </Link>
         <Link
           to="/triggers"
-          className="inline-flex items-center gap-1.5 rounded-md border border-[color:var(--color-divider)] bg-[color:var(--color-surface-elevated)] px-3 py-1.5 text-xs font-medium text-[color:var(--color-text-primary)] hover:bg-[color:var(--color-hover)]"
+          className="inline-flex items-center gap-1.5 rounded-md border border-(--color-divider) bg-(--color-surface-elevated) px-3 py-1.5 text-xs font-medium text-(--color-text-primary) hover:bg-(--color-hover)"
           data-testid="settings-page-automation-link-triggers"
         >
-          <ExternalLink className="size-3.5 text-[color:var(--color-text-tertiary)]" />
+          <ExternalLink className="size-3.5 text-(--color-text-tertiary)" />
           Open Triggers
         </Link>
       </div>
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
 function ManagerSummarySection({ runtime }: { runtime: AutomationRuntime }) {
-  const nextFire = runtime.next_fire ? new Date(runtime.next_fire).toLocaleString() : "—";
+  const nextFire = runtime.next_fire ? new Date(runtime.next_fire).toLocaleString() : "--";
   const lastSynced = runtime.last_synced_at
     ? new Date(runtime.last_synced_at).toLocaleString()
-    : "—";
+    : "--";
 
   return (
-    <SettingsSectionCard eyebrow="Manager" note="read-only">
-      <SettingsStatGrid className="xl:grid-cols-3">
-        <SettingsStatItem
+    <Section divided label="Manager" note="read-only">
+      <MetricGrid columns={3}>
+        <Metric
           label="Engine"
           value={runtime.running ? "running" : "stopped"}
-          testId="settings-page-automation-runtime-engine"
+          data-testid="settings-page-automation-runtime-engine"
         />
-        <SettingsStatItem
+        <Metric
           label="Scheduler"
           value={runtime.scheduler_running ? "running" : "stopped"}
-          testId="settings-page-automation-runtime-scheduler"
+          data-testid="settings-page-automation-runtime-scheduler"
         />
-        <SettingsStatItem
+        <Metric
           label="Jobs (enabled/total)"
           value={`${runtime.job_enabled} / ${runtime.job_total}`}
-          testId="settings-page-automation-runtime-jobs"
+          data-testid="settings-page-automation-runtime-jobs"
         />
-        <SettingsStatItem
+        <Metric
           label="Triggers (enabled/total)"
           value={`${runtime.trigger_enabled} / ${runtime.trigger_total}`}
-          testId="settings-page-automation-runtime-triggers"
+          data-testid="settings-page-automation-runtime-triggers"
         />
-        <SettingsStatItem
+        <Metric
           label="Next fire"
           value={nextFire}
-          testId="settings-page-automation-runtime-next-fire"
+          data-testid="settings-page-automation-runtime-next-fire"
         />
-        <SettingsStatItem
+        <Metric
           label="Last synced"
           value={lastSynced}
-          testId="settings-page-automation-runtime-last-synced"
+          data-testid="settings-page-automation-runtime-last-synced"
         />
-      </SettingsStatGrid>
-    </SettingsSectionCard>
+      </MetricGrid>
+    </Section>
   );
 }
 
@@ -200,7 +196,7 @@ interface DraftSectionProps {
 
 function EngineSection({ draft, setDraft }: DraftSectionProps) {
   return (
-    <SettingsSectionCard eyebrow="Engine" note="persisted to config.toml">
+    <Section divided label="Engine" note="persisted to config.toml">
       <SettingsFieldRow
         data-testid="settings-page-automation-enabled"
         label="Automation engine"
@@ -209,7 +205,12 @@ function EngineSection({ draft, setDraft }: DraftSectionProps) {
           <Switch
             data-testid="settings-page-automation-enabled-switch"
             checked={draft.enabled}
-            onCheckedChange={checked => setDraft({ ...draft, enabled: checked })}
+            onCheckedChange={checked =>
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return { ...current, enabled: checked };
+              })
+            }
           />
         }
       />
@@ -224,11 +225,16 @@ function EngineSection({ draft, setDraft }: DraftSectionProps) {
             data-testid="settings-page-automation-timezone-input"
             value={draft.timezone ?? ""}
             placeholder="UTC"
-            onChange={event => setDraft({ ...draft, timezone: event.target.value })}
+            onChange={event =>
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return { ...current, timezone: event.target.value };
+              })
+            }
           />
         }
       />
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
@@ -242,7 +248,7 @@ function LimitsSection({
   setValidationError: (key: string) => (message: string | null) => void;
 }) {
   return (
-    <SettingsSectionCard eyebrow="Limits" note="resource caps">
+    <Section divided label="Limits" note="resource caps">
       <SettingsFieldRow
         data-testid="settings-page-automation-max-concurrent"
         label="Max concurrent jobs"
@@ -257,9 +263,12 @@ function LimitsSection({
             value={draft.max_concurrent_jobs}
             onValidityChange={setValidationError("maxConcurrentJobs")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                max_concurrent_jobs: value,
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  max_concurrent_jobs: value,
+                };
               })
             }
           />
@@ -280,37 +289,43 @@ function LimitsSection({
               value={draft.default_fire_limit.max}
               onValidityChange={setValidationError("defaultFireLimitMax")}
               onValueChange={value =>
-                setDraft({
-                  ...draft,
-                  default_fire_limit: {
-                    ...draft.default_fire_limit,
-                    max: value,
-                  },
+                setDraft(prev => {
+                  const current = prev ?? draft;
+                  return {
+                    ...current,
+                    default_fire_limit: {
+                      ...current.default_fire_limit,
+                      max: value,
+                    },
+                  };
                 })
               }
             />
-            <span className="font-mono text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--color-text-label)]">
+            <span className="font-mono text-badge uppercase tracking-mono text-(--color-text-label)">
               fires
             </span>
-            <span className="text-xs text-[color:var(--color-text-tertiary)]">per</span>
+            <span className="text-xs text-(--color-text-tertiary)">per</span>
             <Input
               className="w-24 font-mono"
               data-testid="settings-page-automation-fire-limit-window-input"
               value={draft.default_fire_limit.window ?? ""}
               placeholder="1m"
               onChange={event =>
-                setDraft({
-                  ...draft,
-                  default_fire_limit: {
-                    ...draft.default_fire_limit,
-                    window: event.target.value,
-                  },
+                setDraft(prev => {
+                  const current = prev ?? draft;
+                  return {
+                    ...current,
+                    default_fire_limit: {
+                      ...current.default_fire_limit,
+                      window: event.target.value,
+                    },
+                  };
                 })
               }
             />
           </div>
         }
       />
-    </SettingsSectionCard>
+    </Section>
   );
 }

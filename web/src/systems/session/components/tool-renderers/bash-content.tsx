@@ -2,6 +2,8 @@ import { useMemo } from "react";
 import { ChevronsUpDown } from "lucide-react";
 import { useState } from "react";
 
+import { CodeBlock } from "@agh/ui";
+
 import type { UIMessage } from "../../types";
 
 const MAX_OUTPUT_LINES = 200;
@@ -38,29 +40,20 @@ export function BashContent({ message }: { message: UIMessage }) {
 
   return (
     <div className="space-y-1.5 text-xs" data-testid="bash-content">
-      {!!command && (
-        <div className="rounded-md bg-[color:var(--color-surface)] px-3 py-2 font-mono text-[11px] whitespace-pre-wrap break-words">
-          <span className="text-[color:var(--color-text-tertiary)]/40 select-none">$ </span>
-          <span className="text-[color:var(--color-text-secondary)]">{String(command)}</span>
-        </div>
-      )}
+      {!!command && <CodeBlock code={String(command)} copyable={false} truncateLines={4} />}
       {result && (
         <div>
           {result.stderr && (
-            <pre className="max-h-48 overflow-auto rounded-md bg-red-500/5 px-3 py-2 font-mono text-[11px] text-red-400/80 whitespace-pre-wrap break-words">
-              {result.stderr}
-            </pre>
+            <CodeBlock code={result.stderr} copyable={false} showPrompt={false} tone="danger" />
           )}
           {displayText && (
-            <pre className="max-h-48 overflow-auto rounded-md bg-[color:var(--color-surface)] px-3 py-2 font-mono text-[11px] text-[color:var(--color-text-tertiary)] whitespace-pre-wrap break-words">
-              {displayText}
-            </pre>
+            <CodeBlock code={displayText} copyable={false} showPrompt={false} truncateLines={20} />
           )}
           {isTruncated && (
             <button
               type="button"
               onClick={() => setExpanded(true)}
-              className="mt-1 flex items-center gap-1 text-[10px] font-medium text-[color:var(--color-text-tertiary)]/40 hover:text-[color:var(--color-text-tertiary)]/70 transition-colors"
+              className="mt-1 flex items-center gap-1 text-badge font-medium text-(--color-text-tertiary)/40 hover:text-(--color-text-tertiary)/70 transition-colors"
             >
               <ChevronsUpDown className="size-3" />
               Show full output ({totalLines} lines)
@@ -70,7 +63,7 @@ export function BashContent({ message }: { message: UIMessage }) {
             <button
               type="button"
               onClick={() => setExpanded(false)}
-              className="mt-1 flex items-center gap-1 text-[10px] font-medium text-[color:var(--color-text-tertiary)]/40 hover:text-[color:var(--color-text-tertiary)]/70 transition-colors"
+              className="mt-1 flex items-center gap-1 text-badge font-medium text-(--color-text-tertiary)/40 hover:text-(--color-text-tertiary)/70 transition-colors"
             >
               <ChevronsUpDown className="size-3" />
               Collapse

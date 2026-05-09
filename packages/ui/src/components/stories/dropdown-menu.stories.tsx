@@ -20,7 +20,7 @@ import {
 } from "../dropdown-menu";
 
 const meta: Meta<typeof DropdownMenu> = {
-  title: "ui/DropdownMenu",
+  title: "components/ui/DropdownMenu",
   component: DropdownMenu,
   parameters: {
     layout: "centered",
@@ -107,7 +107,7 @@ export const WithSubmenu: Story = {
       <DropdownMenuContent>
         <DropdownMenuItem>Execute</DropdownMenuItem>
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger>Agent…</DropdownMenuSubTrigger>
+          <DropdownMenuSubTrigger>Agent...</DropdownMenuSubTrigger>
           <DropdownMenuSubContent>
             <DropdownMenuItem>claude-code</DropdownMenuItem>
             <DropdownMenuItem>codex</DropdownMenuItem>

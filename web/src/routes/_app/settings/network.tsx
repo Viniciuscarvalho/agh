@@ -2,19 +2,15 @@ import { AlertCircle, ExternalLink, Loader2 } from "lucide-react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 
-import { Button, Input, Switch } from "@agh/ui";
+import { Button, Input, Metric, MetricGrid, PageShell, Section, Switch } from "@agh/ui";
 import { useSettingsNetworkPage } from "@/hooks/routes/use-settings-network-page";
 import type { SettingsNetworkSection } from "@/systems/settings";
 import {
   SettingsFieldRow,
   SettingsNumberInput,
   SettingsPageActions,
-  SettingsPageShell,
   SettingsRestartBanner,
   SettingsSaveBar,
-  SettingsSectionCard,
-  SettingsStatGrid,
-  SettingsStatItem,
   SettingsStatusLine,
 } from "@/systems/settings/components";
 
@@ -49,10 +45,7 @@ function NetworkSettingsPage() {
         data-testid="settings-page-network-loading"
         role="status"
       >
-        <Loader2
-          aria-hidden="true"
-          className="size-5 animate-spin text-[color:var(--color-text-tertiary)]"
-        />
+        <Loader2 aria-hidden="true" className="size-5 animate-spin text-(--color-text-tertiary)" />
       </div>
     );
   }
@@ -64,8 +57,8 @@ function NetworkSettingsPage() {
         data-testid="settings-page-network-error"
       >
         <div className="flex flex-col items-center gap-2 text-center">
-          <AlertCircle className="size-6 text-[color:var(--color-danger)]" />
-          <p className="text-sm text-[color:var(--color-text-tertiary)]">
+          <AlertCircle className="size-6 text-(--color-danger)" />
+          <p className="text-sm text-(--color-text-tertiary)">
             {page.error?.message ?? "Failed to load network settings"}
           </p>
           <Button onClick={page.handleRetry} size="sm" type="button" variant="outline">
@@ -80,13 +73,13 @@ function NetworkSettingsPage() {
   const runtime = envelope.runtime;
 
   return (
-    <SettingsPageShell
+    <PageShell
       slug="network"
       title="Network"
       statusLine={
         <SettingsStatusLine
           data-testid="settings-page-network-status-line"
-          daemonAvailable={runtime.available}
+          status={runtime.available ? "connected" : "error"}
           items={[
             <span key="status">
               {runtime.status ?? (runtime.enabled ? "enabled" : "disabled")}
@@ -127,27 +120,24 @@ function NetworkSettingsPage() {
         validationErrors={validationErrors}
         setValidationError={setValidationError}
       />
-    </SettingsPageShell>
+    </PageShell>
   );
 }
 
 function OperationalLinksRow() {
   return (
-    <SettingsSectionCard
-      eyebrow="Operational"
-      note="inspect channels, peers, and live message flow"
-    >
+    <Section divided label="Operational" note="inspect channels, peers, and live message flow">
       <div className="flex flex-wrap gap-2" data-testid="settings-page-network-operational-links">
         <Link
           to="/network"
-          className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[color:var(--color-divider)] bg-[color:var(--color-surface-elevated)] px-3 py-1.5 text-xs font-medium text-[color:var(--color-text-primary)] hover:bg-[color:var(--color-hover)]"
+          className="inline-flex items-center gap-1.5 rounded-md border border-(--color-divider) bg-(--color-surface-elevated) px-3 py-1.5 text-xs font-medium text-(--color-text-primary) hover:bg-(--color-hover)"
           data-testid="settings-page-network-link-network"
         >
-          <ExternalLink className="size-3.5 text-[color:var(--color-text-tertiary)]" />
+          <ExternalLink className="size-3.5 text-(--color-text-tertiary)" />
           Open Network
         </Link>
       </div>
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
@@ -155,53 +145,53 @@ function RuntimeStatusSection({ runtime }: { runtime: NetworkRuntime }) {
   const listener =
     runtime.listener_host && runtime.listener_port
       ? `${runtime.listener_host}:${runtime.listener_port}`
-      : "—";
+      : "--";
 
   return (
-    <SettingsSectionCard eyebrow="Runtime" note="read-only">
-      <SettingsStatGrid>
-        <SettingsStatItem
+    <Section divided label="Runtime" note="read-only">
+      <MetricGrid>
+        <Metric
           label="Status"
           value={runtime.status ?? (runtime.enabled ? "enabled" : "disabled")}
-          testId="settings-page-network-runtime-status"
+          data-testid="settings-page-network-runtime-status"
         />
-        <SettingsStatItem
+        <Metric
           label="Listener"
           value={listener}
-          testId="settings-page-network-runtime-listener"
+          data-testid="settings-page-network-runtime-listener"
         />
-        <SettingsStatItem
+        <Metric
           label="Local peers"
           value={String(runtime.local_peers)}
-          testId="settings-page-network-runtime-local-peers"
+          data-testid="settings-page-network-runtime-local-peers"
         />
-        <SettingsStatItem
+        <Metric
           label="Remote peers"
           value={String(runtime.remote_peers)}
-          testId="settings-page-network-runtime-remote-peers"
+          data-testid="settings-page-network-runtime-remote-peers"
         />
-        <SettingsStatItem
+        <Metric
           label="Channels"
           value={String(runtime.channels)}
-          testId="settings-page-network-runtime-channels"
+          data-testid="settings-page-network-runtime-channels"
         />
-        <SettingsStatItem
+        <Metric
           label="Queued messages"
           value={String(runtime.queued_messages)}
-          testId="settings-page-network-runtime-queued-messages"
+          data-testid="settings-page-network-runtime-queued-messages"
         />
-        <SettingsStatItem
+        <Metric
           label="Queued sessions"
           value={String(runtime.queued_sessions)}
-          testId="settings-page-network-runtime-queued-sessions"
+          data-testid="settings-page-network-runtime-queued-sessions"
         />
-        <SettingsStatItem
+        <Metric
           label="Delivery workers"
           value={String(runtime.delivery_workers)}
-          testId="settings-page-network-runtime-delivery-workers"
+          data-testid="settings-page-network-runtime-delivery-workers"
         />
-      </SettingsStatGrid>
-    </SettingsSectionCard>
+      </MetricGrid>
+    </Section>
   );
 }
 
@@ -220,7 +210,7 @@ function ListenerSection({
   onPortValidityChange: (message: string | null) => void;
 }) {
   return (
-    <SettingsSectionCard eyebrow="Listener" note="topology requires restart">
+    <Section divided label="Listener" note="topology requires restart">
       <SettingsFieldRow
         data-testid="settings-page-network-enabled"
         label="Embedded network"
@@ -230,7 +220,12 @@ function ListenerSection({
             aria-label="Embedded network"
             data-testid="settings-page-network-enabled-switch"
             checked={draft.enabled}
-            onCheckedChange={checked => setDraft({ ...draft, enabled: checked })}
+            onCheckedChange={checked =>
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return { ...current, enabled: checked };
+              })
+            }
           />
         }
       />
@@ -248,7 +243,12 @@ function ListenerSection({
             data-testid="settings-page-network-port-input"
             value={draft.port}
             onValidityChange={onPortValidityChange}
-            onValueChange={value => setDraft({ ...draft, port: value })}
+            onValueChange={value =>
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return { ...current, port: value };
+              })
+            }
           />
         }
       />
@@ -263,11 +263,16 @@ function ListenerSection({
             data-testid="settings-page-network-default-channel-input"
             value={draft.default_channel ?? ""}
             placeholder="agh"
-            onChange={event => setDraft({ ...draft, default_channel: event.target.value })}
+            onChange={event =>
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return { ...current, default_channel: event.target.value };
+              })
+            }
           />
         }
       />
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
@@ -281,7 +286,7 @@ function DeliverySection({
   setValidationError: (key: string) => (message: string | null) => void;
 }) {
   return (
-    <SettingsSectionCard eyebrow="Delivery" note="queue limits and retention">
+    <Section divided label="Delivery" note="queue limits and retention">
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <NumberField
           label="Greet interval"
@@ -290,7 +295,12 @@ function DeliverySection({
           testId="settings-page-network-greet-interval"
           value={draft.greet_interval}
           onValidityChange={setValidationError("greetInterval")}
-          onChange={value => setDraft({ ...draft, greet_interval: value })}
+          onChange={value =>
+            setDraft(prev => {
+              const current = prev ?? draft;
+              return { ...current, greet_interval: value };
+            })
+          }
         />
         <NumberField
           label="Max payload"
@@ -299,7 +309,12 @@ function DeliverySection({
           testId="settings-page-network-max-payload"
           value={draft.max_payload}
           onValidityChange={setValidationError("maxPayload")}
-          onChange={value => setDraft({ ...draft, max_payload: value })}
+          onChange={value =>
+            setDraft(prev => {
+              const current = prev ?? draft;
+              return { ...current, max_payload: value };
+            })
+          }
         />
         <NumberField
           label="Max queue depth"
@@ -307,7 +322,12 @@ function DeliverySection({
           testId="settings-page-network-max-queue-depth"
           value={draft.max_queue_depth}
           onValidityChange={setValidationError("maxQueueDepth")}
-          onChange={value => setDraft({ ...draft, max_queue_depth: value })}
+          onChange={value =>
+            setDraft(prev => {
+              const current = prev ?? draft;
+              return { ...current, max_queue_depth: value };
+            })
+          }
         />
         <NumberField
           label="Max replay age"
@@ -316,10 +336,15 @@ function DeliverySection({
           testId="settings-page-network-max-replay-age"
           value={draft.max_replay_age}
           onValidityChange={setValidationError("maxReplayAge")}
-          onChange={value => setDraft({ ...draft, max_replay_age: value })}
+          onChange={value =>
+            setDraft(prev => {
+              const current = prev ?? draft;
+              return { ...current, max_replay_age: value };
+            })
+          }
         />
       </div>
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
@@ -344,7 +369,7 @@ function NumberField({
 }: NumberFieldProps) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="font-mono text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--color-text-label)]">
+      <span className="font-mono text-badge uppercase tracking-mono text-(--color-text-label)">
         {label}
       </span>
       <div className="flex items-center gap-2">
@@ -358,14 +383,12 @@ function NumberField({
           onValueChange={onChange}
         />
         {suffix ? (
-          <span className="font-mono text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--color-text-label)]">
+          <span className="font-mono text-badge uppercase tracking-mono text-(--color-text-label)">
             {suffix}
           </span>
         ) : null}
       </div>
-      {errorMessage ? (
-        <span className="text-xs text-[color:var(--color-danger)]">{errorMessage}</span>
-      ) : null}
+      {errorMessage ? <span className="text-xs text-(--color-danger)">{errorMessage}</span> : null}
     </div>
   );
 }

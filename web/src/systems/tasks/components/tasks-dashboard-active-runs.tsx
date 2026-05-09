@@ -1,7 +1,7 @@
 import { AlertCircle, ArrowRight } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
-import { Pill, Section } from "@agh/ui";
+import { Eyebrow, Item, ItemGroup, ItemTitle, Pill, Section } from "@agh/ui";
 
 import { pillToneFromLegacyTone } from "@/lib/pill-variant";
 import {
@@ -30,26 +30,26 @@ export function TasksDashboardActiveRuns({
       data-testid="tasks-dashboard-active-runs"
       label={`Active runs · ${dashboard.active_runs.total}`}
       right={
-        <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--color-text-tertiary)]">
+        <Eyebrow>
           {dashboard.active_runs.running} running · {dashboard.active_runs.queued} queued ·{" "}
           {dashboard.active_runs.claimed} claimed
-        </span>
+        </Eyebrow>
       }
     >
       {visible.length === 0 ? (
         <p
-          className="px-1 py-6 text-sm text-[color:var(--color-text-secondary)]"
+          className="px-1 py-6 text-sm text-(--color-text-secondary)"
           data-testid="tasks-dashboard-active-runs-empty"
         >
           No active runs right now.
         </p>
       ) : (
-        <ul className="flex flex-col">
+        <ItemGroup className="gap-0">
           {visible.map(run => {
             const signal = taskStatusSignal(run.task_status);
             return (
-              <li
-                className="flex flex-col gap-2 border-b border-[color:var(--color-divider)] py-3 last:border-b-0"
+              <Item
+                className="flex-col gap-2 rounded-none border-x-0 border-t-0 border-b border-(--color-divider) px-0 py-3 last:border-b-0"
                 data-testid={`tasks-dashboard-active-run-${run.run_id}`}
                 key={run.run_id}
               >
@@ -57,11 +57,11 @@ export function TasksDashboardActiveRuns({
                   <div className="flex min-w-0 flex-col gap-1.5">
                     <div className="flex min-w-0 items-center gap-2">
                       <Pill.Dot pulse={signal.pulse} tone={signal.tone} />
-                      <span className="min-w-0 truncate text-[13px] font-medium text-[color:var(--color-text-primary)]">
+                      <ItemTitle className="min-w-0 truncate text-small-body font-medium text-(--color-text-primary)">
                         {run.task_title}
-                      </span>
+                      </ItemTitle>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                    <div className="flex flex-wrap items-center gap-2 text-eyebrow">
                       {run.task_identifier ? <Pill mono>{run.task_identifier}</Pill> : null}
                       <Pill tone={pillToneFromLegacyTone(taskRunStatusTone(run.run_status))}>
                         {run.run_status}
@@ -74,45 +74,45 @@ export function TasksDashboardActiveRuns({
                           stuck
                         </Pill>
                       ) : null}
-                      <span className="font-mono text-[10px] text-[color:var(--color-text-tertiary)]">
-                        {formatAttemptLabel(run.attempt, run.max_attempts) ?? "—"}
+                      <span className="font-mono text-badge text-(--color-text-tertiary)">
+                        {formatAttemptLabel(run.attempt, run.max_attempts) ?? "--"}
                       </span>
-                      <span className="font-mono text-[10px] text-[color:var(--color-text-tertiary)]">
+                      <span className="font-mono text-badge text-(--color-text-tertiary)">
                         age {formatDurationMs(run.age_ms)}
                       </span>
                     </div>
                   </div>
-                  <Link
-                    className="inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--color-accent)] hover:underline"
+                  <Pill.Link
                     data-testid={`tasks-dashboard-active-run-link-${run.run_id}`}
-                    params={{ id: run.task_id, runId: run.run_id }}
-                    to="/tasks/$id/runs/$runId"
+                    render={
+                      <Link
+                        params={{ id: run.task_id, runId: run.run_id }}
+                        to="/tasks/$id/runs/$runId"
+                      />
+                    }
                   >
                     Open <ArrowRight className="size-3" />
-                  </Link>
+                  </Pill.Link>
                 </div>
                 {run.error ? (
                   <p
-                    className="flex items-start gap-1 text-xs text-[color:var(--color-danger)]"
+                    className="flex items-start gap-1 text-xs text-(--color-danger)"
                     data-testid={`tasks-dashboard-active-run-error-${run.run_id}`}
                   >
                     <AlertCircle className="mt-0.5 size-3 shrink-0" />
                     <span className="truncate">{run.error}</span>
                   </p>
                 ) : null}
-              </li>
+              </Item>
             );
           })}
-        </ul>
+        </ItemGroup>
       )}
 
       {hidden > 0 ? (
-        <p
-          className="pt-2 font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--color-text-tertiary)]"
-          data-testid="tasks-dashboard-active-runs-more"
-        >
+        <Eyebrow className="pt-2" data-testid="tasks-dashboard-active-runs-more">
           +{hidden} more active runs
-        </p>
+        </Eyebrow>
       ) : null}
     </Section>
   );

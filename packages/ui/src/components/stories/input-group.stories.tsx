@@ -14,7 +14,7 @@ import { Kbd } from "../kbd";
 import { Label } from "../label";
 
 const meta: Meta<typeof InputGroup> = {
-  title: "ui/InputGroup",
+  title: "components/ui/InputGroup",
   component: InputGroup,
   parameters: {
     layout: "centered",
@@ -103,7 +103,7 @@ export const TextareaWithActions: Story = {
         <InputGroup>
           <InputGroupTextarea
             id="input-group-prompt"
-            placeholder="Describe what the agent should do…"
+            placeholder="Describe what the agent should do..."
             defaultValue="Summarize the last 10 events and recommend a next step."
           />
           <InputGroupAddon align="block-end">

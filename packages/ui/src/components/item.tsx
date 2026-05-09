@@ -40,6 +40,14 @@ const itemVariants = cva(
         outline: "border-border",
         muted: "border-transparent bg-muted/50",
       },
+      selectable: {
+        true: "relative text-left hover:bg-[color:var(--color-hover)] focus-visible:border-[color:var(--color-accent)] focus-visible:ring-[color:var(--color-accent)]/40",
+        false: "",
+      },
+      selected: {
+        true: "bg-[color:var(--color-surface)]",
+        false: "",
+      },
       size: {
         default: "gap-2.5 px-3 py-2.5",
         sm: "gap-2.5 px-3 py-2.5",
@@ -49,32 +57,187 @@ const itemVariants = cva(
     defaultVariants: {
       variant: "default",
       size: "default",
+      selectable: false,
+      selected: false,
     },
   }
 );
 
-function Item({
+type ItemIndicator = "rail" | "dot" | "none";
+type ItemAs = "div" | "button";
+
+interface ItemOwnProps extends VariantProps<typeof itemVariants> {
+  as?: ItemAs;
+  disabled?: boolean;
+  indicator?: ItemIndicator;
+}
+
+type ItemDivProps = ItemOwnProps & Omit<useRender.ComponentProps<"div">, keyof ItemOwnProps>;
+type ItemButtonProps = Omit<ItemOwnProps, "as"> &
+  Omit<useRender.ComponentProps<"button">, keyof ItemOwnProps> & {
+    as: "button";
+  };
+type ItemProps<As extends ItemAs = "div"> = As extends "button" ? ItemButtonProps : ItemDivProps;
+interface ItemDataProps {
+  "data-selected"?: string;
+}
+
+function isButtonItemProps(props: ItemButtonProps | ItemDivProps): props is ItemButtonProps {
+  return props.as === "button";
+}
+
+function getItemClassName({
   className,
-  variant = "default",
-  size = "default",
-  render,
-  ...props
-}: useRender.ComponentProps<"div"> & VariantProps<typeof itemVariants>) {
+  variant,
+  size,
+  selectable,
+  selected,
+}: {
+  className?: string;
+  variant?: VariantProps<typeof itemVariants>["variant"];
+  size?: VariantProps<typeof itemVariants>["size"];
+  selectable: boolean;
+  selected: boolean;
+}) {
+  return cn(
+    itemVariants({
+      variant,
+      size,
+      selectable,
+      selected,
+      className,
+    })
+  );
+}
+
+function getItemChildren(children: React.ReactNode, indicator: ItemIndicator) {
+  return (
+    <>
+      {indicator !== "none" ? <ItemSelectionIndicator kind={indicator} /> : null}
+      {children}
+    </>
+  );
+}
+
+function Item(props: ItemButtonProps): React.ReactElement;
+function Item(props: ItemDivProps): React.ReactElement;
+function Item(props: ItemButtonProps | ItemDivProps) {
+  const indicator = props.indicator ?? "none";
+  const selectedState = Boolean(props.selected);
+  const selectableState = Boolean(props.selectable || selectedState || indicator !== "none");
+  const itemChildren = getItemChildren(props.children, indicator);
+
+  if (isButtonItemProps(props)) {
+    const buttonItemProps = props;
+    const {
+      as: _as,
+      className,
+      indicator: _indicator,
+      variant = "default",
+      size = "default",
+      selected: _selected = false,
+      selectable: _selectable = false,
+      render,
+      children: _children,
+      disabled,
+      ...buttonProps
+    } = buttonItemProps;
+
+    const mergedButtonProps: useRender.ComponentProps<"button"> & ItemDataProps = {
+      className: getItemClassName({
+        className,
+        variant,
+        size,
+        selectable: selectableState,
+        selected: selectedState,
+      }),
+      children: itemChildren,
+      "aria-pressed": selectableState ? selectedState : undefined,
+      "data-selected": selectedState ? "true" : undefined,
+      disabled,
+      type: "button",
+    };
+
+    return useRender({
+      defaultTagName: "button",
+      props: mergeProps<"button">(mergedButtonProps, buttonProps),
+      render,
+      state: {
+        slot: "item",
+        variant,
+        size,
+        selected: selectedState,
+        selectable: selectableState,
+      },
+    });
+  }
+
+  const divItemProps = props;
+  const {
+    as: _as,
+    className,
+    indicator: _indicator,
+    variant = "default",
+    size = "default",
+    selected: _selected = false,
+    selectable: _selectable = false,
+    render,
+    children: _children,
+    disabled: _disabled,
+    ...divProps
+  } = divItemProps;
+
+  const mergedDivProps: useRender.ComponentProps<"div"> & ItemDataProps = {
+    className: getItemClassName({
+      className,
+      variant,
+      size,
+      selectable: selectableState,
+      selected: selectedState,
+    }),
+    children: itemChildren,
+    "data-selected": selectedState ? "true" : undefined,
+  };
+
   return useRender({
     defaultTagName: "div",
-    props: mergeProps<"div">(
-      {
-        className: cn(itemVariants({ variant, size, className })),
-      },
-      props
-    ),
+    props: mergeProps<"div">(mergedDivProps, divProps),
     render,
     state: {
       slot: "item",
       variant,
       size,
+      selected: selectedState,
+      selectable: selectableState,
     },
   });
+}
+
+interface ItemSelectionIndicatorProps extends React.ComponentProps<"span"> {
+  kind?: ItemIndicator;
+}
+
+function ItemSelectionIndicator({
+  className,
+  kind = "rail",
+  ...props
+}: ItemSelectionIndicatorProps) {
+  if (kind === "none") return null;
+
+  return (
+    <span
+      aria-hidden="true"
+      data-slot="item-selection-indicator"
+      data-indicator={kind}
+      className={cn(
+        kind === "rail"
+          ? "absolute top-2 bottom-2 left-0 w-[3px] rounded-r bg-[color:var(--color-accent)]"
+          : "size-1.5 shrink-0 rounded-full bg-[color:var(--color-accent)]",
+        className
+      )}
+      {...props}
+    />
+  );
 }
 
 const itemMediaVariants = cva(
@@ -176,6 +339,7 @@ function ItemFooter({ className, ...props }: React.ComponentProps<"div">) {
 
 export {
   Item,
+  ItemSelectionIndicator,
   ItemMedia,
   ItemContent,
   ItemActions,
@@ -186,3 +350,4 @@ export {
   ItemHeader,
   ItemFooter,
 };
+export type { ItemAs, ItemIndicator, ItemProps, ItemSelectionIndicatorProps };

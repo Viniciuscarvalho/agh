@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { Alert, AlertDescription, AlertTitle } from "../alert";
+import { Alert, AlertActions, AlertDescription, AlertMeta, AlertTitle } from "../alert";
 
 describe("Alert", () => {
   it("renders role=alert by default and forwards class + data-variant", () => {
@@ -37,5 +37,35 @@ describe("Alert", () => {
       expect(screen.getByTestId(`alert-${variant}`)).toHaveAttribute("data-variant", variant);
       unmount();
     }
+  });
+
+  it("Should render meta and actions slots after the description", () => {
+    render(
+      <Alert data-testid="alert" variant="warning">
+        <AlertTitle>Provider missing</AlertTitle>
+        <AlertDescription>Reconnect the provider.</AlertDescription>
+        <AlertMeta data-testid="alert-meta">session sess_123</AlertMeta>
+        <AlertActions data-testid="alert-actions">
+          <button type="button">Retry</button>
+        </AlertActions>
+      </Alert>
+    );
+
+    expect(screen.getByTestId("alert-meta")).toHaveAttribute("data-slot", "alert-meta");
+    expect(screen.getByTestId("alert-meta").className).toContain("tracking-mono");
+    expect(screen.getByTestId("alert-actions")).toHaveAttribute("data-slot", "alert-actions");
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(
+      screen
+        .getByText("Reconnect the provider.")
+        .compareDocumentPosition(screen.getByTestId("alert-meta")) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("alert-meta")
+        .compareDocumentPosition(screen.getByTestId("alert-actions")) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
   });
 });

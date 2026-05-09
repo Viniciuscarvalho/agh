@@ -8,7 +8,9 @@ import {
   Input,
   NativeSelect,
   NativeSelectOption,
+  PageShell,
   PillGroup,
+  Section,
   Switch,
   Table,
   TableBody,
@@ -26,9 +28,7 @@ import type { SettingsScope, SettingsSkillsSection } from "@/systems/settings";
 import {
   SettingsFieldRow,
   SettingsPageActions,
-  SettingsPageShell,
   SettingsRestartBanner,
-  SettingsSectionCard,
   SettingsStatusLine,
 } from "@/systems/settings/components";
 import type { WorkspacePayload } from "@/systems/workspace";
@@ -48,7 +48,7 @@ function SkillsSettingsPage() {
         className="flex flex-1 items-center justify-center"
         data-testid="settings-page-skills-loading"
       >
-        <Loader2 className="size-5 animate-spin text-[color:var(--color-text-tertiary)]" />
+        <Loader2 className="size-5 animate-spin text-(--color-text-tertiary)" />
       </div>
     );
   }
@@ -60,8 +60,8 @@ function SkillsSettingsPage() {
         data-testid="settings-page-skills-error"
       >
         <div className="flex flex-col items-center gap-2 text-center">
-          <AlertCircle className="size-6 text-[color:var(--color-danger)]" />
-          <p className="text-sm text-[color:var(--color-text-tertiary)]">
+          <AlertCircle className="size-6 text-(--color-danger)" />
+          <p className="text-sm text-(--color-text-tertiary)">
             {page.error?.message ?? "Failed to load skills settings"}
           </p>
           <Button onClick={page.handleRetry} size="sm" type="button" variant="outline">
@@ -75,13 +75,13 @@ function SkillsSettingsPage() {
   const { envelope, draft, setDraft, restart } = page;
 
   return (
-    <SettingsPageShell
+    <PageShell
       slug="skills"
       title="Skills"
       statusLine={
         <SettingsStatusLine
           data-testid="settings-page-skills-status-line"
-          daemonAvailable={envelope.runtime_available}
+          status={envelope.runtime_available ? "connected" : "error"}
           items={[
             <span key="discovered">{envelope.discovered_count} discovered</span>,
             <span key="disabled">{envelope.disabled_count} disabled</span>,
@@ -143,7 +143,7 @@ function SkillsSettingsPage() {
       ) : (
         <AgentScopePolicyNotice />
       )}
-    </SettingsPageShell>
+    </PageShell>
   );
 }
 
@@ -187,8 +187,9 @@ function ScopeSelector({
   }
 
   return (
-    <SettingsSectionCard
-      eyebrow="Scope"
+    <Section
+      divided
+      label="Scope"
       note="agent scope only changes logical disabled skills for one effective agent"
     >
       <div
@@ -251,24 +252,24 @@ function ScopeSelector({
           />
         </div>
       ) : null}
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
 function OperationalLinksRow() {
   return (
-    <SettingsSectionCard eyebrow="Operational" note="manage runtime state outside of settings">
+    <Section divided label="Operational" note="manage runtime state outside of settings">
       <div className="flex flex-wrap gap-2" data-testid="settings-page-skills-operational-links">
         <Link
           to="/skills"
-          className="inline-flex items-center gap-1.5 rounded-md border border-[color:var(--color-divider)] bg-[color:var(--color-surface-elevated)] px-3 py-1.5 text-xs font-medium text-[color:var(--color-text-primary)] hover:bg-[color:var(--color-hover)]"
+          className="inline-flex items-center gap-1.5 rounded-md border border-(--color-divider) bg-(--color-surface-elevated) px-3 py-1.5 text-xs font-medium text-(--color-text-primary) hover:bg-(--color-hover)"
           data-testid="settings-page-skills-link-skills"
         >
-          <ExternalLink className="size-3.5 text-[color:var(--color-text-tertiary)]" />
+          <ExternalLink className="size-3.5 text-(--color-text-tertiary)" />
           Open Skills
         </Link>
       </div>
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
@@ -308,14 +309,15 @@ function DisabledSkillsSection({
   const candidates = Array.from(new Set([...baseline, ...disabled])).sort();
 
   return (
-    <SettingsSectionCard
-      eyebrow="Disabled skills"
+    <Section
+      divided
+      label="Disabled skills"
       note={
         selection.scope === "agent"
           ? `applies immediately · scoped to ${selectedAgent?.name ?? selection.agentName}${selectedWorkspaceContext ? ` via ${selectedWorkspaceContext.name}` : ""}`
           : "applies immediately · no restart required"
       }
-      headerAction={
+      right={
         <SaveControls
           slug="disabled"
           saveLabel="Apply"
@@ -342,19 +344,19 @@ function DisabledSkillsSection({
         />
       ) : (
         <div
-          className="overflow-hidden rounded-lg border border-[color:var(--color-divider)]"
+          className="overflow-hidden rounded-lg border border-(--color-divider)"
           data-testid="settings-page-skills-disabled-list"
         >
           <Table>
             <TableHeader>
-              <TableRow className="bg-[color:var(--color-surface-elevated)]">
-                <TableHead className="text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--color-text-label)]">
+              <TableRow className="bg-(--color-surface-elevated)">
+                <TableHead className="text-badge uppercase tracking-mono text-(--color-text-label)">
                   Skill
                 </TableHead>
-                <TableHead className="text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--color-text-label)]">
+                <TableHead className="text-badge uppercase tracking-mono text-(--color-text-label)">
                   Identifier
                 </TableHead>
-                <TableHead className="w-[1%] text-right text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--color-text-label)]">
+                <TableHead className="w-[1%] text-right text-badge uppercase tracking-mono text-(--color-text-label)">
                   Disabled
                 </TableHead>
               </TableRow>
@@ -364,13 +366,11 @@ function DisabledSkillsSection({
                 <TableRow key={name} data-testid={`settings-page-skills-disabled-item-${name}`}>
                   <TableCell>
                     <div className="flex min-w-0 items-center gap-2">
-                      <Wrench className="size-3.5 text-[color:var(--color-text-tertiary)]" />
-                      <span className="truncate text-sm text-[color:var(--color-text-primary)]">
-                        {name}
-                      </span>
+                      <Wrench className="size-3.5 text-(--color-text-tertiary)" />
+                      <span className="truncate text-sm text-(--color-text-primary)">{name}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="font-mono text-xs text-[color:var(--color-text-secondary)]">
+                  <TableCell className="font-mono text-xs text-(--color-text-secondary)">
                     {name}
                   </TableCell>
                   <TableCell className="text-right">
@@ -387,22 +387,23 @@ function DisabledSkillsSection({
           </Table>
         </div>
       )}
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
 function AgentScopePolicyNotice() {
   return (
-    <SettingsSectionCard
-      eyebrow="Marketplace & policy"
+    <Section
+      divided
+      label="Marketplace & policy"
       note="read-only in agent scope"
       data-testid="settings-page-skills-agent-policy-note"
     >
-      <p className="text-sm text-[color:var(--color-text-secondary)]">
+      <p className="text-sm text-(--color-text-secondary)">
         Agent scope only supports logical `skills.disabled_skills` tombstones. Registry enablement,
         poll interval, and marketplace allowlists remain global settings.
       </p>
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
@@ -430,10 +431,11 @@ function PolicySection({
   onReset,
 }: PolicySectionProps) {
   return (
-    <SettingsSectionCard
-      eyebrow="Marketplace & policy"
+    <Section
+      divided
+      label="Marketplace & policy"
       note="restart required to apply"
-      headerAction={
+      right={
         <SaveControls
           slug="policy"
           saveLabel="Save"
@@ -456,7 +458,12 @@ function PolicySection({
           <Switch
             data-testid="settings-page-skills-enabled-switch"
             checked={draft.enabled}
-            onCheckedChange={checked => setDraft({ ...draft, enabled: checked })}
+            onCheckedChange={checked =>
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return { ...current, enabled: checked };
+              })
+            }
           />
         }
       />
@@ -471,7 +478,12 @@ function PolicySection({
             data-testid="settings-page-skills-poll-interval-input"
             value={draft.poll_interval ?? ""}
             placeholder="5m"
-            onChange={event => setDraft({ ...draft, poll_interval: event.target.value })}
+            onChange={event =>
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return { ...current, poll_interval: event.target.value };
+              })
+            }
           />
         }
       />
@@ -486,9 +498,12 @@ function PolicySection({
             data-testid="settings-page-skills-marketplace-registry-input"
             value={draft.marketplace.registry ?? ""}
             onChange={event =>
-              setDraft({
-                ...draft,
-                marketplace: { ...draft.marketplace, registry: event.target.value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  marketplace: { ...current.marketplace, registry: event.target.value },
+                };
               })
             }
           />
@@ -506,9 +521,12 @@ function PolicySection({
             value={draft.marketplace.base_url ?? ""}
             placeholder="https://"
             onChange={event =>
-              setDraft({
-                ...draft,
-                marketplace: { ...draft.marketplace, base_url: event.target.value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  marketplace: { ...current.marketplace, base_url: event.target.value },
+                };
               })
             }
           />
@@ -519,16 +537,26 @@ function PolicySection({
         description="Comma-separated list of marketplace MCP packages that may be installed"
         testId="settings-page-skills-allowed-mcp"
         value={draft.allowed_marketplace_mcp ?? []}
-        onChange={value => setDraft({ ...draft, allowed_marketplace_mcp: value })}
+        onChange={value =>
+          setDraft(prev => {
+            const current = prev ?? draft;
+            return { ...current, allowed_marketplace_mcp: value };
+          })
+        }
       />
       <AllowListField
         label="Allowed hook installs"
         description="Comma-separated list of marketplace hook packages that may be installed"
         testId="settings-page-skills-allowed-hooks"
         value={draft.allowed_marketplace_hooks ?? []}
-        onChange={value => setDraft({ ...draft, allowed_marketplace_hooks: value })}
+        onChange={value =>
+          setDraft(prev => {
+            const current = prev ?? draft;
+            return { ...current, allowed_marketplace_hooks: value };
+          })
+        }
       />
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
@@ -555,10 +583,13 @@ function AllowListField({ label, description, testId, value, onChange }: AllowLi
           placeholder="none"
           onChange={event =>
             onChange(
-              event.target.value
-                .split(",")
-                .map(entry => entry.trim())
-                .filter(entry => entry.length > 0)
+              event.target.value.split(",").reduce<string[]>((entries, entry) => {
+                const trimmed = entry.trim();
+                if (trimmed.length > 0) {
+                  entries.push(trimmed);
+                }
+                return entries;
+              }, [])
             )
           }
         />
@@ -602,28 +633,28 @@ function SaveControls({
       <div className="min-w-0" role="status" aria-live={liveRegion}>
         {error ? (
           <span
-            className="text-xs text-[color:var(--color-danger)]"
+            className="text-xs text-(--color-danger)"
             data-testid={`settings-page-skills-${slug}-error`}
           >
             {error}
           </span>
         ) : warnings && warnings.length > 0 ? (
           <span
-            className="text-xs text-[color:var(--color-warning)]"
+            className="text-xs text-(--color-warning)"
             data-testid={`settings-page-skills-${slug}-warning`}
           >
             {warnings.join(" · ")}
           </span>
         ) : isDirty ? (
           <span
-            className="text-xs text-[color:var(--color-text-tertiary)]"
+            className="text-xs text-(--color-text-tertiary)"
             data-testid={`settings-page-skills-${slug}-dirty`}
           >
             Unsaved changes
           </span>
         ) : lastAppliedLabel ? (
           <span
-            className="text-xs text-[color:var(--color-text-tertiary)]"
+            className="text-xs text-(--color-text-tertiary)"
             data-testid={`settings-page-skills-${slug}-applied`}
           >
             {lastAppliedLabel}
@@ -649,7 +680,7 @@ function SaveControls({
         data-testid={`settings-page-skills-${slug}-save`}
       >
         {isSaving ? <Loader2 className="size-3.5 animate-spin" /> : null}
-        {isSaving ? "Saving…" : saveLabel}
+        {isSaving ? "Saving..." : saveLabel}
       </Button>
     </div>
   );

@@ -1,9 +1,16 @@
 import { AlertTriangle, Home, ServerOff } from "lucide-react";
 import { createFileRoute } from "@tanstack/react-router";
 
-import { Empty, Metric, Pill, PageHeader, Section, Skeleton } from "@agh/ui";
-
-import { ConnectionIndicator } from "@/components/connection-indicator";
+import {
+  ConnectionIndicator,
+  Empty,
+  Metric,
+  Pill,
+  PageHeader,
+  Section,
+  Skeleton,
+  StatusCard,
+} from "@agh/ui";
 import { type HomeMetricEntry, type HomePageView, useHomePage } from "@/hooks/routes/use-home-page";
 
 export const Route = createFileRoute("/_app/")({
@@ -36,7 +43,7 @@ function AppHomePage() {
     return (
       <div className="flex min-h-0 flex-1 flex-col" data-testid="home-shell">
         {header}
-        <div className="flex flex-col gap-6 px-6 py-6" data-testid="home-loading">
+        <div className="flex flex-col gap-6 p-6" data-testid="home-loading">
           <DaemonStatusSkeleton />
           <MetricsSkeleton />
         </div>
@@ -48,7 +55,7 @@ function AppHomePage() {
     return (
       <div className="flex min-h-0 flex-1 flex-col" data-testid="home-shell">
         {header}
-        <div className="flex flex-1 items-start px-6 py-6" data-testid="home-error">
+        <div className="flex flex-1 items-start p-6" data-testid="home-error">
           <Empty
             className="max-w-xl"
             description={page.errorMessage ?? "Unable to load workspace data from the daemon."}
@@ -63,7 +70,7 @@ function AppHomePage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="home-shell">
       {header}
-      <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-6 py-6" data-testid="home-body">
+      <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-6" data-testid="home-body">
         <DaemonStatusSection page={page} />
         <OverviewSection page={page} />
       </div>
@@ -89,32 +96,23 @@ function DaemonStatusSection({ page }: { page: HomePageView }) {
       {isDisconnected ? (
         <DisconnectedCard description={page.daemonStatus.description} />
       ) : (
-        <div
-          className="flex flex-col gap-3 rounded-[var(--radius-diagram)] border border-[color:var(--color-divider)] bg-[color:var(--color-surface)] px-5 py-4"
+        <StatusCard
           data-testid="home-daemon-card"
           data-status={page.daemonStatus.key}
+          tone={page.daemonStatus.tone}
         >
-          <div className="flex items-center gap-3">
-            <Pill.Dot
-              data-testid="home-daemon-status-dot"
-              data-status={page.daemonStatus.key}
-              size="md"
-              tone={page.daemonStatus.tone}
-            />
-            <span
-              className="text-[15px] font-semibold tracking-[-0.01em] text-[color:var(--color-text-primary)]"
-              data-testid="home-daemon-status-label"
-            >
-              {page.daemonStatus.label}
-            </span>
-          </div>
-          <p
-            className="text-[13px] leading-5 text-[color:var(--color-text-secondary)]"
-            data-testid="home-daemon-status-description"
-          >
+          <StatusCard.Header
+            dotProps={{
+              "data-testid": "home-daemon-status-dot",
+              "data-status": page.daemonStatus.key,
+            }}
+            label={page.daemonStatus.label}
+            labelProps={{ "data-testid": "home-daemon-status-label" }}
+          />
+          <StatusCard.Body data-testid="home-daemon-status-description">
             {page.daemonStatus.description}
-          </p>
-        </div>
+          </StatusCard.Body>
+        </StatusCard>
       )}
     </Section>
   );
@@ -170,7 +168,7 @@ function DaemonStatusSkeleton() {
   return (
     <div className="flex flex-col gap-3" data-testid="home-daemon-skeleton">
       <Skeleton className="h-3 w-24" />
-      <div className="flex flex-col gap-3 rounded-[var(--radius-diagram)] border border-[color:var(--color-divider)] bg-[color:var(--color-surface)] px-5 py-4">
+      <div className="flex flex-col gap-3 rounded-(--radius-diagram) border border-(--color-divider) bg-(--color-surface) px-5 py-4">
         <div className="flex items-center gap-3">
           <Skeleton className="size-2 rounded-full" />
           <Skeleton className="h-4 w-32" />
@@ -188,7 +186,7 @@ function MetricsSkeleton() {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {METRIC_ORDER.map(key => (
           <div
-            className="flex flex-col gap-2 rounded-[var(--radius-diagram)] border border-[color:var(--color-divider)] bg-[color:var(--color-surface)] px-5 py-4"
+            className="flex flex-col gap-2 rounded-(--radius-diagram) border border-(--color-divider) bg-(--color-surface) px-5 py-4"
             data-testid={`home-metric-skeleton-${key}`}
             key={key}
           >

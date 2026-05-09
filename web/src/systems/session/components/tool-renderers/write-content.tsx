@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { ChevronsUpDown } from "lucide-react";
 
+import { CodeBlock } from "@agh/ui";
+
 import type { UIMessage } from "../../types";
 import { GenericContent } from "./generic-content";
 
@@ -25,21 +27,21 @@ export function WriteContent({ message }: { message: UIMessage }) {
   return (
     <div className="space-y-1.5 text-xs" data-testid="write-content">
       {filePath && (
-        <div className="font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
-          {filePath}
-        </div>
+        <div className="font-mono text-eyebrow text-(--color-text-tertiary)">{filePath}</div>
       )}
       {content && (
-        <pre className="max-h-48 overflow-auto rounded-md bg-[color:var(--color-surface)] px-3 py-2 font-mono text-[11px] text-[color:var(--color-text-tertiary)] whitespace-pre-wrap break-words">
-          {displayContent}
-          {isTruncated ? "\u2026" : ""}
-        </pre>
+        <CodeBlock
+          code={`${displayContent}${isTruncated ? "\u2026" : ""}`}
+          copyable={false}
+          showPrompt={false}
+          truncateLines={16}
+        />
       )}
       {isTruncated && (
         <button
           type="button"
           onClick={() => setShowFull(true)}
-          className="flex items-center gap-1 text-[11px] text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-text-secondary)] transition-colors"
+          className="flex items-center gap-1 text-eyebrow text-(--color-text-tertiary) hover:text-(--color-text-secondary) transition-colors"
         >
           <ChevronsUpDown className="size-3" />
           Show full content ({content.length.toLocaleString()} chars)

@@ -233,17 +233,20 @@ describe("useHomePage", () => {
     expect(result.current.daemonStatus.label).toBe("Degraded");
   });
 
-  it("returns a neutral reconnecting descriptor while the health query retries after failure", async () => {
+  it("returns an error descriptor after the health query fails", async () => {
     vi.mocked(fetchHealth).mockRejectedValue(new Error("network down"));
 
     const { result } = renderHook(() => useHomePage(), { wrapper: createWrapper() });
 
-    await waitFor(() => {
-      expect(result.current.daemonStatus.key).toBe("unknown");
-    });
+    await waitFor(
+      () => {
+        expect(result.current.daemonStatus.key).toBe("disconnected");
+      },
+      { timeout: 2_500 }
+    );
 
-    expect(result.current.connectionStatus).toBe("reconnecting");
-    expect(result.current.daemonStatus.tone).toBe("neutral");
+    expect(result.current.connectionStatus).toBe("error");
+    expect(result.current.daemonStatus.tone).toBe("danger");
     expect(result.current.daemonVersion).toBeNull();
   });
 

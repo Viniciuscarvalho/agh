@@ -102,13 +102,13 @@ function AgentSessionRow({ agentName, session, now }: AgentSessionRowProps) {
           to="/agents/$name/sessions/$id"
           params={{ name: agentName, id: session.id }}
           className={cn(
-            "text-item-title flex flex-col gap-0.5 text-[color:var(--color-text-primary)]",
-            "transition-colors hover:text-[color:var(--color-accent)]"
+            "text-item-title flex flex-col gap-0.5 text-(--color-text-primary)",
+            "transition-colors hover:text-accent"
           )}
           data-testid={`agent-session-link-${session.id}`}
         >
           <span className="truncate font-medium">{title}</span>
-          <span className="text-badge font-mono uppercase tracking-mono text-[color:var(--color-text-tertiary)]">
+          <span className="text-badge font-mono uppercase tracking-mono text-(--color-text-tertiary)">
             {session.provider}
           </span>
         </Link>
@@ -118,13 +118,13 @@ function AgentSessionRow({ agentName, session, now }: AgentSessionRowProps) {
           {status.label}
         </Pill>
       </TableCell>
-      <TableCell className="text-small-body text-right font-mono text-[color:var(--color-text-secondary)]">
+      <TableCell className="text-small-body text-right font-mono text-(--color-text-secondary)">
         {formatDuration(session.activity?.elapsed_seconds)}
       </TableCell>
-      <TableCell className="text-small-body text-right font-mono text-[color:var(--color-text-secondary)]">
+      <TableCell className="text-small-body text-right font-mono text-(--color-text-secondary)">
         {formatIterations(session.activity?.iteration_current, session.activity?.iteration_max)}
       </TableCell>
-      <TableCell className="text-small-body text-right font-mono text-[color:var(--color-text-secondary)]">
+      <TableCell className="text-small-body text-right font-mono text-(--color-text-secondary)">
         {formatRelativeTime(session.activity?.last_activity_at ?? session.updated_at, now)}
       </TableCell>
     </TableRow>
@@ -139,15 +139,22 @@ function AgentSessionsSkeleton() {
       role="status"
       aria-live="polite"
     >
-      {Array.from({ length: 4 }, (_, index) => (
-        <Skeleton key={index} className="h-9 w-full rounded-[var(--radius-md)]" />
+      {AGENT_SESSION_SKELETON_IDS.map(id => (
+        <Skeleton key={id} className="h-9 w-full rounded-md" />
       ))}
     </div>
   );
 }
 
+const AGENT_SESSION_SKELETON_IDS = [
+  "agent-session-skeleton-1",
+  "agent-session-skeleton-2",
+  "agent-session-skeleton-3",
+  "agent-session-skeleton-4",
+];
+
 function formatDuration(seconds: number | undefined | null): string {
-  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) return "—";
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) return "--";
   const total = Math.round(seconds);
   if (total < 60) return `${total}s`;
   const minutes = Math.floor(total / 60);
@@ -159,7 +166,7 @@ function formatDuration(seconds: number | undefined | null): string {
 }
 
 function formatIterations(current: number | undefined, max: number | undefined): string {
-  if (typeof current !== "number" || !Number.isFinite(current)) return "—";
+  if (typeof current !== "number" || !Number.isFinite(current)) return "--";
   if (typeof max === "number" && Number.isFinite(max) && max > 0) {
     return `${current}/${max}`;
   }
@@ -167,9 +174,9 @@ function formatIterations(current: number | undefined, max: number | undefined):
 }
 
 function formatRelativeTime(value: string | null | undefined, now: number): string {
-  if (!value) return "—";
+  if (!value) return "--";
   const ts = new Date(value).getTime();
-  if (!Number.isFinite(ts)) return "—";
+  if (!Number.isFinite(ts)) return "--";
   const diffMs = now - ts;
   if (diffMs < 0) return "just now";
   const seconds = Math.floor(diffMs / 1000);

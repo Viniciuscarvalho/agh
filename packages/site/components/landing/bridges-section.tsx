@@ -26,49 +26,49 @@ const BRIDGES: Bridge[] = [
   {
     id: "slack",
     name: "Slack",
-    logo: <SlackLogo aria-hidden className="h-7 w-7" />,
+    logo: <SlackLogo aria-hidden className="size-7" />,
     status: "alpha",
   },
   {
     id: "discord",
     name: "Discord",
-    logo: <DiscordLogo aria-hidden className="h-7 w-7" />,
+    logo: <DiscordLogo aria-hidden className="size-7" />,
     status: "alpha",
   },
   {
     id: "telegram",
     name: "Telegram",
-    logo: <TelegramLogo aria-hidden className="h-7 w-7" />,
+    logo: <TelegramLogo aria-hidden className="size-7" />,
     status: "alpha",
   },
   {
     id: "whatsapp",
     name: "WhatsApp",
-    logo: <WhatsAppLogo aria-hidden className="h-7 w-7" />,
+    logo: <WhatsAppLogo aria-hidden className="size-7" />,
     status: "planned",
   },
   {
     id: "teams",
     name: "Microsoft Teams",
-    logo: <MicrosoftTeamsLogo aria-hidden className="h-7 w-7" />,
+    logo: <MicrosoftTeamsLogo aria-hidden className="size-7" />,
     status: "planned",
   },
   {
     id: "google-chat",
     name: "Google Chat",
-    logo: <GoogleChatLogo aria-hidden className="h-7 w-7" />,
+    logo: <GoogleChatLogo aria-hidden className="size-7" />,
     status: "planned",
   },
   {
     id: "github",
     name: "GitHub",
-    logo: <GithubLogo aria-hidden className="h-7 w-7 text-(--color-text-primary)" />,
+    logo: <GithubLogo aria-hidden className="size-7 text-(--color-text-primary)" />,
     status: "planned",
   },
   {
     id: "linear",
     name: "Linear",
-    logo: <LinearLogo aria-hidden className="h-7 w-7" mode="dark" />,
+    logo: <LinearLogo aria-hidden className="size-7" mode="dark" />,
     status: "planned",
   },
 ];
@@ -80,15 +80,15 @@ export function BridgesSection() {
         align="start"
         eyebrow="Bridges"
         title="Your users work in these channels. Your agents can meet them there."
-        description="Webhooks in, sessions out. Responses stream back to the original thread. No serverless glue, no second runtime — the bridge adapter runs inside the daemon."
+        description="Webhooks in, sessions out. Responses stream back to the original thread. No serverless glue, no second runtime, the bridge adapter runs inside the daemon."
       />
 
       <ul className="mt-12 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {BRIDGES.map(bridge => (
           <li key={bridge.id}>
-            <article className="group relative flex h-full flex-col items-start gap-3 rounded-(--radius-diagram) border border-(--color-divider) bg-(--color-canvas) p-5 transition-colors hover:border-[color-mix(in_srgb,var(--color-accent)_35%,var(--color-divider))]">
+            <article className="group relative flex h-full flex-col items-start gap-3 rounded-(--radius-diagram) border border-(--color-divider) bg-(--color-canvas) p-5 transition-colors hover:border-accent/35">
               <div className="flex items-center justify-between self-stretch">
-                <div className="flex h-10 w-10 items-center justify-center">{bridge.logo}</div>
+                <div className="flex size-10 items-center justify-center">{bridge.logo}</div>
                 {bridge.status === "alpha" ? (
                   <Pill mono tone="accent">
                     alpha
@@ -99,8 +99,8 @@ export function BridgesSection() {
                   </Pill>
                 )}
               </div>
-              <p className="text-[14px] font-medium text-(--color-text-primary)">{bridge.name}</p>
-              <p className="font-mono text-[10px] uppercase tracking-(--tracking-mono) text-(--color-text-tertiary)">
+              <p className="text-sm font-medium text-(--color-text-primary)">{bridge.name}</p>
+              <p className="font-mono text-badge uppercase tracking-mono text-(--color-text-tertiary)">
                 bridge:{bridge.id}
               </p>
             </article>
@@ -111,7 +111,7 @@ export function BridgesSection() {
       {/* Flow strip */}
       <div className="mt-10 rounded-(--radius-diagram) border border-(--color-divider) bg-(--color-canvas) p-6">
         <div className="flex items-center justify-between border-b border-(--color-divider) pb-4">
-          <p className="font-mono text-[10px] font-semibold uppercase tracking-(--tracking-mono) text-(--color-text-tertiary)">
+          <p className="font-mono text-badge font-semibold uppercase tracking-mono text-(--color-text-tertiary)">
             How a bridge delivers a session
           </p>
           <Pill mono tone="accent">
@@ -123,13 +123,13 @@ export function BridgesSection() {
           <FlowArrow label="webhook" />
           <FlowNode title="agh daemon" sub="verify · route" highlight />
           <FlowArrow label="session" />
-          <FlowNode title="Agent" sub="claude / codex / …" />
+          <FlowNode title="Agent" sub="claude / codex / ..." />
           <FlowArrow label="stream" />
           <FlowNode title="Thread reply" sub="streamed updates" />
         </div>
       </div>
 
-      <p className="mt-6 max-w-[64ch] text-[13px] leading-relaxed text-(--color-text-tertiary)">
+      <p className="mt-6 max-w-[64ch] text-small-body leading-relaxed text-(--color-text-tertiary)">
         Every bridge is a workspace-scoped adapter. One platform message maps to one durable
         session, so a user thread keeps its context across restarts.
       </p>
@@ -137,17 +137,17 @@ export function BridgesSection() {
       <div className="mt-5 flex flex-col gap-3 sm:flex-row">
         <Link
           href="/runtime/core/bridges/setup"
-          className="inline-flex items-center gap-2 rounded-lg border border-(--color-accent) px-4 py-2 text-[13px] font-medium text-(--color-accent) transition-colors hover:bg-(--color-accent-tint)"
+          className="inline-flex items-center gap-2 rounded-lg border border-accent px-4 py-2 text-small-body font-medium text-accent transition-colors hover:bg-(--color-accent-tint)"
         >
           Configure Slack, Discord, or Telegram
-          <ArrowRight aria-hidden="true" className="h-4 w-4" />
+          <ArrowRight aria-hidden="true" className="size-4" />
         </Link>
         <Link
           href="/runtime/core/extensions"
-          className="inline-flex items-center gap-2 rounded-lg border border-(--color-divider) px-4 py-2 text-[13px] font-medium text-(--color-text-primary) transition-colors hover:border-[color-mix(in_srgb,var(--color-accent)_35%,var(--color-divider))] hover:text-(--color-accent)"
+          className="inline-flex items-center gap-2 rounded-lg border border-(--color-divider) px-4 py-2 text-small-body font-medium text-(--color-text-primary) transition-colors hover:border-accent/35 hover:text-accent"
         >
           Build a bridge adapter
-          <ArrowRight aria-hidden="true" className="h-4 w-4" />
+          <ArrowRight aria-hidden="true" className="size-4" />
         </Link>
       </div>
     </SectionFrame>
@@ -165,20 +165,18 @@ function FlowNode({
 }) {
   return (
     <div
-      className={`rounded-[8px] border px-3 py-2 text-center ${
+      className={`rounded-md border px-3 py-2 text-center ${
         highlight
-          ? "border-(--color-accent) bg-(--color-accent-tint)"
+          ? "border-accent bg-(--color-accent-tint)"
           : "border-(--color-divider) bg-(--color-surface)"
       }`}
     >
       <p
-        className={`text-[12px] font-medium ${highlight ? "text-(--color-accent)" : "text-(--color-text-primary)"}`}
+        className={`text-xs font-medium ${highlight ? "text-accent" : "text-(--color-text-primary)"}`}
       >
         {title}
       </p>
-      <p className="font-mono text-[10px] tracking-(--tracking-mono) text-(--color-text-tertiary)">
-        {sub}
-      </p>
+      <p className="font-mono text-badge tracking-mono text-(--color-text-tertiary)">{sub}</p>
     </div>
   );
 }
@@ -186,10 +184,10 @@ function FlowNode({
 function FlowArrow({ label }: { label: string }) {
   return (
     <div className="flex flex-col items-center justify-center">
-      <span className="font-mono text-[9px] uppercase tracking-(--tracking-mono) text-(--color-text-tertiary)">
+      <span className="font-mono text-micro uppercase tracking-mono text-(--color-text-tertiary)">
         {label}
       </span>
-      <ArrowRight aria-hidden className="h-4 w-4 text-(--color-accent)" />
+      <ArrowRight aria-hidden className="size-4 text-accent" />
     </div>
   );
 }

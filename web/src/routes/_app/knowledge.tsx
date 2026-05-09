@@ -94,7 +94,7 @@ export function KnowledgePage() {
         >
           <Loader2
             aria-hidden="true"
-            className="size-5 animate-spin text-[color:var(--color-text-tertiary)]"
+            className="size-5 animate-spin text-(--color-text-tertiary)"
           />
         </div>
       </div>
@@ -142,14 +142,16 @@ export function KnowledgePage() {
             deleteError={page.deleteError}
             editError={page.editError}
             error={page.contentError}
-            isDecisionsLoading={page.isDecisionsLoading}
-            isDeletePending={page.isDeletePending}
-            isEditPending={page.isEditPending}
-            isLoading={page.isContentLoading}
             memory={page.selectedMemory}
             onDelete={page.handleDelete}
             onEdit={page.handleEdit}
             scope={page.selectedScope}
+            status={{
+              isDecisionsLoading: page.isDecisionsLoading,
+              isDeletePending: page.isDeletePending,
+              isEditPending: page.isEditPending,
+              isLoading: page.isContentLoading,
+            }}
           />
         }
         list={

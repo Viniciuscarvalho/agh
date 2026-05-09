@@ -1,6 +1,6 @@
 import { Activity, AlertCircle } from "lucide-react";
 
-import { Pill, PillDot, Section, type PillTone } from "@agh/ui";
+import { Metric, Pill, PillDot, Section, type PillTone } from "@agh/ui";
 
 import type { StreamConnectionState } from "@/hooks/routes/use-task-detail-orchestration-tab";
 
@@ -33,7 +33,7 @@ export function TasksStreamResumeCard({
   streamState,
   streamErrorMessage,
 }: TasksStreamResumeCardProps) {
-  const seqLabel = hasLatestEventSeq && latestEventSeq !== null ? String(latestEventSeq) : "—";
+  const seqLabel = hasLatestEventSeq && latestEventSeq !== null ? String(latestEventSeq) : "--";
   const seedLabel = String(streamSeedSequence);
   const tone = STREAM_TONE[streamState];
   const label = STREAM_LABEL[streamState];
@@ -46,52 +46,34 @@ export function TasksStreamResumeCard({
       label="Stream resume"
     >
       <p
-        className="text-[12px] text-[color:var(--color-text-tertiary)]"
+        className="text-xs text-(--color-text-tertiary)"
         data-testid="tasks-stream-resume-disclaimer"
       >
         The web client seeds task SSE through Last-Event-ID derived from the task's latest_event_seq
         projection. Reconnects resume from the seeded sequence; named SSE frames invalidate read
         queries without inferring authority.
       </p>
-      <div
-        className="grid gap-3 rounded-xl border border-[color:var(--color-divider)] bg-[color:var(--color-surface-elevated)] px-4 py-3 md:grid-cols-3"
-        data-testid="tasks-stream-resume-summary"
-      >
-        <div className="flex flex-col gap-1">
-          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-text-tertiary)]">
-            Latest event seq
-          </span>
-          <span
-            className="font-mono text-[15px] text-[color:var(--color-text-primary)]"
-            data-testid="tasks-stream-resume-latest"
-          >
-            {seqLabel}
-          </span>
-        </div>
-        <div className="flex flex-col gap-1">
-          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-text-tertiary)]">
-            SSE resume seed
-          </span>
-          <span
-            className="font-mono text-[15px] text-[color:var(--color-text-primary)]"
-            data-testid="tasks-stream-resume-seed"
-          >
-            {seedLabel}
-          </span>
-        </div>
-        <div className="flex flex-col gap-1">
-          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-text-tertiary)]">
-            Connection
-          </span>
-          <div className="inline-flex items-center gap-2" data-testid="tasks-stream-resume-status">
-            <PillDot tone={tone} pulse={streamState === "connected"} />
-            <Pill tone={tone}>{label}</Pill>
-          </div>
-        </div>
+      <div className="grid gap-3 md:grid-cols-3" data-testid="tasks-stream-resume-summary">
+        <Metric
+          data-testid="tasks-stream-resume-latest"
+          label="Latest event seq"
+          value={seqLabel}
+        />
+        <Metric data-testid="tasks-stream-resume-seed" label="SSE resume seed" value={seedLabel} />
+        <Metric
+          data-testid="tasks-stream-resume-status"
+          label="Connection"
+          value={
+            <span className="inline-flex items-center gap-2">
+              <PillDot tone={tone} pulse={streamState === "connected"} />
+              <Pill tone={tone}>{label}</Pill>
+            </span>
+          }
+        />
       </div>
       {streamState === "error" && streamErrorMessage ? (
         <p
-          className="inline-flex items-center gap-2 text-[12px] text-[color:var(--color-danger)]"
+          className="inline-flex items-center gap-2 text-xs text-(--color-danger)"
           data-testid="tasks-stream-resume-error"
         >
           <AlertCircle className="size-3.5" />
@@ -100,7 +82,7 @@ export function TasksStreamResumeCard({
       ) : null}
       {streamState === "disabled" ? (
         <p
-          className="inline-flex items-center gap-2 text-[12px] text-[color:var(--color-text-tertiary)]"
+          className="inline-flex items-center gap-2 text-xs text-(--color-text-tertiary)"
           data-testid="tasks-stream-resume-disabled"
         >
           <Activity className="size-3.5" />

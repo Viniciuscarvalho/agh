@@ -83,6 +83,7 @@ const sampleDecision: MemoryDecision = {
 };
 
 export const Default: Story = {
+  args: {},
   render: () => (
     <PanelSurface>
       <KnowledgeDetailPanel
@@ -92,10 +93,12 @@ export const Default: Story = {
         deleteError={null}
         editError={null}
         error={null}
-        isDecisionsLoading={false}
-        isDeletePending={false}
-        isEditPending={false}
-        isLoading={false}
+        status={{
+          isDecisionsLoading: false,
+          isDeletePending: false,
+          isEditPending: false,
+          isLoading: false,
+        }}
         memory={defaultMemory}
         onDelete={async () => {}}
         onEdit={async () => {}}
@@ -106,6 +109,7 @@ export const Default: Story = {
 };
 
 export const AgentScope: Story = {
+  args: {},
   render: () => (
     <PanelSurface>
       <KnowledgeDetailPanel
@@ -115,10 +119,12 @@ export const AgentScope: Story = {
         deleteError={null}
         editError={null}
         error={null}
-        isDecisionsLoading={false}
-        isDeletePending={false}
-        isEditPending={false}
-        isLoading={false}
+        status={{
+          isDecisionsLoading: false,
+          isDeletePending: false,
+          isEditPending: false,
+          isLoading: false,
+        }}
         memory={agentMemory}
         onDelete={async () => {}}
         onEdit={async () => {}}
@@ -129,6 +135,7 @@ export const AgentScope: Story = {
 };
 
 export const Superseded: Story = {
+  args: {},
   render: () => (
     <PanelSurface>
       <KnowledgeDetailPanel
@@ -138,10 +145,12 @@ export const Superseded: Story = {
         deleteError={null}
         editError={null}
         error={null}
-        isDecisionsLoading={false}
-        isDeletePending={false}
-        isEditPending={false}
-        isLoading={false}
+        status={{
+          isDecisionsLoading: false,
+          isDeletePending: false,
+          isEditPending: false,
+          isLoading: false,
+        }}
         memory={supersededMemory}
         onDelete={async () => {}}
         onEdit={async () => {}}
@@ -152,14 +161,14 @@ export const Superseded: Story = {
 };
 
 export const Loading: Story = {
+  args: {},
   render: () => (
     <PanelSurface>
       <KnowledgeDetailPanel
         content={undefined}
         decisions={[]}
         error={null}
-        isDeletePending={false}
-        isLoading
+        status={{ isDeletePending: false, isLoading: true }}
         memory={defaultMemory}
         onDelete={async () => {}}
         scope="global"
@@ -169,14 +178,14 @@ export const Loading: Story = {
 };
 
 export const ErrorState: Story = {
+  args: {},
   render: () => (
     <PanelSurface>
       <KnowledgeDetailPanel
         content={undefined}
         decisions={[]}
         error={new globalThis.Error("Content fetch failed")}
-        isDeletePending={false}
-        isLoading={false}
+        status={{ isDeletePending: false, isLoading: false }}
         memory={defaultMemory}
         onDelete={async () => {}}
         scope="global"
@@ -186,14 +195,14 @@ export const ErrorState: Story = {
 };
 
 export const EmptySelection: Story = {
+  args: {},
   render: () => (
     <PanelSurface>
       <KnowledgeDetailPanel
         content={undefined}
         decisions={[]}
         error={null}
-        isDeletePending={false}
-        isLoading={false}
+        status={{ isDeletePending: false, isLoading: false }}
         memory={undefined}
         onDelete={async () => {}}
       />
@@ -202,6 +211,7 @@ export const EmptySelection: Story = {
 };
 
 export const DecisionsLoading: Story = {
+  args: {},
   render: () => (
     <PanelSurface>
       <KnowledgeDetailPanel
@@ -210,9 +220,7 @@ export const DecisionsLoading: Story = {
         decisionsError={null}
         deleteError={null}
         error={null}
-        isDecisionsLoading
-        isDeletePending={false}
-        isLoading={false}
+        status={{ isDecisionsLoading: true, isDeletePending: false, isLoading: false }}
         memory={defaultMemory}
         onDelete={async () => {}}
         scope="global"
@@ -222,6 +230,7 @@ export const DecisionsLoading: Story = {
 };
 
 export const DecisionsError: Story = {
+  args: {},
   render: () => (
     <PanelSurface>
       <KnowledgeDetailPanel
@@ -230,9 +239,7 @@ export const DecisionsError: Story = {
         decisionsError={new globalThis.Error("Decisions failed")}
         deleteError={null}
         error={null}
-        isDecisionsLoading={false}
-        isDeletePending={false}
-        isLoading={false}
+        status={{ isDecisionsLoading: false, isDeletePending: false, isLoading: false }}
         memory={defaultMemory}
         onDelete={async () => {}}
         scope="global"

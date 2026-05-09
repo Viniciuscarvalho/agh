@@ -2,19 +2,15 @@ import { AlertCircle, ExternalLink, Loader2 } from "lucide-react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 
-import { Button, Input, PillGroup } from "@agh/ui";
+import { Button, Input, Metric, MetricGrid, PageShell, PillGroup, Section } from "@agh/ui";
 import { useSettingsGeneralPage } from "@/hooks/routes/use-settings-general-page";
 import type { SettingsGeneralSection, SettingsUpdateStatus } from "@/systems/settings";
 import {
   SettingsFieldRow,
   SettingsNumberInput,
   SettingsPageActions,
-  SettingsPageShell,
   SettingsRestartBanner,
   SettingsSaveBar,
-  SettingsSectionCard,
-  SettingsStatGrid,
-  SettingsStatItem,
   SettingsStatusLine,
 } from "@/systems/settings/components";
 
@@ -45,9 +41,9 @@ function formatSessionTimeout(seconds: number): string {
 }
 
 function formatUpdateTimestamp(value?: string | null): string {
-  if (!value) return "—";
+  if (!value) return "--";
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? "—" : parsed.toLocaleString();
+  return Number.isNaN(parsed.getTime()) ? "--" : parsed.toLocaleString();
 }
 
 function formatUpdateStatus(status?: SettingsUpdateStatus["status"]): string {
@@ -77,7 +73,7 @@ function GeneralSettingsPage() {
         className="flex flex-1 items-center justify-center"
         data-testid="settings-page-general-loading"
       >
-        <Loader2 className="size-5 animate-spin text-[color:var(--color-text-tertiary)]" />
+        <Loader2 className="size-5 animate-spin text-(--color-text-tertiary)" />
       </div>
     );
   }
@@ -89,8 +85,8 @@ function GeneralSettingsPage() {
         data-testid="settings-page-general-error"
       >
         <div className="flex flex-col items-center gap-2 text-center">
-          <AlertCircle className="size-6 text-[color:var(--color-danger)]" />
-          <p className="text-sm text-[color:var(--color-text-tertiary)]">
+          <AlertCircle className="size-6 text-(--color-danger)" />
+          <p className="text-sm text-(--color-text-tertiary)">
             {page.error?.message ?? "Failed to load general settings"}
           </p>
           <Button onClick={page.handleRetry} size="sm" type="button" variant="outline">
@@ -106,18 +102,18 @@ function GeneralSettingsPage() {
   const configPaths = envelope.config_paths;
 
   return (
-    <SettingsPageShell
+    <PageShell
       slug="general"
       title="General"
       statusLine={
         <SettingsStatusLine
           data-testid="settings-page-general-status-line"
-          daemonAvailable={runtime.available}
+          status={runtime.available ? "connected" : "error"}
           items={[
             <span key="sessions">
               {runtime.active_sessions} active sessions · {runtime.active_agents} agents
             </span>,
-            <span key="config" className="font-mono text-[0.7rem]">
+            <span key="config" className="font-mono text-eyebrow">
               config: {configPaths.global_config}
             </span>,
           ]}
@@ -149,20 +145,17 @@ function GeneralSettingsPage() {
         timeoutError={validationErrors.sessionTimeout ?? undefined}
         onTimeoutValidityChange={setValidationError("sessionTimeout")}
       />
-    </SettingsPageShell>
+    </PageShell>
   );
 }
 
 function RuntimeSection({ envelope }: { envelope: SettingsGeneralSection }) {
   const runtime = envelope.runtime;
   return (
-    <SettingsSectionCard eyebrow="Runtime" note="read-only">
-      <SettingsStatGrid>
-        <SettingsStatItem
-          label="UDS socket"
-          value={runtime.socket ?? envelope.config.daemon.socket}
-        />
-        <SettingsStatItem
+    <Section divided label="Runtime" note="read-only">
+      <MetricGrid>
+        <Metric label="UDS socket" value={runtime.socket ?? envelope.config.daemon.socket} />
+        <Metric
           label="HTTP bind"
           value={
             runtime.http_host && runtime.http_port
@@ -170,16 +163,16 @@ function RuntimeSection({ envelope }: { envelope: SettingsGeneralSection }) {
               : `${envelope.config.http.host}:${envelope.config.http.port}`
           }
         />
-        <SettingsStatItem
+        <Metric
           label="Active sessions"
           value={`${runtime.active_sessions} / ${envelope.config.limits.max_sessions} max`}
         />
-        <SettingsStatItem
+        <Metric
           label="Concurrent agents"
           value={`${runtime.active_agents} / ${envelope.config.limits.max_concurrent_agents} max`}
         />
-      </SettingsStatGrid>
-    </SettingsSectionCard>
+      </MetricGrid>
+    </Section>
   );
 }
 
@@ -192,16 +185,16 @@ function SoftwareUpdateSection({ update }: { update: UpdateQuery }) {
       href={snapshot.release_url}
       rel="noreferrer"
       target="_blank"
-      className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[color:var(--color-divider)] bg-[color:var(--color-surface-elevated)] px-3 py-1.5 text-xs font-medium text-[color:var(--color-text-primary)] hover:bg-[color:var(--color-hover)]"
+      className="inline-flex items-center gap-1.5 rounded-md border border-(--color-divider) bg-(--color-surface-elevated) px-3 py-1.5 text-xs font-medium text-(--color-text-primary) hover:bg-(--color-hover)"
       data-testid="settings-page-general-update-release-link"
     >
-      <ExternalLink className="size-3.5 text-[color:var(--color-text-tertiary)]" />
+      <ExternalLink className="size-3.5 text-(--color-text-tertiary)" />
       Release notes
     </a>
   ) : null;
   const refreshIndicator = update.isFetching ? (
-    <span className="inline-flex items-center gap-1.5 text-xs text-[color:var(--color-text-secondary)]">
-      <Loader2 className="size-3.5 animate-spin text-[color:var(--color-text-tertiary)]" />
+    <span className="inline-flex items-center gap-1.5 text-xs text-(--color-text-secondary)">
+      <Loader2 className="size-3.5 animate-spin text-(--color-text-tertiary)" />
       Checking
     </span>
   ) : null;
@@ -224,10 +217,11 @@ function SoftwareUpdateSection({ update }: { update: UpdateQuery }) {
   const lastError = snapshot?.last_error ?? (snapshot ? null : transportError);
 
   return (
-    <SettingsSectionCard
-      eyebrow="Software update"
+    <Section
+      divided
+      label="Software update"
       note="Read-only. AGH self-updates direct-binary installs on macOS and Linux; managed installs return exact upgrade guidance."
-      headerAction={
+      right={
         releaseLink || refreshIndicator || retryButton ? (
           <div className="flex flex-wrap items-center gap-2">
             {releaseLink}
@@ -237,46 +231,46 @@ function SoftwareUpdateSection({ update }: { update: UpdateQuery }) {
         ) : undefined
       }
     >
-      <SettingsStatGrid>
-        <SettingsStatItem
+      <MetricGrid>
+        <Metric
           label="Status"
           value={statusValue}
-          detail={snapshot?.supported ? undefined : "manual update path"}
+          subtext={snapshot?.supported ? undefined : "manual update path"}
           data-testid="settings-page-general-update-status"
         />
-        <SettingsStatItem
+        <Metric
           label="Current version"
-          value={snapshot?.current_version ?? "—"}
+          value={snapshot?.current_version ?? "--"}
           data-testid="settings-page-general-update-current-version"
         />
-        <SettingsStatItem
+        <Metric
           label="Latest stable"
-          value={snapshot?.latest_version ?? "—"}
+          value={snapshot?.latest_version ?? "--"}
           data-testid="settings-page-general-update-latest-version"
         />
-        <SettingsStatItem
+        <Metric
           label="Install method"
-          value={snapshot?.install_method ?? "—"}
+          value={snapshot?.install_method ?? "--"}
           data-testid="settings-page-general-update-install-method"
         />
-        <SettingsStatItem
+        <Metric
           label="Managed"
-          value={snapshot ? (snapshot.managed ? "yes" : "no") : "—"}
+          value={snapshot ? (snapshot.managed ? "yes" : "no") : "--"}
           data-testid="settings-page-general-update-managed"
         />
-        <SettingsStatItem
+        <Metric
           label="Last checked"
           value={formatUpdateTimestamp(snapshot?.checked_at)}
           data-testid="settings-page-general-update-checked-at"
         />
-      </SettingsStatGrid>
+      </MetricGrid>
       {snapshot?.recommendation ? (
         <SettingsFieldRow
           data-testid="settings-page-general-update-recommendation"
           label="Next action"
           description="Exact command or package-manager path for this install"
           control={
-            <span className="max-w-[34rem] font-mono text-xs text-[color:var(--color-text-primary)]">
+            <span className="max-w-136 font-mono text-xs text-(--color-text-primary)">
               {snapshot.recommendation}
             </span>
           }
@@ -288,13 +282,11 @@ function SoftwareUpdateSection({ update }: { update: UpdateQuery }) {
           label="Last error"
           description="The last update refresh that failed"
           control={
-            <span className="max-w-[34rem] font-mono text-xs text-[color:var(--color-danger)]">
-              {lastError}
-            </span>
+            <span className="max-w-136 font-mono text-xs text-(--color-danger)">{lastError}</span>
           }
         />
       ) : null}
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
@@ -305,7 +297,7 @@ interface DraftSectionProps {
 
 function DefaultsSection({ draft, setDraft }: DraftSectionProps) {
   return (
-    <SettingsSectionCard eyebrow="Defaults" note="applied to new sessions">
+    <Section divided label="Defaults" note="applied to new sessions">
       <SettingsFieldRow
         data-testid="settings-page-general-default-agent"
         label="Default agent"
@@ -317,9 +309,12 @@ function DefaultsSection({ draft, setDraft }: DraftSectionProps) {
             data-testid="settings-page-general-default-agent-input"
             value={draft.defaults.agent}
             onChange={event =>
-              setDraft({
-                ...draft,
-                defaults: { ...draft.defaults, agent: event.target.value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  defaults: { ...current.defaults, agent: event.target.value },
+                };
               })
             }
           />
@@ -337,9 +332,12 @@ function DefaultsSection({ draft, setDraft }: DraftSectionProps) {
             value={draft.defaults.provider ?? ""}
             placeholder="auto"
             onChange={event =>
-              setDraft({
-                ...draft,
-                defaults: { ...draft.defaults, provider: event.target.value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  defaults: { ...current.defaults, provider: event.target.value },
+                };
               })
             }
           />
@@ -357,37 +355,45 @@ function DefaultsSection({ draft, setDraft }: DraftSectionProps) {
             value={draft.defaults.sandbox ?? ""}
             placeholder="local"
             onChange={event =>
-              setDraft({
-                ...draft,
-                defaults: { ...draft.defaults, sandbox: event.target.value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  defaults: { ...current.defaults, sandbox: event.target.value },
+                };
               })
             }
           />
         }
       />
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
 function PermissionsSection({ draft, setDraft }: DraftSectionProps) {
   return (
-    <SettingsSectionCard eyebrow="Permissions" note="tool approval policy">
+    <Section divided label="Permissions" note="tool approval policy">
       <PillGroup
         className="max-w-full flex-wrap"
         data-testid="settings-page-general-permissions-group"
         aria-label="Tool approval policy"
         value={draft.permissions.mode}
-        onChange={mode => setDraft({ ...draft, permissions: { mode } })}
+        onChange={mode =>
+          setDraft(prev => {
+            const current = prev ?? draft;
+            return { ...current, permissions: { mode } };
+          })
+        }
         items={PERMISSION_MODES.map(mode => ({
           value: mode,
           label: mode,
           testId: `settings-page-general-permission-${mode}`,
         }))}
       />
-      <p className="text-xs text-[color:var(--color-text-tertiary)]">
+      <p className="text-xs text-(--color-text-tertiary)">
         {describePermissionMode(draft.permissions.mode)}
       </p>
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
@@ -401,7 +407,7 @@ function SessionSection({
   onTimeoutValidityChange: (message: string | null) => void;
 }) {
   return (
-    <SettingsSectionCard eyebrow="Session" note="runtime limits">
+    <Section divided label="Session" note="runtime limits">
       <SettingsFieldRow
         data-testid="settings-page-general-session-timeout"
         label="Session timeout"
@@ -417,19 +423,22 @@ function SessionSection({
               value={parseSessionTimeoutSeconds(draft.session_timeout)}
               onValidityChange={onTimeoutValidityChange}
               onValueChange={value =>
-                setDraft({
-                  ...draft,
-                  session_timeout: formatSessionTimeout(value),
+                setDraft(prev => {
+                  const current = prev ?? draft;
+                  return {
+                    ...current,
+                    session_timeout: formatSessionTimeout(value),
+                  };
                 })
               }
             />
-            <span className="font-mono text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--color-text-label)]">
+            <span className="font-mono text-badge uppercase tracking-mono text-(--color-text-label)">
               seconds
             </span>
           </div>
         }
       />
-    </SettingsSectionCard>
+    </Section>
   );
 }
 

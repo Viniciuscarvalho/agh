@@ -27,9 +27,11 @@ export interface ChannelRailProps {
   unpinnedChannels: ReadonlyArray<NetworkChannelSummary>;
   recents: ReadonlyArray<NetworkRecentEntry>;
   directs: ReadonlyArray<NetworkDirectRoomSummary>;
-  isChannelsLoading: boolean;
-  isRecentsLoading: boolean;
-  isDirectsLoading: boolean;
+  loading: {
+    channels: boolean;
+    recents: boolean;
+    directs: boolean;
+  };
   activeChannel: string | null;
   activeDirectId: string | null;
   selfPeerId: string | null;
@@ -76,7 +78,7 @@ function DirectRoomRailRow({ channel, direct, active, selfPeerId }: DirectRoomRa
       <MessageAvatar initialFrom={otherPeerId} seed={otherPeerId} sizePx={20} />
       <span className="min-w-0 flex-1 truncate">@{otherPeerId}</span>
       {lastActivity ? (
-        <span className="shrink-0 font-mono text-[10px] text-[color:var(--color-text-tertiary)]">
+        <span className="shrink-0 font-mono text-badge text-(--color-text-tertiary)">
           {lastActivity}
         </span>
       ) : null}
@@ -89,9 +91,7 @@ export function ChannelRail({
   unpinnedChannels,
   recents,
   directs,
-  isChannelsLoading,
-  isRecentsLoading,
-  isDirectsLoading,
+  loading,
   activeChannel,
   activeDirectId,
   selfPeerId,
@@ -99,13 +99,18 @@ export function ChannelRail({
   onTogglePinned,
   hasUnread,
 }: ChannelRailProps) {
+  const {
+    channels: isChannelsLoading,
+    recents: isRecentsLoading,
+    directs: isDirectsLoading,
+  } = loading;
   const hasAnyChannel = pinnedChannels.length + unpinnedChannels.length > 0;
   const hasAnyDirect = directs.length > 0;
 
   return (
     <aside
       aria-label="Network channels"
-      className="flex min-h-0 w-[260px] shrink-0 flex-col border-r border-[color:var(--color-divider)] bg-[color:var(--color-canvas-deep)]"
+      className="flex min-h-0 w-[260px] shrink-0 flex-col border-r border-(--color-divider) bg-(--color-canvas-deep)"
       data-testid="network-channel-rail"
     >
       <div className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
@@ -116,13 +121,13 @@ export function ChannelRail({
             <div className="space-y-1.5 px-2 py-1" data-testid="network-channels-loading">
               <Skeleton className="h-4 w-3/4" />
               <Skeleton className="h-4 w-2/3" />
-              <Skeleton className="h-4 w-4/5" />
+              <Skeleton className="size-4/5" />
               <Skeleton className="h-4 w-1/2" />
               <Skeleton className="h-4 w-3/5" />
             </div>
           ) : !hasAnyChannel ? (
             <p
-              className="px-2 py-1 text-[11px] text-[color:var(--color-text-tertiary)]"
+              className="px-2 py-1 text-eyebrow text-(--color-text-tertiary)"
               data-testid="network-channels-empty"
             >
               No channels yet.
@@ -157,7 +162,7 @@ export function ChannelRail({
           <SidebarSectionLabel>{DIRECT_ROOMS_HEADING}</SidebarSectionLabel>
           {!activeChannel ? (
             <p
-              className="px-2 py-1 text-[11px] text-[color:var(--color-text-tertiary)]"
+              className="px-2 py-1 text-eyebrow text-(--color-text-tertiary)"
               data-testid="network-rail-directs-empty"
             >
               Select a channel to see direct rooms.
@@ -166,11 +171,11 @@ export function ChannelRail({
             <div className="space-y-1.5 px-2 py-1" data-testid="network-rail-directs-loading">
               <Skeleton className="h-4 w-3/4" />
               <Skeleton className="h-4 w-2/3" />
-              <Skeleton className="h-4 w-4/5" />
+              <Skeleton className="size-4/5" />
             </div>
           ) : !hasAnyDirect ? (
             <p
-              className="px-2 py-1 text-[11px] text-[color:var(--color-text-tertiary)]"
+              className="px-2 py-1 text-eyebrow text-(--color-text-tertiary)"
               data-testid="network-rail-directs-empty"
             >
               No direct rooms yet.

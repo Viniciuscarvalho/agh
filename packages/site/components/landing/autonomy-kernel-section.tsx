@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import { CodeBlock } from "./primitives/code-block";
@@ -28,11 +29,14 @@ export function AutonomyKernelSection() {
 
       {/* Wide landscape storyboard — three-act lifecycle: ONE QUEUE → TOKEN-FENCED → LEASE RECOVERY. */}
       <figure className="mt-12">
-        <img
+        <Image
           src="/images/runtime/autonomy-overview-storyboard-v1.png"
-          alt="AGH autonomy storyboard — task_runs queue, an agent claiming a run with a claim_token and heartbeat, and lease recovery on daemon restart."
-          loading="lazy"
+          alt="AGH autonomy storyboard, task_runs queue, an agent claiming a run with a claim_token and heartbeat, and lease recovery on daemon restart."
+          width={1440}
+          height={760}
           decoding="async"
+          sizes="100vw"
+          unoptimized
           className="block select-none opacity-95"
         />
       </figure>
@@ -41,16 +45,16 @@ export function AutonomyKernelSection() {
       <div className="mt-12 grid min-w-0 gap-10 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:items-start lg:gap-12">
         <div className="flex min-w-0 flex-col gap-6">
           <div className="min-w-0 rounded-(--radius-diagram) border border-(--color-divider) bg-(--color-surface) p-5 sm:p-7">
-            <p className="font-mono text-[10px] font-semibold uppercase tracking-(--tracking-mono) text-(--color-accent)">
+            <p className="font-mono text-badge font-semibold uppercase tracking-mono text-accent">
               Token-fenced ownership
             </p>
-            <h3 className="mt-3 font-display text-[1.5rem] leading-[1.1] tracking-[-0.015em] text-(--color-text-primary)">
+            <h3 className="mt-3 font-display text-2xl leading-tight tracking-tight text-(--color-text-primary)">
               No double-execution, ever.
             </h3>
             <p className="mt-3 max-w-[60ch] text-sm leading-relaxed text-(--color-text-secondary)">
               Only the agent holding the claim token can heartbeat or complete a run. Sessions
               cannot reach into runs they don&apos;t own. Tokens are hashed before they touch the
-              event ledger — raw values never leave the daemon.
+              event ledger; raw values never leave the daemon.
             </p>
           </div>
           <CodeBlock code={AUTONOMY_CODE} caption="agh task" shell />
@@ -58,7 +62,7 @@ export function AutonomyKernelSection() {
 
         <ul className="flex min-w-0 flex-col divide-y divide-(--color-divider) border-y border-(--color-divider)">
           <li className="py-6">
-            <p className="font-mono text-[10px] font-semibold uppercase tracking-(--tracking-mono) text-(--color-accent)">
+            <p className="font-mono text-badge font-semibold uppercase tracking-mono text-accent">
               Lease recovery
             </p>
             <h4 className="mt-2 text-base font-medium leading-snug text-(--color-text-primary)">
@@ -70,7 +74,7 @@ export function AutonomyKernelSection() {
             </p>
           </li>
           <li className="py-6">
-            <p className="font-mono text-[10px] font-semibold uppercase tracking-(--tracking-mono) text-(--color-accent)">
+            <p className="font-mono text-badge font-semibold uppercase tracking-mono text-accent">
               One shared queue
             </p>
             <h4 className="mt-2 text-base font-medium leading-snug text-(--color-text-primary)">
@@ -83,15 +87,15 @@ export function AutonomyKernelSection() {
             </p>
           </li>
           <li className="py-6">
-            <p className="font-mono text-[10px] font-semibold uppercase tracking-(--tracking-mono) text-(--color-accent)">
+            <p className="font-mono text-badge font-semibold uppercase tracking-mono text-accent">
               Permission narrowing
             </p>
             <h4 className="mt-2 text-base font-medium leading-snug text-(--color-text-primary)">
               Children cannot widen parents.
             </h4>
             <p className="mt-2 text-sm leading-relaxed text-(--color-text-secondary)">
-              Lineage, TTLs, and permission scopes are part of the spawn contract — enforced in
-              code, not in the prompt.
+              Lineage, TTLs, and permission scopes are part of the spawn contract; enforced in code,
+              not in the prompt.
             </p>
           </li>
         </ul>
@@ -100,10 +104,10 @@ export function AutonomyKernelSection() {
       <div className="mt-10">
         <Link
           href="/runtime"
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-(--color-accent) transition-colors hover:text-(--color-accent-hover)"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-accent transition-colors hover:text-(--color-accent-hover)"
         >
           Read the autonomy kernel guide
-          <ArrowUpRight aria-hidden className="h-4 w-4" />
+          <ArrowUpRight aria-hidden className="size-4" />
         </Link>
       </div>
     </SectionFrame>

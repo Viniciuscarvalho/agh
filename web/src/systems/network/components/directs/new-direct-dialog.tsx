@@ -4,12 +4,17 @@ import { useNavigate } from "@tanstack/react-router";
 
 import {
   Button,
+  Command,
+  CommandEmpty,
+  CommandItem,
+  CommandList,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Eyebrow,
 } from "@agh/ui";
 
 import { useResolveNetworkDirectRoom } from "../../hooks/use-network-actions";
@@ -44,47 +49,42 @@ function PeerPickerList({ channel, selfPeerId, onSelect, selectedPeerId, disable
   const isLoading = peersQuery.isLoading;
 
   if (isLoading) {
-    return (
-      <p className="px-2 py-3 text-[12px] text-[color:var(--color-text-tertiary)]">
-        Loading peers…
-      </p>
-    );
+    return <p className="px-2 py-3 text-xs text-(--color-text-tertiary)">Loading peers…</p>;
   }
 
   if (candidates.length === 0) {
     return (
-      <p
-        className="px-2 py-3 text-[12px] text-[color:var(--color-text-tertiary)]"
-        data-testid="network-new-direct-no-peers"
-      >
-        No other peers in this channel yet.
-      </p>
+      <Command aria-label="Channel peers" className="rounded-none bg-transparent p-0">
+        <CommandList>
+          <CommandEmpty data-testid="network-new-direct-no-peers">
+            No other peers in this channel yet.
+          </CommandEmpty>
+        </CommandList>
+      </Command>
     );
   }
 
   return (
-    <ul aria-label="Channel peers" className="flex flex-col gap-1" role="listbox">
-      {candidates.map(peer => (
-        <li key={peer.peer_id}>
-          <button
+    <Command aria-label="Channel peers" className="rounded-none bg-transparent p-0">
+      <CommandList className="max-h-64">
+        {candidates.map(peer => (
+          <CommandItem
             aria-selected={peer.peer_id === selectedPeerId ? "true" : "false"}
-            className="flex w-full items-baseline justify-between rounded-[4px] px-2 py-2 text-left hover:bg-[color:var(--color-hover)] focus-visible:bg-[color:var(--color-hover)] focus-visible:outline-none disabled:opacity-50"
+            className="justify-between rounded-chip p-2"
             data-testid={`network-new-direct-peer-${peer.peer_id}`}
             disabled={disabled}
-            onClick={() => onSelect(peer)}
-            role="option"
-            type="button"
+            key={peer.peer_id}
+            onSelect={() => onSelect(peer)}
+            value={peer.peer_id}
           >
-            <span className="truncate text-[13px] text-[color:var(--color-text-primary)]">
+            <span className="truncate text-small-body text-(--color-text-primary)">
               @{getPeerDisplayName(peer)}
             </span>
-            <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-[color:var(--color-text-tertiary)]">
-              {peer.peer_id}
-            </span>
-          </button>
-        </li>
-      ))}
-    </ul>
+            <Eyebrow weight="medium">{peer.peer_id}</Eyebrow>
+          </CommandItem>
+        ))}
+      </CommandList>
+    </Command>
   );
 }
 
@@ -145,7 +145,7 @@ export function NewDirectDialog({
 
         {error ? (
           <p
-            className="text-[12px] text-[color:var(--color-danger)]"
+            className="text-xs text-(--color-danger)"
             data-testid="network-new-direct-error"
             role="alert"
           >

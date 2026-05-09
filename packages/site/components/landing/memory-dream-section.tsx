@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowUpRight } from "lucide-react";
 import { CodeBlock } from "./primitives/code-block";
 import { SectionFrame } from "./primitives/section-frame";
@@ -16,7 +17,7 @@ const STEPS = [
     eyebrow: "Plain files",
     title: "Memory as scoped Markdown",
     description:
-      "Typed files — user, feedback, project, reference — resolve across global, workspace, and agent tiers. Version them. Diff them. Port them across providers.",
+      "Typed files: user, feedback, project, reference. They resolve across global, workspace, and agent tiers. Version them. Diff them. Port them across providers.",
   },
   {
     eyebrow: "Dream consolidation",
@@ -28,7 +29,7 @@ const STEPS = [
     eyebrow: "Agent-managed",
     title: "Same surface for you and the agent",
     description:
-      "agh memory write | search | dream trigger works from CLI, HTTP, and UDS. Operators inspect the same files agents write — no privileged path.",
+      "agh memory write | search | dream trigger works from CLI, HTTP, and UDS. Operators inspect the same files agents write; no privileged path.",
   },
 ];
 
@@ -43,10 +44,10 @@ export function MemoryDreamSection() {
       <div className="grid min-w-0 gap-12 lg:grid-cols-[minmax(0,400px)_1fr] lg:items-start lg:gap-16">
         <div className="flex h-full min-w-0 flex-col justify-between lg:sticky lg:top-24">
           <div>
-            <p className="font-mono text-[11px] font-semibold uppercase tracking-(--tracking-mono) text-(--color-accent)">
+            <p className="font-mono text-eyebrow font-semibold uppercase tracking-mono text-accent">
               Memory
             </p>
-            <h2 className="mt-3 text-[clamp(1.9rem,3.4vw,2.6rem)] leading-[1.05] font-normal tracking-[-0.025em] text-(--color-text-primary)">
+            <h2 className="mt-3 text-site-subsection-title leading-tight font-normal tracking-tight text-(--color-text-primary)">
               Memory that compounds
               <br />
               <span className="italic text-(--color-text-tertiary)">while you sleep.</span>
@@ -59,18 +60,21 @@ export function MemoryDreamSection() {
             </p>
             <Link
               href="/runtime"
-              className="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-(--color-accent) transition-colors hover:text-(--color-accent-hover)"
+              className="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-accent transition-colors hover:text-(--color-accent-hover)"
             >
               Read the memory and dream guide
-              <ArrowUpRight aria-hidden className="h-4 w-4" />
+              <ArrowUpRight aria-hidden className="size-4" />
             </Link>
           </div>
           <div className="mt-12 hidden lg:block">
-            <img
+            <Image
               src="/images/runtime/memory-dream-landing-v1.png"
               alt="AGH memory interface diagram showing scoped Markdown files, memory indexing, and dream consolidation into durable memory."
-              loading="lazy"
+              width={800}
+              height={640}
               decoding="async"
+              sizes="400px"
+              unoptimized
               className="block w-full max-w-[400px] select-none object-contain opacity-95"
             />
           </div>
@@ -85,12 +89,12 @@ export function MemoryDreamSection() {
               >
                 <span
                   aria-hidden="true"
-                  className="font-mono text-[12px] font-semibold uppercase tracking-(--tracking-mono) text-(--color-accent) tabular-nums"
+                  className="font-mono text-xs font-semibold uppercase tracking-mono text-accent tabular-nums"
                 >
                   {String(index + 1).padStart(2, "0")}
                 </span>
                 <div className="min-w-0">
-                  <p className="font-mono text-[10px] font-semibold uppercase tracking-(--tracking-mono) text-(--color-accent)">
+                  <p className="font-mono text-badge font-semibold uppercase tracking-mono text-accent">
                     {step.eyebrow}
                   </p>
                   <h3 className="mt-2 text-base font-medium leading-snug text-(--color-text-primary)">

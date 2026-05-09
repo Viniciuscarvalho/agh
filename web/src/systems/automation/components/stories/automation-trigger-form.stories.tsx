@@ -40,7 +40,7 @@ function AutomationTriggerFormHarness({
 
   return (
     <CenteredSurface className="items-start justify-center">
-      <div className="w-full max-w-4xl overflow-hidden rounded-2xl border border-[color:var(--color-divider)] bg-[color:var(--color-surface)]">
+      <div className="w-full max-w-4xl overflow-hidden rounded-2xl border border-(--color-divider) bg-(--color-surface)">
         <AutomationTriggerForm
           activeWorkspaceId={activeWorkspaceId}
           draft={draft}
@@ -56,10 +56,12 @@ function AutomationTriggerFormHarness({
 }
 
 export const Default: Story = {
+  args: {},
   render: () => <AutomationTriggerFormHarness activeWorkspaceId={storyDefaultWorkspaceId} />,
 };
 
 export const ValidationState: Story = {
+  args: {},
   render: () => (
     <AutomationTriggerFormHarness
       activeWorkspaceId={null}

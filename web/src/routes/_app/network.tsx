@@ -75,7 +75,7 @@ function NetworkRouteShell() {
         >
           <Loader2
             aria-hidden="true"
-            className="size-5 animate-spin text-[color:var(--color-text-tertiary)]"
+            className="size-5 animate-spin text-(--color-text-tertiary)"
           />
         </div>
       </NetworkPageShell>
@@ -120,10 +120,8 @@ function NetworkRouteShell() {
           directs={[]}
           hasUnread={() => false}
           inspectorOpen={false}
-          isChannelsLoading={false}
-          isDirectsLoading={false}
+          loading={{ channels: false, directs: false, recents: false }}
           isPinned={() => false}
-          isRecentsLoading={false}
           onInspectorToggle={() => undefined}
           onTogglePinned={page.togglePinned}
           openWorkCount={0}
@@ -182,10 +180,12 @@ function NetworkRouteShell() {
         directs={railView.directs.directs}
         hasUnread={hasUnread}
         inspectorOpen={inspector.open}
-        isChannelsLoading={page.isChannelsLoading}
-        isDirectsLoading={railView.directs.isLoading}
+        loading={{
+          channels: page.isChannelsLoading,
+          directs: railView.directs.isLoading,
+          recents: page.isRecentsLoading,
+        }}
         isPinned={page.isPinned}
-        isRecentsLoading={page.isRecentsLoading}
         onInspectorToggle={inspector.toggle}
         onTogglePinned={page.togglePinned}
         openWorkCount={openWork.openCount}

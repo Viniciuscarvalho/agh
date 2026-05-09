@@ -15,11 +15,11 @@ const categorizedAgentFixtures = withStoryAgentCategories(agentFixtures);
 function Frame({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="flex min-h-[640px] bg-[color:var(--color-canvas)] text-[color:var(--color-text-primary)]"
+      className="flex min-h-[640px] bg-(--color-canvas) text-(--color-text-primary)"
       style={{ width: 960 }}
     >
       {children}
-      <div className="flex min-h-0 flex-1 items-center justify-center px-10 text-sm text-[color:var(--color-text-secondary)]">
+      <div className="flex min-h-0 flex-1 items-center justify-center px-10 text-sm text-(--color-text-secondary)">
         Outlet content
       </div>
     </div>
@@ -184,9 +184,9 @@ export const Disconnected: Story = {
   },
 };
 
-export const Reconnecting: Story = {
+export const Connecting: Story = {
   args: {
-    connectionStatus: "reconnecting",
+    connectionStatus: "connecting",
   },
 };
 

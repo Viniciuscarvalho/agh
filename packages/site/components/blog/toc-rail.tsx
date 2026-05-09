@@ -21,9 +21,13 @@ export function TocRail({ items }: TocRailProps) {
     const ids = items.map(item => item.url.replace(/^#/, ""));
     const observer = new IntersectionObserver(
       entries => {
-        const visible = entries
-          .filter(entry => entry.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        let visible: IntersectionObserverEntry | undefined;
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          if (!visible || entry.boundingClientRect.top < visible.boundingClientRect.top) {
+            visible = entry;
+          }
+        }
         if (visible?.target.id) {
           setActiveId(visible.target.id);
         }
@@ -52,9 +56,9 @@ export function TocRail({ items }: TocRailProps) {
                 href={item.url}
                 aria-current={isActive ? "location" : undefined}
                 className={cn(
-                  "block text-[13px] leading-[1.4] transition-colors",
+                  "block text-small-body leading-5 transition-colors",
                   isActive
-                    ? "text-(--color-accent)"
+                    ? "text-accent"
                     : "text-(--color-text-secondary) hover:text-(--color-text-primary)",
                   item.depth >= 3 && "pl-3"
                 )}

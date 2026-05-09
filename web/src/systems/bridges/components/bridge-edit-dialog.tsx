@@ -1,10 +1,9 @@
-import { Loader2 } from "lucide-react";
-
 import {
   Button,
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   Field,
@@ -14,10 +13,12 @@ import {
   FieldSet,
   FieldTitle,
   Input,
+  MetadataList,
   Pill,
   NativeSelect,
   NativeSelectOption,
   Section,
+  Spinner,
   Switch,
   Textarea,
 } from "@agh/ui";
@@ -42,7 +43,11 @@ interface BridgeEditDialogProps {
   provider?: BridgeProvider;
 }
 
-export function BridgeEditDialog({
+export function BridgeEditDialog(props: BridgeEditDialogProps) {
+  return renderBridgeEditDialog(props);
+}
+
+function renderBridgeEditDialog({
   allowProviderDefaultDmPolicy,
   bridgeName,
   draft,
@@ -59,18 +64,12 @@ export function BridgeEditDialog({
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
-        className="gap-0 p-0 text-[color:var(--color-text-primary)] sm:max-w-3xl"
+        className="gap-0 p-0 text-(--color-text-primary) sm:max-w-3xl"
         showCloseButton={false}
+        unframed
       >
-        <form
-          className="flex max-h-[min(80vh,900px)] flex-col"
-          data-testid="bridge-edit-dialog"
-          onSubmit={event => {
-            event.preventDefault();
-            onSubmit();
-          }}
-        >
-          <DialogHeader className="border-b border-[color:var(--color-divider)] px-5 py-4">
+        <div className="flex max-h-[min(80vh,900px)] flex-col" data-testid="bridge-edit-dialog">
+          <DialogHeader variant="ruled">
             <DialogTitle>Edit Bridge</DialogTitle>
             <DialogDescription>
               Update mutable bridge settings for {bridgeName ?? "the selected bridge"} and restart
@@ -78,7 +77,7 @@ export function BridgeEditDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex-1 overflow-y-auto px-5 py-5">
+          <div className="flex-1 overflow-y-auto p-5">
             <FieldSet className="gap-6">
               <FieldGroup className="grid gap-4 lg:grid-cols-2">
                 <Field>
@@ -129,26 +128,28 @@ export function BridgeEditDialog({
               </FieldGroup>
 
               <Section label="Provider runtime">
-                <p className="text-[13px] text-[color:var(--color-text-secondary)]">
+                <p className="text-small-body text-(--color-text-secondary)">
                   Provider-owned runtime settings remain separate from generic delivery defaults.
                 </p>
 
-                <div className="mt-3 rounded-[var(--radius-md)] border border-[color:var(--color-divider)] bg-[color:var(--color-surface)] px-4 py-3">
-                  <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-text-label)]">
-                    Config schema
-                  </p>
-                  <p className="mt-2 text-[13px] text-[color:var(--color-text-primary)]">
+                <MetadataList className="mt-3">
+                  <MetadataList.Row
+                    className="rounded-md border border-(--color-divider) bg-(--color-surface) px-4 py-3"
+                    label="Config schema"
+                    termProps={{ className: "mb-2 text-(--color-text-label)" }}
+                    valueProps={{ className: "text-small-body text-(--color-text-primary)" }}
+                  >
                     {describeBridgeProviderConfigSchema(provider?.config_schema)}
-                  </p>
+                  </MetadataList.Row>
                   {provider?.secret_slots?.length ? (
                     <div className="mt-3 flex items-center gap-2">
                       <Pill mono>{provider.secret_slots.length}</Pill>
-                      <p className="text-[12px] text-[color:var(--color-text-secondary)]">
+                      <p className="text-xs text-(--color-text-secondary)">
                         Secret slots are managed inline from the detail panel.
                       </p>
                     </div>
                   ) : null}
-                </div>
+                </MetadataList>
 
                 <Field className="mt-4">
                   <FieldContent>
@@ -174,7 +175,7 @@ export function BridgeEditDialog({
                   />
                   {providerConfigError ? (
                     <p
-                      className="text-[13px] text-[color:var(--color-danger)]"
+                      className="text-small-body text-(--color-danger)"
                       data-testid="bridge-edit-provider-config-error"
                     >
                       {providerConfigError}
@@ -184,7 +185,7 @@ export function BridgeEditDialog({
               </Section>
 
               <Section label="Routing policy">
-                <p className="text-[13px] text-[color:var(--color-text-secondary)]">
+                <p className="text-small-body text-(--color-text-secondary)">
                   {describeBridgeRoutingPolicy(draft.routingPolicy)}
                 </p>
                 <FieldGroup className="mt-3 gap-3">
@@ -255,7 +256,7 @@ export function BridgeEditDialog({
               </Section>
 
               <Section label="Delivery defaults">
-                <p className="text-[13px] text-[color:var(--color-text-secondary)]">
+                <p className="text-small-body text-(--color-text-secondary)">
                   These defaults are applied when resolving outbound delivery targets.
                 </p>
                 <FieldGroup className="mt-3 grid gap-4 lg:grid-cols-2">
@@ -348,7 +349,7 @@ export function BridgeEditDialog({
             </FieldSet>
           </div>
 
-          <div className="flex items-center justify-end gap-2 border-t border-[color:var(--color-divider)] bg-[color:var(--color-surface-panel)] px-5 py-3">
+          <DialogFooter variant="ruled">
             <Button onClick={() => onOpenChange(false)} size="sm" type="button" variant="outline">
               Cancel
             </Button>
@@ -356,19 +357,20 @@ export function BridgeEditDialog({
               data-testid="submit-bridge-edit"
               disabled={!canSubmit || isPending}
               size="sm"
-              type="submit"
+              onClick={onSubmit}
+              type="button"
             >
               {isPending ? (
                 <>
-                  <Loader2 className="size-3.5 animate-spin" />
+                  <Spinner className="size-3.5" />
                   Saving…
                 </>
               ) : (
                 "Save Changes"
               )}
             </Button>
-          </div>
-        </form>
+          </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

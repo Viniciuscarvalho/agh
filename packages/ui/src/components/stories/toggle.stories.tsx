@@ -5,14 +5,14 @@ import { expect, userEvent, within } from "storybook/test";
 import { Toggle } from "../toggle";
 
 const meta: Meta<typeof Toggle> = {
-  title: "ui/Toggle",
+  title: "components/ui/Toggle",
   component: Toggle,
   parameters: {
     layout: "centered",
     docs: {
       description: {
         component:
-          "Two-state button backed by Base UI. Compose with icons or text — use `ToggleGroup` for mutually exclusive or multi-select clusters.",
+          "Two-state button backed by Base UI. Compose with icons or text, use `ToggleGroup` for mutually exclusive or multi-select clusters.",
       },
     },
   },

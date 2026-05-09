@@ -6,6 +6,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  Eyebrow,
   PillGroup,
   type PillGroupItem,
 } from "@agh/ui";
@@ -82,14 +83,12 @@ export function ListFilterBar({
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-3 border-b border-[color:var(--color-divider)] px-5 py-2",
+        "flex flex-wrap items-center gap-3 border-b border-(--color-divider) px-5 py-2",
         className
       )}
       data-testid="network-list-filter-bar"
     >
-      <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-[color:var(--color-text-tertiary)]">
-        Filter
-      </span>
+      <Eyebrow>Filter</Eyebrow>
       <PillGroup
         aria-label="List filter"
         data-testid="network-list-filter-pills"
@@ -100,9 +99,7 @@ export function ListFilterBar({
       />
 
       <div className="ml-auto flex items-center gap-3">
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-[color:var(--color-text-tertiary)]">
-          Sort
-        </span>
+        <Eyebrow>Sort</Eyebrow>
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -155,11 +152,7 @@ function FilterLabel({ children, count }: { children: React.ReactNode; count?: n
   return (
     <span className="inline-flex items-center gap-1.5">
       <span>{children}</span>
-      {typeof count === "number" && count > 0 ? (
-        <span className="font-mono text-[10px] tracking-[0.04em] text-[color:var(--color-text-tertiary)]">
-          {count}
-        </span>
-      ) : null}
+      {typeof count === "number" && count > 0 ? <Eyebrow weight="medium">{count}</Eyebrow> : null}
     </span>
   );
 }

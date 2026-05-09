@@ -1,10 +1,9 @@
-import { Loader2 } from "lucide-react";
-
 import {
   Button,
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   Field,
@@ -18,6 +17,7 @@ import {
   NativeSelect,
   NativeSelectOption,
   Section,
+  Spinner,
   Textarea,
 } from "@agh/ui";
 import { describeBridgeTestTarget } from "@/systems/bridges/lib/bridge-formatters";
@@ -62,19 +62,15 @@ export function BridgeTestDeliveryDialog({
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
-        className="gap-0 p-0 text-[color:var(--color-text-primary)] sm:max-w-2xl"
+        className="gap-0 p-0 text-(--color-text-primary) sm:max-w-2xl"
         showCloseButton={false}
+        unframed
       >
-        <form
+        <div
           className="flex max-h-[min(80vh,760px)] flex-col"
           data-testid="bridge-test-delivery-dialog"
-          onSubmit={event => {
-            event.preventDefault();
-            if (isPending) return;
-            onSubmit();
-          }}
         >
-          <DialogHeader className="border-b border-[color:var(--color-divider)] px-5 py-4">
+          <DialogHeader variant="ruled">
             <DialogTitle>Test Delivery</DialogTitle>
             <DialogDescription>
               Resolve the outbound target for {bridgeName ?? "the selected bridge"} using the saved
@@ -82,7 +78,7 @@ export function BridgeTestDeliveryDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex-1 overflow-y-auto px-5 py-5">
+          <div className="flex-1 overflow-y-auto p-5">
             <FieldGroup className="gap-4">
               <Field>
                 <FieldContent>
@@ -199,11 +195,11 @@ export function BridgeTestDeliveryDialog({
                     </Pill>
                   }
                 >
-                  <p className="text-[13px] text-[color:var(--color-text-primary)]">
+                  <p className="text-small-body text-(--color-text-primary)">
                     {describeBridgeTestTarget(result.delivery_target)}
                   </p>
                   {result.message ? (
-                    <p className="mt-2 text-[13px] leading-relaxed text-[color:var(--color-text-secondary)]">
+                    <p className="mt-2 text-small-body leading-relaxed text-(--color-text-secondary)">
                       Message: {result.message}
                     </p>
                   ) : null}
@@ -212,22 +208,28 @@ export function BridgeTestDeliveryDialog({
             </FieldGroup>
           </div>
 
-          <div className="flex items-center justify-end gap-2 border-t border-[color:var(--color-divider)] bg-[color:var(--color-surface-panel)] px-5 py-3">
+          <DialogFooter variant="ruled">
             <Button onClick={() => onOpenChange(false)} size="sm" type="button" variant="outline">
               Close
             </Button>
-            <Button data-testid="submit-test-delivery" disabled={isPending} size="sm" type="submit">
+            <Button
+              data-testid="submit-test-delivery"
+              disabled={isPending}
+              onClick={onSubmit}
+              size="sm"
+              type="button"
+            >
               {isPending ? (
                 <>
-                  <Loader2 className="size-3.5 animate-spin" />
+                  <Spinner className="size-3.5" />
                   Resolving…
                 </>
               ) : (
                 "Resolve Target"
               )}
             </Button>
-          </div>
-        </form>
+          </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

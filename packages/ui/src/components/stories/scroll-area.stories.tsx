@@ -5,7 +5,7 @@ import { Separator } from "../separator";
 import { ScrollArea, ScrollBar } from "../scroll-area";
 
 const meta: Meta<typeof ScrollArea> = {
-  title: "ui/ScrollArea",
+  title: "components/ui/ScrollArea",
   component: ScrollArea,
   parameters: {
     layout: "centered",
@@ -24,7 +24,7 @@ type Story = StoryObj<typeof meta>;
 const events = Array.from({ length: 24 }, (_, i) => ({
   id: `evt-${i + 1}`,
   label: `ACP event ${i + 1}`,
-  summary: "tool_use · bash — listing repository files under /internal",
+  summary: "tool_use · bash, listing repository files under /internal",
 }));
 
 export const Default: Story = {

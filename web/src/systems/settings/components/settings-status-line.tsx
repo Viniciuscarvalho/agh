@@ -1,30 +1,30 @@
-import type { ReactNode } from "react";
-import { Pill } from "@agh/ui";
+import { Children, isValidElement, type ReactNode } from "react";
+import { ConnectionIndicator, type ConnectionStatus } from "@agh/ui";
 
 interface SettingsStatusLineProps {
-  daemonAvailable: boolean;
+  status: ConnectionStatus;
   daemonLabel?: string;
   items: ReactNode[];
   "data-testid"?: string;
 }
 
 function SettingsStatusLine({
-  daemonAvailable,
+  status,
   daemonLabel,
   items,
   "data-testid": testId,
 }: SettingsStatusLineProps) {
-  const label = daemonLabel ?? (daemonAvailable ? "daemon running" : "daemon unavailable");
+  const keyedItems = Children.toArray(items);
+
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1" data-testid={testId}>
-      <span className="flex items-center gap-2">
-        <Pill.Dot tone={daemonAvailable ? "success" : "warning"} />
-        <span>{label}</span>
-      </span>
-      {items.map((item, index) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: ordered static items from caller
-        <span key={index} className="flex items-center gap-1">
-          <span aria-hidden="true" className="text-[color:var(--color-text-tertiary)]">
+      <ConnectionIndicator label={daemonLabel} status={status} />
+      {keyedItems.map(item => (
+        <span
+          key={isValidElement(item) ? item.key : String(item)}
+          className="flex items-center gap-1"
+        >
+          <span aria-hidden="true" className="text-(--color-text-tertiary)">
             ·
           </span>
           {item}

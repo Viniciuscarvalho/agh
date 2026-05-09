@@ -62,16 +62,15 @@ function SettingsSourceBadge({
       </Pill>
       {shadowed && shadowed.length > 0 ? (
         <span
-          className="flex flex-wrap items-center gap-1 font-mono text-[10px] font-semibold tracking-[0.1em] text-[color:var(--color-text-label)]"
+          className="flex flex-wrap items-center gap-1 font-mono text-badge font-semibold tracking-widest text-(--color-text-label)"
           data-testid={testId ? `${testId}-shadowed` : undefined}
         >
           <span className="uppercase">shadows</span>
-          {shadowed.map((entry, index) => (
+          {shadowed.map(entry => (
             <Pill
               mono
               tone="neutral"
-              // biome-ignore lint/suspicious/noArrayIndexKey: source list is stable per read
-              key={`${entry.kind}-${entry.scope}-${entry.agent_name ?? ""}-${entry.workspace_id ?? ""}-${index}`}
+              key={`${entry.kind}-${entry.scope}-${entry.agent_name ?? ""}-${entry.workspace_id ?? ""}`}
             >
               {sourceLabel(entry)}
             </Pill>

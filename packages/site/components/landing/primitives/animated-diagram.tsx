@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useReducer, useRef, type ReactNode } from "react";
 import { cn } from "@agh/ui/lib/utils";
-import { useReducedMotion } from "./use-reduced-motion";
+import { useReducedMotion } from "@/components/landing/primitives/use-reduced-motion";
 
 interface AnimatedDiagramProps {
   children: (ctx: { active: boolean; reducedMotion: boolean }) => ReactNode;
@@ -26,26 +26,29 @@ export function AnimatedDiagram({
 }: AnimatedDiagramProps) {
   const reducedMotion = useReducedMotion();
   const ref = useRef<HTMLDivElement | null>(null);
-  const [active, setActive] = useState(false);
+  const [active, dispatchActive] = useReducer(
+    (_active: boolean, nextActive: boolean) => nextActive,
+    false
+  );
 
   useEffect(() => {
     const node = ref.current;
     if (!node) return;
     if (reducedMotion) {
-      setActive(false);
+      dispatchActive(false);
       return;
     }
     if (typeof IntersectionObserver === "undefined") {
-      // Non-browser or legacy env — fall through and auto-activate so the
+      // Non-browser or legacy env , fall through and auto-activate so the
       // diagram still renders its primary content.
-      setActive(true);
+      dispatchActive(true);
       return;
     }
     const observer = new IntersectionObserver(
       entries => {
         for (const entry of entries) {
           if (entry.isIntersecting) {
-            setActive(true);
+            dispatchActive(true);
             observer.disconnect();
             break;
           }

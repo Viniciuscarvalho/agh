@@ -203,7 +203,7 @@ describe("TasksMultiAgentPanel", () => {
 
     expect(screen.getByTestId("tasks-multi-agent-header")).toHaveTextContent("Agents");
     expect(screen.getByTestId("tasks-multi-agent-summary")).toHaveTextContent("1 running · 1 idle");
-    // The old top-right "N AGENTS LIVE" pill has been deleted — hierarchy
+    // The old top-right "N AGENTS LIVE" pill has been deleted -- hierarchy
     // lives in the subtitle now.
     expect(screen.queryByTestId("tasks-multi-agent-live-count")).not.toBeInTheDocument();
   });
@@ -244,7 +244,7 @@ describe("TasksMultiAgentPanel", () => {
     const liveCard = screen.getByTestId("tasks-multi-agent-agent-task_001");
     expect(liveCard).toHaveAttribute("data-is-live", "true");
     expect(liveCard.className).toContain("border-l-2");
-    expect(liveCard.className).toContain("border-l-[color:var(--color-accent)]");
+    expect(liveCard.className).toContain("border-l-accent");
 
     const idleCard = screen.getByTestId("tasks-multi-agent-agent-task_002");
     expect(idleCard).toHaveAttribute("data-is-live", "false");

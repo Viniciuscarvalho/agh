@@ -1,8 +1,9 @@
-import { useState } from "react";
-import { AlertCircle, Loader2, Plus, Radio, Trash2, TriangleAlert } from "lucide-react";
+import { useState, type Dispatch, type SetStateAction } from "react";
+import { AlertCircle, Plus, Radio, Trash2, TriangleAlert } from "lucide-react";
 
 import {
   Button,
+  BlockLoading,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -19,6 +20,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Spinner,
   Table,
   TableBody,
   TableCell,
@@ -141,6 +143,57 @@ export function TasksBridgeNotificationsCard({
     }
   };
 
+  return renderTasksBridgeNotificationsCard({
+    createError,
+    createOpen,
+    deleteTarget,
+    errorMessage,
+    form,
+    handleCreateOpenChange,
+    handleCreateSubmit,
+    handleDeleteConfirm,
+    isCreatePending,
+    isDeletePending,
+    isLoading,
+    setDeleteTarget,
+    setForm,
+    subscriptions,
+  });
+}
+
+interface TasksBridgeNotificationsCardViewProps {
+  createError: string | null;
+  createOpen: boolean;
+  deleteTarget: TaskBridgeNotificationSubscription | null;
+  errorMessage: string | null;
+  form: CreateFormState;
+  handleCreateOpenChange: (open: boolean) => void;
+  handleCreateSubmit: () => Promise<void>;
+  handleDeleteConfirm: () => Promise<void>;
+  isCreatePending: boolean;
+  isDeletePending: boolean;
+  isLoading: boolean;
+  setDeleteTarget: (target: TaskBridgeNotificationSubscription | null) => void;
+  setForm: Dispatch<SetStateAction<CreateFormState>>;
+  subscriptions: readonly TaskBridgeNotificationSubscription[];
+}
+
+function renderTasksBridgeNotificationsCard({
+  createError,
+  createOpen,
+  deleteTarget,
+  errorMessage,
+  form,
+  handleCreateOpenChange,
+  handleCreateSubmit,
+  handleDeleteConfirm,
+  isCreatePending,
+  isDeletePending,
+  isLoading,
+  setDeleteTarget,
+  setForm,
+  subscriptions,
+}: TasksBridgeNotificationsCardViewProps) {
   return (
     <Section
       aria-label="Bridge notification subscriptions"
@@ -162,19 +215,19 @@ export function TasksBridgeNotificationsCard({
       }
     >
       <p
-        className="text-[12px] text-[color:var(--color-text-tertiary)]"
+        className="text-xs text-(--color-text-tertiary)"
         data-testid="tasks-bridge-notifications-disclaimer"
       >
         Cursor diagnostics are read-only delivery progress. Zero-state cursors render as no sequence
         and no delivery id; advancement happens only after a confirmed bridge delivery.
       </p>
       {isLoading && subscriptions.length === 0 ? (
-        <div
-          className="flex min-h-[120px] items-center justify-center"
+        <BlockLoading
+          label="Loading bridge notifications"
+          size="sm"
+          surface="bare"
           data-testid="tasks-bridge-notifications-loading"
-        >
-          <Loader2 className="size-5 animate-spin text-[color:var(--color-text-tertiary)]" />
-        </div>
+        />
       ) : null}
       {errorMessage && subscriptions.length === 0 ? (
         <Empty
@@ -219,37 +272,37 @@ export function TasksBridgeNotificationsCard({
                   <TableCell className="max-w-[280px]">
                     <div className="flex min-w-0 flex-col gap-1">
                       <Pill mono>{sub.subscription_id}</Pill>
-                      <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                      <div className="flex flex-wrap items-center gap-1.5 text-eyebrow">
                         <Pill tone="info">{sub.scope}</Pill>
                         <Pill tone="neutral">{sub.delivery_mode}</Pill>
                       </div>
-                      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-text-tertiary)]">
+                      <span className="text-badge text-(--color-text-tertiary)">
                         Created {formatRelativeTime(sub.created_at)}
                       </span>
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex flex-col gap-1 text-[12px]">
-                      <span className="font-mono text-[12px] text-[color:var(--color-text-primary)]">
+                    <div className="flex flex-col gap-1 text-xs">
+                      <span className="font-mono text-xs text-(--color-text-primary)">
                         bridge {sub.bridge_instance_id}
                       </span>
                       {sub.workspace_id ? (
-                        <span className="font-mono text-[11px] text-[color:var(--color-text-secondary)]">
+                        <span className="font-mono text-eyebrow text-(--color-text-secondary)">
                           workspace {sub.workspace_id}
                         </span>
                       ) : null}
                       {sub.peer_id ? (
-                        <span className="font-mono text-[11px] text-[color:var(--color-text-secondary)]">
+                        <span className="font-mono text-eyebrow text-(--color-text-secondary)">
                           peer {sub.peer_id}
                         </span>
                       ) : null}
                       {sub.group_id ? (
-                        <span className="font-mono text-[11px] text-[color:var(--color-text-secondary)]">
+                        <span className="font-mono text-eyebrow text-(--color-text-secondary)">
                           group {sub.group_id}
                         </span>
                       ) : null}
                       {sub.thread_id ? (
-                        <span className="font-mono text-[11px] text-[color:var(--color-text-secondary)]">
+                        <span className="font-mono text-eyebrow text-(--color-text-secondary)">
                           thread {sub.thread_id}
                         </span>
                       ) : null}
@@ -258,47 +311,49 @@ export function TasksBridgeNotificationsCard({
                   <TableCell>
                     {isZeroCursor ? (
                       <span
-                        className="inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.14em] text-[color:var(--color-text-tertiary)]"
+                        className="inline-flex items-center gap-1 text-eyebrow text-(--color-text-tertiary)"
                         data-testid={`tasks-bridge-notifications-row-${sub.subscription_id}-cursor-zero`}
                       >
                         <Pill tone="neutral">zero state</Pill>
                         seq 0
                       </span>
                     ) : (
-                      <div className="flex flex-col gap-0.5 font-mono text-[11px] text-[color:var(--color-text-primary)]">
+                      <div className="flex flex-col gap-0.5 font-mono text-eyebrow text-(--color-text-primary)">
                         <span
                           data-testid={`tasks-bridge-notifications-row-${sub.subscription_id}-cursor-seq`}
                         >
                           seq {formatLastSequence(cursor?.last_sequence)}
                         </span>
                         {cursor?.last_delivery_id ? (
-                          <span className="text-[10px] text-[color:var(--color-text-tertiary)]">
+                          <span className="text-badge text-(--color-text-tertiary)">
                             delivery {cursor.last_delivery_id}
                           </span>
                         ) : null}
                       </div>
                     )}
                   </TableCell>
-                  <TableCell className="font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
-                    {cursor?.last_delivered_at ? formatRelativeTime(cursor.last_delivered_at) : "—"}
+                  <TableCell className="font-mono text-eyebrow text-(--color-text-tertiary)">
+                    {cursor?.last_delivered_at
+                      ? formatRelativeTime(cursor.last_delivered_at)
+                      : "--"}
                     {cursor?.updated_at ? (
-                      <span className="block text-[10px]">
+                      <span className="block text-badge">
                         updated {formatRelativeTime(cursor.updated_at)}
                       </span>
                     ) : null}
                   </TableCell>
-                  <TableCell className="max-w-[220px] text-[12px]">
+                  <TableCell className="max-w-[220px] text-xs">
                     {cursor?.last_error ? (
                       <span
-                        className="inline-flex items-center gap-1 text-[color:var(--color-warning)]"
+                        className="inline-flex items-center gap-1 text-(--color-warning)"
                         data-testid={`tasks-bridge-notifications-row-${sub.subscription_id}-cursor-error`}
                       >
                         <TriangleAlert className="size-3.5" />
                         {cursor.last_error}
                       </span>
                     ) : (
-                      <span className="font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
-                        —
+                      <span className="font-mono text-eyebrow text-(--color-text-tertiary)">
+                        --
                       </span>
                     )}
                   </TableCell>
@@ -342,7 +397,9 @@ export function TasksBridgeNotificationsCard({
                 data-testid="tasks-bridge-notifications-create-bridge-instance-id"
                 disabled={isCreatePending}
                 id="bridge-instance-id"
-                onChange={event => setForm({ ...form, bridgeInstanceId: event.target.value })}
+                onChange={event =>
+                  setForm(prev => ({ ...prev, bridgeInstanceId: event.target.value }))
+                }
                 placeholder="bridge_instance_alpha"
                 value={form.bridgeInstanceId}
               />
@@ -352,10 +409,10 @@ export function TasksBridgeNotificationsCard({
                 <Label htmlFor="scope-select">Scope</Label>
                 <Select
                   onValueChange={value =>
-                    setForm({
-                      ...form,
+                    setForm(prev => ({
+                      ...prev,
                       scope: value as TaskBridgeNotificationSubscriptionScope,
-                    })
+                    }))
                   }
                   value={form.scope}
                 >
@@ -375,10 +432,10 @@ export function TasksBridgeNotificationsCard({
                 <Label htmlFor="delivery-mode-select">Delivery mode</Label>
                 <Select
                   onValueChange={value =>
-                    setForm({
-                      ...form,
+                    setForm(prev => ({
+                      ...prev,
                       deliveryMode: value as TaskBridgeNotificationDeliveryMode,
-                    })
+                    }))
                   }
                   value={form.deliveryMode}
                 >
@@ -402,7 +459,9 @@ export function TasksBridgeNotificationsCard({
                   data-testid="tasks-bridge-notifications-create-workspace-id"
                   disabled={isCreatePending || form.scope !== "workspace"}
                   id="workspace-id"
-                  onChange={event => setForm({ ...form, workspaceId: event.target.value })}
+                  onChange={event =>
+                    setForm(prev => ({ ...prev, workspaceId: event.target.value }))
+                  }
                   placeholder="ws_default"
                   value={form.workspaceId}
                 />
@@ -413,7 +472,7 @@ export function TasksBridgeNotificationsCard({
                   data-testid="tasks-bridge-notifications-create-peer-id"
                   disabled={isCreatePending}
                   id="peer-id"
-                  onChange={event => setForm({ ...form, peerId: event.target.value })}
+                  onChange={event => setForm(prev => ({ ...prev, peerId: event.target.value }))}
                   placeholder="peer_observer"
                   value={form.peerId}
                 />
@@ -426,7 +485,7 @@ export function TasksBridgeNotificationsCard({
                   data-testid="tasks-bridge-notifications-create-group-id"
                   disabled={isCreatePending}
                   id="group-id"
-                  onChange={event => setForm({ ...form, groupId: event.target.value })}
+                  onChange={event => setForm(prev => ({ ...prev, groupId: event.target.value }))}
                   placeholder="group_observers"
                   value={form.groupId}
                 />
@@ -437,7 +496,7 @@ export function TasksBridgeNotificationsCard({
                   data-testid="tasks-bridge-notifications-create-thread-id"
                   disabled={isCreatePending}
                   id="thread-id"
-                  onChange={event => setForm({ ...form, threadId: event.target.value })}
+                  onChange={event => setForm(prev => ({ ...prev, threadId: event.target.value }))}
                   placeholder="thread_launch"
                   value={form.threadId}
                 />
@@ -449,14 +508,16 @@ export function TasksBridgeNotificationsCard({
                 data-testid="tasks-bridge-notifications-create-subscription-id"
                 disabled={isCreatePending}
                 id="subscription-id"
-                onChange={event => setForm({ ...form, subscriptionId: event.target.value })}
+                onChange={event =>
+                  setForm(prev => ({ ...prev, subscriptionId: event.target.value }))
+                }
                 placeholder="bsub_001"
                 value={form.subscriptionId}
               />
             </div>
             {createError ? (
               <p
-                className="text-[12px] text-[color:var(--color-danger)]"
+                className="text-xs text-(--color-danger)"
                 data-testid="tasks-bridge-notifications-create-error"
               >
                 {createError}
@@ -480,7 +541,7 @@ export function TasksBridgeNotificationsCard({
               type="button"
               variant="default"
             >
-              {isCreatePending ? <Loader2 className="size-3.5 animate-spin" /> : null}
+              {isCreatePending ? <Spinner className="size-3.5" /> : null}
               Create subscription
             </Button>
           </DialogFooter>
@@ -508,7 +569,7 @@ export function TasksBridgeNotificationsCard({
             </DialogDescription>
           </DialogHeader>
           {deleteTarget ? (
-            <p className="font-mono text-[12px] text-[color:var(--color-text-secondary)]">
+            <p className="font-mono text-xs text-(--color-text-secondary)">
               {deleteTarget.subscription_id}
             </p>
           ) : null}
@@ -529,7 +590,7 @@ export function TasksBridgeNotificationsCard({
               type="button"
               variant="destructive"
             >
-              {isDeletePending ? <Loader2 className="size-3.5 animate-spin" /> : null}
+              {isDeletePending ? <Spinner className="size-3.5" /> : null}
               Delete subscription
             </Button>
           </DialogFooter>

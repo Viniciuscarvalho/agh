@@ -1,17 +1,6 @@
-import {
-  AlertCircle,
-  Bot,
-  Clock3,
-  Loader2,
-  Lock,
-  Pencil,
-  Play,
-  Search,
-  Trash2,
-  Zap,
-} from "lucide-react";
+import { AlertCircle, Bot, Clock3, Lock, Pencil, Play, Search, Trash2, Zap } from "lucide-react";
 
-import { Button, CodeBlock, Empty, Metric, Pill, Section, type MetricTone } from "@agh/ui";
+import { Button, CodeBlock, Empty, Metric, Pill, Section, Spinner, type MetricTone } from "@agh/ui";
 
 import { KindChip } from "@/systems/network";
 import { AutomationRunHistory } from "./automation-run-history";
@@ -44,10 +33,12 @@ export interface AutomationDetailEmptyState {
 interface AutomationDetailPanelProps {
   emptyState?: AutomationDetailEmptyState | null;
   error: Error | null;
-  isDeleting: boolean;
-  isLoading: boolean;
-  isTogglePending: boolean;
-  isTriggerPending: boolean;
+  state: {
+    isDeleting: boolean;
+    isLoading: boolean;
+    isTogglePending: boolean;
+    isTriggerPending: boolean;
+  };
   item: AutomationJob | AutomationTrigger | undefined;
   kind: "jobs" | "triggers";
   onDelete: () => void;
@@ -80,7 +71,7 @@ function computeJobMetrics(runs: AutomationRun[], job: AutomationJob): JobMetric
   const completed = runs.filter(run => run.status === "completed").length;
   const lastCompleted = terminal.find(run => run.status === "completed" || run.status === "failed");
 
-  let successRateValue = "—";
+  let successRateValue = "--";
   let successRateTone: MetricTone = "default";
   if (terminal.length > 0) {
     const pct = (completed / terminal.length) * 100;
@@ -88,7 +79,7 @@ function computeJobMetrics(runs: AutomationRun[], job: AutomationJob): JobMetric
     successRateTone = pct >= 90 ? "success" : pct >= 70 ? "default" : "warning";
   }
 
-  const lastRunValue = lastCompleted ? formatRelativeTime(lastCompleted.started_at) : "—";
+  const lastRunValue = lastCompleted ? formatRelativeTime(lastCompleted.started_at) : "--";
   const lastRunSubtext = lastCompleted ? formatDateTime(lastCompleted.started_at) : undefined;
 
   const nextRun = job.scheduler?.next_run_at ?? job.next_run;
@@ -135,9 +126,9 @@ function JobScheduleSection({ job }: { job: AutomationJob }) {
   const mode = job.schedule?.mode ?? "manual";
   const expression =
     job.schedule?.mode === "cron"
-      ? (job.schedule.expr ?? "—")
+      ? (job.schedule.expr ?? "--")
       : job.schedule?.mode === "every"
-        ? (job.schedule.interval ?? "—")
+        ? (job.schedule.interval ?? "--")
         : job.schedule?.mode === "at"
           ? formatDateTime(job.schedule.time)
           : "Manual";
@@ -146,17 +137,15 @@ function JobScheduleSection({ job }: { job: AutomationJob }) {
     <Section
       label="Schedule"
       right={
-        <Pill mono tone="accent" className="normal-case">
+        <Pill mono uppercase={false} tone="accent">
           {mode}
         </Pill>
       }
     >
-      <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-md)] border border-[color:var(--color-divider)] bg-[color:var(--color-surface)] px-4 py-3">
+      <div className="flex flex-wrap items-center gap-3 rounded-md border border-(--color-divider) bg-(--color-surface) px-4 py-3">
         <div className="min-w-0 flex-1">
-          <p className="font-mono text-[15px] text-[color:var(--color-text-primary)]">
-            {expression}
-          </p>
-          <p className="mt-1 text-[12px] text-[color:var(--color-text-secondary)]">
+          <p className="font-mono text-item-title text-(--color-text-primary)">{expression}</p>
+          <p className="mt-1 text-xs text-(--color-text-secondary)">
             {describeSchedule(job.schedule)}
           </p>
         </div>
@@ -220,47 +209,47 @@ function JobSchedulerSection({ job }: { job: AutomationJob }) {
       }
     >
       <div
-        className="grid gap-2 rounded-[var(--radius-md)] border border-[color:var(--color-divider)] bg-[color:var(--color-surface)] px-4 py-3 md:grid-cols-2"
+        className="grid gap-2 rounded-md border border-(--color-divider) bg-(--color-surface) px-4 py-3 md:grid-cols-2"
         data-testid="automation-job-scheduler"
       >
         <div>
-          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-text-label)]">
+          <span className="font-mono text-badge uppercase tracking-mono text-(--color-text-label)">
             Next cursor
           </span>
-          <p className="mt-1 text-[13px] text-[color:var(--color-text-secondary)]">
+          <p className="mt-1 text-small-body text-(--color-text-secondary)">
             {formatDateTime(scheduler.next_run_at)}
           </p>
         </div>
         <div>
-          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-text-label)]">
+          <span className="font-mono text-badge uppercase tracking-mono text-(--color-text-label)">
             Last scheduled
           </span>
-          <p className="mt-1 text-[13px] text-[color:var(--color-text-secondary)]">
+          <p className="mt-1 text-small-body text-(--color-text-secondary)">
             {formatDateTime(scheduler.last_scheduled_at)}
           </p>
         </div>
         <div>
-          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-text-label)]">
+          <span className="font-mono text-badge uppercase tracking-mono text-(--color-text-label)">
             Fire ID
           </span>
-          <p className="mt-1 break-all font-mono text-[12px] text-[color:var(--color-text-secondary)]">
-            {scheduler.last_fire_id || "—"}
+          <p className="mt-1 break-all font-mono text-xs text-(--color-text-secondary)">
+            {scheduler.last_fire_id || "--"}
           </p>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-text-label)]">
+            <span className="font-mono text-badge uppercase tracking-mono text-(--color-text-label)">
               Catch-up
             </span>
-            <p className="mt-1 font-mono text-[12px] text-[color:var(--color-text-secondary)]">
+            <p className="mt-1 font-mono text-xs text-(--color-text-secondary)">
               {scheduler.catch_up_policy ?? "skip_missed"}
             </p>
           </div>
           <div>
-            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-text-label)]">
+            <span className="font-mono text-badge uppercase tracking-mono text-(--color-text-label)">
               Misfires
             </span>
-            <p className="mt-1 font-mono text-[12px] text-[color:var(--color-text-secondary)]">
+            <p className="mt-1 font-mono text-xs text-(--color-text-secondary)">
               {scheduler.misfire_count ?? 0}
             </p>
           </div>
@@ -275,30 +264,27 @@ function TriggerHookSection({ trigger }: { trigger: AutomationTrigger }) {
 
   return (
     <Section label="Hook" right={<KindChip kind={trigger.event} />}>
-      <div className="space-y-3 rounded-[var(--radius-md)] border border-[color:var(--color-divider)] bg-[color:var(--color-surface)] px-4 py-3">
+      <div className="space-y-3 rounded-md border border-(--color-divider) bg-(--color-surface) px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-text-label)]">
+          <span className="font-mono text-badge uppercase tracking-mono text-(--color-text-label)">
             Event
           </span>
-          <Pill mono className="normal-case" tone="info">
+          <Pill mono uppercase={false} tone="info">
             {trigger.event}
           </Pill>
         </div>
         <div className="space-y-1.5">
-          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-text-label)]">
+          <span className="font-mono text-badge uppercase tracking-mono text-(--color-text-label)">
             Filters
           </span>
           {filters.length === 0 ? (
-            <p className="text-[12px] text-[color:var(--color-text-tertiary)]">No filters</p>
+            <p className="text-xs text-(--color-text-tertiary)">No filters</p>
           ) : (
             <div className="flex flex-wrap items-center gap-1.5">
               {filters.map(([key, value]) => (
-                <Pill
-                  mono
-                  className="normal-case"
-                  key={`${key}=${value}`}
-                  tone="neutral"
-                >{`${key}=${value}`}</Pill>
+                <Pill mono uppercase={false} key={`${key}=${value}`} tone="neutral">
+                  {`${key}=${value}`}
+                </Pill>
               ))}
             </div>
           )}
@@ -306,29 +292,27 @@ function TriggerHookSection({ trigger }: { trigger: AutomationTrigger }) {
         {trigger.event === "webhook" ? (
           <div className="grid gap-3 md:grid-cols-2">
             <div>
-              <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-text-label)]">
+              <span className="font-mono text-badge uppercase tracking-mono text-(--color-text-label)">
                 Endpoint
               </span>
-              <p className="mt-1 font-mono text-[13px] text-[color:var(--color-text-primary)]">
-                {trigger.endpoint_slug ?? "—"}
+              <p className="mt-1 font-mono text-small-body text-(--color-text-primary)">
+                {trigger.endpoint_slug ?? "--"}
               </p>
             </div>
             <div>
-              <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-text-label)]">
+              <span className="font-mono text-badge uppercase tracking-mono text-(--color-text-label)">
                 Webhook id
               </span>
-              <p className="mt-1 font-mono text-[13px] text-[color:var(--color-text-primary)]">
-                {trigger.webhook_id ?? "—"}
+              <p className="mt-1 font-mono text-small-body text-(--color-text-primary)">
+                {trigger.webhook_id ?? "--"}
               </p>
             </div>
           </div>
         ) : null}
         <div className="flex flex-wrap items-center gap-2">
-          <Bot className="size-3.5 text-[color:var(--color-text-tertiary)]" />
-          <span className="text-[13px] text-[color:var(--color-text-secondary)]">
-            Dispatches to
-          </span>
-          <Pill mono className="normal-case" tone="neutral">
+          <Bot className="size-3.5 text-(--color-text-tertiary)" />
+          <span className="text-small-body text-(--color-text-secondary)">Dispatches to</span>
+          <Pill mono uppercase={false} tone="neutral">
             {trigger.agent_name}
           </Pill>
         </div>
@@ -343,7 +327,7 @@ function PromptSection({ isTrigger, prompt }: { isTrigger: boolean; prompt: stri
       label={isTrigger ? "Prompt template" : "Prompt"}
       right={
         isTrigger ? (
-          <Pill mono tone="info" className="normal-case">
+          <Pill mono uppercase={false} tone="info">
             GO TEMPLATE
           </Pill>
         ) : undefined
@@ -357,20 +341,20 @@ function PromptSection({ isTrigger, prompt }: { isTrigger: boolean; prompt: stri
 function GovernanceSection({ item }: { item: AutomationJob | AutomationTrigger }) {
   return (
     <Section label="Governance">
-      <div className="grid gap-2 rounded-[var(--radius-md)] border border-[color:var(--color-divider)] bg-[color:var(--color-surface)] px-4 py-3 md:grid-cols-2">
+      <div className="grid gap-2 rounded-md border border-(--color-divider) bg-(--color-surface) px-4 py-3 md:grid-cols-2">
         <div>
-          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-text-label)]">
+          <span className="font-mono text-badge uppercase tracking-mono text-(--color-text-label)">
             Retry
           </span>
-          <p className="mt-1 text-[13px] text-[color:var(--color-text-secondary)]">
+          <p className="mt-1 text-small-body text-(--color-text-secondary)">
             {describeRetry(item.retry)}
           </p>
         </div>
         <div>
-          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-text-label)]">
+          <span className="font-mono text-badge uppercase tracking-mono text-(--color-text-label)">
             Fire limit
           </span>
-          <p className="mt-1 text-[13px] text-[color:var(--color-text-secondary)]">
+          <p className="mt-1 text-small-body text-(--color-text-secondary)">
             {describeFireLimit(item.fire_limit)}
           </p>
         </div>
@@ -382,10 +366,7 @@ function GovernanceSection({ item }: { item: AutomationJob | AutomationTrigger }
 export function AutomationDetailPanel({
   emptyState,
   error,
-  isDeleting,
-  isLoading,
-  isTogglePending,
-  isTriggerPending,
+  state,
   item,
   kind,
   onDelete,
@@ -396,16 +377,14 @@ export function AutomationDetailPanel({
   runsError,
   runsLoading,
 }: AutomationDetailPanelProps) {
+  const { isDeleting, isLoading, isTogglePending, isTriggerPending } = state;
   if (isLoading) {
     return (
       <div
         className="flex min-h-0 flex-1 items-center justify-center"
         data-testid="automation-detail-loading"
       >
-        <Loader2
-          aria-hidden="true"
-          className="size-5 animate-spin text-[color:var(--color-text-tertiary)]"
-        />
+        <Spinner className="size-5 text-(--color-text-tertiary)" />
       </div>
     );
   }
@@ -457,12 +436,12 @@ export function AutomationDetailPanel({
       className="flex min-h-0 flex-1 flex-col overflow-hidden"
       data-testid="automation-detail-panel"
     >
-      <header className="border-b border-[color:var(--color-divider)] px-6 py-4">
+      <header className="border-b border-(--color-divider) px-6 py-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <Pill.Dot tone={enabledTone} />
-              <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-[color:var(--color-text-primary)]">
+              <h2 className="text-item-title font-semibold tracking-tight text-(--color-text-primary)">
                 {item.name}
               </h2>
               <Pill mono tone={enabledTone}>
@@ -472,14 +451,11 @@ export function AutomationDetailPanel({
                 {automationSourceLabel(item.source)}
               </Pill>
               {item.source === "config" ? (
-                <Lock
-                  aria-hidden="true"
-                  className="size-3.5 text-[color:var(--color-text-tertiary)]"
-                />
+                <Lock aria-hidden="true" className="size-3.5 text-(--color-text-tertiary)" />
               ) : null}
             </div>
-            <p className="text-[12px] text-[color:var(--color-text-secondary)]">
-              {`Agent: ${item.agent_name} · Scope: ${automationScopeLabel(item.scope)} · Updated ${formatDate(item.updated_at)}`}
+            <p className="text-xs text-(--color-text-secondary)">
+              {`Agent: ${item.agent_name} / Scope: ${automationScopeLabel(item.scope)} / Updated ${formatDate(item.updated_at)}`}
             </p>
           </div>
 
@@ -492,7 +468,7 @@ export function AutomationDetailPanel({
               type="button"
               variant="outline"
             >
-              {isTogglePending ? "Saving…" : item.enabled ? "Disable" : "Enable"}
+              {isTogglePending ? "Saving..." : item.enabled ? "Disable" : "Enable"}
             </Button>
             {isJob && onTriggerNow ? (
               <Button
@@ -503,7 +479,7 @@ export function AutomationDetailPanel({
                 type="button"
               >
                 <Play className="size-3.5" />
-                {isTriggerPending ? "Queuing…" : "Run now"}
+                {isTriggerPending ? "Queuing..." : "Run now"}
               </Button>
             ) : null}
             {isDynamic ? (
@@ -528,7 +504,7 @@ export function AutomationDetailPanel({
                 variant="destructive"
               >
                 <Trash2 className="size-3.5" />
-                {isDeleting ? "Deleting…" : "Delete"}
+                {isDeleting ? "Deleting..." : "Delete"}
               </Button>
             ) : null}
           </div>
@@ -537,10 +513,10 @@ export function AutomationDetailPanel({
 
       <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
         {!isDynamic ? (
-          <div className="flex items-start gap-2 rounded-[var(--radius-md)] border border-dashed border-[color:var(--color-divider)] px-4 py-3 text-[12px] text-[color:var(--color-text-secondary)]">
+          <div className="flex items-start gap-2 rounded-md border border-dashed border-(--color-divider) px-4 py-3 text-xs text-(--color-text-secondary)">
             <Lock
               aria-hidden="true"
-              className="mt-0.5 size-3.5 shrink-0 text-[color:var(--color-text-tertiary)]"
+              className="mt-0.5 size-3.5 shrink-0 text-(--color-text-tertiary)"
             />
             <p>
               This automation is defined in configuration files. Only the enabled state can be

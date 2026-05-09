@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
+import { Command, CommandInput } from "@agh/ui";
 import { CenteredSurface } from "@/storybook/story-layout";
 import { storyAgentNames } from "@/storybook/fintech-scenario";
 import { agentFixtures } from "@/systems/agent/mocks";
@@ -9,6 +10,7 @@ import type { AgentPayload } from "@/systems/agent/types";
 
 import { AgentCommandSelect } from "../agent-command-select";
 import { AgentCommandMultiSelect } from "../agent-command-multi-select";
+import { AgentCommandList } from "../agent-command-list";
 
 const categoryByName: Record<string, string[]> = {
   [storyAgentNames.cto]: ["Engineering", "Leadership"],
@@ -156,10 +158,27 @@ export const NoMatch: Story = {
 };
 
 /**
+ * Base command list renders grouped agents without the popover wrapper used by
+ * the single and multi-select controls.
+ */
+export const CommandList: StoryObj<typeof AgentCommandList> = {
+  args: {},
+  render: () => (
+    <Frame>
+      <Command>
+        <CommandInput placeholder="Search agents..." data-testid="agent-command-input" />
+        <AgentCommandList agents={groupedAgents} isSelected={() => false} onSelect={fn()} />
+      </Command>
+    </Frame>
+  ),
+};
+
+/**
  * Multi-select harness: keeps the popover open across selections, marks each
  * picked item with `data-checked=true`, and surfaces a selected count.
  */
 export const MultiSelect: StoryObj<typeof AgentCommandMultiSelect> = {
+  args: {},
   render: () => {
     function Harness() {
       const [value, setValue] = useState<string[]>([storyAgentNames.cto]);

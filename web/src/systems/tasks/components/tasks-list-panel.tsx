@@ -1,6 +1,6 @@
 import { AlertCircle, ListChecks, Plus, Search } from "lucide-react";
 
-import { Button, Empty, PillGroup, SearchInput, Section } from "@agh/ui";
+import { Button, Empty, PillGroup, SearchInput, Section, Skeleton } from "@agh/ui";
 
 import type { TaskListItem, TaskStatus } from "../types";
 import { TaskCard } from "./task-card";
@@ -11,6 +11,14 @@ const LANE_ITEMS = [
   { value: "all" as const, label: "All", testId: "tasks-list-lane-all" },
   { value: "mine" as const, label: "Mine", testId: "tasks-list-lane-mine" },
   { value: "watched" as const, label: "Watched", testId: "tasks-list-lane-watched" },
+];
+
+const TASK_LIST_SKELETON_IDS = [
+  "task-list-skeleton-1",
+  "task-list-skeleton-2",
+  "task-list-skeleton-3",
+  "task-list-skeleton-4",
+  "task-list-skeleton-5",
 ];
 
 export interface TasksListPanelProps {
@@ -52,7 +60,7 @@ function getStatusHeadline(filter?: TaskStatus | null): string {
 }
 
 /**
- * Tasks list column — search + lane switcher + rows, consumed by the `SplitPane`
+ * Tasks list column -- search + lane switcher + rows, consumed by the `SplitPane`
  * list slot on `/tasks`. Composes `@agh/ui` `SearchInput`, `Pills`, `Section`, and
  * `Empty`; rows come from `TaskCard` (built on the shared `TasksListRow`).
  */
@@ -78,14 +86,14 @@ export function TasksListPanel({
 
   return (
     <aside
-      className="flex min-h-0 flex-1 flex-col bg-[color:var(--color-canvas)]"
+      className="flex min-h-0 flex-1 flex-col bg-(--color-canvas)"
       data-testid="tasks-list-panel"
     >
-      <div className="flex flex-col gap-3 border-b border-[color:var(--color-divider)] px-4 py-3">
+      <div className="flex flex-col gap-3 border-b border-(--color-divider) px-4 py-3">
         <SearchInput
           value={searchQuery}
           onChange={onSearchChange}
-          placeholder="Filter tasks…"
+          placeholder="Filter tasks..."
           data-testid="tasks-list-search-input"
         />
         <PillGroup
@@ -114,7 +122,7 @@ export function TasksListPanel({
         ) : null}
       </div>
 
-      <div className="flex items-center justify-between border-b border-[color:var(--color-divider)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-text-label)]">
+      <div className="flex items-center justify-between border-b border-(--color-divider) px-4 py-2 text-badge text-(--color-text-label)">
         <span data-testid="tasks-list-headline">
           {getStatusHeadline(statusFilter)}
           {tasks.length > 0 ? <span className="ml-2">{tasks.length}</span> : null}
@@ -124,15 +132,15 @@ export function TasksListPanel({
 
       <div className="flex-1 overflow-y-auto">
         {isLoading && isEmpty ? (
-          <div className="space-y-3 px-4 py-4" data-testid="tasks-list-loading">
-            {Array.from({ length: 5 }, (_, index) => (
+          <div className="space-y-3 p-4" data-testid="tasks-list-loading">
+            {TASK_LIST_SKELETON_IDS.map(id => (
               <div
-                className="rounded-xl border border-[color:var(--color-divider)] bg-[color:var(--color-surface)] px-4 py-4"
-                key={index}
+                className="rounded-xl border border-(--color-divider) bg-(--color-surface) p-4"
+                key={id}
               >
-                <div className="h-2.5 w-20 rounded-full bg-[color:var(--color-surface-elevated)]" />
-                <div className="mt-3 h-3.5 w-3/4 rounded-full bg-[color:var(--color-surface-elevated)]" />
-                <div className="mt-2 h-2.5 w-1/2 rounded-full bg-[color:var(--color-surface-elevated)]" />
+                <Skeleton className="h-2.5 w-20 rounded-full" />
+                <Skeleton className="mt-3 h-3.5 w-3/4 rounded-full" />
+                <Skeleton className="mt-2 h-2.5 w-1/2 rounded-full" />
               </div>
             ))}
           </div>
@@ -142,8 +150,8 @@ export function TasksListPanel({
             data-testid="tasks-list-error"
           >
             <div className="flex max-w-xs flex-col items-center gap-2 text-center">
-              <AlertCircle className="size-5 text-[color:var(--color-danger)]" />
-              <p className="text-sm text-[color:var(--color-text-secondary)]">{errorMessage}</p>
+              <AlertCircle className="size-5 text-(--color-danger)" />
+              <p className="text-sm text-(--color-text-secondary)">{errorMessage}</p>
             </div>
           </div>
         ) : isEmpty ? (

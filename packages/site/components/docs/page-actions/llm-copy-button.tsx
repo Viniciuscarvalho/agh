@@ -12,26 +12,31 @@ export interface LLMCopyButtonProps {
 }
 
 export function LLMCopyButton({ markdownUrl }: LLMCopyButtonProps) {
-  const [isLoading, setLoading] = useState(false);
+  const [copyPending, setCopyPending] = useState(false);
   const [checked, onClick] = useCopyButton(async () => {
-    const cached = cache.get(markdownUrl);
-    if (cached) {
-      await navigator.clipboard.writeText(cached);
-      return;
-    }
-    setLoading(true);
+    setCopyPending(true);
     try {
+      const cached = cache.get(markdownUrl);
+      if (cached) {
+        await navigator.clipboard.writeText(cached);
+        return;
+      }
+
       const response = await fetch(markdownUrl);
+      if (!response.ok) {
+        return;
+      }
+
       const content = await response.text();
       cache.set(markdownUrl, content);
       await navigator.clipboard.writeText(content);
     } finally {
-      setLoading(false);
+      setCopyPending(false);
     }
   });
 
   return (
-    <Button disabled={isLoading} size="sm" variant="outline" onClick={onClick}>
+    <Button disabled={copyPending} size="sm" variant="outline" onClick={onClick}>
       {checked ? <Check aria-hidden /> : <Copy aria-hidden />}
       Copy as Markdown
     </Button>

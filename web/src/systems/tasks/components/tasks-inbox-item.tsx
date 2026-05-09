@@ -2,7 +2,7 @@ import { AlertCircle, Archive, ArchiveX, Check, Eye, RotateCcw, X } from "lucide
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
-import { Button, Pill } from "@agh/ui";
+import { Button, Eyebrow, Pill } from "@agh/ui";
 
 import { cn } from "@/lib/utils";
 import { pillToneFromLegacyTone } from "@/lib/pill-variant";
@@ -67,15 +67,12 @@ export function TasksInboxItem({
         {taskStatusLabel(task.status)}
       </Pill>
       {run ? (
-        <span
-          className="font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-text-tertiary)]"
-          data-testid={`tasks-inbox-item-run-${taskId}`}
-        >
+        <Eyebrow data-testid={`tasks-inbox-item-run-${taskId}`}>
           run {run.id}
           {typeof run.attempt === "number"
             ? ` · ${formatAttemptLabel(run.attempt, run.max_attempts) ?? ""}`
             : ""}
-        </span>
+        </Eyebrow>
       ) : null}
     </>
   );
@@ -110,17 +107,15 @@ export function TasksInboxItem({
   return (
     <TasksListRow
       className={cn(
-        "rounded-[var(--radius-diagram)] border border-[color:var(--color-divider)] bg-[color:var(--color-surface)] py-3 pr-4",
-        "border-l-2 pl-4",
-        unread
-          ? 'border-l-[color:var(--color-accent)] [&_[data-slot="tasks-list-row-title"]]:font-semibold'
-          : "border-l-transparent"
+        "rounded-(--radius-diagram) border border-(--color-divider) bg-(--color-surface) py-3 pr-4",
+        unread && '**:data-[slot="tasks-list-row-title"]:font-semibold'
       )}
       data-lane={lane}
       data-unread={unread ? "true" : "false"}
       footer={footer}
       lane={lane}
       onSelect={onOpen ? handleSelect : undefined}
+      rail={unread}
       task={task as unknown as TaskListItem}
       testId={`tasks-inbox-item-${taskId}`}
       trailing={trailing}
@@ -177,13 +172,13 @@ function InboxItemFooter({
   pendingDismissId,
   pendingMarkReadId,
 }: InboxItemFooterProps) {
-  const ownerLabel = item.task.owner?.ref ?? "—";
+  const ownerLabel = item.task.owner?.ref ?? "--";
 
   return (
     <>
       {blocking_reason ? (
         <p
-          className="text-xs text-[color:var(--color-text-secondary)]"
+          className="text-xs text-(--color-text-secondary)"
           data-testid={`tasks-inbox-item-blocking-${taskId}`}
         >
           {blocking_reason}
@@ -192,7 +187,7 @@ function InboxItemFooter({
 
       {failedError ? (
         <p
-          className="flex items-start gap-1 text-xs text-[color:var(--color-danger)]"
+          className="flex items-start gap-1 text-xs text-(--color-danger)"
           data-testid={`tasks-inbox-item-error-${taskId}`}
         >
           <AlertCircle className="mt-0.5 size-3 shrink-0" />
@@ -202,7 +197,7 @@ function InboxItemFooter({
 
       {approval_policy === "manual" && approval_state ? (
         <p
-          className="text-xs text-[color:var(--color-text-secondary)]"
+          className="text-xs text-(--color-text-secondary)"
           data-testid={`tasks-inbox-item-approval-${taskId}`}
         >
           Approval state: {taskApprovalStateLabel(approval_state)}
@@ -210,10 +205,10 @@ function InboxItemFooter({
       ) : null}
 
       <div
-        className="mt-1 flex flex-wrap items-center justify-between gap-2 text-[11px]"
+        className="mt-1 flex flex-wrap items-center justify-between gap-2 text-eyebrow"
         data-testid={`tasks-inbox-item-actions-${taskId}`}
       >
-        <span className="flex items-center gap-2 text-[color:var(--color-text-tertiary)]">
+        <span className="flex items-center gap-2 text-(--color-text-tertiary)">
           <span data-testid={`tasks-inbox-item-owner-${taskId}`}>{ownerLabel}</span>
           <span>·</span>
           <span>{formatRelativeTime(item.latest_activity_at)} ago</span>
@@ -307,9 +302,9 @@ interface ActionButtonProps {
   pending: boolean;
   testId: string;
   /**
-   * `primary` — solid accent CTA (max one per card).
-   * `ghost` — neutral secondary action.
-   * `destructive-ghost` — ghost with `text-danger`. Solid-filled destructive
+   * `primary` -- solid accent CTA (max one per card).
+   * `ghost` -- neutral secondary action.
+   * `destructive-ghost` -- ghost with `text-danger`. Solid-filled destructive
    * buttons only belong inside a confirmation dialog, not inline on a row.
    */
   variant: "primary" | "ghost" | "destructive-ghost";
@@ -328,8 +323,7 @@ function ActionButton({ label, icon, onClick, pending, testId, variant }: Action
       type="button"
       variant={buttonVariant}
       className={cn(
-        variant === "destructive-ghost" &&
-          "text-[color:var(--color-danger)] hover:text-[color:var(--color-danger)]"
+        variant === "destructive-ghost" && "text-(--color-danger) hover:text-(--color-danger)"
       )}
     >
       {icon}

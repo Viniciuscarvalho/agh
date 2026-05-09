@@ -1,4 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useEffectEvent, useRef } from "react";
+
+import { Command, CommandEmpty, CommandItem, CommandList, CommandShortcut } from "@agh/ui";
 
 import { cn } from "@/lib/utils";
 
@@ -54,7 +56,8 @@ export function ComposerSlashPopover({
   onClose,
   className,
 }: ComposerSlashPopoverProps) {
-  const containerRef = useRef<HTMLUListElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const closePopover = useEffectEvent(onClose);
 
   useEffect(() => {
     if (!open) {
@@ -63,12 +66,12 @@ export function ComposerSlashPopover({
     function handleKey(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        closePopover();
       }
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) {
     return null;
@@ -77,69 +80,51 @@ export function ComposerSlashPopover({
   const entries = filterEntries(filterValue);
 
   return (
-    <ul
+    <Command
       aria-label="Slash commands"
       className={cn(
-        "absolute bottom-full left-0 mb-2 w-72 rounded-[6px] border border-[color:var(--color-divider)] bg-[color:var(--color-canvas)] p-1 text-[13px]",
+        "absolute bottom-full left-0 mb-2 w-72 rounded-mono-badge border border-(--color-divider) bg-(--color-canvas) p-1 text-small-body",
         className
       )}
       data-testid="network-composer-slash-popover"
       ref={containerRef}
-      role="listbox"
     >
-      {entries.length === 0 ? (
-        <li className="px-3 py-2 text-[12px] text-[color:var(--color-text-tertiary)]">
-          No matching commands.
-        </li>
-      ) : (
-        entries.map(entry => (
-          <li
-            key={entry.command}
-            role="option"
+      <CommandList>
+        {entries.length === 0 ? <CommandEmpty>No matching commands.</CommandEmpty> : null}
+        {entries.map(entry => (
+          <CommandItem
             aria-disabled={entry.disabled ? "true" : "false"}
-            aria-selected="false"
-            data-testid={`network-composer-slash-option-${entry.command}`}
+            className={cn(
+              "items-baseline rounded-chip px-3 py-2",
+              entry.disabled ? "cursor-not-allowed text-(--color-text-tertiary)" : null
+            )}
             data-disabled={entry.disabled ? "true" : "false"}
-            title={entry.disabled ? entry.disabledReason : undefined}
-          >
-            <button
-              className={cn(
-                "flex w-full items-baseline gap-2 rounded-[4px] px-3 py-2 text-left",
-                entry.disabled
-                  ? "cursor-not-allowed text-[color:var(--color-text-tertiary)]"
-                  : "hover:bg-[color:var(--color-hover)] focus-visible:bg-[color:var(--color-hover)] focus-visible:outline-none"
-              )}
-              disabled={entry.disabled}
-              onClick={() => {
-                if (entry.disabled) {
-                  return;
-                }
+            data-testid={`network-composer-slash-option-${entry.command}`}
+            disabled={entry.disabled}
+            key={entry.command}
+            onSelect={() => {
+              if (!entry.disabled) {
                 onSelect(entry);
-              }}
-              type="button"
+              }
+            }}
+            title={entry.disabled ? entry.disabledReason : undefined}
+            value={entry.command}
+          >
+            <span
+              className={cn(
+                "font-mono text-xs tracking-mono",
+                entry.disabled ? "text-(--color-text-tertiary)" : "text-(--color-text-primary)"
+              )}
             >
-              <span
-                className={cn(
-                  "font-mono text-[12px] tracking-[0.04em]",
-                  entry.disabled
-                    ? "text-[color:var(--color-text-tertiary)]"
-                    : "text-[color:var(--color-text-primary)]"
-                )}
-              >
-                /{entry.command}
-              </span>
-              <span className="truncate text-[12px] text-[color:var(--color-text-tertiary)]">
-                {entry.description}
-              </span>
-              {entry.disabled ? (
-                <span className="ml-auto font-mono text-[10px] uppercase tracking-[0.06em] text-[color:var(--color-text-tertiary)]">
-                  Post-MVP
-                </span>
-              ) : null}
-            </button>
-          </li>
-        ))
-      )}
-    </ul>
+              /{entry.command}
+            </span>
+            <span className="truncate text-xs text-(--color-text-tertiary)">
+              {entry.description}
+            </span>
+            {entry.disabled ? <CommandShortcut>Post-MVP</CommandShortcut> : null}
+          </CommandItem>
+        ))}
+      </CommandList>
+    </Command>
   );
 }

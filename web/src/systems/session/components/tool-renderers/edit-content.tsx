@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { ChevronsUpDown } from "lucide-react";
 
+import { CodeBlock } from "@agh/ui";
+
 import type { UIMessage } from "../../types";
 import { GenericContent } from "./generic-content";
 
@@ -31,26 +33,30 @@ export function EditContent({ message }: { message: UIMessage }) {
   return (
     <div className="space-y-1.5 text-xs" data-testid="edit-content">
       {filePath && (
-        <div className="font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
-          {filePath}
-        </div>
+        <div className="font-mono text-eyebrow text-(--color-text-tertiary)">{filePath}</div>
       )}
       {(oldStr || newStr) && (
-        <div className="rounded-md border border-[color:var(--color-divider)] overflow-hidden font-mono text-[11px]">
+        <div className="overflow-hidden rounded-md border border-(--color-divider)">
           {oldStr ? (
-            <pre className="bg-red-500/5 px-3 py-2 text-red-400/70 whitespace-pre-wrap break-words max-h-40 overflow-auto">
-              {displayOld}
-              {!showFull && oldStr.length > TRUNCATE_THRESHOLD ? "\u2026" : ""}
-            </pre>
+            <CodeBlock
+              code={`${displayOld}${!showFull && oldStr.length > TRUNCATE_THRESHOLD ? "\u2026" : ""}`}
+              className="rounded-none"
+              copyable={false}
+              showPrompt={false}
+              tone="danger"
+              truncateLines={12}
+            />
           ) : null}
-          {oldStr && newStr ? (
-            <div className="border-t border-[color:var(--color-divider)]" />
-          ) : null}
+          {oldStr && newStr ? <div className="border-t border-(--color-divider)" /> : null}
           {newStr ? (
-            <pre className="bg-green-500/5 px-3 py-2 text-green-400/70 whitespace-pre-wrap break-words max-h-40 overflow-auto">
-              {displayNew}
-              {!showFull && newStr.length > TRUNCATE_THRESHOLD ? "\u2026" : ""}
-            </pre>
+            <CodeBlock
+              code={`${displayNew}${!showFull && newStr.length > TRUNCATE_THRESHOLD ? "\u2026" : ""}`}
+              className="rounded-none"
+              copyable={false}
+              showPrompt={false}
+              tone="success"
+              truncateLines={12}
+            />
           ) : null}
         </div>
       )}
@@ -58,7 +64,7 @@ export function EditContent({ message }: { message: UIMessage }) {
         <button
           type="button"
           onClick={() => setShowFull(true)}
-          className="flex items-center gap-1 text-[11px] text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-text-secondary)] transition-colors"
+          className="flex items-center gap-1 text-eyebrow text-(--color-text-tertiary) hover:text-(--color-text-secondary) transition-colors"
         >
           <ChevronsUpDown className="size-3" />
           Show full content

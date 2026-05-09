@@ -57,7 +57,7 @@ export function ReleaseEntry({ release }: ReleaseEntryProps) {
         )}
       </div>
       <div>
-        <h2 className="font-sans text-[clamp(1.6rem,3vw,2.1rem)] font-semibold leading-[1.1] tracking-[-0.025em] text-(--color-text-primary)">
+        <h2 className="font-sans text-site-release-title font-semibold leading-tight tracking-tight text-(--color-text-primary)">
           {release.summary}
         </h2>
         <div className="mt-8 flex flex-col gap-7">
@@ -65,12 +65,12 @@ export function ReleaseEntry({ release }: ReleaseEntryProps) {
             <section key={key}>
               <MonoBadge tone={sectionTone[key]}>{sectionLabel[key]}</MonoBadge>
               <ul className="mt-4 flex flex-col gap-2.5">
-                {release[key].map((item, idx) => (
+                {release[key].map((item, index) => (
                   <li
-                    key={`${key}-${idx}`}
-                    className="flex items-start gap-3 font-sans text-[15px] leading-[1.6] text-(--color-text-secondary)"
+                    key={`${release.version}-${key}-${index}`}
+                    className="flex items-start gap-3 font-sans text-item-title leading-7 text-(--color-text-secondary)"
                   >
-                    <span className="mt-2 inline-block h-1 w-1 shrink-0 rounded-[1px] bg-(--color-accent)" />
+                    <span className="mt-2 inline-block size-1 shrink-0 rounded-sm bg-accent" />
                     <span>{item}</span>
                   </li>
                 ))}

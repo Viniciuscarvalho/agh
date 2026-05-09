@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { Separator } from "@agh/ui";
+
 import type { NetworkConversationMessage } from "../../types";
 import { Timeline } from "../timeline/timeline";
 
@@ -32,22 +34,18 @@ export function ThreadOverlayReplies({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div
-        className="flex items-center gap-3 px-4 py-3"
+      <Separator
+        className="px-4 py-3"
         data-testid="network-thread-overlay-replies-divider"
-      >
-        <span aria-hidden="true" className="h-px flex-1 bg-[color:var(--color-divider)]" />
-        <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-[color:var(--color-text-tertiary)]">
-          {replyLabel}
-        </span>
-        <span aria-hidden="true" className="h-px flex-1 bg-[color:var(--color-divider)]" />
-      </div>
+        label={replyLabel}
+        labelClassName="text-badge"
+      />
       <Timeline
         ariaLabel="Thread replies"
         density="overlay"
         emptyState={
           emptyOverride ?? (
-            <p className="text-center text-[12px] text-[color:var(--color-text-tertiary)]">
+            <p className="text-center text-xs text-(--color-text-tertiary)">
               Thread has no replies.
             </p>
           )

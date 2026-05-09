@@ -26,7 +26,7 @@ function renderShowcase() {
 
 /**
  * Tokens that the showcase intentionally surfaces as discrete swatches. Shadcn
- * theme aliases (`--background`, `--primary`, …) re-map to these AGH tokens
+ * theme aliases (`--background`, `--primary`, ...) re-map to these AGH tokens
  * and are covered by the primitives themselves rather than the swatch wall.
  */
 function extractAghTokens(source: string): string[] {
@@ -231,13 +231,7 @@ describe("DesignSystemShowcase", () => {
       expect(sources.has("@agh/ui")).toBe(true);
       expect(sources.has("lucide-react")).toBe(true);
       expect(sources.has("react")).toBe(true);
-      const allowed = new Set([
-        "@agh/ui",
-        "lucide-react",
-        "react",
-        "@/components/connection-indicator",
-        "@/systems/network",
-      ]);
+      const allowed = new Set(["@agh/ui", "lucide-react", "react", "@/systems/network"]);
       const forbidden = [...sources].filter(specifier => {
         if (allowed.has(specifier)) return false;
         return true;

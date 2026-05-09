@@ -1,3 +1,5 @@
+import { CodeBlock } from "@agh/ui";
+
 import type { UIMessage } from "../../types";
 
 function formatInput(input: Record<string, unknown>): string {
@@ -26,14 +28,20 @@ export function GenericContent({ message }: { message: UIMessage }) {
   return (
     <div className="space-y-1.5 text-xs">
       {message.toolInput && (
-        <pre className="max-h-32 overflow-auto rounded-md bg-[color:var(--color-surface)] px-3 py-2 font-mono text-[11px] text-[color:var(--color-text-tertiary)] whitespace-pre-wrap break-words">
-          {formatInput(message.toolInput)}
-        </pre>
+        <CodeBlock
+          code={formatInput(message.toolInput)}
+          copyable={false}
+          showPrompt={false}
+          truncateLines={8}
+        />
       )}
       {hasResult && (
-        <pre className="max-h-48 overflow-auto rounded-md bg-[color:var(--color-surface)] px-3 py-2 font-mono text-[11px] text-[color:var(--color-text-tertiary)] whitespace-pre-wrap break-words">
-          {formatResult(result)}
-        </pre>
+        <CodeBlock
+          code={formatResult(result)}
+          copyable={false}
+          showPrompt={false}
+          truncateLines={12}
+        />
       )}
     </div>
   );

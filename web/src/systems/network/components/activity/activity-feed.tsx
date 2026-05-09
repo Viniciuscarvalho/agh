@@ -1,7 +1,7 @@
 import { ActivitySquare } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
-import { Empty, Skeleton } from "@agh/ui";
+import { Empty, Eyebrow, Pill, Skeleton, SkeletonRows } from "@agh/ui";
 
 import { cn } from "@/lib/utils";
 
@@ -75,18 +75,15 @@ function buildEntries(
 
 function ActivityFeedSkeleton() {
   return (
-    <div className="space-y-0" data-testid="network-activity-feed-skeleton">
-      {[0, 1, 2, 3].map(index => (
-        <div
-          className="flex flex-col gap-2 border-b border-[color:var(--color-divider)] px-5 py-3"
-          key={index}
-        >
-          <Skeleton className="h-3 w-24" />
-          <Skeleton className="h-4 w-2/3" />
-          <Skeleton className="h-3 w-full" />
-        </div>
-      ))}
-    </div>
+    <SkeletonRows
+      count={4}
+      data-testid="network-activity-feed-skeleton"
+      rowClassName="border-b border-(--color-divider) px-5 py-3"
+    >
+      <Skeleton className="h-3 w-24" />
+      <Skeleton className="h-4 w-2/3" />
+      <Skeleton className="h-3 w-full" />
+    </SkeletonRows>
   );
 }
 
@@ -117,28 +114,35 @@ export function ActivityFeed({ channel, threads, directs, isLoading }: ActivityF
       data-testid="network-activity-feed"
     >
       <div
-        className="border-b border-[color:var(--color-divider)] px-5 py-2 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-[color:var(--color-text-tertiary)]"
+        className="border-b border-(--color-divider) px-5 py-2"
         data-testid="network-activity-subheader"
       >
-        Recent activity · Read-only
+        <Eyebrow>Recent activity / Read-only</Eyebrow>
       </div>
       {entries.map(entry => {
         const linkClass = cn(
-          "flex flex-col gap-1 border-b border-[color:var(--color-divider)] px-5 py-3 text-left transition-colors hover:bg-[color:var(--color-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--color-accent)]"
+          "flex flex-col gap-1 border-b border-(--color-divider) px-5 py-3 text-left transition-colors hover:bg-(--color-hover) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
         );
         const meta = (
           <>
-            <div className="flex items-baseline gap-2 font-mono text-[10px] uppercase tracking-[0.06em] text-[color:var(--color-text-tertiary)]">
-              <span data-testid={`network-activity-tag-${entry.kind}`}>
+            <div className="flex items-baseline gap-2">
+              <Pill
+                data-testid={`network-activity-tag-${entry.kind}`}
+                mono
+                size="xs"
+                tone={entry.kind === "thread" ? "info" : "neutral"}
+              >
                 {entry.kind === "thread" ? "[TH]" : "[DM]"}
-              </span>
-              <span aria-hidden="true">·</span>
-              <span>{formatNetworkRelativeTime(entry.timestamp)}</span>
+              </Pill>
+              <Eyebrow aria-hidden="true" weight="medium">
+                /
+              </Eyebrow>
+              <Eyebrow weight="medium">{formatNetworkRelativeTime(entry.timestamp)}</Eyebrow>
             </div>
-            <p className="truncate text-[14px] font-semibold text-[color:var(--color-text-primary)]">
+            <p className="truncate text-sm font-semibold text-(--color-text-primary)">
               {entry.title}
             </p>
-            <p className="line-clamp-2 text-[13px] text-[color:var(--color-text-secondary)]">
+            <p className="line-clamp-2 text-small-body text-(--color-text-secondary)">
               {entry.preview}
             </p>
           </>

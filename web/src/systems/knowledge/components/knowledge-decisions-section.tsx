@@ -1,6 +1,6 @@
-import { AlertCircle, History, Loader2 } from "lucide-react";
+import { AlertCircle, History } from "lucide-react";
 
-import { Empty, Pill, Section } from "@agh/ui";
+import { Empty, Pill, Section, Spinner } from "@agh/ui";
 
 import {
   decisionOpLabel,
@@ -26,10 +26,10 @@ function KnowledgeDecisionsSection({
     <Section data-testid="knowledge-decisions-section" label="Recent controller decisions">
       {isLoading ? (
         <div
-          className="flex items-center gap-2 px-1 py-3 text-[12px] text-[color:var(--color-text-tertiary)]"
+          className="flex items-center gap-2 px-1 py-3 text-xs text-(--color-text-tertiary)"
           data-testid="knowledge-decisions-loading"
         >
-          <Loader2 aria-hidden="true" className="size-4 animate-spin" /> Loading decisions…
+          <Spinner /> Loading decisions…
         </div>
       ) : error ? (
         <Empty
@@ -49,7 +49,7 @@ function KnowledgeDecisionsSection({
         />
       ) : (
         <ul
-          className="flex flex-col divide-y divide-[color:var(--color-divider)] rounded-[var(--radius-diagram)] border border-[color:var(--color-divider)] bg-[color:var(--color-surface)]"
+          className="flex flex-col divide-y divide-(--color-divider) rounded-(--radius-diagram) border border-(--color-divider) bg-(--color-surface)"
           data-testid="knowledge-decisions-list"
         >
           {decisions.map(decision => (
@@ -73,16 +73,14 @@ function KnowledgeDecisionsSection({
                 >
                   {decisionSourceLabel(decision.source)}
                 </Pill>
-                <span className="ml-auto font-mono text-[11px] uppercase tracking-[0.06em] text-[color:var(--color-text-tertiary)]">
+                <span className="ml-auto font-mono text-eyebrow uppercase tracking-badge text-(--color-text-tertiary)">
                   {formatKnowledgeDateTime(decision.decided_at)}
                 </span>
               </div>
               {decision.reason ? (
-                <p className="text-[12px] text-[color:var(--color-text-secondary)]">
-                  {decision.reason}
-                </p>
+                <p className="text-xs text-(--color-text-secondary)">{decision.reason}</p>
               ) : null}
-              <div className="flex flex-wrap items-center gap-3 font-mono text-[10px] uppercase tracking-[0.06em] text-[color:var(--color-text-tertiary)]">
+              <div className="flex flex-wrap items-center gap-3 font-mono text-badge uppercase tracking-badge text-(--color-text-tertiary)">
                 <span data-testid={`knowledge-decision-confidence-${decision.id}`}>
                   Confidence {decision.confidence.toFixed(2)}
                 </span>

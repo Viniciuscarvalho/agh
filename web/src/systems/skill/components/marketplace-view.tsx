@@ -6,10 +6,7 @@ import {
   AlertDescription,
   AlertTitle,
   Button,
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
+  CatalogCard,
   Empty,
   Pill,
   PillGroup,
@@ -36,49 +33,40 @@ interface MarketplaceViewProps {
   onSearchChange?: (query: string) => void;
 }
 
-interface MarketplaceCardProps {
+interface SkillCatalogItemProps {
   skill: SkillPayload;
   isInstalled: boolean;
   onInstall?: () => void;
   isInstalling: boolean;
 }
 
-function MarketplaceCard({ skill, isInstalled, onInstall, isInstalling }: MarketplaceCardProps) {
+function SkillCatalogItem({ skill, isInstalled, onInstall, isInstalling }: SkillCatalogItemProps) {
   const author = deriveSkillAuthor(skill);
   const tags = deriveSkillTags(skill);
   const downloads = skill.metadata?.downloads;
 
   return (
-    <Card className="flex flex-col gap-3" data-testid={`marketplace-row-${skill.name}`} size="sm">
-      <CardHeader>
-        <div className="flex items-start gap-3">
-          <span
-            aria-hidden="true"
-            className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-[color:var(--color-surface-elevated)] text-[color:var(--color-accent)]"
-          >
-            <Wrench className="size-4" />
-          </span>
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <span className="truncate text-[13px] font-medium text-[color:var(--color-text-primary)]">
-              {skill.name}
-            </span>
-            <div className="flex flex-wrap items-center gap-2 font-mono text-[10px] uppercase tracking-[0.08em] text-[color:var(--color-text-tertiary)]">
-              {author ? <span>{`@${author}`}</span> : null}
-              {skill.version ? <span>{`v${skill.version}`}</span> : null}
-              {downloads !== undefined && downloads !== null ? (
-                <span className="inline-flex items-center gap-1">
-                  <Download aria-hidden="true" className="size-3" />
-                  {String(downloads)}
-                </span>
-              ) : null}
-            </div>
-          </div>
+    <CatalogCard data-testid={`marketplace-row-${skill.name}`}>
+      <div className="flex items-start gap-3">
+        <CatalogCard.Logo>
+          <Wrench className="size-4" />
+        </CatalogCard.Logo>
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <CatalogCard.Title>{skill.name}</CatalogCard.Title>
+          <CatalogCard.Meta>
+            {author ? <span>{`@${author}`}</span> : null}
+            {skill.version ? <span>{`v${skill.version}`}</span> : null}
+            {downloads !== undefined && downloads !== null ? (
+              <span className="inline-flex items-center gap-1">
+                <Download aria-hidden="true" className="size-3" />
+                {String(downloads)}
+              </span>
+            ) : null}
+          </CatalogCard.Meta>
         </div>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">
-        <p className="text-[12.5px] leading-[1.55] text-[color:var(--color-text-secondary)]">
-          {skill.description}
-        </p>
+      </div>
+      <div className="flex flex-col gap-2">
+        <CatalogCard.Description>{skill.description}</CatalogCard.Description>
         {tags.length > 0 ? (
           <div className="flex flex-wrap items-center gap-1.5">
             {tags.map(tag => (
@@ -94,8 +82,8 @@ function MarketplaceCard({ skill, isInstalled, onInstall, isInstalling }: Market
             ))}
           </div>
         ) : null}
-      </CardContent>
-      <CardFooter className="bg-transparent">
+      </div>
+      <CatalogCard.Actions>
         {isInstalled ? (
           <Pill mono data-testid={`installed-pill-${skill.name}`} tone="success">
             INSTALLED
@@ -113,7 +101,7 @@ function MarketplaceCard({ skill, isInstalled, onInstall, isInstalling }: Market
           </Button>
         ) : (
           <div
-            className="flex items-center gap-2 text-[11px] text-[color:var(--color-text-secondary)]"
+            className="flex items-center gap-2 text-eyebrow text-(--color-text-secondary)"
             data-testid={`catalog-state-${skill.name}`}
           >
             <Pill mono data-testid={`readonly-pill-${skill.name}`} tone="neutral">
@@ -122,8 +110,8 @@ function MarketplaceCard({ skill, isInstalled, onInstall, isInstalling }: Market
             <span>Metadata only</span>
           </div>
         )}
-      </CardFooter>
-    </Card>
+      </CatalogCard.Actions>
+    </CatalogCard>
   );
 }
 
@@ -150,7 +138,7 @@ function MarketplaceView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="marketplace-view">
-      <div className="flex flex-col gap-3 border-b border-[color:var(--color-divider)] px-4 py-3">
+      <div className="flex flex-col gap-3 border-b border-(--color-divider) px-4 py-3">
         {isBrowseOnly && installUnavailableReason ? (
           <Alert data-testid="marketplace-readonly-notice" variant="warning">
             <AlertCircle aria-hidden="true" className="size-4" />
@@ -165,7 +153,9 @@ function MarketplaceView({
           data-testid="marketplace-search-input"
           onChange={handleSearchChange}
           placeholder={
-            isBrowseOnly ? "Filter installed marketplace skills…" : "Search skills on marketplace…"
+            isBrowseOnly
+              ? "Filter installed marketplace skills..."
+              : "Search skills on marketplace..."
           }
           value={search}
         />
@@ -209,7 +199,7 @@ function MarketplaceView({
             data-testid="marketplace-grid"
           >
             {filtered.map(skill => (
-              <MarketplaceCard
+              <SkillCatalogItem
                 isInstalled={installedSkillNames.has(skill.name)}
                 isInstalling={isInstalling}
                 key={skill.name}

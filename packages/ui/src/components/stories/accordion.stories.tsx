@@ -4,7 +4,7 @@ import { expect, userEvent, waitFor, within } from "storybook/test";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../accordion";
 
 const meta: Meta<typeof Accordion> = {
-  title: "ui/Accordion",
+  title: "components/ui/Accordion",
   component: Accordion,
   parameters: {
     layout: "centered",
@@ -31,7 +31,7 @@ const faq = [
     value: "memory",
     question: "When does memory dream?",
     answer:
-      "The dream consolidator runs on a cron plus idle triggers — any quiet window over 30 minutes kicks off a pass.",
+      "The dream consolidator runs on a cron plus idle triggers, any quiet window over 30 minutes kicks off a pass.",
   },
   {
     value: "network",

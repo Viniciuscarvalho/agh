@@ -43,7 +43,7 @@ const meta: Meta<typeof NetworkShell> = {
     docs: {
       description: {
         component:
-          "Channel-pivot shell for the new /network route — left rail with cross-channel Recents, channel header with Threads / Directs / Activity tabs, and a right-rail slot.",
+          "Channel-pivot shell for the new /network route - left rail with cross-channel Recents, channel header with Threads / Directs / Activity tabs, and a right-rail slot.",
       },
     },
   },
@@ -80,10 +80,8 @@ function NetworkShellHarness({
         directs={networkDirectRoomsFixture}
         hasUnread={() => true}
         inspectorOpen={false}
-        isChannelsLoading={false}
-        isDirectsLoading={false}
+        loading={{ channels: false, directs: false, recents: false }}
         isPinned={(channel: string) => pinnedSet.has(channel)}
-        isRecentsLoading={false}
         onInspectorToggle={() => undefined}
         onTogglePinned={() => undefined}
         openWorkCount={2}
@@ -95,8 +93,8 @@ function NetworkShellHarness({
         threadCount={networkThreadsFixture.length}
         unpinnedChannels={unpinned}
       >
-        <div className="px-6 py-4 text-[13px] text-[color:var(--color-text-secondary)]">
-          Tab content placeholder — message rows land in task_14.
+        <div className="px-6 py-4 text-small-body text-(--color-text-secondary)">
+          Tab content placeholder - message rows land in task_14.
         </div>
       </NetworkShell>
     </PanelSurface>
@@ -118,14 +116,14 @@ export const DirectsTab: Story = {
 };
 
 /**
- * Empty channel rail with no recents — pre-onboarding state.
+ * Empty channel rail with no recents - pre-onboarding state.
  */
 export const EmptyChannels: Story = {
   render: () => <NetworkShellHarness channels={[]} recentsList={[]} />,
 };
 
 /**
- * Right-rail open state — overlay slot reserved for thread overlay (task_14) and inspectors (task_15).
+ * Right-rail open state - overlay slot reserved for thread overlay (task_14) and inspectors (task_15).
  */
 export const RightRailOpen: Story = {
   render: () => <NetworkShellHarness rightRailOpen />,

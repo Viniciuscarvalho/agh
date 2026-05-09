@@ -1,6 +1,6 @@
 import { cloneElement, isValidElement, type ReactNode, useId } from "react";
 
-import { Field, cn } from "@agh/ui";
+import { Field, FieldContent, FieldDescription, FieldError, FieldLabel, cn } from "@agh/ui";
 
 interface SettingsFieldRowProps {
   label: string;
@@ -39,10 +39,14 @@ function SettingsFieldRow({
   const errorId = error ? `${baseId}-error` : undefined;
 
   const mergeAttributeTokens = (...values: Array<string | undefined>) => {
-    const tokens = values
-      .flatMap(value => value?.split(" ") ?? [])
-      .map(value => value.trim())
-      .filter(Boolean);
+    const tokens: string[] = [];
+    for (const value of values) {
+      if (!value) continue;
+      for (const token of value.split(" ")) {
+        const trimmed = token.trim();
+        if (trimmed) tokens.push(trimmed);
+      }
+    }
     return tokens.length > 0 ? Array.from(new Set(tokens)).join(" ") : undefined;
   };
 
@@ -65,13 +69,13 @@ function SettingsFieldRow({
 
   let renderedControl = control;
   let renderedLabel: ReactNode = (
-    <span
+    <FieldLabel
       id={labelId}
-      className="text-sm font-medium text-[color:var(--color-text-primary)]"
+      className="text-sm font-medium text-(--color-text-primary)"
       data-testid={testId ? `${testId}-label` : undefined}
     >
       {label}
-    </span>
+    </FieldLabel>
   );
 
   if (controlElement) {
@@ -98,14 +102,14 @@ function SettingsFieldRow({
       });
       if (supportsNativeLabelAssociation) {
         renderedLabel = (
-          <label
+          <FieldLabel
             htmlFor={controlId}
             id={labelId}
-            className="text-sm font-medium text-[color:var(--color-text-primary)]"
+            className="text-sm font-medium text-(--color-text-primary)"
             data-testid={testId ? `${testId}-label` : undefined}
           >
             {label}
-          </label>
+          </FieldLabel>
         );
       }
     }
@@ -115,39 +119,39 @@ function SettingsFieldRow({
     <Field
       orientation="vertical"
       className={cn(
-        "grid gap-3 border-t border-[color:var(--color-divider)] pt-5 first:border-t-0 first:pt-0 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)] lg:gap-x-8 lg:gap-y-0",
+        "grid gap-3 border-t border-(--color-divider) pt-5 first:border-t-0 first:pt-0 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)] lg:gap-x-8 lg:gap-y-0",
         className
       )}
       data-testid={testId}
     >
-      <div className="flex min-w-0 flex-col gap-1.5">
+      <FieldContent className="min-w-0 gap-1.5">
         <div className="flex flex-wrap items-center gap-2">
           {renderedLabel}
           {hint ? (
-            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--color-text-label)] lg:hidden">
+            <span className="font-mono text-badge font-semibold uppercase tracking-badge text-(--color-text-label) lg:hidden">
               {hint}
             </span>
           ) : null}
         </div>
         {description ? (
-          <span
+          <FieldDescription
             id={descriptionId}
-            className="max-w-[34rem] text-xs leading-5 text-[color:var(--color-text-secondary)]"
+            className="max-w-136 text-xs leading-5 text-(--color-text-secondary)"
           >
             {description}
-          </span>
+          </FieldDescription>
         ) : null}
         {error ? (
-          <span id={errorId} className="text-xs text-[color:var(--color-danger)]">
+          <FieldError id={errorId} className="text-xs text-(--color-danger)">
             {error}
-          </span>
+          </FieldError>
         ) : null}
-      </div>
+      </FieldContent>
       <div className="flex min-w-0 items-start lg:justify-self-start">
         <div className="flex w-full min-w-0 max-w-full flex-wrap items-center gap-3 lg:w-auto [&_input]:max-w-full [&_select]:max-w-full">
           {renderedControl}
           {hint ? (
-            <span className="hidden font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--color-text-label)] lg:inline">
+            <span className="hidden font-mono text-badge font-semibold uppercase tracking-badge text-(--color-text-label) lg:inline">
               {hint}
             </span>
           ) : null}

@@ -1,4 +1,16 @@
-import { ScrollArea, Section, Empty, Pill, cn } from "@agh/ui";
+import {
+  ScrollArea,
+  Section,
+  Empty,
+  Pill,
+  cn,
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemTitle,
+} from "@agh/ui";
 import { Plug } from "lucide-react";
 
 import type { AgentPayload } from "../types";
@@ -18,7 +30,7 @@ export function AgentInfoPanel({ agent, className }: AgentInfoPanelProps) {
       aria-label={`${agent.name} agent details`}
       style={{ width: PANEL_WIDTH }}
       className={cn(
-        "hidden shrink-0 flex-col overflow-hidden border-l border-[color:var(--color-divider)] bg-[color:var(--color-canvas)] xl:flex",
+        "hidden shrink-0 flex-col overflow-hidden border-l border-(--color-divider) bg-(--color-canvas) xl:flex",
         className
       )}
     >
@@ -34,32 +46,34 @@ export function AgentInfoPanel({ agent, className }: AgentInfoPanelProps) {
                 fill={false}
               />
             ) : (
-              <ul className="flex flex-col gap-2" data-testid="agent-info-mcp-list">
+              <ItemGroup className="gap-2" data-testid="agent-info-mcp-list">
                 {mcpServers.map(server => {
                   const transport = server.transport ?? "stdio";
                   return (
-                    <li
+                    <Item
                       key={server.name}
+                      role="listitem"
+                      variant="outline"
+                      size="sm"
                       data-testid={`agent-info-mcp-row-${server.name}`}
-                      className="flex items-center justify-between gap-2 rounded-[var(--radius-md)] border border-[color:var(--color-divider)] bg-[color:var(--color-surface)] px-3 py-2"
                     >
-                      <div className="flex min-w-0 flex-col gap-0.5">
-                        <span className="truncate text-[12.5px] font-medium text-[color:var(--color-text-primary)]">
-                          {server.name}
-                        </span>
+                      <ItemContent>
+                        <ItemTitle>{server.name}</ItemTitle>
                         {server.command || server.url ? (
-                          <span className="truncate font-mono text-[10px] tracking-[0.04em] text-[color:var(--color-text-tertiary)]">
+                          <ItemDescription className="truncate font-mono text-badge tracking-mono text-(--color-text-tertiary)">
                             {server.url ?? server.command}
-                          </span>
+                          </ItemDescription>
                         ) : null}
-                      </div>
-                      <Pill mono tone="info" data-testid={`agent-info-mcp-kind-${server.name}`}>
-                        {transport}
-                      </Pill>
-                    </li>
+                      </ItemContent>
+                      <ItemActions>
+                        <Pill mono tone="info" data-testid={`agent-info-mcp-kind-${server.name}`}>
+                          {transport}
+                        </Pill>
+                      </ItemActions>
+                    </Item>
                   );
                 })}
-              </ul>
+              </ItemGroup>
             )}
           </Section>
         </div>

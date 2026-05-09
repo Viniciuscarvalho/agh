@@ -4,6 +4,10 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 
 import {
   Button,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+  DialogFooter,
   Field,
   FieldContent,
   FieldDescription,
@@ -40,8 +44,10 @@ function formatFilterText(filter?: AutomationTriggerFilter): string {
 function parseFilterText(text: string): AutomationTriggerFilter {
   return text
     .split("\n")
-    .map(line => line.trim())
-    .filter(Boolean)
+    .flatMap(line => {
+      const trimmed = line.trim();
+      return trimmed ? [trimmed] : [];
+    })
     .reduce<AutomationTriggerFilter>((accumulator, line) => {
       const separatorIndex = line.indexOf("=");
       if (separatorIndex === -1) {
@@ -57,18 +63,10 @@ function parseFilterText(text: string): AutomationTriggerFilter {
     }, {});
 }
 
-export function AutomationTriggerForm({
-  activeWorkspaceId,
-  draft,
-  isPending,
-  mode,
-  onCancel,
-  onChange,
-  onSubmit,
-}: AutomationTriggerFormProps) {
+export function AutomationTriggerForm(props: AutomationTriggerFormProps) {
+  const { draft, isPending, mode, onSubmit } = props;
   const [governanceExpanded, setGovernanceExpanded] = useState(mode === "edit");
   const retry = retryDraftForStrategy(draft.retry?.strategy ?? "none", draft.retry ?? undefined);
-
   const canSubmit =
     draft.name.trim() !== "" &&
     draft.agent_name.trim() !== "" &&
@@ -82,15 +80,46 @@ export function AutomationTriggerForm({
     onSubmit();
   };
 
+  return renderAutomationTriggerForm({
+    ...props,
+    canSubmit,
+    governanceExpanded,
+    handleSubmit,
+    retry,
+    setGovernanceExpanded,
+  });
+}
+
+interface AutomationTriggerFormViewProps extends AutomationTriggerFormProps {
+  canSubmit: boolean;
+  governanceExpanded: boolean;
+  handleSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  retry: ReturnType<typeof retryDraftForStrategy>;
+  setGovernanceExpanded: (open: boolean) => void;
+}
+
+function renderAutomationTriggerForm({
+  activeWorkspaceId,
+  draft,
+  isPending,
+  mode,
+  onCancel,
+  onChange,
+  canSubmit,
+  governanceExpanded,
+  handleSubmit,
+  retry,
+  setGovernanceExpanded,
+}: AutomationTriggerFormViewProps) {
   return (
     <form
       className="flex max-h-[min(84vh,960px)] flex-col"
       data-testid="automation-trigger-form"
       onSubmit={handleSubmit}
     >
-      <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5">
+      <div className="flex-1 space-y-6 overflow-y-auto p-5">
         <Section label="Core">
-          <div className="space-y-4 rounded-[var(--radius-md)] border border-[color:var(--color-divider)] bg-[color:var(--color-surface)] p-4">
+          <div className="space-y-4 rounded-md border border-(--color-divider) bg-(--color-surface) p-4">
             <div className="grid gap-4 md:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="trigger-name">Name</FieldLabel>
@@ -151,7 +180,7 @@ export function AutomationTriggerForm({
                 <Pill mono tone="info">
                   GO TEMPLATE
                 </Pill>
-                <span className="text-[12px] text-[color:var(--color-text-tertiary)]">
+                <span className="text-xs text-(--color-text-tertiary)">
                   Variables: .EventName, .Source, .Data, .Timestamp
                 </span>
               </div>
@@ -168,7 +197,7 @@ export function AutomationTriggerForm({
         </Section>
 
         <Section label="Activation">
-          <div className="space-y-4 rounded-[var(--radius-md)] border border-[color:var(--color-divider)] bg-[color:var(--color-surface)] p-4">
+          <div className="space-y-4 rounded-md border border-(--color-divider) bg-(--color-surface) p-4">
             <Field>
               <FieldLabel htmlFor="trigger-filter">Filter rules</FieldLabel>
               <Textarea
@@ -227,36 +256,32 @@ export function AutomationTriggerForm({
           </div>
         </Section>
 
-        <section className="rounded-[var(--radius-md)] border border-[color:var(--color-divider)] bg-[color:var(--color-surface)] p-4">
-          <button
-            className="flex w-full items-center justify-between gap-3 text-left"
-            data-testid="trigger-governance-toggle"
-            onClick={() => setGovernanceExpanded(current => !current)}
-            type="button"
-          >
-            <span className="flex items-center gap-2">
-              {governanceExpanded ? (
-                <ChevronDown
-                  aria-hidden="true"
-                  className="size-4 text-[color:var(--color-text-tertiary)]"
-                />
-              ) : (
-                <ChevronRight
-                  aria-hidden="true"
-                  className="size-4 text-[color:var(--color-text-tertiary)]"
-                />
-              )}
-              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--color-text-label)]">
-                Governance
+        <Collapsible open={governanceExpanded} onOpenChange={setGovernanceExpanded}>
+          <section className="rounded-md border border-(--color-divider) bg-(--color-surface) p-4">
+            <CollapsibleTrigger
+              className="flex w-full items-center justify-between gap-3 text-left"
+              data-testid="trigger-governance-toggle"
+              type="button"
+            >
+              <span className="flex items-center gap-2">
+                {governanceExpanded ? (
+                  <ChevronDown aria-hidden="true" className="size-4 text-(--color-text-tertiary)" />
+                ) : (
+                  <ChevronRight
+                    aria-hidden="true"
+                    className="size-4 text-(--color-text-tertiary)"
+                  />
+                )}
+                <span className="font-mono text-badge font-semibold uppercase tracking-mono text-(--color-text-label)">
+                  Governance
+                </span>
               </span>
-            </span>
-            <span className="text-[13px] text-[color:var(--color-text-secondary)]">
-              Optional retry and rate limit settings
-            </span>
-          </button>
+              <span className="text-small-body text-(--color-text-secondary)">
+                Optional retry and rate limit settings
+              </span>
+            </CollapsibleTrigger>
 
-          {governanceExpanded ? (
-            <div className="mt-4 space-y-4">
+            <CollapsibleContent className="mt-4 space-y-4">
               <div className="grid gap-4 md:grid-cols-3">
                 <Field>
                   <FieldTitle>Retry policy</FieldTitle>
@@ -369,12 +394,12 @@ export function AutomationTriggerForm({
                   </FieldDescription>
                 </FieldContent>
               </Field>
-            </div>
-          ) : null}
-        </section>
+            </CollapsibleContent>
+          </section>
+        </Collapsible>
       </div>
 
-      <div className="flex items-center justify-end gap-2 border-t border-[color:var(--color-divider)] bg-[color:var(--color-surface-panel)] px-5 py-3">
+      <DialogFooter variant="ruled">
         <Button onClick={onCancel} type="button" variant="outline">
           Cancel
         </Button>
@@ -386,7 +411,7 @@ export function AutomationTriggerForm({
         >
           {isPending ? "Saving..." : mode === "create" ? "Create Trigger" : "Save Changes"}
         </Button>
-      </div>
+      </DialogFooter>
     </form>
   );
 }

@@ -2,7 +2,7 @@ import { AlertCircle, Loader2, Play } from "lucide-react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 
-import { Button, Input, Switch } from "@agh/ui";
+import { Button, Input, PageShell, Section, Switch } from "@agh/ui";
 import { useSettingsMemoryPage } from "@/hooks/routes/use-settings-memory-page";
 import type { SettingsMemorySection } from "@/systems/settings";
 import {
@@ -10,10 +10,8 @@ import {
   SettingsFieldRow,
   SettingsNumberInput,
   SettingsPageActions,
-  SettingsPageShell,
   SettingsRestartBanner,
   SettingsSaveBar,
-  SettingsSectionCard,
   SettingsStatusLine,
 } from "@/systems/settings/components";
 
@@ -25,6 +23,10 @@ type MemoryConfig = SettingsMemorySection["config"];
 type ValidationSetter = (key: string) => (message: string | null) => void;
 
 const TEST_PREFIX = "settings-page-memory";
+
+function formatHealthTimestamp(timestamp: string): string {
+  return timestamp.replace("T", " ").replace(/\.\d+Z$/, "Z");
+}
 
 export function MemorySettingsPage() {
   const page = useSettingsMemoryPage();
@@ -48,7 +50,7 @@ export function MemorySettingsPage() {
         className="flex flex-1 items-center justify-center"
         data-testid={`${TEST_PREFIX}-loading`}
       >
-        <Loader2 className="size-5 animate-spin text-[color:var(--color-text-tertiary)]" />
+        <Loader2 className="size-5 animate-spin text-(--color-text-tertiary)" />
       </div>
     );
   }
@@ -57,8 +59,8 @@ export function MemorySettingsPage() {
     return (
       <div className="flex flex-1 items-center justify-center" data-testid={`${TEST_PREFIX}-error`}>
         <div className="flex flex-col items-center gap-2 text-center">
-          <AlertCircle className="size-6 text-[color:var(--color-danger)]" />
-          <p className="text-sm text-[color:var(--color-text-tertiary)]">
+          <AlertCircle className="size-6 text-(--color-danger)" />
+          <p className="text-sm text-(--color-text-tertiary)">
             {page.error?.message ?? "Failed to load memory settings"}
           </p>
           <Button onClick={page.handleRetry} size="sm" type="button" variant="outline">
@@ -75,18 +77,18 @@ export function MemorySettingsPage() {
     envelope.actions.consolidate.available && envelope.health.dream_enabled && draft.dream.enabled;
 
   return (
-    <SettingsPageShell
+    <PageShell
       slug="memory"
       title="Memory"
       statusLine={
         <SettingsStatusLine
           data-testid={`${TEST_PREFIX}-status-line`}
-          daemonAvailable={health.available}
+          status={health.available ? "connected" : "error"}
           items={[
             <span key="files">{health.file_count} memory files</span>,
             <span key="last" data-testid={`${TEST_PREFIX}-last-consolidated`}>
               {health.last_consolidated_at
-                ? `last dream ${new Date(health.last_consolidated_at).toLocaleString()}`
+                ? `last dream ${formatHealthTimestamp(health.last_consolidated_at)}`
                 : "no dream runs yet"}
             </span>,
             <span key="dream-state">
@@ -177,7 +179,7 @@ export function MemorySettingsPage() {
         setValidationError={setValidationError}
       />
       <WorkspaceIdentitySection draft={draft} setDraft={setDraft} />
-    </SettingsPageShell>
+    </PageShell>
   );
 }
 
@@ -193,7 +195,7 @@ interface ValidatedSectionProps extends DraftSectionProps {
 
 function MemorySystemSection({ draft, setDraft }: DraftSectionProps) {
   return (
-    <SettingsSectionCard eyebrow="Memory system">
+    <Section divided label="Memory system">
       <SettingsFieldRow
         data-testid={`${TEST_PREFIX}-enabled`}
         label="Memory persistence"
@@ -202,7 +204,12 @@ function MemorySystemSection({ draft, setDraft }: DraftSectionProps) {
           <Switch
             data-testid={`${TEST_PREFIX}-enabled-switch`}
             checked={draft.enabled}
-            onCheckedChange={checked => setDraft({ ...draft, enabled: checked })}
+            onCheckedChange={checked =>
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return { ...current, enabled: checked };
+              })
+            }
           />
         }
       />
@@ -218,15 +225,18 @@ function MemorySystemSection({ draft, setDraft }: DraftSectionProps) {
             value={draft.global_dir ?? ""}
             placeholder="~/.agh/memory"
             onChange={event =>
-              setDraft({
-                ...draft,
-                global_dir: event.target.value === "" ? undefined : event.target.value,
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  global_dir: event.target.value === "" ? undefined : event.target.value,
+                };
               })
             }
           />
         }
       />
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
@@ -237,8 +247,9 @@ function ProviderResilienceSection({
   setValidationError,
 }: ValidatedSectionProps) {
   return (
-    <SettingsSectionCard
-      eyebrow="Memory provider"
+    <Section
+      divided
+      label="Memory provider"
       note="circuit-breaker policy when an external memory provider is configured"
     >
       <SettingsFieldRow
@@ -252,9 +263,12 @@ function ProviderResilienceSection({
             value={draft.provider.name}
             placeholder="local"
             onChange={event =>
-              setDraft({
-                ...draft,
-                provider: { ...draft.provider, name: event.target.value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  provider: { ...current.provider, name: event.target.value },
+                };
               })
             }
           />
@@ -271,9 +285,12 @@ function ProviderResilienceSection({
             value={draft.provider.timeout}
             placeholder="2s"
             onChange={event =>
-              setDraft({
-                ...draft,
-                provider: { ...draft.provider, timeout: event.target.value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  provider: { ...current.provider, timeout: event.target.value },
+                };
               })
             }
           />
@@ -292,9 +309,12 @@ function ProviderResilienceSection({
             value={draft.provider.failure_threshold}
             onValidityChange={setValidationError("providerFailureThreshold")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                provider: { ...draft.provider, failure_threshold: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  provider: { ...current.provider, failure_threshold: value },
+                };
               })
             }
           />
@@ -311,15 +331,18 @@ function ProviderResilienceSection({
             value={draft.provider.cooldown}
             placeholder="30s"
             onChange={event =>
-              setDraft({
-                ...draft,
-                provider: { ...draft.provider, cooldown: event.target.value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  provider: { ...current.provider, cooldown: event.target.value },
+                };
               })
             }
           />
         }
       />
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
@@ -331,8 +354,9 @@ function ControllerSection({
 }: ValidatedSectionProps) {
   const allowOrigins = draft.controller.policy.allow_origins.join(", ");
   return (
-    <SettingsSectionCard
-      eyebrow="Write controller"
+    <Section
+      divided
+      label="Write controller"
       note="lexical/entity-only ADD / UPDATE / DELETE / NOOP / REJECT pipeline"
     >
       <SettingsFieldRow
@@ -346,9 +370,12 @@ function ControllerSection({
             value={draft.controller.mode}
             placeholder="hybrid"
             onChange={event =>
-              setDraft({
-                ...draft,
-                controller: { ...draft.controller, mode: event.target.value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  controller: { ...current.controller, mode: event.target.value },
+                };
               })
             }
           />
@@ -365,9 +392,12 @@ function ControllerSection({
             value={draft.controller.max_latency}
             placeholder="300ms"
             onChange={event =>
-              setDraft({
-                ...draft,
-                controller: { ...draft.controller, max_latency: event.target.value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  controller: { ...current.controller, max_latency: event.target.value },
+                };
               })
             }
           />
@@ -384,12 +414,15 @@ function ControllerSection({
             value={draft.controller.default_op_on_fail}
             placeholder="noop"
             onChange={event =>
-              setDraft({
-                ...draft,
-                controller: {
-                  ...draft.controller,
-                  default_op_on_fail: event.target.value,
-                },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  controller: {
+                    ...current.controller,
+                    default_op_on_fail: event.target.value,
+                  },
+                };
               })
             }
           />
@@ -408,12 +441,15 @@ function ControllerSection({
             value={draft.controller.policy.max_content_chars}
             onValidityChange={setValidationError("policyMaxContentChars")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                controller: {
-                  ...draft.controller,
-                  policy: { ...draft.controller.policy, max_content_chars: value },
-                },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  controller: {
+                    ...current.controller,
+                    policy: { ...current.controller.policy, max_content_chars: value },
+                  },
+                };
               })
             }
           />
@@ -432,12 +468,15 @@ function ControllerSection({
             value={draft.controller.policy.max_writes_per_min}
             onValidityChange={setValidationError("policyMaxWritesPerMin")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                controller: {
-                  ...draft.controller,
-                  policy: { ...draft.controller.policy, max_writes_per_min: value },
-                },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  controller: {
+                    ...current.controller,
+                    policy: { ...current.controller.policy, max_writes_per_min: value },
+                  },
+                };
               })
             }
           />
@@ -456,7 +495,7 @@ function ControllerSection({
           />
         }
       />
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
@@ -468,10 +507,7 @@ function ControllerLLMSection({
 }: ValidatedSectionProps) {
   const llmDisabled = !draft.controller.llm.enabled;
   return (
-    <SettingsSectionCard
-      eyebrow="Controller LLM tiebreaker"
-      note="entity-slot ambiguity escalations"
-    >
+    <Section divided label="Controller LLM tiebreaker" note="entity-slot ambiguity escalations">
       <SettingsFieldRow
         data-testid={`${TEST_PREFIX}-controller-llm-enabled`}
         label="LLM tiebreaker"
@@ -481,12 +517,15 @@ function ControllerLLMSection({
             data-testid={`${TEST_PREFIX}-controller-llm-enabled-switch`}
             checked={draft.controller.llm.enabled}
             onCheckedChange={checked =>
-              setDraft({
-                ...draft,
-                controller: {
-                  ...draft.controller,
-                  llm: { ...draft.controller.llm, enabled: checked },
-                },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  controller: {
+                    ...current.controller,
+                    llm: { ...current.controller.llm, enabled: checked },
+                  },
+                };
               })
             }
           />
@@ -504,12 +543,15 @@ function ControllerLLMSection({
             value={draft.controller.llm.model}
             placeholder="anthropic/claude-haiku-4"
             onChange={event =>
-              setDraft({
-                ...draft,
-                controller: {
-                  ...draft.controller,
-                  llm: { ...draft.controller.llm, model: event.target.value },
-                },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  controller: {
+                    ...current.controller,
+                    llm: { ...current.controller.llm, model: event.target.value },
+                  },
+                };
               })
             }
           />
@@ -529,12 +571,15 @@ function ControllerLLMSection({
             value={draft.controller.llm.top_k}
             onValidityChange={setValidationError("controllerLlmTopK")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                controller: {
-                  ...draft.controller,
-                  llm: { ...draft.controller.llm, top_k: value },
-                },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  controller: {
+                    ...current.controller,
+                    llm: { ...current.controller.llm, top_k: value },
+                  },
+                };
               })
             }
           />
@@ -554,12 +599,15 @@ function ControllerLLMSection({
             value={draft.controller.llm.max_tokens_out}
             onValidityChange={setValidationError("controllerLlmMaxTokens")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                controller: {
-                  ...draft.controller,
-                  llm: { ...draft.controller.llm, max_tokens_out: value },
-                },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  controller: {
+                    ...current.controller,
+                    llm: { ...current.controller.llm, max_tokens_out: value },
+                  },
+                };
               })
             }
           />
@@ -577,12 +625,15 @@ function ControllerLLMSection({
             value={draft.controller.llm.timeout}
             placeholder="250ms"
             onChange={event =>
-              setDraft({
-                ...draft,
-                controller: {
-                  ...draft.controller,
-                  llm: { ...draft.controller.llm, timeout: event.target.value },
-                },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  controller: {
+                    ...current.controller,
+                    llm: { ...current.controller.llm, timeout: event.target.value },
+                  },
+                };
               })
             }
           />
@@ -600,30 +651,38 @@ function ControllerLLMSection({
             value={draft.controller.llm.prompt_version}
             placeholder="v1"
             onChange={event =>
-              setDraft({
-                ...draft,
-                controller: {
-                  ...draft.controller,
-                  llm: { ...draft.controller.llm, prompt_version: event.target.value },
-                },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  controller: {
+                    ...current.controller,
+                    llm: { ...current.controller.llm, prompt_version: event.target.value },
+                  },
+                };
               })
             }
           />
         }
       />
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
-function RecallSection({
+function RecallSection(props: ValidatedSectionProps) {
+  return renderRecallSection(props);
+}
+
+function renderRecallSection({
   draft,
   setDraft,
   validationErrors,
   setValidationError,
 }: ValidatedSectionProps) {
   return (
-    <SettingsSectionCard
-      eyebrow="Recall pipeline"
+    <Section
+      divided
+      label="Recall pipeline"
       note="deterministic FTS5 + scope-shadow + freshness banner"
     >
       <SettingsFieldRow
@@ -639,9 +698,12 @@ function RecallSection({
             value={draft.recall.top_k}
             onValidityChange={setValidationError("recallTopK")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                recall: { ...draft.recall, top_k: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  recall: { ...current.recall, top_k: value },
+                };
               })
             }
           />
@@ -660,9 +722,12 @@ function RecallSection({
             value={draft.recall.raw_candidates}
             onValidityChange={setValidationError("recallRawCandidates")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                recall: { ...draft.recall, raw_candidates: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  recall: { ...current.recall, raw_candidates: value },
+                };
               })
             }
           />
@@ -679,9 +744,12 @@ function RecallSection({
             value={draft.recall.fusion}
             placeholder="weighted"
             onChange={event =>
-              setDraft({
-                ...draft,
-                recall: { ...draft.recall, fusion: event.target.value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  recall: { ...current.recall, fusion: event.target.value },
+                };
               })
             }
           />
@@ -696,9 +764,12 @@ function RecallSection({
             data-testid={`${TEST_PREFIX}-recall-include-already-surfaced-switch`}
             checked={draft.recall.include_already_surfaced}
             onCheckedChange={checked =>
-              setDraft({
-                ...draft,
-                recall: { ...draft.recall, include_already_surfaced: checked },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  recall: { ...current.recall, include_already_surfaced: checked },
+                };
               })
             }
           />
@@ -713,9 +784,12 @@ function RecallSection({
             data-testid={`${TEST_PREFIX}-recall-include-system-switch`}
             checked={draft.recall.include_system}
             onCheckedChange={checked =>
-              setDraft({
-                ...draft,
-                recall: { ...draft.recall, include_system: checked },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  recall: { ...current.recall, include_system: checked },
+                };
               })
             }
           />
@@ -736,12 +810,15 @@ function RecallSection({
             value={draft.recall.weights.bm25_unicode}
             onValidityChange={setValidationError("recallWeightUnicode")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                recall: {
-                  ...draft.recall,
-                  weights: { ...draft.recall.weights, bm25_unicode: value },
-                },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  recall: {
+                    ...current.recall,
+                    weights: { ...current.recall.weights, bm25_unicode: value },
+                  },
+                };
               })
             }
           />
@@ -762,12 +839,15 @@ function RecallSection({
             value={draft.recall.weights.bm25_trigram}
             onValidityChange={setValidationError("recallWeightTrigram")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                recall: {
-                  ...draft.recall,
-                  weights: { ...draft.recall.weights, bm25_trigram: value },
-                },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  recall: {
+                    ...current.recall,
+                    weights: { ...current.recall.weights, bm25_trigram: value },
+                  },
+                };
               })
             }
           />
@@ -788,12 +868,15 @@ function RecallSection({
             value={draft.recall.weights.recency}
             onValidityChange={setValidationError("recallWeightRecency")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                recall: {
-                  ...draft.recall,
-                  weights: { ...draft.recall.weights, recency: value },
-                },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  recall: {
+                    ...current.recall,
+                    weights: { ...current.recall.weights, recency: value },
+                  },
+                };
               })
             }
           />
@@ -814,12 +897,15 @@ function RecallSection({
             value={draft.recall.weights.recall_signal}
             onValidityChange={setValidationError("recallWeightRecallSignal")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                recall: {
-                  ...draft.recall,
-                  weights: { ...draft.recall.weights, recall_signal: value },
-                },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  recall: {
+                    ...current.recall,
+                    weights: { ...current.recall.weights, recall_signal: value },
+                  },
+                };
               })
             }
           />
@@ -838,12 +924,15 @@ function RecallSection({
             value={draft.recall.freshness.banner_after_days}
             onValidityChange={setValidationError("recallBannerAfter")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                recall: {
-                  ...draft.recall,
-                  freshness: { ...draft.recall.freshness, banner_after_days: value },
-                },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  recall: {
+                    ...current.recall,
+                    freshness: { ...current.recall.freshness, banner_after_days: value },
+                  },
+                };
               })
             }
           />
@@ -862,12 +951,15 @@ function RecallSection({
             value={draft.recall.signals.queue_capacity}
             onValidityChange={setValidationError("recallSignalQueue")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                recall: {
-                  ...draft.recall,
-                  signals: { ...draft.recall.signals, queue_capacity: value },
-                },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  recall: {
+                    ...current.recall,
+                    signals: { ...current.recall.signals, queue_capacity: value },
+                  },
+                };
               })
             }
           />
@@ -886,12 +978,15 @@ function RecallSection({
             value={draft.recall.signals.worker_retry_max}
             onValidityChange={setValidationError("recallSignalRetry")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                recall: {
-                  ...draft.recall,
-                  signals: { ...draft.recall.signals, worker_retry_max: value },
-                },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  recall: {
+                    ...current.recall,
+                    signals: { ...current.recall.signals, worker_retry_max: value },
+                  },
+                };
               })
             }
           />
@@ -906,18 +1001,21 @@ function RecallSection({
             data-testid={`${TEST_PREFIX}-recall-signals-metrics-switch`}
             checked={draft.recall.signals.metrics_enabled}
             onCheckedChange={checked =>
-              setDraft({
-                ...draft,
-                recall: {
-                  ...draft.recall,
-                  signals: { ...draft.recall.signals, metrics_enabled: checked },
-                },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  recall: {
+                    ...current.recall,
+                    signals: { ...current.recall.signals, metrics_enabled: checked },
+                  },
+                };
               })
             }
           />
         }
       />
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
@@ -928,7 +1026,7 @@ function DecisionsSection({
   setValidationError,
 }: ValidatedSectionProps) {
   return (
-    <SettingsSectionCard eyebrow="Decisions retention" note="memory_decisions WAL housekeeping">
+    <Section divided label="Decisions retention" note="memory_decisions WAL housekeeping">
       <SettingsFieldRow
         data-testid={`${TEST_PREFIX}-decisions-prune-after`}
         label="Prune after applied (days)"
@@ -942,9 +1040,12 @@ function DecisionsSection({
             value={draft.decisions.prune_after_applied_days}
             onValidityChange={setValidationError("decisionsPruneAfter")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                decisions: { ...draft.decisions, prune_after_applied_days: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  decisions: { ...current.decisions, prune_after_applied_days: value },
+                };
               })
             }
           />
@@ -959,9 +1060,12 @@ function DecisionsSection({
             data-testid={`${TEST_PREFIX}-decisions-keep-summary-switch`}
             checked={draft.decisions.keep_audit_summary}
             onCheckedChange={checked =>
-              setDraft({
-                ...draft,
-                decisions: { ...draft.decisions, keep_audit_summary: checked },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  decisions: { ...current.decisions, keep_audit_summary: checked },
+                };
               })
             }
           />
@@ -980,15 +1084,18 @@ function DecisionsSection({
             value={draft.decisions.max_post_content_bytes}
             onValidityChange={setValidationError("decisionsMaxPostBytes")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                decisions: { ...draft.decisions, max_post_content_bytes: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  decisions: { ...current.decisions, max_post_content_bytes: value },
+                };
               })
             }
           />
         }
       />
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
@@ -1000,7 +1107,7 @@ function ExtractorSection({
 }: ValidatedSectionProps) {
   const extractorDisabled = !draft.extractor.enabled;
   return (
-    <SettingsSectionCard eyebrow="Extractor" note="post-message proposal generation">
+    <Section divided label="Extractor" note="post-message proposal generation">
       <SettingsFieldRow
         data-testid={`${TEST_PREFIX}-extractor-enabled`}
         label="Extractor"
@@ -1010,9 +1117,12 @@ function ExtractorSection({
             data-testid={`${TEST_PREFIX}-extractor-enabled-switch`}
             checked={draft.extractor.enabled}
             onCheckedChange={checked =>
-              setDraft({
-                ...draft,
-                extractor: { ...draft.extractor, enabled: checked },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  extractor: { ...current.extractor, enabled: checked },
+                };
               })
             }
           />
@@ -1030,9 +1140,12 @@ function ExtractorSection({
             value={draft.extractor.mode}
             placeholder="post_message"
             onChange={event =>
-              setDraft({
-                ...draft,
-                extractor: { ...draft.extractor, mode: event.target.value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  extractor: { ...current.extractor, mode: event.target.value },
+                };
               })
             }
           />
@@ -1052,9 +1165,12 @@ function ExtractorSection({
             value={draft.extractor.throttle_turns}
             onValidityChange={setValidationError("extractorThrottle")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                extractor: { ...draft.extractor, throttle_turns: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  extractor: { ...current.extractor, throttle_turns: value },
+                };
               })
             }
           />
@@ -1072,9 +1188,12 @@ function ExtractorSection({
             value={draft.extractor.deadline}
             placeholder="60s"
             onChange={event =>
-              setDraft({
-                ...draft,
-                extractor: { ...draft.extractor, deadline: event.target.value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  extractor: { ...current.extractor, deadline: event.target.value },
+                };
               })
             }
           />
@@ -1090,9 +1209,12 @@ function ExtractorSection({
             data-testid={`${TEST_PREFIX}-extractor-sandbox-switch`}
             checked={draft.extractor.sandbox_inbox_only}
             onCheckedChange={checked =>
-              setDraft({
-                ...draft,
-                extractor: { ...draft.extractor, sandbox_inbox_only: checked },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  extractor: { ...current.extractor, sandbox_inbox_only: checked },
+                };
               })
             }
           />
@@ -1110,9 +1232,12 @@ function ExtractorSection({
             value={draft.extractor.model}
             placeholder="(inherit)"
             onChange={event =>
-              setDraft({
-                ...draft,
-                extractor: { ...draft.extractor, model: event.target.value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  extractor: { ...current.extractor, model: event.target.value },
+                };
               })
             }
           />
@@ -1132,12 +1257,15 @@ function ExtractorSection({
             value={draft.extractor.queue.capacity}
             onValidityChange={setValidationError("extractorQueueCapacity")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                extractor: {
-                  ...draft.extractor,
-                  queue: { ...draft.extractor.queue, capacity: value },
-                },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  extractor: {
+                    ...current.extractor,
+                    queue: { ...current.extractor.queue, capacity: value },
+                  },
+                };
               })
             }
           />
@@ -1157,12 +1285,15 @@ function ExtractorSection({
             value={draft.extractor.queue.coalesce_max}
             onValidityChange={setValidationError("extractorCoalesce")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                extractor: {
-                  ...draft.extractor,
-                  queue: { ...draft.extractor.queue, coalesce_max: value },
-                },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  extractor: {
+                    ...current.extractor,
+                    queue: { ...current.extractor.queue, coalesce_max: value },
+                  },
+                };
               })
             }
           />
@@ -1194,7 +1325,7 @@ function ExtractorSection({
           />
         }
       />
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
@@ -1205,7 +1336,11 @@ interface DreamSectionProps extends ValidatedSectionProps {
   actionMessage: string | null;
 }
 
-function DreamSection({
+function DreamSection(props: DreamSectionProps) {
+  return renderDreamSection(props);
+}
+
+function renderDreamSection({
   draft,
   setDraft,
   validationErrors,
@@ -1217,10 +1352,11 @@ function DreamSection({
 }: DreamSectionProps) {
   const dreamDisabled = !draft.dream.enabled;
   return (
-    <SettingsSectionCard
-      eyebrow="Memory dreaming"
+    <Section
+      divided
+      label="Memory dreaming"
       note="background recall-signal scoring + curated promotion"
-      headerAction={
+      right={
         <Button
           type="button"
           variant="outline"
@@ -1247,7 +1383,10 @@ function DreamSection({
             data-testid={`${TEST_PREFIX}-dream-enabled-switch`}
             checked={draft.dream.enabled}
             onCheckedChange={checked =>
-              setDraft({ ...draft, dream: { ...draft.dream, enabled: checked } })
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return { ...current, dream: { ...current.dream, enabled: checked } };
+              })
             }
           />
         }
@@ -1264,7 +1403,10 @@ function DreamSection({
             value={draft.dream.agent}
             placeholder="dreaming-curator"
             onChange={event =>
-              setDraft({ ...draft, dream: { ...draft.dream, agent: event.target.value } })
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return { ...current, dream: { ...current.dream, agent: event.target.value } };
+              })
             }
           />
         }
@@ -1284,9 +1426,12 @@ function DreamSection({
             value={draft.dream.min_hours}
             onValidityChange={setValidationError("dreamMinHours")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                dream: { ...draft.dream, min_hours: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  dream: { ...current.dream, min_hours: value },
+                };
               })
             }
           />
@@ -1306,9 +1451,12 @@ function DreamSection({
             value={draft.dream.min_sessions}
             onValidityChange={setValidationError("dreamMinSessions")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                dream: { ...draft.dream, min_sessions: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  dream: { ...current.dream, min_sessions: value },
+                };
               })
             }
           />
@@ -1326,7 +1474,10 @@ function DreamSection({
             value={draft.dream.debounce}
             placeholder="10m"
             onChange={event =>
-              setDraft({ ...draft, dream: { ...draft.dream, debounce: event.target.value } })
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return { ...current, dream: { ...current.dream, debounce: event.target.value } };
+              })
             }
           />
         }
@@ -1343,9 +1494,12 @@ function DreamSection({
             value={draft.dream.check_interval}
             placeholder="30m"
             onChange={event =>
-              setDraft({
-                ...draft,
-                dream: { ...draft.dream, check_interval: event.target.value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  dream: { ...current.dream, check_interval: event.target.value },
+                };
               })
             }
           />
@@ -1363,9 +1517,12 @@ function DreamSection({
             value={draft.dream.prompt_version}
             placeholder="v1"
             onChange={event =>
-              setDraft({
-                ...draft,
-                dream: { ...draft.dream, prompt_version: event.target.value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  dream: { ...current.dream, prompt_version: event.target.value },
+                };
               })
             }
           />
@@ -1385,9 +1542,15 @@ function DreamSection({
             value={draft.dream.gates.min_unpromoted}
             onValidityChange={setValidationError("dreamGateMinUnpromoted")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                dream: { ...draft.dream, gates: { ...draft.dream.gates, min_unpromoted: value } },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  dream: {
+                    ...current.dream,
+                    gates: { ...current.dream.gates, min_unpromoted: value },
+                  },
+                };
               })
             }
           />
@@ -1407,9 +1570,15 @@ function DreamSection({
             value={draft.dream.gates.min_recall_count}
             onValidityChange={setValidationError("dreamGateMinRecallCount")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                dream: { ...draft.dream, gates: { ...draft.dream.gates, min_recall_count: value } },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  dream: {
+                    ...current.dream,
+                    gates: { ...current.dream.gates, min_recall_count: value },
+                  },
+                };
               })
             }
           />
@@ -1418,7 +1587,7 @@ function DreamSection({
       <SettingsFieldRow
         data-testid={`${TEST_PREFIX}-dream-gate-min-score`}
         label="Gate · min score"
-        description="Promotion score threshold (0–1)"
+        description="Promotion score threshold (0-1)"
         error={validationErrors.dreamGateMinScore ?? undefined}
         control={
           <SettingsDecimalInput
@@ -1431,9 +1600,12 @@ function DreamSection({
             value={draft.dream.gates.min_score}
             onValidityChange={setValidationError("dreamGateMinScore")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                dream: { ...draft.dream, gates: { ...draft.dream.gates, min_score: value } },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  dream: { ...current.dream, gates: { ...current.dream.gates, min_score: value } },
+                };
               })
             }
           />
@@ -1453,12 +1625,15 @@ function DreamSection({
             value={draft.dream.scoring.recency_half_life_days}
             onValidityChange={setValidationError("dreamScoringHalfLife")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                dream: {
-                  ...draft.dream,
-                  scoring: { ...draft.dream.scoring, recency_half_life_days: value },
-                },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  dream: {
+                    ...current.dream,
+                    scoring: { ...current.dream.scoring, recency_half_life_days: value },
+                  },
+                };
               })
             }
           />
@@ -1479,15 +1654,18 @@ function DreamSection({
             value={draft.dream.scoring.weights.frequency}
             onValidityChange={setValidationError("dreamScoreWeightFrequency")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                dream: {
-                  ...draft.dream,
-                  scoring: {
-                    ...draft.dream.scoring,
-                    weights: { ...draft.dream.scoring.weights, frequency: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  dream: {
+                    ...current.dream,
+                    scoring: {
+                      ...current.dream.scoring,
+                      weights: { ...current.dream.scoring.weights, frequency: value },
+                    },
                   },
-                },
+                };
               })
             }
           />
@@ -1508,15 +1686,18 @@ function DreamSection({
             value={draft.dream.scoring.weights.relevance}
             onValidityChange={setValidationError("dreamScoreWeightRelevance")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                dream: {
-                  ...draft.dream,
-                  scoring: {
-                    ...draft.dream.scoring,
-                    weights: { ...draft.dream.scoring.weights, relevance: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  dream: {
+                    ...current.dream,
+                    scoring: {
+                      ...current.dream.scoring,
+                      weights: { ...current.dream.scoring.weights, relevance: value },
+                    },
                   },
-                },
+                };
               })
             }
           />
@@ -1537,15 +1718,18 @@ function DreamSection({
             value={draft.dream.scoring.weights.recency}
             onValidityChange={setValidationError("dreamScoreWeightRecency")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                dream: {
-                  ...draft.dream,
-                  scoring: {
-                    ...draft.dream.scoring,
-                    weights: { ...draft.dream.scoring.weights, recency: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  dream: {
+                    ...current.dream,
+                    scoring: {
+                      ...current.dream.scoring,
+                      weights: { ...current.dream.scoring.weights, recency: value },
+                    },
                   },
-                },
+                };
               })
             }
           />
@@ -1566,15 +1750,18 @@ function DreamSection({
             value={draft.dream.scoring.weights.freshness}
             onValidityChange={setValidationError("dreamScoreWeightFreshness")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                dream: {
-                  ...draft.dream,
-                  scoring: {
-                    ...draft.dream.scoring,
-                    weights: { ...draft.dream.scoring.weights, freshness: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  dream: {
+                    ...current.dream,
+                    scoring: {
+                      ...current.dream.scoring,
+                      weights: { ...current.dream.scoring.weights, freshness: value },
+                    },
                   },
-                },
+                };
               })
             }
           />
@@ -1582,13 +1769,13 @@ function DreamSection({
       />
       {actionMessage ? (
         <p
-          className="text-xs text-[color:var(--color-text-tertiary)]"
+          className="text-xs text-(--color-text-tertiary)"
           data-testid={`${TEST_PREFIX}-action-message`}
         >
           {actionMessage}
         </p>
       ) : null}
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
@@ -1599,7 +1786,7 @@ function SessionLedgerSection({
   setValidationError,
 }: ValidatedSectionProps) {
   return (
-    <SettingsSectionCard eyebrow="Session ledger" note="forensic JSONL ledger materialization">
+    <Section divided label="Session ledger" note="forensic JSONL ledger materialization">
       <SettingsFieldRow
         data-testid={`${TEST_PREFIX}-session-ledger-format`}
         label="Ledger format"
@@ -1611,9 +1798,12 @@ function SessionLedgerSection({
             value={draft.session.ledger_format}
             placeholder="jsonl"
             onChange={event =>
-              setDraft({
-                ...draft,
-                session: { ...draft.session, ledger_format: event.target.value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  session: { ...current.session, ledger_format: event.target.value },
+                };
               })
             }
           />
@@ -1630,9 +1820,12 @@ function SessionLedgerSection({
             value={draft.session.events_purge_grace}
             placeholder="24h"
             onChange={event =>
-              setDraft({
-                ...draft,
-                session: { ...draft.session, events_purge_grace: event.target.value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  session: { ...current.session, events_purge_grace: event.target.value },
+                };
               })
             }
           />
@@ -1651,9 +1844,12 @@ function SessionLedgerSection({
             value={draft.session.cold_archive_days}
             onValidityChange={setValidationError("sessionColdArchive")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                session: { ...draft.session, cold_archive_days: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  session: { ...current.session, cold_archive_days: value },
+                };
               })
             }
           />
@@ -1672,9 +1868,12 @@ function SessionLedgerSection({
             value={draft.session.hard_delete_days}
             onValidityChange={setValidationError("sessionHardDelete")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                session: { ...draft.session, hard_delete_days: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  session: { ...current.session, hard_delete_days: value },
+                };
               })
             }
           />
@@ -1693,9 +1892,12 @@ function SessionLedgerSection({
             value={draft.session.max_archive_bytes}
             onValidityChange={setValidationError("sessionMaxArchive")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                session: { ...draft.session, max_archive_bytes: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  session: { ...current.session, max_archive_bytes: value },
+                };
               })
             }
           />
@@ -1727,7 +1929,7 @@ function SessionLedgerSection({
           />
         }
       />
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
@@ -1738,7 +1940,7 @@ function DailyLogsSection({
   setValidationError,
 }: ValidatedSectionProps) {
   return (
-    <SettingsSectionCard eyebrow="Daily logs" note="rotation, dreaming window, and archival">
+    <Section divided label="Daily logs" note="rotation, dreaming window, and archival">
       <SettingsFieldRow
         data-testid={`${TEST_PREFIX}-daily-max-bytes`}
         label="Max bytes per file"
@@ -1752,9 +1954,12 @@ function DailyLogsSection({
             value={draft.daily.max_bytes}
             onValidityChange={setValidationError("dailyMaxBytes")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                daily: { ...draft.daily, max_bytes: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  daily: { ...current.daily, max_bytes: value },
+                };
               })
             }
           />
@@ -1773,9 +1978,12 @@ function DailyLogsSection({
             value={draft.daily.max_lines}
             onValidityChange={setValidationError("dailyMaxLines")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                daily: { ...draft.daily, max_lines: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  daily: { ...current.daily, max_lines: value },
+                };
               })
             }
           />
@@ -1794,9 +2002,12 @@ function DailyLogsSection({
             value={draft.daily.sweep_hour}
             onValidityChange={setValidationError("dailySweepHour")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                daily: { ...draft.daily, sweep_hour: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  daily: { ...current.daily, sweep_hour: value },
+                };
               })
             }
           />
@@ -1815,9 +2026,12 @@ function DailyLogsSection({
             value={draft.daily.dreaming_window}
             onValidityChange={setValidationError("dailyDreamingWindow")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                daily: { ...draft.daily, dreaming_window: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  daily: { ...current.daily, dreaming_window: value },
+                };
               })
             }
           />
@@ -1836,9 +2050,12 @@ function DailyLogsSection({
             value={draft.daily.cold_archive_days}
             onValidityChange={setValidationError("dailyColdArchive")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                daily: { ...draft.daily, cold_archive_days: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  daily: { ...current.daily, cold_archive_days: value },
+                };
               })
             }
           />
@@ -1857,9 +2074,12 @@ function DailyLogsSection({
             value={draft.daily.hard_delete_days}
             onValidityChange={setValidationError("dailyHardDelete")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                daily: { ...draft.daily, hard_delete_days: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  daily: { ...current.daily, hard_delete_days: value },
+                };
               })
             }
           />
@@ -1878,9 +2098,12 @@ function DailyLogsSection({
             value={draft.daily.max_archive_bytes}
             onValidityChange={setValidationError("dailyMaxArchiveBytes")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                daily: { ...draft.daily, max_archive_bytes: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  daily: { ...current.daily, max_archive_bytes: value },
+                };
               })
             }
           />
@@ -1912,7 +2135,7 @@ function DailyLogsSection({
           />
         }
       />
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
@@ -1923,7 +2146,7 @@ function FileCapsSection({
   setValidationError,
 }: ValidatedSectionProps) {
   return (
-    <SettingsSectionCard eyebrow="File caps" note="MEMORY.md projection ceilings">
+    <Section divided label="File caps" note="MEMORY.md projection ceilings">
       <SettingsFieldRow
         data-testid={`${TEST_PREFIX}-file-max-lines`}
         label="Max lines"
@@ -1937,9 +2160,12 @@ function FileCapsSection({
             value={draft.file.max_lines}
             onValidityChange={setValidationError("fileMaxLines")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                file: { ...draft.file, max_lines: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  file: { ...current.file, max_lines: value },
+                };
               })
             }
           />
@@ -1958,21 +2184,24 @@ function FileCapsSection({
             value={draft.file.max_bytes}
             onValidityChange={setValidationError("fileMaxBytes")}
             onValueChange={value =>
-              setDraft({
-                ...draft,
-                file: { ...draft.file, max_bytes: value },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  file: { ...current.file, max_bytes: value },
+                };
               })
             }
           />
         }
       />
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
 function WorkspaceIdentitySection({ draft, setDraft }: DraftSectionProps) {
   return (
-    <SettingsSectionCard eyebrow="Workspace identity" note=".agh/workspace.toml lifecycle">
+    <Section divided label="Workspace identity" note=".agh/workspace.toml lifecycle">
       <SettingsFieldRow
         data-testid={`${TEST_PREFIX}-workspace-toml-path`}
         label="Workspace toml path"
@@ -1995,14 +2224,17 @@ function WorkspaceIdentitySection({ draft, setDraft }: DraftSectionProps) {
             data-testid={`${TEST_PREFIX}-workspace-auto-create-switch`}
             checked={draft.workspace.auto_create}
             onCheckedChange={checked =>
-              setDraft({
-                ...draft,
-                workspace: { ...draft.workspace, auto_create: checked },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  workspace: { ...current.workspace, auto_create: checked },
+                };
               })
             }
           />
         }
       />
-    </SettingsSectionCard>
+    </Section>
   );
 }

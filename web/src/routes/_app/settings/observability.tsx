@@ -2,19 +2,15 @@ import { AlertCircle, ExternalLink, Loader2 } from "lucide-react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 
-import { Button, Pill, Switch } from "@agh/ui";
+import { Button, Metric, MetricGrid, PageShell, Pill, Section, Switch } from "@agh/ui";
 import { useSettingsObservabilityPage } from "@/hooks/routes/use-settings-observability-page";
 import type { SettingsObservabilitySection } from "@/systems/settings";
 import {
   SettingsFieldRow,
   SettingsNumberInput,
   SettingsPageActions,
-  SettingsPageShell,
   SettingsRestartBanner,
   SettingsSaveBar,
-  SettingsSectionCard,
-  SettingsStatGrid,
-  SettingsStatItem,
   SettingsStatusLine,
 } from "@/systems/settings/components";
 
@@ -59,7 +55,7 @@ function ObservabilitySettingsPage() {
         className="flex flex-1 items-center justify-center"
         data-testid="settings-page-observability-loading"
       >
-        <Loader2 className="size-5 animate-spin text-[color:var(--color-text-tertiary)]" />
+        <Loader2 className="size-5 animate-spin text-(--color-text-tertiary)" />
       </div>
     );
   }
@@ -71,8 +67,8 @@ function ObservabilitySettingsPage() {
         data-testid="settings-page-observability-error"
       >
         <div className="flex flex-col items-center gap-2 text-center">
-          <AlertCircle className="size-6 text-[color:var(--color-danger)]" />
-          <p className="text-sm text-[color:var(--color-text-tertiary)]">
+          <AlertCircle className="size-6 text-(--color-danger)" />
+          <p className="text-sm text-(--color-text-tertiary)">
             {page.error?.message ?? "Failed to load observability settings"}
           </p>
           <Button onClick={page.handleRetry} size="sm" type="button" variant="outline">
@@ -91,13 +87,13 @@ function ObservabilitySettingsPage() {
   const capPercent = cap > 0 ? Math.min(100, Math.round((totalStorage / cap) * 100)) : 0;
 
   return (
-    <SettingsPageShell
+    <PageShell
       slug="observability"
       title="Observability"
       statusLine={
         <SettingsStatusLine
           data-testid="settings-page-observability-status-line"
-          daemonAvailable={runtime.available}
+          status={runtime.available ? "connected" : "error"}
           items={[
             <span key="sessions">{runtime.active_sessions} active sessions</span>,
             <span key="storage" data-testid="settings-page-observability-storage-summary">
@@ -145,7 +141,7 @@ function ObservabilitySettingsPage() {
         setValidationError={setValidationError}
       />
       <LogTailSection logTail={logTail} runtime={runtime} />
-    </SettingsPageShell>
+    </PageShell>
   );
 }
 
@@ -164,32 +160,32 @@ function OverviewMetrics({
 }: OverviewMetricsProps) {
   const capPercent = cap > 0 ? Math.min(100, Math.round((totalStorage / cap) * 100)) : 0;
   return (
-    <SettingsSectionCard eyebrow="Runtime" note="live capture volume">
-      <SettingsStatGrid>
-        <SettingsStatItem
+    <Section divided label="Runtime" note="live capture volume">
+      <MetricGrid>
+        <Metric
           label="Active sessions"
           value={String(activeSessions)}
-          testId="settings-page-observability-metric-sessions"
+          data-testid="settings-page-observability-metric-sessions"
         />
-        <SettingsStatItem
+        <Metric
           label="Active agents"
           value={String(activeAgents)}
-          testId="settings-page-observability-metric-agents"
+          data-testid="settings-page-observability-metric-agents"
         />
-        <SettingsStatItem
+        <Metric
           label="Storage used"
           value={formatBytes(totalStorage)}
-          detail={`of ${formatBytes(cap)}`}
-          testId="settings-page-observability-metric-storage"
+          subtext={`of ${formatBytes(cap)}`}
+          data-testid="settings-page-observability-metric-storage"
         />
-        <SettingsStatItem
+        <Metric
           label="Capacity"
           value={`${capPercent}%`}
-          detail="of soft cap"
-          testId="settings-page-observability-metric-capacity"
+          subtext="of soft cap"
+          data-testid="settings-page-observability-metric-capacity"
         />
-      </SettingsStatGrid>
-    </SettingsSectionCard>
+      </MetricGrid>
+    </Section>
   );
 }
 
@@ -218,10 +214,11 @@ function CaptureSection({
   setValidationError,
 }: CaptureSectionProps) {
   return (
-    <SettingsSectionCard
-      eyebrow="Capture"
+    <Section
+      divided
+      label="Capture"
       note="events, transcripts, logs"
-      headerAction={
+      right={
         <Pill
           mono
           tone={capPercent > 85 ? "warning" : "neutral"}
@@ -239,7 +236,12 @@ function CaptureSection({
           <Switch
             data-testid="settings-page-observability-enabled-switch"
             checked={draft.enabled}
-            onCheckedChange={checked => setDraft({ ...draft, enabled: checked })}
+            onCheckedChange={checked =>
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return { ...current, enabled: checked };
+              })
+            }
           />
         }
       />
@@ -251,7 +253,12 @@ function CaptureSection({
           errorMessage={validationErrors.retentionDays ?? undefined}
           suffix="days"
           onValidityChange={setValidationError("retentionDays")}
-          onChange={value => setDraft({ ...draft, retention_days: value })}
+          onChange={value =>
+            setDraft(prev => {
+              const current = prev ?? draft;
+              return { ...current, retention_days: value };
+            })
+          }
         />
         <NumberField
           label="Max global bytes"
@@ -260,11 +267,16 @@ function CaptureSection({
           errorMessage={validationErrors.maxGlobalBytes ?? undefined}
           suffix="bytes"
           onValidityChange={setValidationError("maxGlobalBytes")}
-          onChange={value => setDraft({ ...draft, max_global_bytes: value })}
+          onChange={value =>
+            setDraft(prev => {
+              const current = prev ?? draft;
+              return { ...current, max_global_bytes: value };
+            })
+          }
         />
       </div>
       <UsageBreakdown globalBytes={globalBytes} sessionBytes={sessionBytes} cap={cap} />
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
@@ -278,7 +290,7 @@ function TranscriptsSection({
   setValidationError: (key: string) => (message: string | null) => void;
 }) {
   return (
-    <SettingsSectionCard eyebrow="Transcripts" note="full replay of agent I/O">
+    <Section divided label="Transcripts" note="full replay of agent I/O">
       <SettingsFieldRow
         data-testid="settings-page-observability-transcripts-enabled"
         label="Capture transcripts"
@@ -288,9 +300,12 @@ function TranscriptsSection({
             data-testid="settings-page-observability-transcripts-enabled-switch"
             checked={draft.transcripts.enabled}
             onCheckedChange={checked =>
-              setDraft({
-                ...draft,
-                transcripts: { ...draft.transcripts, enabled: checked },
+              setDraft(prev => {
+                const current = prev ?? draft;
+                return {
+                  ...current,
+                  transcripts: { ...current.transcripts, enabled: checked },
+                };
               })
             }
           />
@@ -305,9 +320,12 @@ function TranscriptsSection({
           suffix="bytes"
           onValidityChange={setValidationError("segmentBytes")}
           onChange={value =>
-            setDraft({
-              ...draft,
-              transcripts: { ...draft.transcripts, segment_bytes: value },
+            setDraft(prev => {
+              const current = prev ?? draft;
+              return {
+                ...current,
+                transcripts: { ...current.transcripts, segment_bytes: value },
+              };
             })
           }
         />
@@ -319,35 +337,38 @@ function TranscriptsSection({
           suffix="bytes"
           onValidityChange={setValidationError("maxBytesPerSession")}
           onChange={value =>
-            setDraft({
-              ...draft,
-              transcripts: {
-                ...draft.transcripts,
-                max_bytes_per_session: value,
-              },
+            setDraft(prev => {
+              const current = prev ?? draft;
+              return {
+                ...current,
+                transcripts: {
+                  ...current.transcripts,
+                  max_bytes_per_session: value,
+                },
+              };
             })
           }
         />
       </div>
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
 function LogTailSection({ logTail, runtime }: { logTail: LogTailMeta; runtime: Runtime }) {
   void runtime;
   return (
-    <SettingsSectionCard eyebrow="Log tail" note="daemon log stream">
+    <Section divided label="Log tail" note="daemon log stream">
       <div
-        className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-[color:var(--color-divider)] bg-[color:var(--color-surface-elevated)] px-4 py-3"
+        className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-(--color-divider) bg-(--color-surface-elevated) px-4 py-3"
         data-testid="settings-page-observability-log-tail"
         data-available={logTail.available ? "true" : "false"}
       >
         <div className="flex flex-col gap-1">
-          <span className="text-sm text-[color:var(--color-text-primary)]">
+          <span className="text-sm text-(--color-text-primary)">
             {logTail.available ? "Live log tail available" : "Log tail unavailable"}
           </span>
           <span
-            className="font-mono text-[0.64rem] uppercase tracking-[0.18em] text-[color:var(--color-text-label)]"
+            className="font-mono text-badge uppercase tracking-mono text-(--color-text-label)"
             data-testid="settings-page-observability-log-tail-transport"
           >
             transport: {logTail.transport ?? "none"}
@@ -355,7 +376,7 @@ function LogTailSection({ logTail, runtime }: { logTail: LogTailMeta; runtime: R
         </div>
         {logTail.available && logTail.stream_url ? (
           <a
-            className="inline-flex items-center gap-1.5 text-sm text-[color:var(--color-accent)] hover:underline"
+            className="inline-flex items-center gap-1.5 text-sm text-accent hover:underline"
             data-testid="settings-page-observability-log-tail-link"
             href={logTail.stream_url}
             rel="noreferrer"
@@ -366,7 +387,7 @@ function LogTailSection({ logTail, runtime }: { logTail: LogTailMeta; runtime: R
           </a>
         ) : null}
       </div>
-    </SettingsSectionCard>
+    </Section>
   );
 }
 
@@ -391,7 +412,7 @@ function NumberField({
 }: NumberFieldProps) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="font-mono text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--color-text-label)]">
+      <span className="font-mono text-badge uppercase tracking-mono text-(--color-text-label)">
         {label}
       </span>
       <div className="flex items-center gap-2">
@@ -404,14 +425,12 @@ function NumberField({
           onValueChange={onChange}
         />
         {suffix ? (
-          <span className="font-mono text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--color-text-label)]">
+          <span className="font-mono text-badge uppercase tracking-mono text-(--color-text-label)">
             {suffix}
           </span>
         ) : null}
       </div>
-      {errorMessage ? (
-        <span className="text-xs text-[color:var(--color-danger)]">{errorMessage}</span>
-      ) : null}
+      {errorMessage ? <span className="text-xs text-(--color-danger)">{errorMessage}</span> : null}
     </div>
   );
 }
@@ -429,30 +448,30 @@ function UsageBreakdown({ globalBytes, sessionBytes, cap }: UsageBreakdownProps)
 
   return (
     <div className="flex flex-col gap-2" data-testid="settings-page-observability-usage-breakdown">
-      <div className="flex items-center justify-between text-xs text-[color:var(--color-text-tertiary)]">
-        <span className="font-mono uppercase tracking-[0.18em] text-[color:var(--color-text-label)]">
+      <div className="flex items-center justify-between text-xs text-(--color-text-tertiary)">
+        <span className="font-mono uppercase tracking-mono text-(--color-text-label)">
           Usage breakdown
         </span>
       </div>
-      <div className="relative h-2 w-full overflow-hidden rounded-full bg-[color:var(--color-surface-panel)]">
+      <div className="relative h-2 w-full overflow-hidden rounded-full bg-(--color-surface-panel)">
         <div
-          className="absolute inset-y-0 left-0 bg-[color:var(--color-accent)]"
+          className="absolute inset-y-0 left-0 bg-accent"
           style={{ width: `${globalPct}%` }}
           data-testid="settings-page-observability-usage-bar-global"
         />
         <div
-          className="absolute inset-y-0 bg-[color:var(--color-info)]"
+          className="absolute inset-y-0 bg-(--color-info)"
           style={{ left: `${globalPct}%`, width: `${sessionPct}%` }}
           data-testid="settings-page-observability-usage-bar-sessions"
         />
       </div>
-      <div className="flex flex-wrap gap-4 text-xs text-[color:var(--color-text-secondary)]">
+      <div className="flex flex-wrap gap-4 text-xs text-(--color-text-secondary)">
         <span className="inline-flex items-center gap-1.5">
-          <span aria-hidden="true" className="size-2 rounded-full bg-[color:var(--color-accent)]" />
+          <span aria-hidden="true" className="size-2 rounded-full bg-accent" />
           global DB {formatBytes(globalBytes)}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span aria-hidden="true" className="size-2 rounded-full bg-[color:var(--color-info)]" />
+          <span aria-hidden="true" className="size-2 rounded-full bg-(--color-info)" />
           session DB {formatBytes(sessionBytes)}
         </span>
       </div>
