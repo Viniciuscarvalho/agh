@@ -180,6 +180,21 @@ describe("NetworkSettingsPage", () => {
     expect(pageState.handleReset).toHaveBeenCalledTimes(1);
   });
 
+  it("accepts the auto-assigned listener port sentinel without blocking other network saves", () => {
+    pageState.isDirty = true;
+
+    render(<NetworkSettingsPage />);
+
+    fireEvent.change(screen.getByTestId("settings-page-network-port-input"), {
+      target: { value: "-1" },
+    });
+
+    expect(pageState.setDraft).toHaveBeenCalled();
+    expect(screen.getByTestId("settings-page-network-port-input")).toHaveValue("-1");
+    expect(screen.queryByTestId("settings-page-network-save-invalid")).not.toBeInTheDocument();
+    expect(screen.getByTestId("settings-page-network-save")).not.toBeDisabled();
+  });
+
   it("surfaces the last-applied label when the save bar has a success message", () => {
     pageState.lastAppliedLabel = "Saved · restart required to apply";
     render(<NetworkSettingsPage />);

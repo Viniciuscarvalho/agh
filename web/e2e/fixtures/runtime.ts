@@ -32,7 +32,7 @@ const DAEMON_BINARY_ENV_VAR = "AGH_TEST_DAEMON_BIN";
 
 let daemonBinaryPromise: Promise<string> | undefined;
 
-interface RuntimePaths {
+export interface RuntimePaths {
   homeDir: string;
   configFile: string;
   daemonSocket: string;
@@ -47,6 +47,7 @@ export interface BrowserRuntimeOptions {
   networkEnabled?: boolean;
   readyTimeoutMs?: number;
   seed?: BrowserRuntimeSeed;
+  toolsExternalDefault?: "disabled" | "ask" | "enabled";
 }
 
 export interface BrowserRuntime {
@@ -72,8 +73,31 @@ export {
   seedBrowserBridgeOperatorFlow,
   seedBrowserAutomationOperatorFlow,
   seedBrowserSettingsFixtures,
+  seedBrowserSandboxProfiles,
   triggerBrowserBridgeIngress,
   seedBrowserNetworkOperatorFlow,
+  type BrowserAutomationOperatorFlowResult,
+  type BrowserAutomationOperatorFlowSeed,
+  type BrowserBridgeIngressResult,
+  type BrowserBridgeIngressSeed,
+  type BrowserBridgeOperatorFlowResult,
+  type BrowserBridgeOperatorFlowSeed,
+  type BrowserNetworkOperatorFlowResult,
+  type BrowserNetworkOperatorFlowSeed,
+  type BrowserSandboxProfileSeed,
+  type BrowserSandboxProfilesResult,
+  type BrowserSettingsFixturesResult,
+  type BrowserSettingsFixturesSeed,
+  type BrowserSettingsHookSeed,
+  type BrowserSettingsMCPServerSeed,
+  type BrowserSettingsProviderSeed,
+  type BrowserTasksOperatorFlowResult,
+  type BrowserTasksOperatorFlowSeed,
+  type BridgeAdapterMarkerPaths,
+  seedBrowserRuntimeHome,
+  type BrowserRuntimeSeed,
+  type BrowserRuntimeSeedResult,
+  type WorkspacePayload,
 } from "./runtime-seed";
 interface RuntimeLaunchState {
   process: ChildProcessWithoutNullStreams;
@@ -122,6 +146,7 @@ export async function createBrowserRuntime(
       networkEnabled: options.networkEnabled,
       port: httpPort,
       socketPath: paths.daemonSocket,
+      toolsExternalDefault: options.toolsExternalDefault,
     }),
     "utf8"
   );

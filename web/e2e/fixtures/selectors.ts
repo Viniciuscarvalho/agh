@@ -45,10 +45,15 @@ export const networkOperatorTestIds = {
   channelTabs: "network-channel-tabs",
   createDialog: "network-create-channel-dialog",
   createSubmit: "network-create-channel-submit",
+  createAgentTrigger: "network-create-channel-agent-trigger",
+  channelPurposeInput: "network-channel-purpose-input",
+  disabledState: "network-disabled-state",
   directList: "network-direct-list",
   directRoom: "network-direct-room",
   directsTab: "network-directs-tab",
   directTab: "network-tab-directs",
+  activityFeed: "network-activity-feed",
+  inspectorToggle: "network-channel-inspector-toggle",
   messageList: "network-timeline",
   inspector: "network-inspector",
   inspectorActivityTab: "network-inspector-tab-activity",
@@ -58,9 +63,11 @@ export const networkOperatorTestIds = {
   inspectorPanelWork: "network-inspector-panel-work",
   inspectorWorkTab: "network-inspector-tab-work",
   navNetwork: "nav-network",
+  noChannelsState: "network-no-channels-state",
   newDirectButton: "network-directs-new-direct",
   newDirectDialog: "network-new-direct-dialog",
   openCreateDialog: "network-open-create-dialog",
+  workInspector: "network-work-inspector",
   threadList: "network-thread-list",
   threadOverlay: "network-thread-overlay",
   threadsTab: "network-threads-tab",
@@ -73,22 +80,56 @@ export const networkOperatorTestIds = {
 export const automationOperatorTestIds = {
   appSidebar: sessionLifecycleTestIds.appSidebar,
   automationDetailPanel: "automation-detail-panel",
+  automationEditorDialog: "automation-editor-dialog",
+  automationJobScheduler: "automation-job-scheduler",
   automationJobForm: "automation-job-form",
   automationListPanel: "automation-list-panel",
   automationRunHistory: "automation-run-history",
   createJobButton: "create-job-btn",
   createTriggerButton: "create-trigger-btn",
+  deleteAutomationButton: "delete-automation-btn",
   editAutomationButton: "edit-automation-btn",
+  jobAgentInput: "job-agent-input",
+  jobEnabledToggle: "job-enabled-toggle",
+  jobFireLimitMax: "job-fire-limit-max",
+  jobFireLimitWindow: "job-fire-limit-window",
   jobsScopeAll: "jobs-scope-all",
+  jobsScopeGlobal: "jobs-scope-global",
+  jobsScopeWorkspace: "jobs-scope-workspace",
   jobsShell: "jobs-shell",
   jobNameInput: "job-name-input",
+  jobPromptInput: "job-prompt-input",
   jobScheduleExpr: "job-schedule-expr",
+  jobScheduleInterval: "job-schedule-interval",
+  jobScheduleModeAt: "job-schedule-mode-at",
+  jobScheduleModeCron: "job-schedule-mode-cron",
+  jobScheduleModeEvery: "job-schedule-mode-every",
+  jobScheduleTime: "job-schedule-time",
+  jobScopeGlobal: "job-scope-global",
+  jobScopeWorkspace: "job-scope-workspace",
   navJobs: "nav-jobs",
   navTriggers: "nav-triggers",
   submitJobForm: "submit-job-form",
   submitTriggerForm: "submit-trigger-form",
+  triggerAgentInput: "trigger-agent-input",
+  triggerEnabledToggle: "trigger-enabled-toggle",
+  triggerEndpointSlugInput: "trigger-endpoint-slug-input",
+  triggerEventInput: "trigger-event-input",
+  triggerFilterInput: "trigger-filter-input",
+  triggerFireLimitMax: "trigger-fire-limit-max",
+  triggerFireLimitWindow: "trigger-fire-limit-window",
   triggersScopeAll: "triggers-scope-all",
+  triggersScopeGlobal: "triggers-scope-global",
+  triggersScopeWorkspace: "triggers-scope-workspace",
   triggersShell: "triggers-shell",
+  triggerPromptInput: "trigger-prompt-input",
+  triggerRetryMax: "trigger-retry-max",
+  triggerRetryStrategyBackoff: "trigger-retry-strategy-backoff",
+  triggerRetryStrategyNone: "trigger-retry-strategy-none",
+  triggerScopeGlobal: "trigger-scope-global",
+  triggerWebhookIDInput: "trigger-webhook-id-input",
+  triggerWebhookSecretValueInput: "trigger-webhook-secret-value-input",
+  toggleAutomationButton: "toggle-automation-btn",
   triggerJobButton: "trigger-job-btn",
   triggerNameInput: "trigger-name-input",
   workspaceOnboarding: sessionLifecycleTestIds.workspaceOnboarding,
@@ -108,20 +149,111 @@ export const bridgeOperatorTestIds = {
   bridgeSearchInput: "bridge-search-input",
   bridgeTestDeliveryDialog: "bridge-test-delivery-dialog",
   bridgeTestDeliveryResult: "bridge-test-delivery-result",
+  createBridgeDeliveryModeSelect: "bridge-delivery-mode-select",
+  createBridgeDeliveryPeerInput: "bridge-delivery-peer-input",
+  createBridgeDeliveryThreadInput: "bridge-delivery-thread-input",
+  createBridgeDisplayNameInput: "bridge-display-name-input",
+  createBridgeProviderConfigInput: "bridge-provider-config-input",
+  createBridgeProviderConfigError: "bridge-provider-config-error",
+  createBridgeRoutingIncludePeer: "bridge-routing-include-peer",
+  createBridgeRoutingIncludeThread: "bridge-routing-include-thread",
+  createBridgeScopeSelect: "bridge-scope-select",
   createBridgeButton: "create-bridge-btn",
-  createDisplayNameInput: "bridge-display-name-input",
-  createProviderConfigInput: "bridge-provider-config-input",
+  disableBridgeButton: "disable-bridge-btn",
   editBridgeButton: "edit-bridge-btn",
   enableBridgeButton: "enable-bridge-btn",
   navBridges: "nav-bridges",
   openTestDeliveryButton: "open-test-delivery-btn",
-  submitBridgeCreate: "submit-bridge-create",
+  restartBridgeButton: "restart-bridge-btn",
   submitBridgeEdit: "submit-bridge-edit",
+  submitBridgeCreate: "submit-bridge-create",
   submitTestDelivery: "submit-test-delivery",
   testDeliveryMessage: "test-delivery-message",
   testDeliveryModeSelect: "test-delivery-mode-select",
   testDeliveryPeerInput: "test-delivery-peer-input",
   testDeliveryThreadInput: "test-delivery-thread-input",
+  workspaceOnboarding: sessionLifecycleTestIds.workspaceOnboarding,
+  workspaceUseGlobal: sessionLifecycleTestIds.workspaceUseGlobal,
+} as const;
+
+export const knowledgeOperatorTestIds = {
+  appSidebar: sessionLifecycleTestIds.appSidebar,
+  cancelCreateMemory: "cancel-create-memory-btn",
+  confirmCreateMemory: "confirm-create-memory-btn",
+  confirmDeleteMemory: "confirm-delete-memory-btn",
+  confirmEditMemory: "confirm-edit-memory-btn",
+  contentPreview: "content-preview",
+  createButton: "create-memory-btn",
+  createContent: "knowledge-create-content",
+  createDescription: "knowledge-create-description",
+  createDialog: "knowledge-create-dialog",
+  createName: "knowledge-create-name",
+  createType: "knowledge-create-type",
+  deleteButton: "delete-memory-btn",
+  deleteDialog: "knowledge-delete-dialog",
+  detailPanel: "knowledge-detail-panel",
+  editButton: "edit-memory-btn",
+  editContent: "knowledge-edit-content",
+  editDescription: "knowledge-edit-description",
+  editDialog: "knowledge-edit-dialog",
+  guard: "knowledge-guard",
+  listPanel: "knowledge-list-panel",
+  navKnowledge: "nav-knowledge",
+  searchInput: "knowledge-search-input",
+  searchInfo: "knowledge-search-info",
+  shell: "knowledge-shell",
+  tabAgent: "tab-agent",
+  tabGlobal: "tab-global",
+  tabWorkspace: "tab-workspace",
+  workspaceOnboarding: sessionLifecycleTestIds.workspaceOnboarding,
+  workspaceUseGlobal: sessionLifecycleTestIds.workspaceUseGlobal,
+} as const;
+
+export const skillsOperatorTestIds = {
+  appSidebar: sessionLifecycleTestIds.appSidebar,
+  contentBody: "content-body",
+  detailPanel: "skill-detail-panel",
+  enabledSwitch: "skill-enabled-switch",
+  enabledToggle: "skill-enabled-toggle",
+  listPanel: "skill-list-panel",
+  marketplaceEmpty: "marketplace-empty",
+  marketplaceGrid: "marketplace-grid",
+  marketplaceReadonlyNotice: "marketplace-readonly-notice",
+  marketplaceSearchInput: "marketplace-search-input",
+  marketplaceView: "marketplace-view",
+  navSkills: "nav-skills",
+  searchInput: "skill-search-input",
+  shell: "skills-shell",
+  tabInstalled: "tab-installed",
+  tabMarketplace: "tab-marketplace",
+  viewFullContent: "view-full-content-btn",
+  workspaceOnboarding: sessionLifecycleTestIds.workspaceOnboarding,
+  workspaceUseGlobal: sessionLifecycleTestIds.workspaceUseGlobal,
+} as const;
+
+export const sandboxOperatorTestIds = {
+  actionResult: "sandbox-page-action-result",
+  actionResultDismiss: "sandbox-page-action-result-dismiss",
+  appSidebar: sessionLifecycleTestIds.appSidebar,
+  createButton: "sandbox-page-create",
+  deleteConfirm: "settings-sandboxes-delete-confirm",
+  deleteDialog: "settings-sandboxes-delete",
+  deleteUsage: "sandbox-delete-usage",
+  editor: "settings-sandbox-editor",
+  editorBackendInput: "sandbox-editor-backend-input",
+  editorError: "settings-sandbox-editor-error",
+  editorNameInput: "sandbox-editor-name-input",
+  editorPersistenceInput: "sandbox-editor-persistence-input",
+  editorRuntimeRootInput: "sandbox-editor-runtime-root-input",
+  editorSave: "settings-sandbox-editor-save",
+  editorSyncModeInput: "sandbox-editor-sync-mode-input",
+  empty: "sandbox-page-empty",
+  list: "sandbox-page-list",
+  navSandbox: "nav-sandbox",
+  restartBanner: "settings-page-sandbox-restart-banner",
+  shell: "sandbox-shell",
+  total: "sandbox-page-total",
+  workspaceReferences: "sandbox-page-workspaces",
   workspaceOnboarding: sessionLifecycleTestIds.workspaceOnboarding,
   workspaceUseGlobal: sessionLifecycleTestIds.workspaceUseGlobal,
 } as const;
@@ -137,12 +269,17 @@ export interface NetworkOperatorSelectors {
   channelInspectorToggle: Locator;
   channelTabs: Locator;
   createDialog: Locator;
+  createAgentTrigger: Locator;
   createSubmit: Locator;
+  channelPurposeInput: Locator;
+  disabledState: Locator;
+  activityFeed: Locator;
   directItem(directId: string): Locator;
   directList: Locator;
   directRoom: Locator;
   directsTab: Locator;
   directTab: Locator;
+  inspectorToggle: Locator;
   messageList: Locator;
   inspector: Locator;
   inspectorActivityTab: Locator;
@@ -152,10 +289,13 @@ export interface NetworkOperatorSelectors {
   inspectorPanelWork: Locator;
   inspectorWorkTab: Locator;
   navNetwork: Locator;
+  noChannelsState: Locator;
   newDirectButton: Locator;
   newDirectDialog: Locator;
   newDirectPeer(peerId: string): Locator;
   openCreateDialog: Locator;
+  workInspector: Locator;
+  workInspectorRow(workId: string): Locator;
   threadItem(threadId: string): Locator;
   threadList: Locator;
   threadOverlay: Locator;
@@ -170,13 +310,29 @@ export interface AutomationOperatorSelectors {
   appSidebar: Locator;
   createJobButton: Locator;
   createTriggerButton: Locator;
+  deleteAutomationButton: Locator;
   detailPanel: Locator;
   editAutomationButton: Locator;
   item(id: string): Locator;
+  editorDialog: Locator;
   jobForm: Locator;
+  jobAgentInput: Locator;
+  jobEnabledToggle: Locator;
+  jobFireLimitMax: Locator;
+  jobFireLimitWindow: Locator;
   jobNameInput: Locator;
+  jobPromptInput: Locator;
   jobScheduleExpr: Locator;
+  jobScheduleInterval: Locator;
+  jobScheduleModeAt: Locator;
+  jobScheduleModeCron: Locator;
+  jobScheduleModeEvery: Locator;
+  jobScheduleTime: Locator;
+  jobScopeGlobal: Locator;
+  jobScopeWorkspace: Locator;
   jobsScopeAll: Locator;
+  jobsScopeGlobal: Locator;
+  jobsScopeWorkspace: Locator;
   jobsShell: Locator;
   listPanel: Locator;
   navJobs: Locator;
@@ -186,8 +342,25 @@ export interface AutomationOperatorSelectors {
   runSessionLink(runId: string): Locator;
   submitJobForm: Locator;
   submitTriggerForm: Locator;
+  triggerAgentInput: Locator;
+  triggerEnabledToggle: Locator;
+  triggerEndpointSlugInput: Locator;
+  triggerEventInput: Locator;
+  triggerFilterInput: Locator;
+  triggerFireLimitMax: Locator;
+  triggerFireLimitWindow: Locator;
   triggersScopeAll: Locator;
+  triggersScopeGlobal: Locator;
+  triggersScopeWorkspace: Locator;
   triggersShell: Locator;
+  triggerPromptInput: Locator;
+  triggerRetryMax: Locator;
+  triggerRetryStrategyBackoff: Locator;
+  triggerRetryStrategyNone: Locator;
+  triggerScopeGlobal: Locator;
+  triggerWebhookIDInput: Locator;
+  triggerWebhookSecretValueInput: Locator;
+  toggleAutomationButton: Locator;
   triggerJobButton: Locator;
   triggerNameInput: Locator;
   workspaceOnboarding: Locator;
@@ -198,11 +371,18 @@ export interface BridgeOperatorSelectors {
   appSidebar: Locator;
   createBridgeButton: Locator;
   createDialog: Locator;
+  createDeliveryModeSelect: Locator;
+  createDeliveryPeerInput: Locator;
+  createDeliveryThreadInput: Locator;
   createDisplayNameInput: Locator;
+  createProviderConfigError: Locator;
   createProviderConfigInput: Locator;
-  confirmDeleteSecret(bindingName: string): Locator;
-  detailPanel: Locator;
+  createRoutingIncludePeer: Locator;
+  createRoutingIncludeThread: Locator;
+  createScopeSelect: Locator;
   deleteSecret(bindingName: string): Locator;
+  detailPanel: Locator;
+  disableBridgeButton: Locator;
   editBridgeButton: Locator;
   editDialog: Locator;
   editDisplayNameInput: Locator;
@@ -213,6 +393,7 @@ export interface BridgeOperatorSelectors {
   navBridges: Locator;
   openTestDeliveryButton: Locator;
   providerCard(providerKey: string): Locator;
+  restartBridgeButton: Locator;
   restartRequired: Locator;
   route(sessionId: string): Locator;
   saveSecret(bindingName: string): Locator;
@@ -231,6 +412,98 @@ export interface BridgeOperatorSelectors {
   testDeliveryPeerInput: Locator;
   testDeliveryResult: Locator;
   testDeliveryThreadInput: Locator;
+  workspaceOnboarding: Locator;
+  workspaceUseGlobal: Locator;
+}
+
+export interface KnowledgeOperatorSelectors {
+  appSidebar: Locator;
+  cancelCreateMemory: Locator;
+  confirmCreateMemory: Locator;
+  confirmDeleteMemory: Locator;
+  confirmEditMemory: Locator;
+  contentPreview: Locator;
+  createButton: Locator;
+  createContent: Locator;
+  createDescription: Locator;
+  createDialog: Locator;
+  createName: Locator;
+  createType: Locator;
+  deleteButton: Locator;
+  deleteDialog: Locator;
+  detailPanel: Locator;
+  editButton: Locator;
+  editContent: Locator;
+  editDescription: Locator;
+  editDialog: Locator;
+  guard: Locator;
+  item(memoryKey: string): Locator;
+  listPanel: Locator;
+  navKnowledge: Locator;
+  revertDecision(decisionId: string): Locator;
+  searchInput: Locator;
+  searchInfo: Locator;
+  shell: Locator;
+  tabAgent: Locator;
+  tabGlobal: Locator;
+  tabWorkspace: Locator;
+  workspaceOnboarding: Locator;
+  workspaceUseGlobal: Locator;
+}
+
+export interface SkillsOperatorSelectors {
+  appSidebar: Locator;
+  contentBody: Locator;
+  detailPanel: Locator;
+  enabledSwitch: Locator;
+  enabledToggle: Locator;
+  item(name: string): Locator;
+  listPanel: Locator;
+  marketplaceEmpty: Locator;
+  marketplaceGrid: Locator;
+  marketplaceReadonlyNotice: Locator;
+  marketplaceRow(name: string): Locator;
+  marketplaceSearchInput: Locator;
+  marketplaceView: Locator;
+  navSkills: Locator;
+  searchInput: Locator;
+  shell: Locator;
+  tabInstalled: Locator;
+  tabMarketplace: Locator;
+  viewFullContent: Locator;
+  workspaceOnboarding: Locator;
+  workspaceUseGlobal: Locator;
+}
+
+export interface SandboxOperatorSelectors {
+  actionResult: Locator;
+  actionResultDismiss: Locator;
+  appSidebar: Locator;
+  createButton: Locator;
+  deleteConfirm: Locator;
+  deleteDialog: Locator;
+  deleteProfile(name: string): Locator;
+  deleteUsage: Locator;
+  editProfile(name: string): Locator;
+  editor: Locator;
+  editorBackendInput: Locator;
+  editorError: Locator;
+  editorNameInput: Locator;
+  editorPersistenceInput: Locator;
+  editorRuntimeRootInput: Locator;
+  editorSave: Locator;
+  editorSyncModeInput: Locator;
+  empty: Locator;
+  list: Locator;
+  navSandbox: Locator;
+  profile(name: string): Locator;
+  profileMetadata(name: string): Locator;
+  profileSource(name: string): Locator;
+  profileUsage(name: string): Locator;
+  restartBanner: Locator;
+  shell: Locator;
+  total: Locator;
+  workspaceReferences: Locator;
   workspaceOnboarding: Locator;
   workspaceUseGlobal: Locator;
 }
@@ -439,9 +712,12 @@ export const tasksOperatorTestIds = {
   detailBreadcrumbTasks: "tasks-detail-breadcrumb-tasks",
   detailContent: "tasks-detail-content",
   detailCoordination: "tasks-detail-coordination",
+  detailCancel: "tasks-detail-cancel",
   detailDelete: "tasks-detail-delete",
+  detailDeleteCancel: "tasks-detail-delete-cancel",
   detailDeleteConfirm: "tasks-detail-delete-confirm",
   detailDeleteDialog: "tasks-detail-delete-dialog",
+  detailEdit: "tasks-detail-edit",
   detailEnqueue: "tasks-detail-enqueue",
   detailLifecycle: "tasks-detail-lifecycle",
   detailLifecycleHint: "tasks-detail-lifecycle-hint",
@@ -480,6 +756,7 @@ export const tasksOperatorTestIds = {
   navTasks: "nav-tasks",
   openCreate: "tasks-open-create",
   runDetailContent: "tasks-run-detail-content",
+  runDetailCancel: "task-run-detail-cancel",
   runSessionDrilldown: "task-run-detail-open-session",
   workspaceOnboarding: sessionLifecycleTestIds.workspaceOnboarding,
   workspaceUseGlobal: sessionLifecycleTestIds.workspaceUseGlobal,
@@ -503,9 +780,12 @@ export interface TasksOperatorSelectors {
   detailBreadcrumbTasks: Locator;
   detailContent: Locator;
   detailCoordination: Locator;
+  detailCancel: Locator;
   detailDelete: Locator;
+  detailDeleteCancel: Locator;
   detailDeleteConfirm: Locator;
   detailDeleteDialog: Locator;
+  detailEdit: Locator;
   detailEnqueue: Locator;
   detailLifecycle: Locator;
   detailLifecycleHint: Locator;
@@ -522,6 +802,10 @@ export interface TasksOperatorSelectors {
   detailTabAgents: Locator;
   detailTabOrchestration: Locator;
   detailTabRuns: Locator;
+  detailChildItem(taskId: string): Locator;
+  detailChildLink(taskId: string): Locator;
+  detailDependencyItem(taskId: string): Locator;
+  detailDependencyLink(taskId: string): Locator;
   orchestrationPanel: Locator;
   orchestrationProfileCard: Locator;
   orchestrationProfileEmpty: Locator;
@@ -535,9 +819,13 @@ export interface TasksOperatorSelectors {
   orchestrationStreamSeed: Locator;
   orchestrationStreamStatus: Locator;
   inboxApprove(taskId: string): Locator;
+  inboxArchive(taskId: string): Locator;
+  inboxDismiss(taskId: string): Locator;
   inboxItem(taskId: string): Locator;
   inboxLane(lane: string): Locator;
   inboxOpenTask(taskId: string): Locator;
+  inboxReject(taskId: string): Locator;
+  inboxRetry(taskId: string): Locator;
   inboxView: Locator;
   modeDashboard: Locator;
   modeInbox: Locator;
@@ -552,6 +840,8 @@ export interface TasksOperatorSelectors {
   navTasks: Locator;
   openCreate: Locator;
   runDetailContent: Locator;
+  runDetailCancel: Locator;
+  runReviewRow(reviewId: string): Locator;
   runSessionDrilldown: Locator;
   taskCard(taskId: string): Locator;
   taskCardPublish(taskId: string): Locator;
@@ -566,7 +856,7 @@ export function sessionLifecycleSelectors(
     agentRow: (agentName: string) => page.getByTestId(`agent-row-${agentName}`),
     appSidebar: page.getByTestId(sessionLifecycleTestIds.appSidebar),
     chatHeader: page.getByTestId(sessionLifecycleTestIds.chatHeader),
-    chatView: page.getByRole("main"),
+    chatView: page.getByTestId(sessionLifecycleTestIds.chatView),
     composerSendButton: page.getByRole("button", { name: "Send message" }),
     composerTextarea: page.getByRole("textbox", { name: "Session prompt" }),
     permissionAllowOnce: page.getByTestId(sessionLifecycleTestIds.permissionAllowOnce),
@@ -598,12 +888,17 @@ export function networkOperatorSelectors(
     channelInspectorToggle: page.getByTestId(networkOperatorTestIds.channelInspectorToggle),
     channelTabs: page.getByTestId(networkOperatorTestIds.channelTabs),
     createDialog: page.getByTestId(networkOperatorTestIds.createDialog),
+    createAgentTrigger: page.getByTestId(networkOperatorTestIds.createAgentTrigger),
     createSubmit: page.getByTestId(networkOperatorTestIds.createSubmit),
+    channelPurposeInput: page.getByTestId(networkOperatorTestIds.channelPurposeInput),
+    disabledState: page.getByTestId(networkOperatorTestIds.disabledState),
+    activityFeed: page.getByTestId(networkOperatorTestIds.activityFeed),
     directItem: (directId: string) => page.getByTestId(`network-direct-list-row-${directId}`),
     directList: page.getByTestId(networkOperatorTestIds.directList),
     directRoom: page.getByTestId(networkOperatorTestIds.directRoom),
     directsTab: page.getByTestId(networkOperatorTestIds.directsTab),
     directTab: page.getByTestId(networkOperatorTestIds.directTab),
+    inspectorToggle: page.getByTestId(networkOperatorTestIds.inspectorToggle),
     messageList: page.getByTestId(networkOperatorTestIds.messageList),
     inspector: page.getByTestId(networkOperatorTestIds.inspector),
     inspectorActivityTab: page.getByTestId(networkOperatorTestIds.inspectorActivityTab),
@@ -613,10 +908,13 @@ export function networkOperatorSelectors(
     inspectorPanelWork: page.getByTestId(networkOperatorTestIds.inspectorPanelWork),
     inspectorWorkTab: page.getByTestId(networkOperatorTestIds.inspectorWorkTab),
     navNetwork: page.getByTestId(networkOperatorTestIds.navNetwork),
+    noChannelsState: page.getByTestId(networkOperatorTestIds.noChannelsState),
     newDirectButton: page.getByTestId(networkOperatorTestIds.newDirectButton),
     newDirectDialog: page.getByTestId(networkOperatorTestIds.newDirectDialog),
     newDirectPeer: (peerId: string) => page.getByTestId(`network-new-direct-peer-${peerId}`),
     openCreateDialog: page.getByTestId(networkOperatorTestIds.openCreateDialog),
+    workInspector: page.getByTestId(networkOperatorTestIds.workInspector),
+    workInspectorRow: (workId: string) => page.getByTestId(`network-work-inspector-row-${workId}`),
     threadItem: (threadId: string) => page.getByTestId(`network-thread-list-row-${threadId}`),
     threadList: page.getByTestId(networkOperatorTestIds.threadList),
     threadOverlay: page.getByTestId(networkOperatorTestIds.threadOverlay),
@@ -628,6 +926,109 @@ export function networkOperatorSelectors(
   };
 }
 
+export function knowledgeOperatorSelectors(
+  page: Pick<Page, "getByTestId">
+): KnowledgeOperatorSelectors {
+  return {
+    appSidebar: page.getByTestId(knowledgeOperatorTestIds.appSidebar),
+    cancelCreateMemory: page.getByTestId(knowledgeOperatorTestIds.cancelCreateMemory),
+    confirmCreateMemory: page.getByTestId(knowledgeOperatorTestIds.confirmCreateMemory),
+    confirmDeleteMemory: page.getByTestId(knowledgeOperatorTestIds.confirmDeleteMemory),
+    confirmEditMemory: page.getByTestId(knowledgeOperatorTestIds.confirmEditMemory),
+    contentPreview: page.getByTestId(knowledgeOperatorTestIds.contentPreview),
+    createButton: page.getByTestId(knowledgeOperatorTestIds.createButton),
+    createContent: page.getByTestId(knowledgeOperatorTestIds.createContent),
+    createDescription: page.getByTestId(knowledgeOperatorTestIds.createDescription),
+    createDialog: page.getByTestId(knowledgeOperatorTestIds.createDialog),
+    createName: page.getByTestId(knowledgeOperatorTestIds.createName),
+    createType: page.getByTestId(knowledgeOperatorTestIds.createType),
+    deleteButton: page.getByTestId(knowledgeOperatorTestIds.deleteButton),
+    deleteDialog: page.getByTestId(knowledgeOperatorTestIds.deleteDialog),
+    detailPanel: page.getByTestId(knowledgeOperatorTestIds.detailPanel),
+    editButton: page.getByTestId(knowledgeOperatorTestIds.editButton),
+    editContent: page.getByTestId(knowledgeOperatorTestIds.editContent),
+    editDescription: page.getByTestId(knowledgeOperatorTestIds.editDescription),
+    editDialog: page.getByTestId(knowledgeOperatorTestIds.editDialog),
+    guard: page.getByTestId(knowledgeOperatorTestIds.guard),
+    item: (memoryKey: string) => page.getByTestId(`memory-item-${memoryKey}`),
+    listPanel: page.getByTestId(knowledgeOperatorTestIds.listPanel),
+    navKnowledge: page.getByTestId(knowledgeOperatorTestIds.navKnowledge),
+    revertDecision: (decisionId: string) =>
+      page.getByTestId(`revert-memory-decision-${decisionId}`),
+    searchInput: page.getByTestId(knowledgeOperatorTestIds.searchInput),
+    searchInfo: page.getByTestId(knowledgeOperatorTestIds.searchInfo),
+    shell: page.getByTestId(knowledgeOperatorTestIds.shell),
+    tabAgent: page.getByTestId(knowledgeOperatorTestIds.tabAgent),
+    tabGlobal: page.getByTestId(knowledgeOperatorTestIds.tabGlobal),
+    tabWorkspace: page.getByTestId(knowledgeOperatorTestIds.tabWorkspace),
+    workspaceOnboarding: page.getByTestId(knowledgeOperatorTestIds.workspaceOnboarding),
+    workspaceUseGlobal: page.getByTestId(knowledgeOperatorTestIds.workspaceUseGlobal),
+  };
+}
+
+export function skillsOperatorSelectors(page: Pick<Page, "getByTestId">): SkillsOperatorSelectors {
+  return {
+    appSidebar: page.getByTestId(skillsOperatorTestIds.appSidebar),
+    contentBody: page.getByTestId(skillsOperatorTestIds.contentBody),
+    detailPanel: page.getByTestId(skillsOperatorTestIds.detailPanel),
+    enabledSwitch: page.getByTestId(skillsOperatorTestIds.enabledSwitch),
+    enabledToggle: page.getByTestId(skillsOperatorTestIds.enabledToggle),
+    item: (name: string) => page.getByTestId(`skill-item-${name}`),
+    listPanel: page.getByTestId(skillsOperatorTestIds.listPanel),
+    marketplaceEmpty: page.getByTestId(skillsOperatorTestIds.marketplaceEmpty),
+    marketplaceGrid: page.getByTestId(skillsOperatorTestIds.marketplaceGrid),
+    marketplaceReadonlyNotice: page.getByTestId(skillsOperatorTestIds.marketplaceReadonlyNotice),
+    marketplaceRow: (name: string) => page.getByTestId(`marketplace-row-${name}`),
+    marketplaceSearchInput: page.getByTestId(skillsOperatorTestIds.marketplaceSearchInput),
+    marketplaceView: page.getByTestId(skillsOperatorTestIds.marketplaceView),
+    navSkills: page.getByTestId(skillsOperatorTestIds.navSkills),
+    searchInput: page.getByTestId(skillsOperatorTestIds.searchInput),
+    shell: page.getByTestId(skillsOperatorTestIds.shell),
+    tabInstalled: page.getByTestId(skillsOperatorTestIds.tabInstalled),
+    tabMarketplace: page.getByTestId(skillsOperatorTestIds.tabMarketplace),
+    viewFullContent: page.getByTestId(skillsOperatorTestIds.viewFullContent),
+    workspaceOnboarding: page.getByTestId(skillsOperatorTestIds.workspaceOnboarding),
+    workspaceUseGlobal: page.getByTestId(skillsOperatorTestIds.workspaceUseGlobal),
+  };
+}
+
+export function sandboxOperatorSelectors(
+  page: Pick<Page, "getByTestId">
+): SandboxOperatorSelectors {
+  return {
+    actionResult: page.getByTestId(sandboxOperatorTestIds.actionResult),
+    actionResultDismiss: page.getByTestId(sandboxOperatorTestIds.actionResultDismiss),
+    appSidebar: page.getByTestId(sandboxOperatorTestIds.appSidebar),
+    createButton: page.getByTestId(sandboxOperatorTestIds.createButton),
+    deleteConfirm: page.getByTestId(sandboxOperatorTestIds.deleteConfirm),
+    deleteDialog: page.getByTestId(sandboxOperatorTestIds.deleteDialog),
+    deleteProfile: (name: string) => page.getByTestId(`sandbox-page-card-${name}-delete`),
+    deleteUsage: page.getByTestId(sandboxOperatorTestIds.deleteUsage),
+    editProfile: (name: string) => page.getByTestId(`sandbox-page-card-${name}-edit`),
+    editor: page.getByTestId(sandboxOperatorTestIds.editor),
+    editorBackendInput: page.getByTestId(sandboxOperatorTestIds.editorBackendInput),
+    editorError: page.getByTestId(sandboxOperatorTestIds.editorError),
+    editorNameInput: page.getByTestId(sandboxOperatorTestIds.editorNameInput),
+    editorPersistenceInput: page.getByTestId(sandboxOperatorTestIds.editorPersistenceInput),
+    editorRuntimeRootInput: page.getByTestId(sandboxOperatorTestIds.editorRuntimeRootInput),
+    editorSave: page.getByTestId(sandboxOperatorTestIds.editorSave),
+    editorSyncModeInput: page.getByTestId(sandboxOperatorTestIds.editorSyncModeInput),
+    empty: page.getByTestId(sandboxOperatorTestIds.empty),
+    list: page.getByTestId(sandboxOperatorTestIds.list),
+    navSandbox: page.getByTestId(sandboxOperatorTestIds.navSandbox),
+    profile: (name: string) => page.getByTestId(`sandbox-page-card-${name}`),
+    profileMetadata: (name: string) => page.getByTestId(`sandbox-page-card-${name}-profile`),
+    profileSource: (name: string) => page.getByTestId(`sandbox-page-card-${name}-source`),
+    profileUsage: (name: string) => page.getByTestId(`sandbox-page-card-${name}-usage`),
+    restartBanner: page.getByTestId(sandboxOperatorTestIds.restartBanner),
+    shell: page.getByTestId(sandboxOperatorTestIds.shell),
+    total: page.getByTestId(sandboxOperatorTestIds.total),
+    workspaceReferences: page.getByTestId(sandboxOperatorTestIds.workspaceReferences),
+    workspaceOnboarding: page.getByTestId(sandboxOperatorTestIds.workspaceOnboarding),
+    workspaceUseGlobal: page.getByTestId(sandboxOperatorTestIds.workspaceUseGlobal),
+  };
+}
+
 export function automationOperatorSelectors(
   page: Pick<Page, "getByTestId">
 ): AutomationOperatorSelectors {
@@ -635,13 +1036,29 @@ export function automationOperatorSelectors(
     appSidebar: page.getByTestId(automationOperatorTestIds.appSidebar),
     createJobButton: page.getByTestId(automationOperatorTestIds.createJobButton),
     createTriggerButton: page.getByTestId(automationOperatorTestIds.createTriggerButton),
+    deleteAutomationButton: page.getByTestId(automationOperatorTestIds.deleteAutomationButton),
     detailPanel: page.getByTestId(automationOperatorTestIds.automationDetailPanel),
     editAutomationButton: page.getByTestId(automationOperatorTestIds.editAutomationButton),
+    editorDialog: page.getByTestId(automationOperatorTestIds.automationEditorDialog),
     item: (id: string) => page.getByTestId(`automation-item-${id}`),
+    jobAgentInput: page.getByTestId(automationOperatorTestIds.jobAgentInput),
+    jobEnabledToggle: page.getByTestId(automationOperatorTestIds.jobEnabledToggle),
+    jobFireLimitMax: page.getByTestId(automationOperatorTestIds.jobFireLimitMax),
+    jobFireLimitWindow: page.getByTestId(automationOperatorTestIds.jobFireLimitWindow),
     jobForm: page.getByTestId(automationOperatorTestIds.automationJobForm),
     jobNameInput: page.getByTestId(automationOperatorTestIds.jobNameInput),
+    jobPromptInput: page.getByTestId(automationOperatorTestIds.jobPromptInput),
     jobScheduleExpr: page.getByTestId(automationOperatorTestIds.jobScheduleExpr),
+    jobScheduleInterval: page.getByTestId(automationOperatorTestIds.jobScheduleInterval),
+    jobScheduleModeAt: page.getByTestId(automationOperatorTestIds.jobScheduleModeAt),
+    jobScheduleModeCron: page.getByTestId(automationOperatorTestIds.jobScheduleModeCron),
+    jobScheduleModeEvery: page.getByTestId(automationOperatorTestIds.jobScheduleModeEvery),
+    jobScheduleTime: page.getByTestId(automationOperatorTestIds.jobScheduleTime),
+    jobScopeGlobal: page.getByTestId(automationOperatorTestIds.jobScopeGlobal),
+    jobScopeWorkspace: page.getByTestId(automationOperatorTestIds.jobScopeWorkspace),
     jobsScopeAll: page.getByTestId(automationOperatorTestIds.jobsScopeAll),
+    jobsScopeGlobal: page.getByTestId(automationOperatorTestIds.jobsScopeGlobal),
+    jobsScopeWorkspace: page.getByTestId(automationOperatorTestIds.jobsScopeWorkspace),
     jobsShell: page.getByTestId(automationOperatorTestIds.jobsShell),
     listPanel: page.getByTestId(automationOperatorTestIds.automationListPanel),
     navJobs: page.getByTestId(automationOperatorTestIds.navJobs),
@@ -651,8 +1068,29 @@ export function automationOperatorSelectors(
     runSessionLink: (runId: string) => page.getByTestId(`automation-run-session-link-${runId}`),
     submitJobForm: page.getByTestId(automationOperatorTestIds.submitJobForm),
     submitTriggerForm: page.getByTestId(automationOperatorTestIds.submitTriggerForm),
+    triggerAgentInput: page.getByTestId(automationOperatorTestIds.triggerAgentInput),
+    triggerEnabledToggle: page.getByTestId(automationOperatorTestIds.triggerEnabledToggle),
+    triggerEndpointSlugInput: page.getByTestId(automationOperatorTestIds.triggerEndpointSlugInput),
+    triggerEventInput: page.getByTestId(automationOperatorTestIds.triggerEventInput),
+    triggerFilterInput: page.getByTestId(automationOperatorTestIds.triggerFilterInput),
+    triggerFireLimitMax: page.getByTestId(automationOperatorTestIds.triggerFireLimitMax),
+    triggerFireLimitWindow: page.getByTestId(automationOperatorTestIds.triggerFireLimitWindow),
     triggersScopeAll: page.getByTestId(automationOperatorTestIds.triggersScopeAll),
+    triggersScopeGlobal: page.getByTestId(automationOperatorTestIds.triggersScopeGlobal),
+    triggersScopeWorkspace: page.getByTestId(automationOperatorTestIds.triggersScopeWorkspace),
     triggersShell: page.getByTestId(automationOperatorTestIds.triggersShell),
+    triggerPromptInput: page.getByTestId(automationOperatorTestIds.triggerPromptInput),
+    triggerRetryMax: page.getByTestId(automationOperatorTestIds.triggerRetryMax),
+    triggerRetryStrategyBackoff: page.getByTestId(
+      automationOperatorTestIds.triggerRetryStrategyBackoff
+    ),
+    triggerRetryStrategyNone: page.getByTestId(automationOperatorTestIds.triggerRetryStrategyNone),
+    triggerScopeGlobal: page.getByTestId(automationOperatorTestIds.triggerScopeGlobal),
+    triggerWebhookIDInput: page.getByTestId(automationOperatorTestIds.triggerWebhookIDInput),
+    triggerWebhookSecretValueInput: page.getByTestId(
+      automationOperatorTestIds.triggerWebhookSecretValueInput
+    ),
+    toggleAutomationButton: page.getByTestId(automationOperatorTestIds.toggleAutomationButton),
     triggerJobButton: page.getByTestId(automationOperatorTestIds.triggerJobButton),
     triggerNameInput: page.getByTestId(automationOperatorTestIds.triggerNameInput),
     workspaceOnboarding: page.getByTestId(automationOperatorTestIds.workspaceOnboarding),
@@ -665,12 +1103,30 @@ export function bridgeOperatorSelectors(page: Pick<Page, "getByTestId">): Bridge
     appSidebar: page.getByTestId(bridgeOperatorTestIds.appSidebar),
     createBridgeButton: page.getByTestId(bridgeOperatorTestIds.createBridgeButton),
     createDialog: page.getByTestId(bridgeOperatorTestIds.bridgeCreateDialog),
-    createDisplayNameInput: page.getByTestId(bridgeOperatorTestIds.createDisplayNameInput),
-    createProviderConfigInput: page.getByTestId(bridgeOperatorTestIds.createProviderConfigInput),
-    confirmDeleteSecret: (bindingName: string) =>
-      page.getByTestId(`confirm-delete-bridge-secret-${bindingName}`),
-    detailPanel: page.getByTestId(bridgeOperatorTestIds.bridgeDetailPanel),
+    createDeliveryModeSelect: page.getByTestId(
+      bridgeOperatorTestIds.createBridgeDeliveryModeSelect
+    ),
+    createDeliveryPeerInput: page.getByTestId(bridgeOperatorTestIds.createBridgeDeliveryPeerInput),
+    createDeliveryThreadInput: page.getByTestId(
+      bridgeOperatorTestIds.createBridgeDeliveryThreadInput
+    ),
+    createDisplayNameInput: page.getByTestId(bridgeOperatorTestIds.createBridgeDisplayNameInput),
+    createProviderConfigError: page.getByTestId(
+      bridgeOperatorTestIds.createBridgeProviderConfigError
+    ),
+    createProviderConfigInput: page.getByTestId(
+      bridgeOperatorTestIds.createBridgeProviderConfigInput
+    ),
+    createRoutingIncludePeer: page.getByTestId(
+      bridgeOperatorTestIds.createBridgeRoutingIncludePeer
+    ),
+    createRoutingIncludeThread: page.getByTestId(
+      bridgeOperatorTestIds.createBridgeRoutingIncludeThread
+    ),
+    createScopeSelect: page.getByTestId(bridgeOperatorTestIds.createBridgeScopeSelect),
     deleteSecret: (bindingName: string) => page.getByTestId(`delete-bridge-secret-${bindingName}`),
+    detailPanel: page.getByTestId(bridgeOperatorTestIds.bridgeDetailPanel),
+    disableBridgeButton: page.getByTestId(bridgeOperatorTestIds.disableBridgeButton),
     editBridgeButton: page.getByTestId(bridgeOperatorTestIds.editBridgeButton),
     editDialog: page.getByTestId(bridgeOperatorTestIds.bridgeEditDialog),
     editDisplayNameInput: page.getByTestId("bridge-edit-display-name-input"),
@@ -681,6 +1137,7 @@ export function bridgeOperatorSelectors(page: Pick<Page, "getByTestId">): Bridge
     navBridges: page.getByTestId(bridgeOperatorTestIds.navBridges),
     openTestDeliveryButton: page.getByTestId(bridgeOperatorTestIds.openTestDeliveryButton),
     providerCard: (providerKey: string) => page.getByTestId(`bridge-provider-card-${providerKey}`),
+    restartBridgeButton: page.getByTestId(bridgeOperatorTestIds.restartBridgeButton),
     restartRequired: page.getByTestId(bridgeOperatorTestIds.bridgeRestartRequired),
     route: (sessionId: string) => page.getByTestId(`bridge-route-${sessionId}`),
     saveSecret: (bindingName: string) => page.getByTestId(`save-bridge-secret-${bindingName}`),
@@ -832,9 +1289,12 @@ export function tasksOperatorSelectors(page: Pick<Page, "getByTestId">): TasksOp
     detailBreadcrumbTasks: page.getByTestId(tasksOperatorTestIds.detailBreadcrumbTasks),
     detailContent: page.getByTestId(tasksOperatorTestIds.detailContent),
     detailCoordination: page.getByTestId(tasksOperatorTestIds.detailCoordination),
+    detailCancel: page.getByTestId(tasksOperatorTestIds.detailCancel),
     detailDelete: page.getByTestId(tasksOperatorTestIds.detailDelete),
+    detailDeleteCancel: page.getByTestId(tasksOperatorTestIds.detailDeleteCancel),
     detailDeleteConfirm: page.getByTestId(tasksOperatorTestIds.detailDeleteConfirm),
     detailDeleteDialog: page.getByTestId(tasksOperatorTestIds.detailDeleteDialog),
+    detailEdit: page.getByTestId(tasksOperatorTestIds.detailEdit),
     detailEnqueue: page.getByTestId(tasksOperatorTestIds.detailEnqueue),
     detailLifecycle: page.getByTestId(tasksOperatorTestIds.detailLifecycle),
     detailLifecycleHint: page.getByTestId(tasksOperatorTestIds.detailLifecycleHint),
@@ -851,6 +1311,12 @@ export function tasksOperatorSelectors(page: Pick<Page, "getByTestId">): TasksOp
     detailTabAgents: page.getByTestId(tasksOperatorTestIds.detailTabAgents),
     detailTabOrchestration: page.getByTestId(tasksOperatorTestIds.detailTabOrchestration),
     detailTabRuns: page.getByTestId(tasksOperatorTestIds.detailTabRuns),
+    detailChildItem: (taskId: string) => page.getByTestId(`tasks-detail-children-item-${taskId}`),
+    detailChildLink: (taskId: string) => page.getByTestId(`tasks-detail-children-link-${taskId}`),
+    detailDependencyItem: (taskId: string) =>
+      page.getByTestId(`tasks-detail-dependencies-item-${taskId}`),
+    detailDependencyLink: (taskId: string) =>
+      page.getByTestId(`tasks-detail-dependencies-link-${taskId}`),
     orchestrationPanel: page.getByTestId(tasksOperatorTestIds.orchestrationPanel),
     orchestrationProfileCard: page.getByTestId(tasksOperatorTestIds.orchestrationProfileCard),
     orchestrationProfileEmpty: page.getByTestId(tasksOperatorTestIds.orchestrationProfileEmpty),
@@ -868,9 +1334,13 @@ export function tasksOperatorSelectors(page: Pick<Page, "getByTestId">): TasksOp
     orchestrationStreamSeed: page.getByTestId(tasksOperatorTestIds.orchestrationStreamSeed),
     orchestrationStreamStatus: page.getByTestId(tasksOperatorTestIds.orchestrationStreamStatus),
     inboxApprove: (taskId: string) => page.getByTestId(`tasks-inbox-item-approve-${taskId}`),
+    inboxArchive: (taskId: string) => page.getByTestId(`tasks-inbox-item-archive-${taskId}`),
+    inboxDismiss: (taskId: string) => page.getByTestId(`tasks-inbox-item-dismiss-${taskId}`),
     inboxItem: (taskId: string) => page.getByTestId(`tasks-inbox-item-${taskId}`),
     inboxLane: (lane: string) => page.getByTestId(`tasks-inbox-lane-${lane}`),
     inboxOpenTask: (taskId: string) => page.getByTestId(`tasks-inbox-item-open-${taskId}`),
+    inboxReject: (taskId: string) => page.getByTestId(`tasks-inbox-item-reject-${taskId}`),
+    inboxRetry: (taskId: string) => page.getByTestId(`tasks-inbox-item-retry-${taskId}`),
     inboxView: page.getByTestId(tasksOperatorTestIds.inboxView),
     modeDashboard: page.getByTestId(tasksOperatorTestIds.modeDashboard),
     modeInbox: page.getByTestId(tasksOperatorTestIds.modeInbox),
@@ -886,6 +1356,8 @@ export function tasksOperatorSelectors(page: Pick<Page, "getByTestId">): TasksOp
     navTasks: page.getByTestId(tasksOperatorTestIds.navTasks),
     openCreate: page.getByTestId(tasksOperatorTestIds.openCreate),
     runDetailContent: page.getByTestId(tasksOperatorTestIds.runDetailContent),
+    runDetailCancel: page.getByTestId(tasksOperatorTestIds.runDetailCancel),
+    runReviewRow: (reviewId: string) => page.getByTestId(`tasks-run-reviews-row-${reviewId}`),
     runSessionDrilldown: page.getByTestId(tasksOperatorTestIds.runSessionDrilldown),
     taskCard: (taskId: string) => page.getByTestId(`task-card-${taskId}`),
     taskCardPublish: (taskId: string) => page.getByTestId(`task-card-publish-${taskId}`),

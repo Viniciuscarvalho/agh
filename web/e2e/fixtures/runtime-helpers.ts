@@ -18,6 +18,7 @@ export interface RuntimeConfigInput {
   networkEnabled?: boolean;
   port: number;
   socketPath: string;
+  toolsExternalDefault?: "disabled" | "ask" | "enabled";
 }
 
 export function resolveRuntimeMode(env: NodeJS.ProcessEnv = process.env): RuntimeMode {
@@ -55,7 +56,12 @@ export function renderRuntimeConfig(input: RuntimeConfigInput): string {
     `host = ${tomlString(input.host)}`,
     `port = ${input.port}`,
     "",
-    ...(input.networkEnabled ? ["[network]", "enabled = true", ""] : []),
+    ...(input.networkEnabled === undefined
+      ? []
+      : ["[network]", `enabled = ${input.networkEnabled ? "true" : "false"}`, ""]),
+    ...(input.toolsExternalDefault === undefined
+      ? []
+      : ["[tools.policy]", `external_default = ${tomlString(input.toolsExternalDefault)}`, ""]),
   ].join("\n");
 }
 

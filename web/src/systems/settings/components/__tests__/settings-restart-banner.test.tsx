@@ -41,6 +41,9 @@ describe("SettingsRestartBanner", () => {
     expect(screen.getByTestId("settings-page-memory-restart-banner-message")).toHaveTextContent(
       "Changes saved. Restart the daemon to apply."
     );
+    expect(
+      screen.queryByTestId("settings-page-memory-restart-banner-active-sessions")
+    ).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId("settings-page-memory-restart-banner-trigger"));
     expect(restart.trigger).toHaveBeenCalled();
   });
@@ -54,6 +57,7 @@ describe("SettingsRestartBanner", () => {
           isPolling: true,
           status: "stopping",
           operationId: "op_1",
+          activeSessionCount: 2,
         })}
       />
     );
@@ -66,6 +70,15 @@ describe("SettingsRestartBanner", () => {
     expect(screen.getByTestId("settings-page-observability-restart-banner-op")).toHaveTextContent(
       "op_1"
     );
+    expect(
+      screen.getByTestId("settings-page-observability-restart-banner-active-sessions")
+    ).toHaveTextContent("2 active sessions");
+    expect(
+      screen.getByTestId("settings-page-observability-restart-banner-active-sessions")
+    ).toHaveClass("font-mono", "text-badge", "font-semibold", "tracking-badge");
+    expect(
+      screen.getByTestId("settings-page-observability-restart-banner-active-sessions").className
+    ).toContain("text-(--color-text-label)");
     expect(
       screen.queryByTestId("settings-page-observability-restart-banner-trigger")
     ).not.toBeInTheDocument();

@@ -46,6 +46,12 @@ function SettingsRestartBanner({ slug, restart, className }: SettingsRestartBann
       : restart.isPolling
         ? `Restarting daemon${restart.status ? ` · ${restart.status}` : ""}`
         : "Changes saved. Restart the daemon to apply.";
+  const activeSessionLabel =
+    restart.activeSessionCount > 0
+      ? `${restart.activeSessionCount} active ${
+          restart.activeSessionCount === 1 ? "session" : "sessions"
+        }`
+      : null;
 
   const Icon = restart.isPolling ? Loader2 : ShieldAlert;
 
@@ -75,6 +81,14 @@ function SettingsRestartBanner({ slug, restart, className }: SettingsRestartBann
               data-testid={`settings-page-${slug}-restart-banner-op`}
             >
               {restart.operationId}
+            </span>
+          ) : null}
+          {activeSessionLabel ? (
+            <span
+              className="font-mono text-badge font-semibold tracking-badge text-(--color-text-label)"
+              data-testid={`settings-page-${slug}-restart-banner-active-sessions`}
+            >
+              {activeSessionLabel}
             </span>
           ) : null}
         </AlertDescription>

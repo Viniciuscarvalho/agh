@@ -40,7 +40,7 @@ export class BrowserArtifactSession {
 
   static async start(options: BrowserArtifactSessionOptions): Promise<BrowserArtifactSession> {
     const session = new BrowserArtifactSession(options);
-    await session.context.tracing.start({ screenshots: true, snapshots: true });
+    await session.context.tracing.start({ screenshots: false, snapshots: true });
 
     for (const page of session.context.pages()) {
       session.attachPage(page);
@@ -180,8 +180,26 @@ export async function captureRouteState(page: Pick<Page, "evaluate">): Promise<B
     const readText = (testId: string) =>
       document.querySelector<HTMLElement>(`[data-testid="${testId}"]`)?.textContent?.trim() ||
       undefined;
+    const readMetricValue = (testId: string) =>
+      document
+        .querySelector<HTMLElement>(`[data-testid="${testId}"] [data-slot="metric-value"]`)
+        ?.textContent?.trim() || undefined;
     const countByPrefix = (prefix: string) =>
       document.querySelectorAll(`[data-testid^="${prefix}"]`).length;
+    const countSettingsProviderCards = () =>
+      [
+        ...document.querySelectorAll<HTMLElement>('[data-testid^="settings-page-providers-card-"]'),
+      ].filter(element => element.querySelector('[data-testid$="-edit"]') !== null).length;
+    const countSettingsMCPServerRows = () =>
+      [
+        ...document.querySelectorAll<HTMLElement>(
+          '[data-testid^="settings-page-mcp-servers-row-"]'
+        ),
+      ].filter(
+        element =>
+          element.tagName.toLowerCase() === "tr" ||
+          element.querySelector('[data-testid$="-delete"]') !== null
+      ).length;
     const readPathContainerId = (pattern: RegExp) => {
       const match = window.location.pathname.match(pattern);
       const value = match?.[1];
@@ -235,6 +253,19 @@ export async function captureRouteState(page: Pick<Page, "evaluate">): Promise<B
       : document.querySelector('[data-testid="triggers-shell"]')
         ? "triggers"
         : undefined;
+    const automationScopeFilter = document.querySelector(
+      '[data-testid="jobs-scope-all"][aria-pressed="true"], [data-testid="triggers-scope-all"][aria-pressed="true"]'
+    )
+      ? "all"
+      : document.querySelector(
+            '[data-testid="jobs-scope-global"][aria-pressed="true"], [data-testid="triggers-scope-global"][aria-pressed="true"]'
+          )
+        ? "global"
+        : document.querySelector(
+              '[data-testid="jobs-scope-workspace"][aria-pressed="true"], [data-testid="triggers-scope-workspace"][aria-pressed="true"]'
+            )
+          ? "workspace"
+          : undefined;
     const automationSelectedItem =
       document
         .querySelector<HTMLElement>('[data-testid="automation-detail-panel"] h2')
@@ -257,19 +288,78 @@ export async function captureRouteState(page: Pick<Page, "evaluate">): Promise<B
       document
         .querySelector<HTMLElement>('[data-testid="bridge-detail-panel"] h2')
         ?.textContent?.trim() || undefined;
+    const tasksActiveMode = (["dashboard", "inbox", "kanban", "list"] as const).find(
+      mode =>
+        document.querySelector(`[data-testid="tasks-mode-${mode}"][aria-pressed="true"]`) !== null
+    );
+    const tasksSelectedTask = readPathContainerId(/\/tasks\/([^/?#]+)/);
+    const tasksSelectedRun = readPathContainerId(/\/tasks\/[^/]+\/runs\/([^/?#]+)/);
+    const tasksViewVisible =
+      document.querySelector('[data-testid="tasks-dashboard-view"]') !== null ||
+      document.querySelector('[data-testid="tasks-inbox-view"]') !== null ||
+      document.querySelector('[data-testid="task-list-surface"]') !== null ||
+      document.querySelector('[data-testid="tasks-detail-content"]') !== null ||
+      document.querySelector('[data-testid="tasks-run-detail-content"]') !== null ||
+      document.querySelector('[data-testid="task-editor-surface"]') !== null;
+    const tasksReviewCount =
+      countByPrefix("tasks-reviews-row-") + countByPrefix("tasks-run-reviews-row-");
+    const knowledgeScope = document.querySelector('[data-testid="tab-global"][aria-pressed="true"]')
+      ? "global"
+      : document.querySelector('[data-testid="tab-workspace"][aria-pressed="true"]')
+        ? "workspace"
+        : document.querySelector('[data-testid="tab-agent"][aria-pressed="true"]')
+          ? "agent"
+          : undefined;
+    const knowledgeSelectedItem =
+      document
+        .querySelector<HTMLElement>('[data-testid^="memory-item-"][data-state="selected"]')
+        ?.textContent?.trim() || undefined;
+    const skillsActiveTab = document.querySelector('[data-testid="marketplace-view"]')
+      ? "marketplace"
+      : document.querySelector('[data-testid="skill-list-panel"]')
+        ? "installed"
+        : undefined;
+    const skillsSelectedItem =
+      [...document.querySelectorAll<HTMLElement>('[data-testid^="skill-item-"]')]
+        .find(element => element.dataset.state === "selected")
+        ?.dataset.testid?.replace(/^skill-item-/, "") || undefined;
+    const skillsEnabledText = readText("skill-enabled-toggle")?.toLowerCase();
+    const skillsEnabledState = skillsEnabledText?.includes("disabled")
+      ? "disabled"
+      : skillsEnabledText?.includes("enabled")
+        ? "enabled"
+        : undefined;
+    const sandboxRows = [
+      ...document.querySelectorAll<HTMLElement>('tr[data-testid^="sandbox-page-card-"]'),
+    ];
+    const sandboxProfileNames = sandboxRows
+      .map(element => element.dataset.testid?.replace(/^sandbox-page-card-/, ""))
+      .filter((value): value is string => Boolean(value));
+    const settingsActiveSection = readPathContainerId(/\/settings\/([^/?#]+)/);
 
     return {
       url: window.location.href,
       pathname: window.location.pathname,
       title: document.title,
       automation_active_tab: automationActiveTab,
+      automation_delete_visible:
+        document.querySelector('[data-testid="delete-automation-btn"]') !== null,
+      automation_enabled_toggle_visible:
+        document.querySelector('[data-testid="toggle-automation-btn"]') !== null,
       automation_editor_kind: automationEditorKind,
+      automation_editor_open:
+        document.querySelector('[data-testid="automation-editor-dialog"]') !== null,
       automation_item_count: countByPrefix("automation-item-"),
       automation_run_count: countAutomationRunCards(),
       automation_run_history_visible:
         document.querySelector('[data-testid="automation-run-history"]') !== null,
+      automation_scheduler_visible:
+        document.querySelector('[data-testid="automation-job-scheduler"]') !== null,
+      automation_scope_filter: automationScopeFilter,
       automation_selected_item: automationSelectedItem,
       automation_session_link_count: countByPrefix("automation-run-session-link-"),
+      automation_trigger_visible:
+        document.querySelector('[data-testid="trigger-job-btn"]') !== null,
       automation_view_visible:
         document.querySelector('[data-testid="jobs-shell"]') !== null ||
         document.querySelector('[data-testid="triggers-shell"]') !== null,
@@ -292,18 +382,110 @@ export async function captureRouteState(page: Pick<Page, "evaluate">): Promise<B
         document.querySelector('[data-testid="bridges-empty-state"]') !== null ||
         document.querySelector('[data-testid="bridge-detail-panel"]') !== null,
       chat_view_visible: document.querySelector('[data-testid="chat-view"]') !== null,
+      composer_clear_button_enabled:
+        document.querySelector<HTMLButtonElement>('[data-testid="composer-clear-button"]')
+          ?.disabled === false,
+      composer_clear_button_visible:
+        document.querySelector('[data-testid="composer-clear-button"]') !== null,
+      delete_button_visible: document.querySelector('[data-testid="delete-button"]') !== null,
+      home_active_sessions_value: readMetricValue("home-metric-active-sessions"),
+      home_agents_value: readMetricValue("home-metric-agents"),
+      home_connection_status: document.querySelector<HTMLElement>(
+        '[data-testid="home-connection-indicator"]'
+      )?.dataset.status,
+      home_daemon_status:
+        document.querySelector<HTMLElement>('[data-testid="home-daemon-card"]')?.dataset.status ??
+        document.querySelector<HTMLElement>('[data-testid="home-daemon-disconnected-indicator"]')
+          ?.dataset.status,
+      home_metric_count: countByPrefix("home-metric-"),
+      home_uptime_value: readMetricValue("home-metric-uptime"),
+      home_view_visible: document.querySelector('[data-testid="home-shell"]') !== null,
+      home_workspaces_value: readMetricValue("home-metric-workspaces"),
+      knowledge_create_dialog_open:
+        document.querySelector('[data-testid="knowledge-create-dialog"]') !== null,
+      knowledge_decisions_count: countByPrefix("knowledge-decision-"),
+      knowledge_delete_dialog_open:
+        document.querySelector('[data-testid="knowledge-delete-dialog"]') !== null,
+      knowledge_detail_visible:
+        document.querySelector('[data-testid="knowledge-detail-panel"]') !== null,
+      knowledge_edit_dialog_open:
+        document.querySelector('[data-testid="knowledge-edit-dialog"]') !== null,
+      knowledge_item_count: countByPrefix("memory-item-"),
+      knowledge_revert_button_count: countByPrefix("revert-memory-decision-"),
+      knowledge_scope: knowledgeScope,
+      knowledge_search_active:
+        document.querySelector('[data-testid="knowledge-search-info"]') !== null,
+      knowledge_selected_item: knowledgeSelectedItem,
+      knowledge_view_visible: document.querySelector('[data-testid="knowledge-shell"]') !== null,
+      skills_active_tab: skillsActiveTab,
+      skills_content_visible: document.querySelector('[data-testid="content-body"]') !== null,
+      skills_detail_visible: document.querySelector('[data-testid="skill-detail-panel"]') !== null,
+      skills_enabled_state: skillsEnabledState,
+      skills_item_count: countByPrefix("skill-item-"),
+      skills_marketplace_count: countByPrefix("marketplace-row-"),
+      skills_search_active:
+        (document.querySelector<HTMLInputElement>('[data-testid="skill-search-input"]')?.value ??
+          document.querySelector<HTMLInputElement>('[data-testid="marketplace-search-input"]')
+            ?.value ??
+          "") !== "",
+      skills_selected_item: skillsSelectedItem,
+      skills_view_visible: document.querySelector('[data-testid="skills-shell"]') !== null,
+      sandbox_action_result_visible:
+        document.querySelector('[data-testid="sandbox-page-action-result"]') !== null,
+      sandbox_delete_dialog_open:
+        document.querySelector('[data-testid="settings-sandboxes-delete"]') !== null,
+      sandbox_editor_open:
+        document.querySelector('[data-testid="settings-sandbox-editor"]') !== null,
+      sandbox_empty_visible: document.querySelector('[data-testid="sandbox-page-empty"]') !== null,
+      sandbox_profile_count: sandboxRows.length,
+      sandbox_profile_names: sandboxProfileNames,
+      sandbox_restart_banner_visible:
+        document.querySelector('[data-testid="settings-page-sandbox-restart-banner"]') !== null,
+      sandbox_total_text: readText("sandbox-page-total"),
+      sandbox_view_visible: document.querySelector('[data-testid="sandbox-shell"]') !== null,
+      sandbox_workspace_references_text: readText("sandbox-page-workspaces"),
+      settings_action_result_visible:
+        document.querySelector('[data-testid^="settings-page-"][data-testid$="-action-result"]') !==
+        null,
+      settings_active_section: settingsActiveSection,
+      settings_mcp_server_count: countSettingsMCPServerRows(),
+      settings_provider_card_count: countSettingsProviderCards(),
+      settings_restart_banner_visible:
+        document.querySelector(
+          '[data-testid^="settings-page-"][data-testid$="-restart-banner"]'
+        ) !== null,
+      settings_save_bar_visible:
+        document.querySelector('[data-testid^="settings-page-"][data-testid$="-save-bar"]') !==
+        null,
+      settings_section_count: document.querySelectorAll(
+        '[data-testid="settings-section-nav"] a[data-testid^="settings-section-"]'
+      ).length,
+      settings_vault_delete_dialog_open:
+        document.querySelector('[data-testid="settings-vault-delete"]') !== null,
+      settings_vault_editor_open:
+        document.querySelector('[data-testid="settings-vault-editor"]') !== null,
+      settings_vault_secret_count: countByPrefix("vault-secrets-row"),
+      settings_view_visible: document.querySelector('[data-testid="settings-shell"]') !== null,
       message_count: document.querySelectorAll(
         '[data-testid="message-bubble-user"], [data-testid="message-bubble-assistant"]'
       ).length,
       network_active_tab: networkActiveTab,
+      network_activity_count: countByPrefix("network-activity-entry-"),
       network_channel_count: countByPrefix("network-channel-row-"),
+      network_create_dialog_open:
+        document.querySelector('[data-testid="network-create-channel-dialog"]') !== null,
       network_thread_count: countByPrefix("network-thread-list-row-"),
       network_direct_count: countByPrefix("network-direct-list-row-"),
+      network_disabled_visible:
+        document.querySelector('[data-testid="network-disabled-state"]') !== null,
       network_message_count: countByPrefix("network-message-"),
+      network_no_channels_visible:
+        document.querySelector('[data-testid="network-no-channels-state"]') !== null,
       network_selected_channel: networkSelectedChannel,
       network_selected_thread: networkSelectedThread,
       network_selected_direct: networkSelectedDirect,
       network_view_visible: document.querySelector('[data-testid="network-shell"]') !== null,
+      network_work_count: countByPrefix("network-work-inspector-row-"),
       permission_prompt_visible:
         document.querySelector('[data-testid="permission-prompt"]') !== null,
       processing_indicator_visible:
@@ -311,6 +493,26 @@ export async function captureRouteState(page: Pick<Page, "evaluate">): Promise<B
       resume_button_visible: document.querySelector('[data-testid="resume-button"]') !== null,
       session_name: readText("session-name"),
       stop_button_visible: document.querySelector('[data-testid="stop-button"]') !== null,
+      tasks_active_mode: tasksActiveMode,
+      tasks_children_count: countByPrefix("tasks-detail-children-item-"),
+      tasks_dependencies_count: countByPrefix("tasks-detail-dependencies-item-"),
+      tasks_detail_cancel_visible:
+        document.querySelector('[data-testid="tasks-detail-cancel"]') !== null,
+      tasks_detail_delete_dialog_open:
+        document.querySelector('[data-testid="tasks-detail-delete-dialog"]') !== null,
+      tasks_detail_visible: document.querySelector('[data-testid="tasks-detail-content"]') !== null,
+      tasks_inbox_count: document.querySelectorAll('[data-testid^="tasks-inbox-item-"][data-lane]')
+        .length,
+      tasks_review_count: tasksReviewCount,
+      tasks_run_cancel_visible:
+        document.querySelector('[data-testid="task-run-detail-cancel"]') !== null,
+      tasks_run_detail_visible:
+        document.querySelector('[data-testid="tasks-run-detail-content"]') !== null,
+      tasks_selected_run: tasksSelectedRun,
+      tasks_selected_task: tasksSelectedTask,
+      tasks_task_count: countByPrefix("task-card-"),
+      tasks_view_visible: tasksViewVisible,
+      tool_card_count: countByPrefix("tool-call-card"),
     };
   });
 }
