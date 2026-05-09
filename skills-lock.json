@@ -393,6 +393,12 @@
             "sourceType": "github",
             "computedHash": "9906029b67df21162e7837610be9f6271b5c4edf748ba0adff7e2c569cf35439"
         },
+        "higgsfield-generate": {
+            "source": "higgsfield-ai/skills",
+            "sourceType": "github",
+            "skillPath": "higgsfield-generate/SKILL.md",
+            "computedHash": "5826d9db22e6f9a0495382d33db0e515063884c713db1a4931fe861652d6d784"
+        },
         "hono": {
             "source": "pedronauck/skills",
             "sourceType": "github",
@@ -407,6 +413,30 @@
             "source": "pedronauck/skills",
             "sourceType": "github",
             "computedHash": "34a38e6acc60d4529612d41ffe740bca0060d3c5e89e2a0d24ae795f67157fbb"
+        },
+        "hyperframes": {
+            "source": "heygen-com/hyperframes",
+            "sourceType": "github",
+            "skillPath": "skills/hyperframes/SKILL.md",
+            "computedHash": "f726a7478c7a3133e763c9af5f8ade12bc65dbdf32f09a854696ebabc68433a5"
+        },
+        "hyperframes-cli": {
+            "source": "heygen-com/hyperframes",
+            "sourceType": "github",
+            "skillPath": "skills/hyperframes-cli/SKILL.md",
+            "computedHash": "59dcf8d01b5e21a101d6c1225411b487316436221170e7e1dc9b00bf5c27d359"
+        },
+        "hyperframes-media": {
+            "source": "heygen-com/hyperframes",
+            "sourceType": "github",
+            "skillPath": "skills/hyperframes-media/SKILL.md",
+            "computedHash": "4dbba9f98b1d354f8b788c290cfab34f1e000d803cca40808da1a69973231dde"
+        },
+        "hyperframes-registry": {
+            "source": "heygen-com/hyperframes",
+            "sourceType": "github",
+            "skillPath": "skills/hyperframes-registry/SKILL.md",
+            "computedHash": "cd10f258cea41d3dcfe914cb1c93fc999cd9361c64a517ffe9389d42bbf89b62"
         },
         "impeccable": {
             "source": "pbakaus/impeccable",
@@ -835,6 +865,12 @@
             "sourceType": "github",
             "computedHash": "860d67709789aae9b98c6a58a97ff4e3ab7f280e4663e7ee656d8c6370a29ea5"
         },
+        "three": {
+            "source": "heygen-com/hyperframes",
+            "sourceType": "github",
+            "skillPath": "skills/three/SKILL.md",
+            "computedHash": "d40f783d8687f93b19657c193811c78304f84dd276ad344c38045e57b03de187"
+        },
         "tmux": {
             "source": "steipete/clawdis",
             "sourceType": "github",
@@ -904,6 +940,12 @@
             "source": "pedronauck/skills",
             "sourceType": "github",
             "computedHash": "2b4252a346243aa696da2d021a7a2f747259567cd3ca51308ee86ca24ab60d86"
+        },
+        "website-to-hyperframes": {
+            "source": "heygen-com/hyperframes",
+            "sourceType": "github",
+            "skillPath": "skills/website-to-hyperframes/SKILL.md",
+            "computedHash": "4d6f7ea7c0fabd0e7572d26f85fcf83974ac75b19ec1e49529a4e01115302ab4"
         },
         "workflow": {
             "source": "pedronauck/skills",

@@ -24,16 +24,16 @@ make cli-docs                                   # regenerate CLI reference from 
 
 ## Skill Dispatch
 
-| Domain                          | Required Skills                                          | Conditional Skills                          |
-| ------------------------------- | -------------------------------------------------------- | ------------------------------------------- |
-| Fumadocs page authoring         | `documentation-writer` + `crafting-effective-readmes`    | `find-docs` + `context7`                    |
-| Marketing / landing copy        | `copywriting` + `documentation-writer`                   | `seo-audit`                                 |
-| Site UI / components            | `agh-design` + `design-taste-frontend` + `minimalist-ui` | `frontend-design` + `interface-design`      |
-| Remotion / video / protocol viz | `remotion-best-practices`                                | `architecture-diagram` + `mermaid-diagrams` |
-| Diagrams (architecture, flow)   | `mermaid-diagrams` + `architecture-diagram`              |                                             |
-| Next.js / SSR / app router      | `next-best-practices`                                    | `vercel-react-best-practices`               |
-| Tailwind v4 styling             | `tailwindcss`                                            |                                             |
-| TanStack (when used in site)    | `tanstack` + `tanstack-router-best-practices`            |                                             |
+| Domain                          | Required Skills                                       | Conditional Skills                          |
+| ------------------------------- | ----------------------------------------------------- | ------------------------------------------- |
+| Fumadocs page authoring         | `documentation-writer` + `crafting-effective-readmes` | `find-docs` + `context7`                    |
+| Marketing / landing copy        | `copywriting` + `documentation-writer`                | `seo-audit`                                 |
+| Site UI / components            | `agh-design` + `impeccable`                           |                                             |
+| Remotion / video / protocol viz | `remotion-best-practices`                             | `architecture-diagram` + `mermaid-diagrams` |
+| Diagrams (architecture, flow)   | `mermaid-diagrams` + `architecture-diagram`           |                                             |
+| Next.js / SSR / app router      | `next-best-practices`                                 | `vercel-react-best-practices`               |
+| Tailwind v4 styling             | `tailwindcss`                                         |                                             |
+| TanStack (when used in site)    | `tanstack` + `tanstack-router-best-practices`         |                                             |
 
 ## Coding Style
 

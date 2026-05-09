@@ -18,14 +18,14 @@ AGH is an agent operating system — a Go single-binary daemon that manages AI a
 
 ## Critical Rules
 
-- **`make verify` MUST pass** before completing ANY task (runs `codegen-check → bun-lint → bun-typecheck → bun-test → web-build → fmt → lint → test → build → boundaries` across the entire monorepo, not just `web/`). Zero warnings, zero errors. No exceptions.
+- **`make verify` MUST pass** before completing ANY task (runs `codegen-check → bun-lint → bun-typecheck → bun-test → web-build → fmt → lint → test → build → boundaries` across the entire monorepo, not just `web/`). Zero warnings, zero errors. Exceptions are just if you just update documentation that don't affect test, lint or typecheck.
 - **`make lint` (Go golangci-lint) and `make bun-lint` (oxfmt + oxlint over every workspace) both have zero tolerance** — any warning or lint issue is a blocking failure.
 - **Check dependent package APIs** before writing integration code or tests.
 - **Never add dependencies by hand in `go.mod`** — always use `go get`.
-- **Never use web search tools for local project code** — use Grep/Glob instead. Web search is only for external docs.
 - **Never run destructive git commands** (`git restore`, `git checkout`, `git reset`, `git clean`, `git rm`) **without explicit user permission**. If the worktree contains unexpected edits, read and work around them.
 - <critical>NEVER ignore errors with `_` in production code or in tests — every error must be handled or have a written justification.</critical>
 - <critical>NEVER COMMITS `ai-docs/` or `.tmp/` TO THE REPO. They are local tracking artifacts.</critical>
+- **Always use subagents** for exploration to avoit bloat your own context.
 - **Subagents are read-only.** Use them for analysis, exploration, and parallel research. The author of every code change is the agent paired with the user. Subagent output is treated as evidence, not as committed work.
 - **ALWAYS CHECK** the `internal/CLAUDE.md` when doing Go-related stuff
 - **ALWAYS CHECK** the `web/CLAUDE.md` when doing things related to the web package
@@ -36,7 +36,6 @@ These govern how features move from idea to ship. Internalize them before openin
 
 - **Multi-LLM pipeline is the default dev model.** Codex (`gpt-5.4` with `reasoning_effort=xhigh`) authors specs; Claude Opus pressure-tests them; `gpt-5.4-mini` with `reasoning_effort=high` does parallel breadth exploration when explicitly delegated. Do not substitute models without explicit user approval.
 - **TechSpec peer review is opt-in and happens after draft approval.** `cy-create-techspec` must first present the complete draft, get the user's approval on that draft, and save `_techspec.md`. Only then should the agent ask whether to run `cy-spec-peer-review`. If the user opts in, run `compozy exec --ide claude --model opus --reasoning-effort xhigh --format json --prompt-file <prompt>`, summarize blockers/nits/readiness, ask which findings to incorporate, apply only the selected findings, and ask whether to run another round or stop.
-- **Every `_tasks.md` ends with a QA pair.** `cy-create-tasks` MUST append `$qa-report` and `$qa-execution` (with e2e for UI-bearing features) following the `.compozy/tasks/hermes` template.
 - **Every backend task carries a `Web/Docs Impact` subitem.** List affected `web/` routes/components/hooks AND `packages/site` doc pages. Backend-only tasks may declare "no impact" but only after analysis.
 - **Every spec/feature carries an extensibility + agent-manageability + config lifecycle analysis.** Creating, updating, or removing a feature MUST state how it integrates with AGH extensibility surfaces (extensions, hooks, skills/capabilities, tools/resources, bundles, registries, bridge SDKs), which CLI/HTTP/UDS surfaces let agents manage it, and whether `config.toml` keys/defaults/docs are added, changed, or removed. "No impact" is acceptable only with explicit evidence.
 - **Reference competitors by file path in tasks.** When a TechSpec relies on `.resources/<repo>/` references, generated tasks must include explicit competitor file paths so implementing agents read them too. Reference-bearing analysis files belong under `.compozy/tasks/<slug>/analysis/`.
@@ -48,7 +47,6 @@ These govern how features move from idea to ship. Internalize them before openin
 - **Skill helpers must use explicit repo-root paths.** Do not write or execute ambiguous `scripts/...` helper paths when the helper actually lives under `.agents/skills/<skill>/scripts/`.
 - **Two-touch rule.** If the same package or behavior has been patched twice in the same workstream, the third change MUST be a structural redesign, not a third patch. Open a new TechSpec.
 - **Conversation in Brazilian Portuguese; artifacts in English.** Spoken/typed exchanges may use BR-PT. TechSpecs, ADRs, code, commit messages, docs are always English.
-- **Pushback markers are escalation signals.** When the user uses "fraco", "leviano", "ruim", "está totalmente errado", "meia boca", "esquecendo coisas", slow down and re-clarify before acting.
 
 ## Design System
 
@@ -59,6 +57,14 @@ These govern how features move from idea to ship. Internalize them before openin
 - Respect the signal palette: accent `#E8572A` = action, `#30D158` = success, `#FF453A` = danger, `#FFD60A` = warning, `#BF5AF2` = info.
 - When a task belongs to `.compozy/tasks/redesign/`, run it through the `designer` agent (`.claude/agents/designer.md`) in **execution mode only** and activate the mandatory design skills listed below.
 - **Truthful UI > plausible UI.** Don't render controls or metrics the runtime doesn't actually support. When Paper artboards conflict with daemon truth, daemon wins. Paper governs _composition_, `DESIGN.md` governs _grammar_.
+
+### Using `impeccable` for design work
+
+`agh-design` carries brand truth; `impeccable` is the method on top. Activate both for any non-trivial UI pass — shape, critique, audit, polish, animate, harden.
+
+- Project context auto-loads from `DESIGN.md`. `DESIGN.md` always wins over the skill's generic guidance.
+- `PRODUCT.md` is missing: the first `impeccable craft` will block on the setup gate and ask you to run `impeccable teach` interactively. Do not synthesize it from a single prompt.
+- Common commands: `shape` / `craft` (build), `critique` / `audit` (review), `polish` / `layout` / `typeset` / `animate` / `harden` (refine), `live` (in-browser variants).
 
 ## Copy System
 
@@ -72,7 +78,9 @@ These govern how features move from idea to ship. Internalize them before openin
 
 ## Skill Dispatch
 
-Activate skills **before** writing code. Match task domain → activate all required skills:
+<critical>**ALWAYS** Activate skills **before** writing code.</critical>
+
+Match task domain → activate all required skills
 
 | Domain                                | Required Skills                                                                          | Conditional Skills                                |
 | ------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------- |
@@ -106,7 +114,7 @@ Activate skills **before** writing code. Match task domain → activate all requ
 | Documentation (internal)              | `documentation-writer`                                                                   | `crafting-effective-readmes`                      |
 | Copy / public product language        | `copywriting` + `documentation-writer`                                                   | `seo-audit`                                       |
 | Skill / agent-md authoring            | `skill-best-practices` + `agent-md-refactor`                                             |                                                   |
-| UI / Design (any surface)             | `agh-design` + `design-taste-frontend` + `minimalist-ui`                                 | `frontend-design` + `interface-design`            |
+| UI / Design (any surface)             | `agh-design` + `impeccable`                                                              |                                                   |
 
 Web-specific skill dispatch is in `web/CLAUDE.md` and `web/AGENTS.md`. Site-specific dispatch is in `packages/site/CLAUDE.md`.
 
@@ -115,10 +123,6 @@ Every domain change requires its skill — no skipping "because it's a small cha
 ## Build Commands
 
 ### Monorepo gate
-
-```bash
-make verify              # BLOCKING GATE — full monorepo: codegen-check → bun-lint → bun-typecheck → bun-test → web-build → fmt → lint → test → build → boundaries
-```
 
 `make verify` is the only gate that exercises the entire monorepo (Go + every Bun workspace). The targets below let you run individual stages in isolation.
 
@@ -135,7 +139,6 @@ These three are the bun-side commands the `Verify` gate runs. Never substitute t
 ### Go (backend)
 
 ```bash
-make fmt                 # Format with gofmt
 make lint                # Strict golangci-lint (zero issues)
 make test                # Run unit tests with -race flag
 make test-integration    # Add -tags integration tests
@@ -145,20 +148,6 @@ make test-e2e            # Both lanes
 make test-e2e-nightly    # Heavy E2E (release PR dry-run only)
 make build               # Compile binary
 make codegen             # Regenerate openapi/agh.json + web/src/generated/agh-openapi.d.ts
-make codegen-check       # Verify no codegen drift (mandatory after contract changes)
-make deps                # Tidy and verify modules
-```
-
-### Site (Fumadocs at packages/site)
-
-```bash
-cd packages/site && bun run source:generate
-cd packages/site && bun run typecheck   # workspace-only; for the gate use make bun-typecheck
-cd packages/site && bun run test         # workspace-only; for the gate use make bun-test
-cd packages/site && bun run build
-make site-dev            # Dev server
-make site-build          # Production build
-make cli-docs            # Regenerate CLI reference from cobra JSON export
 ```
 
 Web (`web/`) workspace-only commands (`make web-lint`, `make web-typecheck`, `make web-test`, `make web-build`, `make web-dev`, `make web-fmt`) are documented in `web/CLAUDE.md`. They are scoped to `web/` only — for the full guardrail use the `make bun-*` targets above.
@@ -224,14 +213,6 @@ Backend architecture, autonomy contracts, security invariants, package layout, a
 - **Integrity mismatch response**: stop and investigate the recorded history. Fix the registry order or write an ADR-backed one-pass repair; never weaken mismatch checks and never manually edit a live `schema_migrations` row as the fix.
 - **Covers**: numbered registry, transactional wrap (`BEGIN IMMEDIATE`), `-wal` / `-shm` companion handling on recovery, `ORDER BY 0` pitfall, fresh-DB + reopen-after-restart tests.
 
-## Vocabulary & Product Strategy
-
-Repo-wide rules backed by RFC 001 / RFC 002. Runtime implementation details (precedence layers, memory taxonomy, consolidation gates, lifecycle hooks) live in `internal/CLAUDE.md`.
-
-- **Capability vs Recipe**: reusable agent artifacts are called `capability`, NOT `recipe`/`workflow`/`procedure`/`playbook`. Capabilities are interpretive, not deterministic; they are not workflow programs in disguise.
-- **Format extension default**: when integrating with an external spec (AgentSkills, AGENTS.md, MCP, A2A), extend via a namespaced metadata field (`metadata.agh.*` or `agh.*`) — never fork the format.
-- **Runtime moat statement**: AGH competes on runtime, SDK, observability, DX, and integration depth — NOT the open agent network protocol. AGH Network must remain implementable outside AGH. Any feature requiring AGH to interoperate is a design smell.
-
 ## Memory & Lessons Learned
 
 `docs/_memory/` is the project's institutional memory — durable engineering knowledge distilled from real incidents, ADR forensics, and standing engineering posture. Treat it as authoritative when CLAUDE.md is silent or ambiguous.
@@ -249,12 +230,6 @@ Repo-wide rules backed by RFC 001 / RFC 002. Runtime implementation details (pre
 - Don't duplicate CLAUDE.md or `standing_directives.md` rules in lessons — lessons explain **why** a rule exists; rules go in their respective files.
 - Don't add speculative warnings — only confirmed incidents with evidence.
 - New standing directive → next `SD-NNN` block in `standing_directives.md` with Posture / Required behavior / Source / Triggers re-evaluation when.
-
-## CI / Release
-
-- **No cron / schedule workflows.** Heavy/credentialed tests (`make test-e2e-nightly`, `make test-integration`) live in the `dry-run` job of the auto-created release PR. Rationale: release PR is the natural human-gated batching point.
-- **Looper repo (`~/dev/compozy/looper`) is the canonical source** for compozy-org Go-repo CI: composite actions (`setup-go`, `setup-bun`, `setup-git-cliff`, `setup-release`), `ci.yml`, `release.yml`, `.goreleaser.yml`, `cliff.toml`. Verbatim copies into AGH.
-- **Replace third-party CI actions with shell logic** when their setup fails on runners (lesson: `dorny/paths-filter@v3` runner instability replaced by inline git-based change detection).
 
 ## Cross-References
 

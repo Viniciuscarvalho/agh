@@ -426,7 +426,6 @@ If we don't promote any of the above to CLAUDE.md, several are good user-memory 
 
 - **Compozy lacks a "convergence health" signal.** The 19-attempt daemon round-3 retry storm was invisible from inside any single attempt. Could be a Compozy emit metric: "this batch needed N attempts to drain."
 - **Two undated standing directives** (`long-running-sessions.md`, `remove-legacy-alpha.md`) act as ongoing posture rather than per-task plans. Candidates for a `docs/_memory/standing_directives.md`.
-- **Pedro's pushback phonetic markers**: "fraco" (weak), "leviano" (lazy), "ruim" (bad), "está totalmente errado", "meia boca", "esquecendo coisas". These are escalation signals — agents could be primed to slow down and re-clarify when these appear.
 - **Brazilian Portuguese** is conversational; artifacts (TechSpecs, ADRs, code, commit messages) are always English. This is a discoverable rule worth codifying.
 
 ---
