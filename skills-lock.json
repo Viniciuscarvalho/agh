@@ -627,12 +627,14 @@
         "qa-execution": {
             "source": "pedronauck/skills",
             "sourceType": "github",
-            "computedHash": "5ded52204a4522be65bfabab86c4bd71e159a3e53f959bbed4bee9485952d606"
+            "skillPath": "skills/mine/qa-execution/SKILL.md",
+            "computedHash": "24fac75a759fe2255049b133e2d881d84f255f2c18d709f17b36e1678f5528e4"
         },
         "qa-report": {
             "source": "pedronauck/skills",
             "sourceType": "github",
-            "computedHash": "943b9666377faf02f8f8eb228158c1076f268e5b80f41d5ab2fd37e52abe70e5"
+            "skillPath": "skills/mine/qa-report/SKILL.md",
+            "computedHash": "e8c52686771b6d435f89fc4f1da146b1f86382ca507e98286b93fbf94823c1e1"
         },
         "qmd": {
             "source": "pedronauck/skills",
@@ -748,7 +750,8 @@
         "skill-best-practices": {
             "source": "pedronauck/skills",
             "sourceType": "github",
-            "computedHash": "b39b873b9becf59f9a515809efd08c0547cd94c0296873032d3206705189b2ab"
+            "skillPath": "skills/mine/skill-best-practices/SKILL.md",
+            "computedHash": "ff8ff6f7599564f859c3eaf92a6f3260068c9726600e8f59e714da39bfca24dd"
         },
         "skill-writer": {
             "source": "pedronauck/skills",
@@ -865,6 +868,12 @@
             "sourceType": "github",
             "computedHash": "860d67709789aae9b98c6a58a97ff4e3ab7f280e4663e7ee656d8c6370a29ea5"
         },
+        "testing-boss": {
+            "source": "pedronauck/skills",
+            "sourceType": "github",
+            "skillPath": "skills/mine/testing-boss/SKILL.md",
+            "computedHash": "cc66034add7095e8120189e8bffe4a23e1da7d58d635ba2286e4fb84a703a019"
+        },
         "three": {
             "source": "heygen-com/hyperframes",
             "sourceType": "github",
@@ -911,6 +920,12 @@
             "source": "pbakaus/impeccable",
             "sourceType": "github",
             "computedHash": "1cd76e560d1ba25b0bd5f7adfa2957a9f653a3ad0b031d467221154fcd1e0423"
+        },
+        "ui-craft": {
+            "source": "pedronauck/skills",
+            "sourceType": "github",
+            "skillPath": "skills/mine/ui-craft/SKILL.md",
+            "computedHash": "9d60277776b6678e41036793f85618cb3448ee6e974061aa0cbf5458f3f8b581"
         },
         "ui-ux-pro-max": {
             "source": "pedronauck/skills",

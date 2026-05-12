@@ -101,6 +101,9 @@ func NewManager(cfg Config) (*Manager, error) {
 // Check returns the current update state and the latest release metadata when available.
 func (m *Manager) Check(ctx context.Context, opts CheckOptions) (State, *Release, error) {
 	install := m.detectInstall(ctx)
+	if isDevVersion(m.currentVersion) {
+		return m.composeState(install, nil, nil), nil, nil
+	}
 
 	var (
 		latest    *Release

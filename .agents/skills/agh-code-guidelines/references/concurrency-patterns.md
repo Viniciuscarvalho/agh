@@ -1,6 +1,6 @@
 # AGH Concurrency Patterns — Canonical Rules
 
-Verbatim canonical rules. Reviewers will quote these. Companion skills cover deeper analysis: `deadlock-finder-and-fixer` for race/deadlock investigation, `agh-cleanup-failure-paths` for error-path cancellation discipline.
+Verbatim canonical rules. Reviewers will quote these. Companion skills cover deeper analysis: `systematic-debugging` for race/deadlock investigation, `agh-cleanup-failure-paths` for error-path cancellation discipline.
 
 ## Goroutine Ownership
 

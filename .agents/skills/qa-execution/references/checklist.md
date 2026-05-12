@@ -1,75 +1,92 @@
-# Systematic Project QA Checklist
+# Real-User QA Checklist
 
-Mark every item as complete before claiming the QA pass is done.
+Mark every item as complete before claiming the QA pass is done. Categories mirror the procedures in SKILL.md. Skipping any category requires explicit reasoning in the verification report.
 
-## Contract Discovery
+## Persona Coverage
 
-- [ ] Root instructions and repository docs were read
-- [ ] The canonical verify gate was identified or an explicit fallback was chosen
-- [ ] The changed surface and regression-critical surface were identified
-- [ ] Web UI surface presence was determined (yes/no with evidence)
+- [ ] At least 3 personas were assigned across the planned sessions (see `references/user-personas.md`)
+- [ ] Each charter has exactly one persona assigned and the tester stayed in role
+- [ ] At least one Accessibility-Reliant persona session was attempted (or skip reasoning documented)
+- [ ] At least one Mobile User session was attempted when the product has a mobile surface
+- [ ] Persona attributes (familiarity, motivation, device, network, modality, locale) are recorded for every session
 
-## Baseline
+## Journey Coverage
 
-- [ ] Dependencies were installed with the repository-preferred command
-- [ ] The baseline verification gate was run before scenario testing
-- [ ] Verification order followed fastest-first: lint, build, unit tests, integration tests
-- [ ] Any pre-existing failures were isolated with evidence
-- [ ] Dev server was started and confirmed ready (when Web UI surface exists)
+- [ ] 3-7 high-value journeys were identified for this release-candidate (`references/journey-maps.md`)
+- [ ] Every journey names its **value** (not just its steps) and its **goal observable**
+- [ ] Every journey has at least one **abandonment path** documented
+- [ ] Cross-feature journeys are marked and prioritized
+- [ ] Every journey was executed end-to-end with screenshots at each step
 
-## CLI and API Validation
+## Charter Coverage
 
-- [ ] Changed workflows were exercised through public interfaces
-- [ ] At least one unchanged regression-critical workflow was exercised
-- [ ] Runtime readiness was confirmed with observable signals
-- [ ] Scenario fixtures or disposable projects were realistic and minimal
+- [ ] Every charter has mission + persona + surface + tour + time-box recorded (`references/exploratory-charters.md`)
+- [ ] Time-boxes were honored — no charter ran past its box
+- [ ] Each charter ended with a debrief written within 5 minutes of the box ending
+- [ ] Each charter's findings are linked to filed bugs
+- [ ] Each charter's debrief named a suggested next charter
 
-## Behavioral Real Scenario Validation
+## Off-Script & Edge Case Coverage
 
-- [ ] 2-4 high-risk operator/agent journeys were identified before low-level checks
-- [ ] Each journey names operator intent, expected business outcome, AGH surfaces, expected agent behavior, expected artifacts, and realistic disruption probes
-- [ ] The scenario contract was read when present, and the execution matrix satisfies its minimum agents, channels, task tree, provider, artifact, disruption, and cross-surface requirements
-- [ ] The behavioral charter is filled as structured JSON-compatible YAML
-- [ ] The journey log has one row for every meaningful CLI/API/Web/runtime/provider action
-- [ ] The provider attempt file records live proof or an exact blocked boundary
-- [ ] At least one provider-backed agent session was exercised when credentials and local prerequisites were available
-- [ ] Blocked live provider/LLM validation names the exact credential, provider, or tool boundary
-- [ ] Agent behavior was verified through AGH state, not only through terminal text
-- [ ] Produced artifacts were inspected, coherent, connected to their producing session/task/channel, and used later in the scenario
-- [ ] At least one realistic disruption probe was executed and recorded
-- [ ] Smoke, CRUD, page-render, unit, integration, mock, and fake-provider checks were not counted as final behavioral proof
-- [ ] The strict QA auditor was run and produced `qa-audit-report.json`
-- [ ] Auditor blockers resulted in `FAIL` or `BLOCKED`, not `PASS`
+- [ ] At least one off-script tour was executed per major surface (`references/test-tours.md`)
+- [ ] User edge cases relevant to each surface were attempted (`references/user-edge-cases.md`)
+- [ ] Navigation edges (refresh-during-submit, back-after-success, deep-link-mid-flow) covered for multi-step flows
+- [ ] Form edges (double-click, autofill, paste-from-Word) covered for input-heavy surfaces
+- [ ] Session edges (expiry mid-form, multi-tab, logout-in-another-tab) covered for auth-bearing surfaces
+- [ ] Network edges (Slow 3G, offline mid-submit) covered for any I/O-bearing surface
+- [ ] Locale edges (non-en-US language, RTL, timezone) covered when the surface renders text or dates
 
-## Web UI Validation
+## CFR Coverage
 
-Skip this section if the project has no Web UI surface.
+Run a 45-minute CFR pass covering at least 2 journeys (`references/cfr-checks.md`):
 
-- [ ] Critical user flows were identified (3-5 flows covering changed and business-critical surfaces)
-- [ ] Each flow followed the open/snapshot/interact/re-snapshot/verify loop
-- [ ] Screenshots were captured at each verification checkpoint
-- [ ] Browser flows used real scenario state and proved the operator can understand and act on it
-- [ ] Form flows were tested with both valid and invalid data
-- [ ] Navigation flows were verified (page transitions, deep links, 404 handling)
-- [ ] Error and loading states were triggered and verified
-- [ ] Responsive behavior was tested at relevant viewports (when in scope)
-- [ ] Authentication flow was exercised or state was loaded (when applicable)
-- [ ] Browser session was closed after all flows completed
+- [ ] Usability (Nielsen short list) — pass / friction / fail recorded per heuristic
+- [ ] Accessibility (WCAG AA quick check) — keyboard, screen reader, visual
+- [ ] Perceived performance — feedback within targets (paint, interactive, spinner, button)
+- [ ] Compatibility — smoke across Chrome + Safari + Firefox + iOS Safari + Android Chrome
+- [ ] Error recoverability — every failure path tested has an actionable recovery UX
+- [ ] Production parity — no incognito-only tests; cookies enabled; realistic extension set
 
-## Regression Handling
+## Bugs Filed by User Impact
 
-- [ ] Every failure was reproduced before fixing
-- [ ] Root cause was identified before implementation
-- [ ] Regression coverage was added or updated when the repository supported it
-- [ ] The narrow repro and impacted flows were rerun after each fix
-- [ ] Web UI regressions include before/after screenshot evidence (when applicable)
+- [ ] Every bug is classified by user-impact tier (`references/bug-severity-by-user-impact.md`)
+- [ ] Every bug has `Persona Affected:` and `Journey Step:` fields filled in
+- [ ] `Blocks-Completion` and `Data-Loss` bugs on P0 journeys are flagged as release blockers
+- [ ] Multiple `Trust-Damage` findings on the same journey were called out in the verification report
 
-## Final Verification
+## Browser Evidence
 
-- [ ] The full verification gate was rerun after the last code change
-- [ ] The highest-risk behavioral journey was rerun after the final gate
-- [ ] The most important CLI and API flows were rerun after the final gate
-- [ ] The most important Web UI flows were rerun after the final gate (when applicable)
-- [ ] A verification report was produced from fresh evidence
-- [ ] The verification report includes an Audit Result section with command, exit code, JSON report path, blockers, warnings, and verdict
-- [ ] Blocked scenarios or missing prerequisites were disclosed explicitly
+When Web UI flows were tested (`references/web-ui-qa.md`):
+
+- [ ] Dev server was reachable in a production-parity build before any test ran
+- [ ] Each journey followed the open/snapshot/interact/re-snapshot/verify loop
+- [ ] Screenshots were captured at every verification checkpoint and stored in `<qa-output-path>/qa/screenshots/`
+- [ ] Each journey's screenshot set includes start, mid-flow decision point(s), and goal-achieved frame
+- [ ] Responsive behavior was tested at 1280 / 768 / 375 viewports for surfaces with layout changes
+- [ ] Authentication flow was exercised or state was loaded; same auth path real users will take
+- [ ] Browser sessions were closed after all flows completed
+
+## Final Verification Report
+
+- [ ] Report produced from fresh evidence at `<qa-output-path>/qa/verification-report.md`
+- [ ] Persona Coverage section lists every persona × journey × charter combination
+- [ ] Journey Execution Log includes per-step verdicts and screenshot paths
+- [ ] Charter Log includes mission, time-box, debrief, and suggested-next for every charter
+- [ ] Off-Script Findings section names each edge case attempted and its outcome
+- [ ] CFR Findings section gives pass/friction/fail per CFR category per journey
+- [ ] Browser Evidence section captures dev server URL, flows tested, viewports, auth method, blocked flows
+- [ ] Issues Filed section rolls up by user-impact tier and by legacy severity
+- [ ] Blocked sessions or missing prerequisites are disclosed explicitly with the exact gap
+
+## What this checklist deliberately omits
+
+These belong to the `agent-output-audit` companion skill, not real-user QA:
+
+- CI verification gate execution (lint, build, unit, integration baseline)
+- Task implementation matrix and frontmatter status reconciliation
+- AI test-hygiene red flag scans (RF-1..RF-6)
+- Independent evaluator protocol for AI transcripts
+- Flaky test triage and quarantine workflow
+- Compozy `state.yaml` / `task_NN.md` interactions
+
+If a real-user QA session uncovers a finding that requires one of these, file the bug and recommend the right skill, but don't pivot mid-session.

@@ -1,120 +1,22 @@
 # Test Case Templates
 
-Standard templates for creating consistent, comprehensive test cases.
+Standard templates for real-user QA test cases. Variants are framed around what the user is doing, not what the technology is doing.
 
----
+## Contents
 
-## Real Scenario Test Case Template
+- Standard Test Case Template (header, persona, real-user conditions, steps, edge cases)
+- Automation Metadata block (parsed by `qa-execution`)
+- Functional Test Case Template (TC-FUNC-*)
+- UI/Visual Test Case Template (TC-UI-*)
+- Regression Test Case Template (TC-REG-*)
+- Smoke Test Case Template (SMOKE-*)
+- Persona Test Case Template (TC-PERSONA-*)
+- Journey Test Case Template (TC-JOURNEY-*)
+- Charter Test Case Template (TC-CHARTER-*)
+- Tour Test Case Template (TC-TOUR-*)
+- CFR Test Case Template (TC-CFR-*)
 
-For release-grade AGH QA, use this template before lower-level functional or integration cases. It validates a real operator journey, live agent behavior, produced artifacts, and cross-surface product truth.
-
-```markdown
-## TC-SCEN-[ID]: [Operator Journey] - [Business Outcome]
-
-**Priority:** P0 | P1
-**Type:** Real Scenario
-**Status:** Not Run | Pass | Fail | Blocked | Skipped
-**Estimated Time:** X minutes
-**Created:** YYYY-MM-DD
-**Last Updated:** YYYY-MM-DD
-
----
-
-### Behavioral Scenario Charter
-
-- Startup situation:
-- Operator intent:
-- Expected business outcome:
-- AGH surfaces used:
-- Real provider/LLM expectation:
-- Blocked live-provider boundary, if any:
-- Scenario contract minimums covered:
-
----
-
-### Actors and Agent Roles
-
-| Actor/Agent | Role | Expected Behavior | Evidence Source |
-|-------------|------|-------------------|-----------------|
-| Operator | | | |
-| Agent | | | |
-
----
-
-### Preconditions
-
-- [ ] Bootstrap manifest exists and isolated runtime/provider env is available.
-- [ ] Daemon/API/Web readiness is confirmed.
-- [ ] Provider-backed agent sessions are reachable, or the exact credential/tool boundary is documented.
-- [ ] Scenario workspace has real startup directories and AGH configuration.
-
----
-
-### Journey Steps
-
-1. **Operator starts the scenario through a public surface**
-   - Surface: CLI | API | Web
-   - Input:
-   - **Expected:** Persisted state is created and visible through supported surfaces.
-
-2. **Agent performs meaningful work**
-   - Surface: provider-backed AGH session when reachable
-   - Input:
-   - **Expected:** Agent creates or revises a coherent artifact, makes a decision, sends a relevant message, or advances a task.
-
-3. **Operator verifies the outcome**
-   - Surface: CLI/API/Web parity
-   - Input:
-   - **Expected:** The same task/channel/run/knowledge entry/hook result/extension state/artifact is correct and understandable across exposed surfaces.
-
-4. **Disruption probe**
-   - Probe:
-   - **Expected:** Product behavior remains correct or fails with actionable, operator-readable state.
-
----
-
-### Required Evidence
-
-- CLI command and output:
-- API request/response:
-- Browser URL and screenshot/DOM snapshot:
-- Live agent/LLM transcript or persisted session/event evidence:
-- Produced artifact path and content summary:
-- Persistence/health/log evidence:
-
----
-
-### Audit Coverage
-
-- C4 actor/role coverage:
-- C5 channel coverage:
-- C6 task tree coverage:
-- C8 cross-surface truth:
-- C9 live provider evidence:
-- C10 artifact reuse:
-- C11 disruption probes:
-- C14 final verification:
-
----
-
-### Pass Criteria
-
-- The operator goal is achieved or a product bug is filed.
-- Agent behavior matches role, channel, task, and workspace constraints.
-- Produced artifacts are coherent and used later in the scenario.
-- Cross-surface state agrees for at least one persisted object or artifact.
-- The strict QA auditor has no blockers for the contract minimums this case contributes to.
-- Smoke checks are listed only as readiness evidence.
-
----
-
-### Failure Criteria
-
-- The test relies only on smoke, CRUD, unit/integration, mock, fake provider, or page-render evidence.
-- Agent output is only a token echo, canned reply, incoherent artifact, or wrong-role/wrong-channel action.
-- The operator cannot understand or act on real state in the Web UI when the Web surface exists.
-- A live provider boundary is missing but not documented.
-```
+> Removed deliberately: TC-INT (integration), TC-SEC (security), TC-PERF (performance), TC-API. Those belong to integration tests in code, SAST/DAST tooling, and load-testing tools. See SKILL.md Error Handling for routing.
 
 ---
 
@@ -124,17 +26,23 @@ For release-grade AGH QA, use this template before lower-level functional or int
 ## TC-[ID]: [Test Case Title]
 
 **Priority:** P0 (Critical) | P1 (High) | P2 (Medium) | P3 (Low)
-**Type:** Functional | UI | Integration | Regression | Performance | Security
+**Type:** Functional | UI | Regression | Smoke | Persona | Journey | Charter | Tour | CFR
 **Status:** Not Run | Pass | Fail | Blocked | Skipped
 **Estimated Time:** X minutes
 **Created:** YYYY-MM-DD
 **Last Updated:** YYYY-MM-DD
+**Persona:** New User | Power User | Casual User | Mobile User | Accessibility-Reliant | Recovering User
+**Journey:** <J-NN journey name, or "n/a">
+**Automation Target:** E2E | Manual-only
+**Automation Status:** Existing | Missing | Blocked | N/A
+**Automation Command/Spec:** [spec path, suite name, or command]
+**Automation Notes:** [why this should be automated, remain manual, or is blocked]
 
 ---
 
 ### Objective
 
-[Clear statement of what this test validates and why it matters]
+[Clear statement of what this test validates from the user's perspective and why it matters to them]
 
 ---
 
@@ -147,33 +55,45 @@ For release-grade AGH QA, use this template before lower-level functional or int
 
 ---
 
-### Test Steps
+### Real-User Conditions
 
-1. **[Action to perform]**
-   - Input: [specific data if any]
-   - **Expected:** [What should happen]
-
-2. **[Action to perform]**
-   - Input: [specific data if any]
-   - **Expected:** [What should happen]
-
-3. **[Action to perform]**
-   - Input: [specific data if any]
-   - **Expected:** [What should happen]
+| Dimension | Value |
+|-----------|-------|
+| Network | wifi-fast \| wifi-slow \| 4g \| 3g \| flaky |
+| Device | desktop \| laptop \| tablet \| phone-small \| phone-large |
+| Browser | <Chrome / Safari / Firefox / iOS Safari / Android Chrome> |
+| Locale | en-US \| pt-BR \| de-DE \| ar-EG \| ja-JP \| ... |
+| Timezone | <IANA tz, e.g. America/New_York> |
+| Autofill | empty \| stale-credentials \| current-credentials \| saved-card |
+| Modality | mouse-keyboard \| touch \| screen-reader \| keyboard-only \| voice |
 
 ---
 
-### Test Data
+### Test Steps
 
-| Field | Value | Notes |
-|-------|-------|-------|
-| [Field 1] | [Value] | [Any special handling] |
-| [Field 2] | [Value] | [Any special handling] |
+1. **[User action in plain language]**
+   - Input: [specific data if any]
+   - **Expected:** [What the user should observe within their patience window]
 
-**Test Account:**
-- Username: [test user]
-- Password: [test password]
-- Role: [user type]
+2. **[User action in plain language]**
+   - Input: [specific data if any]
+   - **Expected:** [What the user should observe]
+
+3. **[User action in plain language]**
+   - Input: [specific data if any]
+   - **Expected:** [Goal observable or next-step affordance]
+
+---
+
+### Edge Cases & Variations
+
+(Pick from `../qa-execution/references/user-edge-cases.md` — non-technical edges only)
+
+| Variation | Action | Expected Result |
+|-----------|--------|-----------------|
+| Refresh mid-submit | Click submit, refresh before response | No double-submit; clear feedback |
+| Back after success | Press back from success screen | Sensible state; no re-fire |
+| Slow 3G | Throttle to 3G, repeat steps | All actions feel responsive within targets |
 
 ---
 
@@ -182,16 +102,6 @@ For release-grade AGH QA, use this template before lower-level functional or int
 - [System state after successful test]
 - [Cleanup required]
 - [Data to verify/restore]
-
----
-
-### Edge Cases & Variations
-
-| Variation | Input | Expected Result |
-|-----------|-------|-----------------|
-| Empty input | "" | Validation error shown |
-| Max length | 256 chars | Accepted/Truncated |
-| Special chars | @#$% | Handled correctly |
 
 ---
 
@@ -217,65 +127,93 @@ For release-grade AGH QA, use this template before lower-level functional or int
 
 ---
 
-## Functional Test Case Template
+## Automation Metadata
 
-For testing business logic and feature functionality.
+Apply these fields to every test case variant:
+
+- **Automation Target**
+  - `E2E` — public flow through browser, HTTP, CLI, or worker entrypoints; user-observable behavior.
+  - `Manual-only` — exploratory, usability, visual-judgment, or accessibility-via-real-AT work that should stay manual.
+- **Automation Status**
+  - `Existing` — matching automated coverage already exists.
+  - `Missing` — repository supports automation for this flow but coverage is absent.
+  - `Blocked` — harness exists but credentials, data, or environment block automation.
+  - `N/A` — automation is intentionally not applicable.
+- **Automation Command/Spec:** existing spec path or canonical command when known.
+- **Automation Notes:** rationale, blocker, or handoff expectation for `qa-execution`.
+
+---
+
+## Functional Test Case Template (TC-FUNC-*)
 
 ```markdown
 ## TC-FUNC-[ID]: [Feature] - [Scenario]
 
 **Priority:** P[0-3]
 **Type:** Functional
+**Persona:** [pick one]
 **Module:** [Feature/Module name]
-**Requirement:** REQ-XXX
+**Journey:** [J-NN journey name or "n/a"]
+**Automation Target:** E2E | Manual-only
+**Automation Status:** Existing | Missing | Blocked | N/A
+**Automation Command/Spec:** [spec path or command]
+**Automation Notes:** [why this case should or should not be automated]
 
 ### Objective
-Verify that [feature] behaves correctly when [scenario]
+From the [persona]'s perspective, verify [feature] behaves correctly when [scenario].
 
 ### Preconditions
-- User logged in as [role]
+- User logged in as [persona]
 - [Feature prerequisite]
 - Test data: [dataset]
+
+### Real-User Conditions
+| Dimension | Value |
+|-----------|-------|
+| Device | [device profile] |
+| Network | [network profile] |
+| Locale | [locale] |
 
 ### Test Steps
 
 1. Navigate to [page/feature]
-   **Expected:** [Page loads correctly]
+   **Expected:** [what the persona sees]
 
-2. Perform [action]
+2. Perform [user-language action]
    **Input:** [test data]
-   **Expected:** [System response]
+   **Expected:** [user-observable outcome]
 
-3. Verify [result]
-   **Expected:** [Success criteria]
+3. Verify [user-observable result]
+   **Expected:** [goal observable]
 
-### Boundary Tests
-- Minimum value: [test]
-- Maximum value: [test]
-- Null/empty: [test]
+### Boundary User Behaviors
+- Empty input: [test]
+- Maximum input length: [test]
+- Special characters from paste: [test]
 
-### Negative Tests
-- Invalid input: [test]
-- Unauthorized access: [test]
-- Missing required fields: [test]
+### Negative User Behaviors
+- Invalid input the user might paste: [test]
+- Attempt action without preconditions: [test]
+- Submit while missing required fields: [test]
 ```
 
 ---
 
-## UI/Visual Test Case Template
-
-For validating visual appearance and design compliance.
+## UI/Visual Test Case Template (TC-UI-*)
 
 ```markdown
 ## TC-UI-[ID]: [Component/Page] Visual Validation
 
 **Priority:** P[0-3]
 **Type:** UI/Visual
+**Persona:** [pick one — usually Mobile User or Accessibility-Reliant for visual checks]
 **Figma Design:** [URL]
 **Breakpoints:** Desktop | Tablet | Mobile
+**Automation Target:** E2E | Manual-only
+**Automation Status:** Existing | Missing | Blocked | N/A
 
 ### Objective
-Verify [component] matches Figma design specifications
+Verify [component] matches Figma design specifications across viewports.
 
 ### Preconditions
 - Browser: [Chrome/Firefox/Safari]
@@ -312,12 +250,10 @@ Verify [component] matches Figma design specifications
 - [ ] Default state matches design
 - [ ] Hover state matches design
 - [ ] Active/pressed state matches design
-- [ ] Focus state matches design
+- [ ] Focus state matches design (focus indicator visible)
 - [ ] Disabled state matches design
 
 ### Responsive Checks
-
-Standard viewports shared with `qa-execution`:
 
 **Desktop (1280px):**
 - [ ] Layout correct
@@ -331,192 +267,286 @@ Standard viewports shared with `qa-execution`:
 - [ ] Layout stacks correctly
 - [ ] Content readable
 - [ ] Navigation accessible
+- [ ] No content covered by sticky elements
 ```
 
 ---
 
-## Integration Test Case Template
-
-For testing component interactions and data flow.
+## Regression Test Case Template (TC-REG-*)
 
 ```markdown
-## TC-INT-[ID]: [System A] to [System B] Integration
-
-**Priority:** P[0-3]
-**Type:** Integration
-**Systems:** [List integrated systems]
-**API Endpoint:** [endpoint if applicable]
-
-### Objective
-Verify data flows correctly from [source] to [destination]
-
-### Preconditions
-- [System A] running
-- [System B] running
-- Test credentials configured
-- Network connectivity verified
-
-### Test Steps
-
-1. Trigger [action] in [System A]
-   **Input:** [data payload]
-   **Expected:** Request sent to [System B]
-
-2. Verify [System B] receives data
-   **Expected:**
-   - Status code: 200
-   - Response format: JSON
-   - Data transformation correct
-
-3. Verify [System A] handles response
-   **Expected:** [UI update/confirmation]
-
-### Data Validation
-| Field | Source Value | Transformed Value | Status |
-|-------|--------------|-------------------|--------|
-| [field1] | [value] | [expected] | [ ] |
-| [field2] | [value] | [expected] | [ ] |
-
-### Error Scenarios
-- [ ] Network timeout handling
-- [ ] Invalid response handling
-- [ ] Authentication failure handling
-- [ ] Rate limiting handling
-```
-
----
-
-## Regression Test Case Template
-
-For ensuring existing functionality remains intact.
-
-```markdown
-## TC-REG-[ID]: [Feature] Regression
+## TC-REG-[ID]: [Journey] Regression
 
 **Priority:** P[0-3]
 **Type:** Regression
-**Original Feature:** [Feature name]
+**Persona:** [pick one]
+**Journey:** [J-NN name — regression is journey-driven]
 **Last Modified:** [Date]
+**Automation Target:** E2E | Manual-only
+**Automation Status:** Existing | Missing | Blocked | N/A
 
 ### Objective
-Verify [feature] still works correctly after recent changes
+Verify [journey] still reaches its goal observable after recent changes.
 
 ### Context
-Recent changes that may affect this feature:
+Recent changes that may affect this journey:
 - [Change 1]
 - [Change 2]
 
-### Critical Path Tests
+### Critical Path (user-language)
 
-1. [ ] Core functionality works
-2. [ ] Data persistence correct
-3. [ ] UI renders properly
-4. [ ] Error handling intact
+1. [ ] Entry point still reachable
+2. [ ] Each step delivers its expected observable
+3. [ ] Goal observable still appears
+4. [ ] Exit path still natural
+5. [ ] At least one abandonment path tested
 
-### Integration Points
-- [ ] [Dependent feature 1] still works
-- [ ] [Dependent feature 2] still works
-- [ ] API contracts unchanged
+### Cross-Journey Touchpoints
+- [ ] [Dependent journey 1] still works
+- [ ] [Dependent journey 2] still works
 
-### Performance Baseline
-- Expected load time: < Xs
-- Expected response time: < Xms
+### Perceived Performance Baseline
+- Expected entry-to-goal time: < Xs
+- Expected per-step feedback: < 100ms
 ```
 
 ---
 
-## Security Test Case Template
-
-For validating security controls and vulnerabilities.
+## Smoke Test Case Template (SMOKE-*)
 
 ```markdown
-## TC-SEC-[ID]: [Security Control] Validation
+## SMOKE-[ID]: [Critical Journey] Sanity
 
-**Priority:** P0 (Critical)
-**Type:** Security
-**OWASP Category:** [A01-A10]
-**Risk Level:** Critical | High | Medium | Low
+**Priority:** P0
+**Type:** Smoke
+**Persona:** [the most representative persona for this journey]
+**Journey:** [J-NN name]
+**Automation Target:** E2E | Manual-only
 
 ### Objective
-Verify [security control] prevents [vulnerability/attack]
+A 2-minute sanity check that the [journey] is not catastrophically broken on this build.
 
-### Preconditions
-- Test account with [role]
-- Security testing tools configured
-- Audit logging enabled
+### Steps (target: 2 minutes total)
+
+1. [Entry verb] — reach the journey entry within 5 seconds
+2. [Mid-flow verb] — see the expected mid-flow observable within 3 seconds
+3. [Goal verb] — see the goal observable within journey time budget
+
+### Pass criteria
+- All three steps deliver their observable without `Blocks-Completion`-class issues.
+```
+
+---
+
+## Persona Test Case Template (TC-PERSONA-*)
+
+```markdown
+## TC-PERSONA-[ID]: [Persona] on [Surface]
+
+**Priority:** P[0-3]
+**Type:** Persona
+**Persona:** [pick one — TC-PERSONA cases are about validating a specific persona's experience]
+**Surface:** [feature or screen]
+**Automation Target:** Manual-only (persona-driven cases rarely automate well)
+**Automation Status:** N/A
+
+### Persona Attributes (record exactly)
+
+| Attribute | Value |
+|-----------|-------|
+| Name | New User | Power User | Casual User | Mobile User | Accessibility-Reliant | Recovering User |
+| Familiarity | zero | familiar | expert |
+| Motivation | evaluate | complete-task | ship-work-fast | one-handed-action | use-on-equal-terms | trust-check |
+| Device | [device] |
+| Network | [profile] |
+| Modality | [interaction modality] |
+| Locale | [locale] |
+| Patience (seconds) | [time until abandonment] |
+
+### Objective
+Verify that a [persona] can [user goal] on [surface] within the persona's patience window.
+
+### Friction Hypotheses (what to look for)
+
+1. [Specific friction the persona is likely to hit]
+2. [Specific friction the persona is likely to hit]
+3. [Specific friction the persona is likely to hit]
 
 ### Test Steps
 
-1. Attempt [attack vector]
-   **Input:** [malicious payload]
-   **Expected:** Request blocked/sanitized
+1. **Enter as [persona] would** — [entry method]
+   **Expected:** [first-impression observable within X seconds]
 
-2. Verify security control response
-   **Expected:**
-   - Error message: Generic (no info leak)
-   - Log entry: Attack attempt recorded
-   - Account: Not compromised
+2. **Attempt [persona's primary action]**
+   **Expected:** [persona-appropriate feedback within their patience]
 
-### Attack Vectors
-- [ ] SQL injection
-- [ ] XSS (stored/reflected)
-- [ ] CSRF
-- [ ] Authentication bypass
-- [ ] Authorization escalation
+3. **Encounter the planned friction hypothesis**
+   **Expected:** [graceful handling that keeps the persona moving]
 
-### Compliance Check
-- [ ] [Regulation] requirement met
-- [ ] Audit trail complete
-- [ ] Data encrypted
+### Pass criteria
+- The persona reaches their goal without `Blocks-Completion`-class friction.
+- No `Trust-Damage`-class observation surfaces.
 ```
 
 ---
 
-## Performance Test Case Template
-
-For validating speed, scalability, and resource usage.
+## Journey Test Case Template (TC-JOURNEY-*)
 
 ```markdown
-## TC-PERF-[ID]: [Feature] Performance
+## TC-JOURNEY-[ID]: [Verb-Noun Journey Name]
 
 **Priority:** P[0-3]
-**Type:** Performance
-**Baseline:** [Previous metrics]
+**Type:** Journey
+**Persona:** [pick one]
+**Journey:** J-[NN] [from `../qa-execution/references/journey-maps.md`]
+**Automation Target:** E2E (when harness exists)
+**Automation Status:** Existing | Missing | Blocked | N/A
+
+### Journey Value
+[One sentence: what does the user gain when this journey succeeds?]
+
+### Entry
+- URL: [entry URL]
+- Origin: direct | email | search | in-app-nav | push | external-share
+
+### Actions (user-language)
+
+| Step | Verb | Expected observable | Time budget (s) |
+|------|------|---------------------|-----------------|
+| 1 | [enter] | [observable] | [N] |
+| 2 | [act] | [observable] | [N] |
+| 3 | [confirm] | [observable] | [N] |
+| 4 | [reach goal] | [goal observable] | [N] |
+
+### Goal
+- Observable: [the exact user-side state that proves success]
+- Side effects: [email-sent, db-row-created, analytics-event-fired]
+
+### Exit
+- Natural: [where the user lands after success]
+- Abandonment paths to test:
+  - Path A: [realistic abandonment 1]
+  - Path B: [realistic abandonment 2]
+
+### Branches
+- At step [N]: when [condition], the user can [alternative]
+
+### Cross-feature
+- Teams crossed: [team-1, team-2]
+- Services crossed: [service-1, service-2]
+- External dependencies: [provider-1]
+
+### Failure Modes (journey-level, not feature-level)
+- [What breaks the whole journey, not just a feature]
+```
+
+---
+
+## Charter Test Case Template (TC-CHARTER-*)
+
+```markdown
+## TC-CHARTER-[ID]: [Mission in one sentence]
+
+**Priority:** P[0-3]
+**Type:** Charter
+**Mode:** Freestyle | Strategy-Based | Scenario-Based | Collaborative | Charter-With-Tour
+**Persona:** [pick one]
+**Surface:** [feature/area]
+**Entry URL:** [URL]
+**Tour:** [pick exactly one from `../qa-execution/references/test-tours.md`]
+**Time-box:** 30 | 60 | 90 minutes
+**Automation Target:** Manual-only
+**Automation Status:** N/A
+
+### Mission
+[One-sentence mission statement — what we're looking for and why it matters]
+
+### Out of scope
+[Surfaces or behaviors deliberately excluded so the tester doesn't drift]
+
+### Must try
+- [Specific thing the tester must attempt]
+- [Specific thing the tester must attempt]
+
+### Must avoid
+- [Known-broken or out-of-scope area to skip]
+
+### Debrief template (filled by qa-execution at session end)
+- Started: <ISO>
+- Ended: <ISO>
+- Findings:
+  - <bullet>
+- Bugs filed: [BUG-NNN]
+- Surprises: <what was unexpected>
+- Suggested next charter: <one-line proposal>
+```
+
+---
+
+## Tour Test Case Template (TC-TOUR-*)
+
+```markdown
+## TC-TOUR-[ID]: [Tour Name] on [Surface]
+
+**Priority:** P[0-3]
+**Type:** Tour
+**Tour:** Feature | Money | Garbage | Back-Button | Multi-Tab | Network | Locale | Paste | Autofill | Interrupt
+**Persona:** [pick one]
+**Surface:** [feature/area]
+**Time-box:** 30 | 60 | 90 minutes
+**Automation Target:** Manual-only
+**Automation Status:** N/A
+
+### Theme (from tour catalog)
+[Copy the tour's theme statement from `../qa-execution/references/test-tours.md`]
+
+### Off-script actions to attempt
+[Copy the tour's bullet list from the canonical catalog]
+
+### What to look for
+[Copy the tour's "what to look for" from the canonical catalog]
+
+### Sample evidence to capture
+[Copy the tour's "sample evidence" from the canonical catalog]
+
+### Pass criteria
+- All planned off-script actions attempted.
+- Findings documented in the charter debrief or as bugs.
+- No `Blocks-Completion` or `Data-Loss` left unfiled.
+```
+
+---
+
+## CFR Test Case Template (TC-CFR-*)
+
+```markdown
+## TC-CFR-[ID]: [CFR Category] on [Surface]
+
+**Priority:** P[0-3]
+**Type:** CFR
+**CFR Category:** Usability | Accessibility | Perceived-Performance | Compatibility | Error-Recoverability | Production-Parity
+**Persona:** [pick one — Accessibility-Reliant for a11y, Mobile User for perceived-perf on touch, etc.]
+**Surface:** [feature/area]
+**Automation Target:** Manual-only (most CFR checks resist automation)
+**Automation Status:** N/A
 
 ### Objective
-Verify [feature] meets performance requirements
+Verify that [CFR category] holds on [surface] for [persona] within the targets defined in `../qa-execution/references/cfr-checks.md`.
 
-### Preconditions
-- Load testing tool configured
-- Baseline metrics recorded
-- Test environment isolated
+### Checklist (from cfr-checks.md)
+- [ ] [Item 1 from the relevant CFR section]
+- [ ] [Item 2]
+- [ ] [Item 3]
 
-### Performance Criteria
+### Targets
+| Observable | Target | Acceptable | Actual |
+|---|---|---|---|
+| [metric] | [target] | [acceptable] | |
 
-| Metric | Target | Acceptable | Actual | Status |
-|--------|--------|------------|--------|--------|
-| Response time | < 200ms | < 500ms | | [ ] |
-| Throughput | > 1000 req/s | > 500 req/s | | [ ] |
-| Error rate | < 0.1% | < 1% | | [ ] |
-| CPU usage | < 70% | < 85% | | [ ] |
-| Memory usage | < 70% | < 85% | | [ ] |
-
-### Load Scenarios
-
-1. **Normal load:** X concurrent users
-   - Duration: 5 minutes
-   - Expected: All metrics within target
-
-2. **Peak load:** Y concurrent users
-   - Duration: 10 minutes
-   - Expected: All metrics within acceptable
-
-3. **Stress test:** Z concurrent users
-   - Duration: Until failure
-   - Expected: Graceful degradation
-
-### Results
-[Document actual results and comparison to baseline]
+### Pass criteria
+- All checklist items mark `pass`.
+- No `Friction`-class or higher CFR finding surfaces.
+- Production-parity items confirmed (not in incognito, cookies enabled, realistic auth path).
 ```
 
 ---
@@ -527,13 +557,24 @@ Verify [feature] meets performance requirements
 |------|--------|---------|
 | Functional | TC-FUNC- | TC-FUNC-001 |
 | UI/Visual | TC-UI- | TC-UI-045 |
-| Integration | TC-INT- | TC-INT-012 |
-| Regression | TC-REG- | TC-REG-089 |
-| Security | TC-SEC- | TC-SEC-005 |
-| Performance | TC-PERF- | TC-PERF-023 |
-| API | TC-API- | TC-API-067 |
+| Regression (journey-driven) | TC-REG- | TC-REG-089 |
 | Smoke | SMOKE- | SMOKE-001 |
-| Real Scenario | TC-SCEN- | TC-SCEN-001 |
+| Persona-driven | TC-PERSONA- | TC-PERSONA-012 |
+| Journey-driven | TC-JOURNEY- | TC-JOURNEY-007 |
+| Charter (planning) | TC-CHARTER- | TC-CHARTER-003 |
+| Tour-driven | TC-TOUR- | TC-TOUR-014 |
+| CFR | TC-CFR- | TC-CFR-008 |
+
+---
+
+## Automation Status Reference
+
+| Status | Meaning | Action |
+|--------|---------|--------|
+| Existing | Coverage already exists | Reuse and verify it still maps to the journey |
+| Missing | Harness exists but coverage does not | `qa-execution` should add or update it |
+| Blocked | Harness exists but prerequisites are missing | Report the blocker explicitly |
+| N/A | Automation is intentionally not applicable | Keep strong manual evidence |
 
 ---
 
@@ -541,7 +582,7 @@ Verify [feature] meets performance requirements
 
 | Priority | Description | When to Run |
 |----------|-------------|-------------|
-| P0 | Critical behavior, operator/agent journey, blocks release | Every build/release QA |
-| P1 | Major features, high impact | Daily/Weekly |
-| P2 | Standard features, moderate impact | Weekly/Release |
-| P3 | Minor features, low impact | Release only |
+| P0 | Critical journeys; failure causes Blocks-Completion / Data-Loss | Every build |
+| P1 | Major journeys; failure causes Trust-Damage / repeated Friction | Daily/Weekly |
+| P2 | Secondary journeys, edge personas, lower-traffic surfaces | Weekly/Release |
+| P3 | Cosmetic checks, exploratory follow-ups | Release only |

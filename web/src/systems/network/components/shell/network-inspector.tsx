@@ -78,12 +78,12 @@ function NetworkInspectorTabs({ activeTab, onTabChange, workCount }: NetworkInsp
       }}
       value={activeTab}
     >
-      <TabsList className="h-10 w-full bg-transparent p-0">
+      <TabsList className="w-full bg-transparent p-0">
         {tabs.map(tab => {
           const Icon = tab.icon;
           return (
             <TabsTrigger
-              className="h-10 flex-1 gap-1.5 px-3 group-data-horizontal/tabs:after:bottom-0"
+              className="flex-1 gap-1.5 px-3 group-data-horizontal/tabs:after:bottom-0"
               count={tab.count && tab.count > 0 ? tab.count : undefined}
               data-testid={tab.testId}
               key={tab.id}

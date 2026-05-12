@@ -25,3 +25,25 @@ func TestTrimGitDescribeSuffixLeavesTaggedVersionUntouched(t *testing.T) {
 		}
 	})
 }
+
+func TestIsDevVersionClassifiesUntaggedBuilds(t *testing.T) {
+	t.Run("Should treat bare git hashes as development builds", func(t *testing.T) {
+		t.Parallel()
+
+		for _, version := range []string{"dev", "25bd6116", "25bd6116-dirty"} {
+			if !isDevVersion(version) {
+				t.Fatalf("isDevVersion(%q) = false, want true", version)
+			}
+		}
+	})
+
+	t.Run("Should keep tagged git-describe builds comparable", func(t *testing.T) {
+		t.Parallel()
+
+		for _, version := range []string{"v1.2.3", "v1.2.3-4-gabcdef1"} {
+			if isDevVersion(version) {
+				t.Fatalf("isDevVersion(%q) = true, want false", version)
+			}
+		}
+	})
+}

@@ -43,28 +43,27 @@ No production users exist. Never sacrifice code quality for backward compatibili
 
 Activate skills **before** writing code. Match task domain → activate all required skills:
 
-| Domain                        | Required Skills                                                          | Conditional Skills                           |
-| ----------------------------- | ------------------------------------------------------------------------ | -------------------------------------------- |
-| React / Web UI                | `react` + `tailwindcss` + `vercel-react-best-practices`                  | `shadcn`                                     |
-| Routing                       | `tanstack-router-best-practices`                                         | `tanstack`                                   |
-| Data fetching                 | `tanstack-query-best-practices` + `app-renderer-systems`                 |                                              |
-| State management              | `zustand`                                                                |                                              |
-| Schema / Validation           | `zod`                                                                    | `typescript-advanced`                        |
-| Web testing                   | `consolidate-test-suites` + `vitest` + `react` + `testing-anti-patterns` |                                              |
-| TypeScript (types)            | `typescript-advanced`                                                    | `context7`                                   |
-| UI / UX Design (any surface)  | `agh-design` + `impeccable`                                              | `shadcn` + `agh-ui-screenshot`               |
-| UI verification / visual diff | `agh-ui-screenshot`                                                      |                                              |
-| UI microcopy / product labels | `copywriting` + `documentation-writer`                                   |                                              |
-| Storybook / component stories | `storybook-stories`                                                      | `shadcn`                                     |
-| Animation / motion            | `motion-react`                                                           | `motion`                                     |
-| Component patterns            | `vercel-composition-patterns` + `vercel-react-best-practices`            |                                              |
-| AI / Streaming                | `ai-sdk`                                                                 | `tanstack-query-best-practices`              |
-| Bug fix                       | `systematic-debugging` + `no-workarounds`                                | `testing-anti-patterns`                      |
-| Design polish passes          | `impeccable:polish` + `impeccable:layout` + `impeccable:typeset`         | `impeccable:delight` + `impeccable:critique` |
-| External docs lookup          | `context7` + `find-docs`                                                 | `exa-web-search-free`                        |
-| Task completion               | `cy-final-verify`                                                        |                                              |
+| Domain                        | Required Skills                                                 | Conditional Skills              |
+| ----------------------------- | --------------------------------------------------------------- | ------------------------------- |
+| React / Web UI                | `react` + `tailwindcss` + `vercel-react-best-practices`         | `shadcn`                        |
+| Routing                       | `tanstack-router-best-practices`                                | `tanstack`                      |
+| Data fetching                 | `tanstack-query-best-practices` + `app-renderer-systems`        |                                 |
+| State management              | `zustand`                                                       |                                 |
+| Schema / Validation           | `zod`                                                           | `typescript-advanced`           |
+| Web testing                   | `consolidate-test-suites` + `vitest` + `react` + `testing-boss` |                                 |
+| TypeScript (types)            | `typescript-advanced`                                           | `context7`                      |
+| UI / UX Design (any surface)  | `agh-design` + `ui-craft`                                       | `shadcn` + `agh-ui-screenshot`  |
+| UI verification / visual diff | `agh-ui-screenshot`                                             |                                 |
+| UI microcopy / product labels | `copywriting` + `documentation-writer` + `ui-craft`             |                                 |
+| Storybook / component stories | `storybook-stories`                                             | `shadcn`                        |
+| Animation / motion            | `motion-react` + `ui-craft`                                     | `motion`                        |
+| Component patterns            | `vercel-composition-patterns` + `vercel-react-best-practices`   | `ui-craft`                      |
+| AI / Streaming                | `ai-sdk`                                                        | `tanstack-query-best-practices` |
+| Bug fix                       | `systematic-debugging` + `no-workarounds`                       | `testing-boss`                  |
+| External docs lookup          | `context7`                                                      | `exa-web-search-free`           |
+| Task completion               | `cy-final-verify`                                               |                                 |
 
-**Design-system / redesign passes**: you MUST run the `designer` agent in execution mode (not plan mode) AND activate `agh-design` + `impeccable` before touching any component. `DESIGN.md` tokens win over anything informal already in the codebase.
+**Design-system / redesign passes**: you MUST run the `designer` agent in execution mode (not plan mode) AND activate `agh-design` + `ui-craft` before touching any component. `DESIGN.md` tokens win over anything informal already in the codebase. `ui-craft` is reference-routed — match the task to a row in `.agents/skills/ui-craft/SKILL.md` and read the listed files in full (e.g. `accessibility-floor.md`, `component-patterns.md`, `ai-slop-patterns.md`, `anti-defaults.md`, `microcopy-quality.md`, `motion-patterns.md`, `dark-mode.md`).
 
 **Visual verification with `agh-ui-screenshot` is mandatory for every UI change in this workspace.** Tests verify code, not pixels.
 

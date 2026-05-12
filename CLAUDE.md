@@ -59,13 +59,13 @@ These govern how features move from idea to ship. Internalize them before openin
 - For design-system or UI redesign tasks, run them through the `designer` agent (`.claude/agents/designer.md`) in **execution mode only** and activate the mandatory design skills listed below.
 - **Truthful UI > plausible UI.** Don't render controls or metrics the runtime doesn't actually support. When Paper artboards conflict with daemon truth, daemon wins. Paper governs _composition_, `DESIGN.md` governs _grammar_.
 
-### Using `impeccable` for design work
+### Using `ui-craft` for design work
 
-`agh-design` carries brand truth; `impeccable` is the method on top. Activate both for any non-trivial UI pass — shape, critique, audit, polish, animate, harden.
+`agh-design` carries brand truth; `ui-craft` is the discipline on top. Activate both for any non-trivial UI pass — designing, generating, reviewing, or refactoring visible surfaces.
 
-- Project context auto-loads from `DESIGN.md`. `DESIGN.md` always wins over the skill's generic guidance.
-- `PRODUCT.md` is missing: the first `impeccable craft` will block on the setup gate and ask you to run `impeccable teach` interactively. Do not synthesize it from a single prompt.
-- Common commands: `shape` / `craft` (build), `critique` / `audit` (review), `polish` / `layout` / `typeset` / `animate` / `harden` (refine), `live` (in-browser variants).
+- Project tokens live in `DESIGN.md` and `packages/ui/src/tokens.css`. `DESIGN.md` always wins over `ui-craft`'s generic guidance.
+- `ui-craft` is reference-routed: match the task to a row in `.agents/skills/ui-craft/SKILL.md` and read the listed reference files **in full before generating any visual output**.
+- Mandatory pulls (load JIT, never all at once): `accessibility-floor.md` (any interactive widget), `ai-slop-patterns.md` + `anti-defaults.md` (auditing AI-generated UI), `component-patterns.md` (pattern selection), `microcopy-quality.md` (user-visible text), `motion-patterns.md` (animation), `human-ai-ux.md` (chat/agent surfaces), `dark-mode.md` (dark surfaces).
 
 ### Verifying UI with `agh-ui-screenshot`
 
@@ -96,35 +96,35 @@ Match task domain → activate all required skills
 | Go / Runtime                          | `agh-code-guidelines` + `golang-pro`                                                     | `context7`                                        |
 | Config / Logging                      | `agh-code-guidelines` + `golang-pro`                                                     |                                                   |
 | TUI / CLI Bubbletea                   | `bubbletea` + `agh-code-guidelines` + `golang-pro`                                       |                                                   |
-| Bug fix                               | `systematic-debugging` + `no-workarounds`                                                | `testing-anti-patterns`                           |
-| Writing Go tests                      | `agh-test-conventions` + `testing-anti-patterns` + `golang-pro`                          | `vitest` (only for test tooling docs)             |
-| Test placement / consolidation        | `consolidate-test-suites`                                                                | `testing-anti-patterns`                           |
-| Cleanup / failure paths               | `agh-cleanup-failure-paths` + `agh-code-guidelines` + `golang-pro`                       | `deadlock-finder-and-fixer`                       |
+| Bug fix                               | `systematic-debugging` + `no-workarounds`                                                | `testing-boss`                                    |
+| Writing Go tests                      | `agh-test-conventions` + `testing-boss` + `golang-pro`                                   | `vitest` (only for test tooling docs)             |
+| Test placement / consolidation        | `consolidate-test-suites`                                                                | `testing-boss`                                    |
+| Cleanup / failure paths               | `agh-cleanup-failure-paths` + `agh-code-guidelines` + `golang-pro`                       |                                                   |
 | Schema / migration changes            | `agh-schema-migration` + `golang-pro`                                                    |                                                   |
 | Contract / OpenAPI changes            | `agh-contract-codegen-coship`                                                            |                                                   |
 | Task completion                       | `cy-final-verify`                                                                        |                                                   |
 | Lessons learned                       | `lesson-learned`                                                                         |                                                   |
 | Architecture audit                    | `architectural-analysis`                                                                 | `refactoring-analysis` + `ubs`                    |
-| Concurrency / races                   | `deadlock-finder-and-fixer` + `golang-pro`                                               | `systematic-debugging`                            |
-| AGH Network (`internal/network` only) | `nats` + `agh-code-guidelines` + `golang-pro`                                            | `deadlock-finder-and-fixer`                       |
+| Concurrency / races                   | `golang-pro` + `systematic-debugging`                                                    | `agh-code-guidelines`                             |
+| AGH Network (`internal/network` only) | `nats` + `agh-code-guidelines` + `golang-pro`                                            | `systematic-debugging`                            |
 | Performance / hot paths               | `extreme-software-optimization` + `golang-pro`                                           |                                                   |
 | Security review                       | `security-review`                                                                        | `ubs`                                             |
-| Creative / new features               | `brainstorming`                                                                          | `cy-idea-factory`                                 |
-| Council debate (high-impact)          | `council`                                                                                | `brainstorming`                                   |
+| Creative / new features               | `cy-idea-factory`                                                                        | `council`                                         |
+| Council debate (high-impact)          | `council`                                                                                | `cy-idea-factory`                                 |
 | PRD creation                          | `cy-spec-preflight` + `cy-create-prd`                                                    | `cy-idea-factory`                                 |
 | TechSpec creation                     | `cy-spec-preflight` + `cy-create-techspec`                                               | `cy-spec-peer-review` + `cy-research-competitors` |
 | Task generation                       | `cy-spec-preflight` + `cy-create-tasks` + `cy-tasks-tail-qa-pair` + `cy-web-docs-impact` |                                                   |
-| Competitor research                   | `cy-research-competitors`                                                                | `context7` + `find-docs`                          |
+| Competitor research                   | `cy-research-competitors`                                                                | `context7`                                        |
 | Execute a PRD task                    | `cy-execute-task`                                                                        | `cy-workflow-memory`                              |
 | Review round / fixes                  | `cy-review-round` + `cy-fix-reviews`                                                     |                                                   |
 | Release / scenario QA                 | `agh-qa-bootstrap` + `real-scenario-qa` + `qa-report` + `qa-execution`                   | `agh-worktree-isolation`                          |
 | Git rebase / conflicts                | `git-rebase`                                                                             |                                                   |
-| External docs lookup                  | `context7` + `find-docs`                                                                 | `exa-web-search-free`                             |
+| External docs lookup                  | `context7`                                                                               | `exa-web-search-free`                             |
 | Diagrams (spec / ADR)                 | `architecture-diagram`                                                                   | `mermaid-diagrams`                                |
-| Documentation (internal)              | `documentation-writer`                                                                   | `crafting-effective-readmes`                      |
+| Documentation (internal)              | `documentation-writer`                                                                   |                                                   |
 | Copy / public product language        | `copywriting` + `documentation-writer`                                                   | `seo-audit`                                       |
 | Skill / agent-md authoring            | `skill-best-practices` + `agent-md-refactor`                                             |                                                   |
-| UI / Design (any surface)             | `agh-design` + `impeccable`                                                              | `agh-ui-screenshot`                               |
+| UI / Design (any surface)             | `agh-design` + `ui-craft`                                                                | `agh-ui-screenshot`                               |
 | UI verification / visual diff         | `agh-ui-screenshot`                                                                      |                                                   |
 
 Web-specific skill dispatch is in `web/CLAUDE.md` and `web/AGENTS.md`. Site-specific dispatch is in `packages/site/CLAUDE.md`.
@@ -186,7 +186,7 @@ Web (`web/`) workspace-local dev/build/lint commands (`make web-dev`, `make web-
 ## Code Search Hierarchy
 
 1. **Grep / Glob** — for local project code.
-2. **`context7` / `find-docs` skills** — for external library documentation.
+2. **`context7` skill** — for external library documentation.
 3. **`exa-web-search-free`** — for web research, news, external code examples when the local docs tools are insufficient.
 
 ## Surface Map

@@ -173,6 +173,38 @@ func TestManagerCheck(t *testing.T) {
 		}
 	})
 
+	t.Run("Should skip release refresh for untagged builds", func(t *testing.T) {
+		t.Parallel()
+
+		var requests atomic.Int32
+		manager, _ := newManagerWithExecutable(t, Config{
+			CurrentVersion: "25bd6116",
+			HTTPClient: &http.Client{
+				Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+					requests.Add(1)
+					return nil, errors.New("release refresh should not run")
+				}),
+			},
+		})
+
+		state, release, err := manager.Check(context.Background(), CheckOptions{})
+		if err != nil {
+			t.Fatalf("Check() error = %v", err)
+		}
+		if requests.Load() != 0 {
+			t.Fatalf("refresh requests = %d, want 0", requests.Load())
+		}
+		if release != nil {
+			t.Fatalf("release = %#v, want nil for untagged build", release)
+		}
+		if state.Status != StatusUnsupported {
+			t.Fatalf("state.Status = %q, want %q", state.Status, StatusUnsupported)
+		}
+		if state.LastError != "" {
+			t.Fatalf("state.LastError = %q, want empty", state.LastError)
+		}
+	})
+
 	t.Run("Should reject prerelease metadata from the latest-release endpoint", func(t *testing.T) {
 		t.Parallel()
 

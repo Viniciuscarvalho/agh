@@ -8,7 +8,11 @@ import (
 )
 
 func isDevVersion(raw string) bool {
-	return strings.EqualFold(strings.TrimSpace(raw), "dev")
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || strings.EqualFold(trimmed, "dev") || strings.EqualFold(trimmed, "unknown") {
+		return true
+	}
+	return isGitShortSHA(trimDirtySuffix(trimmed))
 }
 
 func compareVersions(currentVersion string, latestVersion string) (int, error) {
@@ -49,6 +53,10 @@ func trimGitDescribeSuffix(raw string) string {
 		}
 	}
 	return beforeCommit[:countSep]
+}
+
+func trimDirtySuffix(raw string) string {
+	return strings.TrimSuffix(strings.TrimSpace(raw), "-dirty")
 }
 
 // isGitShortSHA reports whether value matches the short commit suffix from `git describe`.
