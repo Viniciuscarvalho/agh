@@ -2,6 +2,7 @@ package core
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"github.com/pedronauck/agh/internal/api/contract"
 	automationmodel "github.com/pedronauck/agh/internal/automation/model"
 	aghconfig "github.com/pedronauck/agh/internal/config"
+	extensionpkg "github.com/pedronauck/agh/internal/extension"
 	hookspkg "github.com/pedronauck/agh/internal/hooks"
 	"github.com/pedronauck/agh/internal/resources"
 	settingspkg "github.com/pedronauck/agh/internal/settings"
@@ -59,6 +61,10 @@ func (h *BaseHandlers) GetSettingsMemory(c *gin.Context) {
 func (h *BaseHandlers) UpdateSettingsMemory(c *gin.Context) {
 	req, err := parseUpdateSettingsMemoryRequest(c)
 	if err != nil {
+		h.respondError(c, StatusForSettingsError(err), err)
+		return
+	}
+	if err := h.validateSettingsMemoryProvider(c.Request.Context(), req); err != nil {
 		h.respondError(c, StatusForSettingsError(err), err)
 		return
 	}
@@ -651,6 +657,33 @@ func parseUpdateSettingsMemoryRequest(c *gin.Context) (settingspkg.SectionUpdate
 		return settingspkg.SectionUpdateRequest{}, err
 	}
 	return settingspkg.SectionUpdateRequest{SectionRequest: req, Memory: &config}, nil
+}
+
+func (h *BaseHandlers) validateSettingsMemoryProvider(
+	ctx context.Context,
+	req settingspkg.SectionUpdateRequest,
+) error {
+	if req.Memory == nil {
+		return nil
+	}
+	name := strings.TrimSpace(req.Memory.Provider.Name)
+	if name == "" || name == memoryLocalProviderName {
+		return nil
+	}
+	if h.MemoryProviders == nil {
+		return NewSettingsValidationError(
+			fmt.Errorf("memory.config.provider.name %q is not available", name),
+		)
+	}
+	if _, err := h.MemoryProviders.Get(ctx, req.WorkspaceID, name); err != nil {
+		if errors.Is(err, extensionpkg.ErrMemoryProviderNotFound) {
+			return NewSettingsValidationError(
+				fmt.Errorf("memory.config.provider.name %q is not available: %w", name, err),
+			)
+		}
+		return fmt.Errorf("memory.config.provider.name %q lookup failed: %w", name, err)
+	}
+	return nil
 }
 
 func parseUpdateSettingsSkillsRequest(c *gin.Context) (settingspkg.SectionUpdateRequest, error) {

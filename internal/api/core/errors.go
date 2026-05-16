@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/pedronauck/agh/internal/agentidentity"
 	"github.com/pedronauck/agh/internal/api/contract"
 	automationpkg "github.com/pedronauck/agh/internal/automation"
 	bridgepkg "github.com/pedronauck/agh/internal/bridges"
@@ -20,6 +21,7 @@ import (
 	"github.com/pedronauck/agh/internal/resources"
 	"github.com/pedronauck/agh/internal/session"
 	settingspkg "github.com/pedronauck/agh/internal/settings"
+	skillmarketplace "github.com/pedronauck/agh/internal/skills/marketplace"
 	"github.com/pedronauck/agh/internal/store"
 	taskpkg "github.com/pedronauck/agh/internal/task"
 	toolspkg "github.com/pedronauck/agh/internal/tools"
@@ -284,6 +286,15 @@ func StatusForTaskError(err error) int {
 		return http.StatusRequestEntityTooLarge
 	case errors.Is(err, taskpkg.ErrPermissionDenied):
 		return http.StatusForbidden
+	case errors.Is(err, errAgentIdentityUnavailable),
+		errors.Is(err, agentidentity.ErrIdentityLookupUnavailable):
+		return http.StatusServiceUnavailable
+	case errors.Is(err, agentidentity.ErrIdentityUnauthorized):
+		return http.StatusForbidden
+	case errors.Is(err, agentidentity.ErrIdentityRequired),
+		errors.Is(err, agentidentity.ErrIdentityMismatch),
+		errors.Is(err, agentidentity.ErrIdentityStale):
+		return http.StatusUnauthorized
 	case errors.Is(err, taskpkg.ErrTaskNotFound),
 		errors.Is(err, taskpkg.ErrTaskRunNotFound),
 		errors.Is(err, taskpkg.ErrTaskDependencyNotFound),
@@ -383,6 +394,24 @@ func StatusForSkillError(err error) int {
 		return http.StatusBadRequest
 	case errors.Is(err, ErrSkillUnprocessable):
 		return http.StatusUnprocessableEntity
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+// StatusForSkillMarketplaceError maps skill marketplace lifecycle failures to transport statuses.
+func StatusForSkillMarketplaceError(err error) int {
+	switch {
+	case err == nil:
+		return http.StatusOK
+	case errors.Is(err, skillmarketplace.ErrValidation):
+		return http.StatusBadRequest
+	case errors.Is(err, skillmarketplace.ErrNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, skillmarketplace.ErrNotMarketplace):
+		return http.StatusUnprocessableEntity
+	case errors.Is(err, skillmarketplace.ErrNotConfigured):
+		return http.StatusServiceUnavailable
 	default:
 		return http.StatusInternalServerError
 	}

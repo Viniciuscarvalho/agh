@@ -116,6 +116,7 @@ func registerAgentRoutes(api gin.IRouter, handlers *Handlers) {
 
 	agents := api.Group("/agents")
 	agents.GET("", handlers.ListAgents)
+	agents.POST("", handlers.CreateAgent)
 	agents.GET("/:name/soul", handlers.GetAgentSoul)
 	agents.POST("/:name/soul/validate", handlers.ValidateAgentSoulDefinition)
 	agents.PUT("/:name/soul", handlers.PutAgentSoul)
@@ -266,8 +267,14 @@ func registerTaskRoutes(api gin.IRouter, handlers *Handlers) {
 }
 
 func registerSkillRoutes(api gin.IRouter, handlers *Handlers) {
+	privileged := handlers.privilegedMutationGuard()
 	skillsGroup := api.Group("/skills")
 	skillsGroup.GET("", handlers.ListSkills)
+	skillsGroup.GET("/marketplace/search", handlers.SearchSkillMarketplace)
+	skillsGroup.GET("/marketplace/info", handlers.GetSkillMarketplaceInfo)
+	skillsGroup.POST("/marketplace/install", privileged, handlers.InstallSkillMarketplace)
+	skillsGroup.POST("/marketplace/update", privileged, handlers.UpdateSkillMarketplace)
+	skillsGroup.DELETE("/marketplace/:name", privileged, handlers.RemoveSkillMarketplace)
 	skillsGroup.GET("/:name", handlers.GetSkill)
 	skillsGroup.GET("/:name/content", handlers.GetSkillContent)
 	skillsGroup.POST("/:name/enable", handlers.EnableSkill)

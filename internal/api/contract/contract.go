@@ -300,6 +300,43 @@ type SessionRepairActionPayload struct {
 	Persisted  bool   `json:"persisted"`
 }
 
+// AgentCreateScope identifies where a newly authored AGENT.md definition is stored.
+type AgentCreateScope string
+
+const (
+	// AgentCreateScopeWorkspace writes the agent under one workspace's .agh directory.
+	AgentCreateScopeWorkspace AgentCreateScope = "workspace"
+	// AgentCreateScopeGlobal writes the agent under AGH_HOME.
+	AgentCreateScopeGlobal AgentCreateScope = "global"
+)
+
+// CreateAgentRequest is the shared agent definition authoring request payload.
+type CreateAgentRequest struct {
+	Scope     AgentCreateScope   `json:"scope"`
+	Workspace string             `json:"workspace,omitempty"`
+	Agent     CreateAgentPayload `json:"agent"`
+}
+
+// CreateAgentPayload captures the simple AGENT.md fields supported by v1 authoring.
+type CreateAgentPayload struct {
+	Name         string                   `json:"name"`
+	Provider     string                   `json:"provider"`
+	Command      string                   `json:"command,omitempty"`
+	Model        string                   `json:"model,omitempty"`
+	Tools        []string                 `json:"tools,omitempty"`
+	Toolsets     []string                 `json:"toolsets,omitempty"`
+	DenyTools    []string                 `json:"deny_tools,omitempty"`
+	Permissions  SettingsPermissionMode   `json:"permissions,omitempty"`
+	CategoryPath []string                 `json:"category_path,omitempty"`
+	Skills       *CreateAgentSkillsConfig `json:"skills,omitempty"`
+	Prompt       string                   `json:"prompt"`
+}
+
+// CreateAgentSkillsConfig captures agent-local skill policy stored in AGENT.md.
+type CreateAgentSkillsConfig struct {
+	Disabled []string `json:"disabled,omitempty"`
+}
+
 // AgentPayload is the shared agent definition response payload.
 type AgentPayload struct {
 	Name         string                   `json:"name"`
@@ -1081,6 +1118,76 @@ type SkillPayload struct {
 	Dir         string             `json:"dir"`
 	Metadata    map[string]any     `json:"metadata,omitempty"`
 	Provenance  *ProvenancePayload `json:"provenance,omitempty"`
+}
+
+// SkillMarketplaceListingPayload is one remote marketplace skill search result.
+type SkillMarketplaceListingPayload struct {
+	Slug        string `json:"slug"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Author      string `json:"author"`
+	Version     string `json:"version,omitempty"`
+	Downloads   int    `json:"downloads"`
+	Source      string `json:"source"`
+}
+
+// SkillMarketplaceDetailPayload is the full remote marketplace metadata for one skill.
+type SkillMarketplaceDetailPayload struct {
+	Slug        string   `json:"slug"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Author      string   `json:"author"`
+	Version     string   `json:"version,omitempty"`
+	Downloads   int      `json:"downloads"`
+	Source      string   `json:"source"`
+	Readme      string   `json:"readme,omitempty"`
+	MCPServers  []string `json:"mcp_servers,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	License     string   `json:"license,omitempty"`
+	Repository  string   `json:"repository,omitempty"`
+	Versions    []string `json:"versions,omitempty"`
+}
+
+// SkillMarketplaceInstallRequest installs one remote marketplace skill.
+type SkillMarketplaceInstallRequest struct {
+	Slug    string `json:"slug"`
+	Version string `json:"version,omitempty"`
+}
+
+// SkillMarketplaceUpdateRequest checks or applies updates for marketplace skills.
+type SkillMarketplaceUpdateRequest struct {
+	Name      string `json:"name,omitempty"`
+	All       bool   `json:"all,omitempty"`
+	CheckOnly bool   `json:"check_only,omitempty"`
+}
+
+// SkillMarketplaceInstallPayload describes one completed marketplace install.
+type SkillMarketplaceInstallPayload struct {
+	Name     string `json:"name"`
+	Slug     string `json:"slug"`
+	Version  string `json:"version,omitempty"`
+	Registry string `json:"registry"`
+	Path     string `json:"path"`
+	Hash     string `json:"hash"`
+	Status   string `json:"status"`
+}
+
+// SkillMarketplaceUpdatePayload describes one marketplace update outcome.
+type SkillMarketplaceUpdatePayload struct {
+	Name           string `json:"name"`
+	Slug           string `json:"slug"`
+	CurrentVersion string `json:"current_version,omitempty"`
+	LatestVersion  string `json:"latest_version,omitempty"`
+	Path           string `json:"path"`
+	Status         string `json:"status"`
+}
+
+// SkillMarketplaceRemovePayload describes one removed marketplace skill.
+type SkillMarketplaceRemovePayload struct {
+	Name   string `json:"name"`
+	Slug   string `json:"slug"`
+	Path   string `json:"path"`
+	Status string `json:"status"`
 }
 
 // SkillContentResponse is the explicit response type for one skill body.

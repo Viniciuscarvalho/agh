@@ -58,6 +58,7 @@ var schemaEnumValues = map[reflect.Type][]string{
 	reflect.TypeFor[taskpkg.RunReviewOutcome]():                  taskRunReviewOutcomeValues(),
 	reflect.TypeFor[contract.TaskInboxLane]():                    taskInboxLaneValues(),
 	reflect.TypeFor[contract.CoordinationMessageKind]():          coordinationMessageKindValues(),
+	reflect.TypeFor[contract.AgentCreateScope]():                 agentCreateScopeValues(),
 	reflect.TypeFor[contract.CoordinatorConfigSource]():          coordinatorConfigSourceValues(),
 	reflect.TypeFor[contract.AuthoredValidationStatus]():         contract.AuthoredValidationStatusValues(),
 	reflect.TypeFor[contract.AuthoredDiagnosticSeverity]():       contract.AuthoredDiagnosticSeverityValues(),
@@ -109,6 +110,7 @@ var schemaEnumValues = map[reflect.Type][]string{
 	reflect.TypeFor[bridgepkg.BridgeDMPolicy]():                  bridgeDMPolicyValues(),
 	reflect.TypeFor[bridgepkg.BridgeDegradationReason]():         bridgeDegradationReasonValues(),
 	reflect.TypeFor[bridgepkg.DeliveryMode]():                    deliveryModeValues(),
+	reflect.TypeFor[session.Type]():                              sessionTypeValues(),
 	reflect.TypeFor[session.State]():                             sessionStateValues(),
 	reflect.TypeFor[store.StopReason]():                          stopReasonValues(),
 	reflect.TypeFor[tools.ToolSource]():                          toolSourceValues(),
@@ -590,6 +592,24 @@ var operationRegistry = []OperationSpec{
 			{Status: 404, Description: "Toolset not found", Body: contract.ToolErrorResponse{}},
 			{Status: 500, Description: "Internal daemon error", Body: contract.ToolErrorResponse{}},
 			{Status: 503, Description: "Toolset registry unavailable", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/agents",
+		OperationID: "createAgent",
+		Summary:     "Create a global or workspace-local AGENT.md definition",
+		Tags:        []string{"agents"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		RequestBody: contract.CreateAgentRequest{},
+		Responses: []ResponseSpec{
+			{Status: 201, Description: "Created", Body: contract.AgentResponse{}},
+			{Status: 400, Description: "Invalid agent definition request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Workspace not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Agent definition already exists", Body: contract.ErrorPayload{}},
+			{Status: 410, Description: "Workspace root missing", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Workspace resolver unavailable", Body: contract.ErrorPayload{}},
 		},
 	},
 	{
@@ -3804,6 +3824,94 @@ var operationRegistry = []OperationSpec{
 	},
 	{
 		Method:      "GET",
+		Path:        "/api/skills/marketplace/search",
+		OperationID: "searchSkillMarketplace",
+		Summary:     "Search remote marketplace skills",
+		Tags:        []string{"skills"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			queryParam("query", "Remote marketplace search query", true),
+			intQueryParam("limit", "Maximum number of remote skill results"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SkillMarketplaceSearchResponse{}},
+			{Status: 400, Description: "Invalid marketplace search request", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Skill marketplace is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
+		Path:        "/api/skills/marketplace/info",
+		OperationID: "getSkillMarketplaceInfo",
+		Summary:     "Get remote marketplace skill detail",
+		Tags:        []string{"skills"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			queryParam("slug", "Marketplace skill slug in @author/name form", true),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SkillMarketplaceDetailResponse{}},
+			{Status: 400, Description: "Invalid marketplace detail request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Marketplace skill not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Skill marketplace is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/skills/marketplace/install",
+		OperationID: "installSkillMarketplace",
+		Summary:     "Install one remote marketplace skill",
+		Tags:        []string{"skills"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		RequestBody: contract.SkillMarketplaceInstallRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SkillMarketplaceInstallResponse{}},
+			{Status: 400, Description: "Invalid marketplace install request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Marketplace skill not found", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Skill marketplace is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "POST",
+		Path:        "/api/skills/marketplace/update",
+		OperationID: "updateSkillMarketplace",
+		Summary:     "Check or apply updates for marketplace skills",
+		Tags:        []string{"skills"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		RequestBody: contract.SkillMarketplaceUpdateRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SkillMarketplaceUpdateResponse{}},
+			{Status: 400, Description: "Invalid marketplace update request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Installed marketplace skill not found", Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Installed skill is not marketplace-managed", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Skill marketplace is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "DELETE",
+		Path:        "/api/skills/marketplace/{name}",
+		OperationID: "removeSkillMarketplace",
+		Summary:     "Remove one installed marketplace skill",
+		Tags:        []string{"skills"},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("name", "Installed skill name"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SkillMarketplaceRemoveResponse{}},
+			{Status: 400, Description: "Invalid marketplace removal request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: "Installed marketplace skill not found", Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Installed skill is not marketplace-managed", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: "Skills registry is not configured", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: "Internal server error", Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      "GET",
 		Path:        "/api/skills/{name}",
 		OperationID: "getSkill",
 		Summary:     "Get one skill definition",
@@ -5239,6 +5347,13 @@ func coordinationMessageKindValues() []string {
 	return values
 }
 
+func agentCreateScopeValues() []string {
+	return []string{
+		string(contract.AgentCreateScopeWorkspace),
+		string(contract.AgentCreateScopeGlobal),
+	}
+}
+
 func coordinatorConfigSourceValues() []string {
 	return []string{
 		string(contract.CoordinatorConfigSourceWorkspace),
@@ -5446,6 +5561,16 @@ func sessionStateValues() []string {
 		string(session.StateActive),
 		string(session.StateStopping),
 		string(session.StateStopped),
+	}
+}
+
+func sessionTypeValues() []string {
+	return []string{
+		string(session.SessionTypeUser),
+		string(session.SessionTypeDream),
+		string(session.SessionTypeSystem),
+		string(session.SessionTypeCoordinator),
+		string(session.SessionTypeSpawned),
 	}
 }
 

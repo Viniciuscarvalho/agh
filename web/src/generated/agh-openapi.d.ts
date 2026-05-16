@@ -269,7 +269,8 @@ export interface paths {
     /** List all readable agent definitions, optionally resolved for a workspace */
     get: operations["listAgents"];
     put?: never;
-    post?: never;
+    /** Create a global or workspace-local AGENT.md definition */
+    post: operations["createAgent"];
     delete?: never;
     options?: never;
     head?: never;
@@ -2177,6 +2178,91 @@ export interface paths {
     put?: never;
     post?: never;
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/skills/marketplace/info": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get remote marketplace skill detail */
+    get: operations["getSkillMarketplaceInfo"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/skills/marketplace/install": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Install one remote marketplace skill */
+    post: operations["installSkillMarketplace"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/skills/marketplace/search": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Search remote marketplace skills */
+    get: operations["searchSkillMarketplace"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/skills/marketplace/update": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Check or apply updates for marketplace skills */
+    post: operations["updateSkillMarketplace"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/skills/marketplace/{name}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Remove one installed marketplace skill */
+    delete: operations["removeSkillMarketplace"];
     options?: never;
     head?: never;
     patch?: never;
@@ -4278,7 +4364,8 @@ export interface operations {
                 name?: string;
                 /** @enum {string} */
                 state: "starting" | "active" | "stopping" | "stopped";
-                type?: string;
+                /** @enum {string} */
+                type?: "user" | "dream" | "system" | "coordinator" | "spawned";
                 /** Format: date-time */
                 updated_at: string;
               };
@@ -5025,7 +5112,8 @@ export interface operations {
                 name?: string;
                 /** @enum {string} */
                 state: "starting" | "active" | "stopping" | "stopped";
-                type?: string;
+                /** @enum {string} */
+                type?: "user" | "dream" | "system" | "coordinator" | "spawned";
                 /** Format: date-time */
                 updated_at: string;
               };
@@ -5641,7 +5729,8 @@ export interface operations {
                   | "agent_crashed"
                   | "hook_stopped"
                   | "shutdown";
-                type?: string;
+                /** @enum {string} */
+                type?: "user" | "dream" | "system" | "coordinator" | "spawned";
                 /** Format: date-time */
                 updated_at: string;
                 workspace_id?: string;
@@ -6757,6 +6846,165 @@ export interface operations {
       };
       /** @description Internal server error */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  createAgent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description JSON request body */
+    requestBody: {
+      content: {
+        "application/json": {
+          agent: {
+            category_path?: string[];
+            command?: string;
+            deny_tools?: string[];
+            model?: string;
+            name: string;
+            /** @enum {string} */
+            permissions?: "deny-all" | "approve-reads" | "approve-all";
+            prompt: string;
+            provider: string;
+            skills?: {
+              disabled?: string[];
+            } | null;
+            tools?: string[];
+            toolsets?: string[];
+          };
+          /** @enum {string} */
+          scope: "workspace" | "global";
+          workspace?: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            agent: {
+              category_path?: string[];
+              command?: string;
+              deny_tools?: string[];
+              diagnostics?: {
+                error_kind: string;
+                message: string;
+                path: string;
+              }[];
+              mcp_servers?: {
+                args?: string[];
+                auth?: {
+                  authorization_url?: string;
+                  client_id?: string;
+                  client_secret_ref?: string;
+                  issuer_url?: string;
+                  metadata_url?: string;
+                  revocation_url?: string;
+                  scopes?: string[];
+                  token_url?: string;
+                  type?: string;
+                } | null;
+                command?: string;
+                env?: {
+                  [key: string]: string;
+                };
+                name: string;
+                secret_env?: {
+                  [key: string]: string;
+                };
+                transport?: string;
+                url?: string;
+              }[];
+              model?: string;
+              name: string;
+              permissions?: string;
+              prompt: string;
+              provider: string;
+              tools?: string[];
+              toolsets?: string[];
+            };
+          };
+        };
+      };
+      /** @description Invalid agent definition request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      /** @description Workspace not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      /** @description Agent definition already exists */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      /** @description Workspace root missing */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      /** @description Workspace resolver unavailable */
+      503: {
         headers: {
           [name: string]: unknown;
         };
@@ -17877,6 +18125,7 @@ export interface operations {
               /** Format: date-time */
               executed_at: string;
               options: {
+                allow_trivial_query?: boolean;
                 already_surfaced?: string[];
                 include_already_surfaced?: boolean;
                 include_system?: boolean;
@@ -17898,6 +18147,8 @@ export interface operations {
                     body: string;
                     filename?: string;
                     id: string;
+                    /** Format: date-time */
+                    mod_time: string;
                     staleness_banner?: string;
                     title: string;
                     /** @enum {string} */
@@ -18320,6 +18571,8 @@ export interface operations {
                   body: string;
                   filename?: string;
                   id: string;
+                  /** Format: date-time */
+                  mod_time: string;
                   staleness_banner?: string;
                   title: string;
                   /** @enum {string} */
@@ -21321,7 +21574,8 @@ export interface operations {
                 | "agent_crashed"
                 | "hook_stopped"
                 | "shutdown";
-              type?: string;
+              /** @enum {string} */
+              type?: "user" | "dream" | "system" | "coordinator" | "spawned";
               /** Format: date-time */
               updated_at: string;
               workspace_id?: string;
@@ -21523,7 +21777,8 @@ export interface operations {
                 | "agent_crashed"
                 | "hook_stopped"
                 | "shutdown";
-              type?: string;
+              /** @enum {string} */
+              type?: "user" | "dream" | "system" | "coordinator" | "spawned";
               /** Format: date-time */
               updated_at: string;
               workspace_id?: string;
@@ -25803,6 +26058,447 @@ export interface operations {
         };
       };
       /** @description Invalid agent-local layer */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      /** @description Skills registry is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getSkillMarketplaceInfo: {
+    parameters: {
+      query: {
+        /** @description Marketplace skill slug in @author/name form */
+        slug: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            skill: {
+              author: string;
+              description: string;
+              downloads: number;
+              license?: string;
+              mcp_servers?: string[];
+              name: string;
+              readme?: string;
+              repository?: string;
+              slug: string;
+              source: string;
+              tags?: string[];
+              version?: string;
+              versions?: string[];
+            };
+          };
+        };
+      };
+      /** @description Invalid marketplace detail request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      /** @description Marketplace skill not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      /** @description Skill marketplace is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  installSkillMarketplace: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description JSON request body */
+    requestBody: {
+      content: {
+        "application/json": {
+          slug: string;
+          version?: string;
+        };
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            skill: {
+              hash: string;
+              name: string;
+              path: string;
+              registry: string;
+              slug: string;
+              status: string;
+              version?: string;
+            };
+          };
+        };
+      };
+      /** @description Invalid marketplace install request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      /** @description Marketplace skill not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      /** @description Skill marketplace is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  searchSkillMarketplace: {
+    parameters: {
+      query: {
+        /** @description Remote marketplace search query */
+        query: string;
+        /** @description Maximum number of remote skill results */
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            skills: {
+              author: string;
+              description: string;
+              downloads: number;
+              name: string;
+              slug: string;
+              source: string;
+              version?: string;
+            }[];
+          };
+        };
+      };
+      /** @description Invalid marketplace search request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      /** @description Skill marketplace is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  updateSkillMarketplace: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description JSON request body */
+    requestBody: {
+      content: {
+        "application/json": {
+          all?: boolean;
+          check_only?: boolean;
+          name?: string;
+        };
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            skills: {
+              current_version?: string;
+              latest_version?: string;
+              name: string;
+              path: string;
+              slug: string;
+              status: string;
+            }[];
+          };
+        };
+      };
+      /** @description Invalid marketplace update request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      /** @description Installed marketplace skill not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      /** @description Installed skill is not marketplace-managed */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      /** @description Skill marketplace is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  removeSkillMarketplace: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Installed skill name */
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            skill: {
+              name: string;
+              path: string;
+              slug: string;
+              status: string;
+            };
+          };
+        };
+      };
+      /** @description Invalid marketplace removal request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      /** @description Installed marketplace skill not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error: string;
+          };
+        };
+      };
+      /** @description Installed skill is not marketplace-managed */
       422: {
         headers: {
           [name: string]: unknown;
@@ -38355,7 +39051,8 @@ export interface operations {
                 | "agent_crashed"
                 | "hook_stopped"
                 | "shutdown";
-              type?: string;
+              /** @enum {string} */
+              type?: "user" | "dream" | "system" | "coordinator" | "spawned";
               /** Format: date-time */
               updated_at: string;
               workspace_id?: string;
@@ -39170,7 +39867,8 @@ export interface operations {
                   | "agent_crashed"
                   | "hook_stopped"
                   | "shutdown";
-                type?: string;
+                /** @enum {string} */
+                type?: "user" | "dream" | "system" | "coordinator" | "spawned";
                 /** Format: date-time */
                 updated_at: string;
                 workspace_id?: string;
@@ -39437,7 +40135,8 @@ export interface operations {
                   | "agent_crashed"
                   | "hook_stopped"
                   | "shutdown";
-                type?: string;
+                /** @enum {string} */
+                type?: "user" | "dream" | "system" | "coordinator" | "spawned";
                 /** Format: date-time */
                 updated_at: string;
                 workspace_id?: string;
@@ -40982,7 +41681,8 @@ export interface operations {
                 | "agent_crashed"
                 | "hook_stopped"
                 | "shutdown";
-              type?: string;
+              /** @enum {string} */
+              type?: "user" | "dream" | "system" | "coordinator" | "spawned";
               /** Format: date-time */
               updated_at: string;
               workspace_id?: string;
@@ -41914,7 +42614,8 @@ export interface operations {
                 | "agent_crashed"
                 | "hook_stopped"
                 | "shutdown";
-              type?: string;
+              /** @enum {string} */
+              type?: "user" | "dream" | "system" | "coordinator" | "spawned";
               /** Format: date-time */
               updated_at: string;
               workspace_id?: string;
