@@ -411,7 +411,7 @@ func supportsDirectBinarySelfUpdate(runtimeOS string, runtimeArch string) bool {
 func updateRecommendation(installMethod string, releaseURL string) string {
 	switch installMethod {
 	case string(InstallMethodHomebrew):
-		return "Use `brew upgrade --cask agh`."
+		return "Use `brew upgrade compozy/compozy/agh`."
 	case string(InstallMethodAPT):
 		return "Use `sudo apt update && sudo apt upgrade agh`."
 	case string(InstallMethodDNF):

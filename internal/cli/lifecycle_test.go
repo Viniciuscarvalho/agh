@@ -77,7 +77,7 @@ func TestInstallUpdateAndUninstallReportManagedState(t *testing.T) {
 					LatestVersion:  "v1.1.0",
 					Available:      true,
 					Status:         aghupdate.StatusDeferred,
-					Recommendation: "Use `brew upgrade --cask agh`.",
+					Recommendation: "Use `brew upgrade compozy/compozy/agh`.",
 					Message:        "AGH is managed by an external package manager; no local update was performed.",
 				}, &aghupdate.Release{Version: "v1.1.0"}, nil
 			},

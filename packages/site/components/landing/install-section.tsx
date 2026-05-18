@@ -19,7 +19,7 @@ const INSTALL_TABS: { id: TabId; label: string; command: string; note: string }[
   {
     id: "package",
     label: "Package manager",
-    command: "brew install --cask pedronauck/agh/agh",
+    command: "brew install compozy/compozy/agh",
     note: "Managed updates · macOS · Homebrew tap",
   },
   {

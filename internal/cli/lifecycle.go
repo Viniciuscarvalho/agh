@@ -71,9 +71,9 @@ func managedRecommendation(manager string, action string) string {
 	switch {
 	case strings.Contains(normalizedManager, "brew") || strings.Contains(normalizedManager, "homebrew"):
 		if strings.Contains(normalizedAction, "uninstall") {
-			return "Use `brew uninstall agh` or the formula name used to install AGH."
+			return "Use `brew uninstall compozy/compozy/agh`."
 		}
-		return "Use `brew upgrade agh` or the formula name used to install AGH."
+		return "Use `brew upgrade compozy/compozy/agh`."
 	case strings.Contains(normalizedManager, "scoop"):
 		if strings.Contains(normalizedAction, "uninstall") {
 			return "Use `scoop uninstall agh`."

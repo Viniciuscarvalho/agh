@@ -99,20 +99,33 @@ func TestGoReleaserConfigPreservesTrustArtifactsAndPackageTargets(t *testing.T) 
 		assertReleaseExtraFile(t, extraFiles, "./packages/site/public/install.sh", "install.sh")
 	})
 
-	t.Run("Should configure Homebrew and Linux package targets", func(t *testing.T) {
-		casks := sliceAt(t, cfg, "homebrew_casks")
-		if len(casks) != 1 {
-			t.Fatalf("homebrew_casks len = %d, want 1", len(casks))
+	t.Run("Should configure Homebrew formula and Linux package targets", func(t *testing.T) {
+		if _, ok := cfg["homebrew_casks"]; ok {
+			t.Fatal("homebrew_casks configured, want Homebrew formula via brews")
 		}
-		cask := asMap(t, casks[0], "homebrew_casks[0]")
-		if got, want := stringAt(t, cask, "name"), "agh"; got != want {
-			t.Fatalf("homebrew_casks[0].name = %q, want %q", got, want)
+		brews := sliceAt(t, cfg, "brews")
+		if len(brews) != 1 {
+			t.Fatalf("brews len = %d, want 1", len(brews))
 		}
-		if !stringSliceContains(sliceAt(t, cask, "ids"), "agh-archive") {
-			t.Fatalf("homebrew_casks[0].ids = %#v, want agh-archive", cask["ids"])
+		formula := asMap(t, brews[0], "brews[0]")
+		if got, want := stringAt(t, formula, "name"), "agh"; got != want {
+			t.Fatalf("brews[0].name = %q, want %q", got, want)
 		}
-		if !stringSliceContains(sliceAt(t, cask, "binaries"), "agh") {
-			t.Fatalf("homebrew_casks[0].binaries = %#v, want agh", cask["binaries"])
+		if !stringSliceContains(sliceAt(t, formula, "ids"), "agh-archive") {
+			t.Fatalf("brews[0].ids = %#v, want agh-archive", formula["ids"])
+		}
+		if got, want := stringAt(t, formula, "directory"), "Formula"; got != want {
+			t.Fatalf("brews[0].directory = %q, want %q", got, want)
+		}
+		repository := mapAt(t, formula, "repository")
+		if got, want := stringAt(t, repository, "owner"), "compozy"; got != want {
+			t.Fatalf("brews[0].repository.owner = %q, want %q", got, want)
+		}
+		if got, want := stringAt(t, repository, "name"), "homebrew-compozy"; got != want {
+			t.Fatalf("brews[0].repository.name = %q, want %q", got, want)
+		}
+		if _, ok := formula["binaries"]; ok {
+			t.Fatal("brews[0].binaries configured, want formula archive install semantics")
 		}
 
 		nfpms := sliceAt(t, cfg, "nfpms")

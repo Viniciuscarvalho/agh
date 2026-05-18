@@ -16,8 +16,13 @@ const launchPostPath = resolve(
 const landingInstallPath = resolve(siteRoot, "components/landing/install-section.tsx");
 
 const primaryInstallCommand = "curl -fsSL https://agh.network/install.sh | sh";
-const packageInstallCommand = "brew install --cask pedronauck/agh/agh";
+const packageInstallCommand = "brew install compozy/compozy/agh";
 const sourceInstallCommand = "go build -o ./bin/agh ./cmd/agh";
+const retiredPackageInstallCommands = [
+  "brew install --cask pedronauck/agh/agh",
+  "pedronauck/agh/agh",
+  "homebrew-agh",
+];
 const installOptions = ["--version", "--dir", "--skip-bootstrap", "--dry-run", "--help"];
 const installEnvVars = ["AGH_VERSION", "AGH_INSTALL_DIR", "AGH_SKIP_BOOTSTRAP"];
 
@@ -139,6 +144,10 @@ describe("public install contract", () => {
     expect(landingInstall).toContain(sourceInstallCommand);
     expect(installPage).toContain(packageInstallCommand);
     expect(installPage).toContain(sourceInstallCommand);
+    for (const retiredCommand of retiredPackageInstallCommands) {
+      expect(landingInstall).not.toContain(retiredCommand);
+      expect(installPage).not.toContain(retiredCommand);
+    }
     for (const option of installOptions.slice(0, -1)) {
       expect(installPage, option).toContain(option);
     }
