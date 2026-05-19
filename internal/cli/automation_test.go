@@ -697,8 +697,8 @@ func TestAutomationHelperFormattingAndParsing(t *testing.T) {
 	if got := displayRunTarget(sampleAutomationRunRecord()); got != "job:job-1" {
 		t.Fatalf("displayRunTarget() = %q, want job target", got)
 	}
-	if ptr := boolPointer(true); ptr == nil || !*ptr {
-		t.Fatalf("boolPointer(true) = %#v, want true pointer", ptr)
+	if ptr := new(true); ptr == nil || !*ptr {
+		t.Fatalf("new(true) = %#v, want true pointer", ptr)
 	}
 }
 
