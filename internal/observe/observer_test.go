@@ -896,7 +896,51 @@ func TestHealthIncludesLifecycleFailuresAndAgentProbes(t *testing.T) {
 func TestHealthStatusDegradesForLifecycleFailures(t *testing.T) {
 	t.Parallel()
 
-	t.Run("ShouldDegradeTopLevelStatusWhenOnlyFailureHealthIsDegraded", func(t *testing.T) {
+	t.Run("Should keep top-level status OK for user-canceled sessions", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		ctx := testutil.Context(t)
+		if err := h.registry.RegisterSession(ctx, store.SessionInfo{
+			ID:          "sess-user-canceled",
+			Name:        "User Canceled",
+			AgentName:   "coder",
+			Provider:    "codex",
+			WorkspaceID: h.workspaceID,
+			State:       string(session.StateStopped),
+			StopReason:  store.StopUserCanceled,
+			Failure: &store.SessionFailure{
+				Kind:    store.FailureCanceled,
+				Summary: "session canceled by user",
+			},
+			CreatedAt: h.now,
+			UpdatedAt: h.now,
+		}); err != nil {
+			t.Fatalf("RegisterSession(canceled) error = %v", err)
+		}
+
+		health, err := h.observer.Health(ctx)
+		if err != nil {
+			t.Fatalf("Health() error = %v", err)
+		}
+		if got, want := health.Failures.Status, observeHealthStatusOK; got != want {
+			t.Fatalf("Health().Failures.Status = %q, want %q", got, want)
+		}
+		if got, want := health.Failures.Total, 1; got != want {
+			t.Fatalf("Health().Failures.Total = %d, want %d", got, want)
+		}
+		if got, want := health.Failures.ByKind[store.FailureCanceled], 1; got != want {
+			t.Fatalf("Health().Failures.ByKind[cancellation] = %d, want %d", got, want)
+		}
+		if got, want := len(health.Failures.Recent), 1; got != want {
+			t.Fatalf("len(Health().Failures.Recent) = %d, want %d", got, want)
+		}
+		if got, want := health.Status, observeHealthStatusOK; got != want {
+			t.Fatalf("Health().Status = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("Should degrade top-level status when only failure health is degraded", func(t *testing.T) {
 		t.Parallel()
 
 		h := newHarness(t)

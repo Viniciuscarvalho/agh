@@ -208,6 +208,7 @@ func (o *Observer) collectFailureHealth(ctx context.Context) (FailureHealth, err
 		ByKind: make(map[store.FailureKind]int),
 	}
 	recent := make([]SessionFailureHealth, 0, len(sessions))
+	degradedTotal := 0
 	for _, info := range sessions {
 		if info.Failure == nil {
 			continue
@@ -218,6 +219,9 @@ func (o *Observer) collectFailureHealth(ctx context.Context) (FailureHealth, err
 		}
 		health.Total++
 		health.ByKind[failure.Kind]++
+		if failureDegradesHealth(failure.Kind) {
+			degradedTotal++
+		}
 		recent = append(recent, SessionFailureHealth{
 			SessionID:       strings.TrimSpace(info.ID),
 			AgentName:       strings.TrimSpace(info.AgentName),
@@ -234,7 +238,9 @@ func (o *Observer) collectFailureHealth(ctx context.Context) (FailureHealth, err
 		health.ByKind = nil
 		health.Recent = nil
 	} else {
-		health.Status = observeHealthStatusDegraded
+		if degradedTotal > 0 {
+			health.Status = observeHealthStatusDegraded
+		}
 		sort.SliceStable(recent, func(i, j int) bool {
 			return recent[i].UpdatedAt.After(recent[j].UpdatedAt)
 		})
@@ -244,6 +250,10 @@ func (o *Observer) collectFailureHealth(ctx context.Context) (FailureHealth, err
 		health.Recent = recent
 	}
 	return health, nil
+}
+
+func failureDegradesHealth(kind store.FailureKind) bool {
+	return kind != store.FailureCanceled
 }
 
 func (o *Observer) activeSnapshot(ctx context.Context) (int, int, []SessionActivityHealth, error) {

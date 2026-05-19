@@ -1506,7 +1506,7 @@ func TestBaseHandlersCreateNetworkChannelRollsBackWhenDetailReadbackFails(t *tes
 			},
 			StopWithCauseFn: func(_ context.Context, id string, cause session.StopCause, detail string) error {
 				if got, want := cause, session.CauseFailed; got != want {
-					t.Fatalf("StopWithCause() cause = %q, want %q", got, want)
+					t.Fatalf("StopWithCause() cause = %v, want %v", got, want)
 				}
 				if got, want := detail, "rollback network channel creation"; got != want {
 					t.Fatalf("StopWithCause() detail = %q, want %q", got, want)

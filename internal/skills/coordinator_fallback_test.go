@@ -47,7 +47,7 @@ func TestBundledCoordinatorFallback(t *testing.T) {
 				t.Fatalf("skills[0].Meta.Name = %q, want %q", got, want)
 			}
 			if got, want := skills[0].Source, SourceBundled; got != want {
-				t.Fatalf("skills[0].Source = %q, want %q", got, want)
+				t.Fatalf("skills[0].Source = %v, want %v", got, want)
 			}
 		},
 	)
