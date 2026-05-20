@@ -59,6 +59,7 @@ func (h *BaseHandlers) ListBridges(c *gin.Context) {
 		h.respondError(c, http.StatusInternalServerError, err)
 		return
 	}
+	providerCatalog := h.bridgeProviderCatalogForList(c.Request.Context(), bridges, instances)
 
 	payloads := make([]contract.BridgePayload, 0, len(instances))
 	var filteredHealth map[string]contract.BridgeHealthPayload
@@ -67,15 +68,81 @@ func (h *BaseHandlers) ListBridges(c *gin.Context) {
 	}
 	for _, instance := range instances {
 		payloads = append(payloads, BridgePayloadFromBridgeInstance(instance))
-		if filteredHealth != nil {
-			key := strings.TrimSpace(instance.ID)
-			health := bridgeHealth[key]
-			health.Degradation = cloneBridgeDegradation(instance.Degradation)
-			filteredHealth[key] = health
+		key := strings.TrimSpace(instance.ID)
+		var health contract.BridgeHealthPayload
+		if bridgeHealth != nil {
+			health = bridgeHealth[key]
+		}
+		enrichedHealth := h.bridgeHealthPayloadForListInstance(
+			c.Request.Context(),
+			bridges,
+			instance,
+			health,
+			providerCatalog,
+		)
+		if filteredHealth != nil || len(enrichedHealth.Diagnostics) > 0 || enrichedHealth.Degradation != nil {
+			if filteredHealth == nil {
+				filteredHealth = make(map[string]contract.BridgeHealthPayload, len(instances))
+			}
+			filteredHealth[key] = enrichedHealth
 		}
 	}
 
 	c.JSON(http.StatusOK, contract.BridgesResponse{Bridges: payloads, BridgeHealth: filteredHealth})
+}
+
+func (h *BaseHandlers) bridgeProviderCatalogForList(
+	ctx context.Context,
+	bridges BridgeService,
+	instances []bridgepkg.BridgeInstance,
+) *bridgeProviderCatalog {
+	if len(instances) == 0 {
+		return nil
+	}
+	loadedCatalog, err := loadBridgeProviderCatalog(ctx, bridges)
+	if err != nil {
+		if h.Logger != nil {
+			h.Logger.Warn(
+				"api: bridge diagnostics provider catalog unavailable; continuing with base health",
+				bridgesErrorKey,
+				err,
+			)
+		}
+		return nil
+	}
+	return &loadedCatalog
+}
+
+func (h *BaseHandlers) bridgeHealthPayloadForListInstance(
+	ctx context.Context,
+	bridges BridgeService,
+	instance bridgepkg.BridgeInstance,
+	health contract.BridgeHealthPayload,
+	providerCatalog *bridgeProviderCatalog,
+) contract.BridgeHealthPayload {
+	if providerCatalog == nil {
+		return bridgeBaseHealthPayload(instance, health)
+	}
+	enrichedHealth, err := h.bridgeHealthPayloadForInstance(
+		ctx,
+		bridges,
+		instance,
+		health,
+		providerCatalog,
+	)
+	if err != nil {
+		if h.Logger != nil {
+			h.Logger.Warn(
+				"api: bridge diagnostics enrichment failed; continuing with base health",
+				"bridge_id",
+				strings.TrimSpace(instance.ID),
+				bridgesErrorKey,
+				err,
+			)
+		}
+		return bridgeBaseHealthPayload(instance, health)
+	}
+	return enrichedHealth
 }
 
 func (h *BaseHandlers) parseBridgeListQuery(ctx context.Context, c *gin.Context) (bridgeListQuery, error) {
@@ -914,7 +981,14 @@ func (h *BaseHandlers) bridgeResponse(
 	if err != nil {
 		return nil, err
 	}
-	health.Degradation = cloneBridgeDegradation(instance.Degradation)
+	bridges, ok := h.bridgeService()
+	if !ok {
+		return nil, errBridgeServiceUnavailable
+	}
+	health, err = h.bridgeHealthPayloadForInstance(ctx, bridges, instance, health, nil)
+	if err != nil {
+		return nil, err
+	}
 	return &contract.BridgeResponse{
 		Bridge: BridgePayloadFromBridgeInstance(instance),
 		Health: health,
