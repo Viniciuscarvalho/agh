@@ -10,7 +10,7 @@ import {
   TasksListSurface,
 } from "@/systems/tasks";
 import type { TopbarRouteContext } from "@/types/topbar";
-import { Button, PillGroup, SearchInput, useTopbarSlot } from "@agh/ui";
+import { Button, PillGroup, useTopbarSlot } from "@agh/ui";
 
 export const Route = createFileRoute("/_app/tasks")({
   beforeLoad: (): { topbar: TopbarRouteContext } => ({
@@ -57,15 +57,6 @@ function TasksRoute() {
         ]}
       />
     ),
-    search:
-      surfaceMode === "list" && !hasChildMatch ? (
-        <SearchInput
-          data-testid="tasks-list-search-input"
-          onChange={page.setSearchQuery}
-          placeholder="Search tasks..."
-          value={page.searchQuery}
-        />
-      ) : undefined,
     actions: (
       <Button
         data-testid="tasks-open-create"
@@ -95,6 +86,18 @@ function TasksRoute() {
             dashboard={page.dashboard}
             errorMessage={page.dashboardError?.message ?? null}
             isLoading={page.dashboardLoading}
+            scheduler={page.schedulerStatus}
+            schedulerBacklog={page.schedulerBacklog}
+            schedulerBacklogErrorMessage={page.schedulerBacklogError?.message ?? null}
+            schedulerBacklogLoading={page.schedulerBacklogLoading}
+            schedulerErrorMessage={page.schedulerStatusError?.message ?? null}
+            schedulerLoading={page.schedulerStatusLoading}
+            isSchedulerDrainPending={page.isSchedulerDrainPending}
+            isSchedulerPausePending={page.isSchedulerPausePending}
+            isSchedulerResumePending={page.isSchedulerResumePending}
+            onDrainScheduler={page.handleDrainScheduler}
+            onPauseScheduler={page.handlePauseScheduler}
+            onResumeScheduler={page.handleResumeScheduler}
           />
         ) : surfaceMode === "inbox" ? (
           <TasksInboxView
@@ -151,9 +154,11 @@ function TasksRoute() {
             onSelectTask={handleSelectTask}
             onSortChange={page.handleSortChange}
             onStatusChange={page.handleStatusChange}
+            onSearchQueryChange={page.setSearchQuery}
             ownerFilter={page.ownerFilter}
             ownerOptions={page.ownerOptions}
             priorityFilter={page.priorityFilter}
+            searchQuery={page.searchQuery}
             scopeFilter={page.scopeFilter}
             sortBy={page.sortBy}
             statusFilter={page.statusFilter}

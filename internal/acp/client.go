@@ -16,6 +16,8 @@ import (
 
 	acpsdk "github.com/coder/acp-go-sdk"
 	aghconfig "github.com/pedronauck/agh/internal/config"
+	"github.com/pedronauck/agh/internal/diagnostics"
+	authproviders "github.com/pedronauck/agh/internal/providers"
 	"github.com/pedronauck/agh/internal/sandbox"
 	"github.com/pedronauck/agh/internal/store"
 	"github.com/pedronauck/agh/internal/toolruntime"
@@ -63,6 +65,7 @@ type Driver struct {
 	launcher             sandbox.Launcher
 	toolHost             sandbox.ToolHost
 	processRegistry      *toolruntime.Registry
+	steerSource          SteerSource
 }
 
 // WithLogger directs driver diagnostics to the provided logger.
@@ -128,6 +131,13 @@ func WithProcessRecordTimeout(timeout time.Duration) Option {
 	}
 }
 
+// WithSteerSource injects the staged busy-input source consumed at tool-result boundaries.
+func WithSteerSource(source SteerSource) Option {
+	return func(driver *Driver) {
+		driver.steerSource = source
+	}
+}
+
 // New constructs an ACP driver with sensible defaults.
 func New(opts ...Option) *Driver {
 	driver := &Driver{
@@ -178,6 +188,10 @@ func (d *Driver) Start(ctx context.Context, opts StartOpts) (*AgentProcess, erro
 		return nil, WrapFailure(store.FailureStartup, "invalid ACP start options", err)
 	}
 
+	if err := runProviderPreStart(ctx, normalized); err != nil {
+		return nil, err
+	}
+
 	process, err := d.launchAgentProcess(ctx, normalized)
 	if err != nil {
 		return nil, WrapFailure(store.FailureStartup, "agent subprocess startup failed", err)
@@ -190,6 +204,41 @@ func (d *Driver) Start(ctx context.Context, opts StartOpts) (*AgentProcess, erro
 		return nil, d.cleanupFailedStart(process, err)
 	}
 	return process, nil
+}
+
+func runProviderPreStart(ctx context.Context, opts StartOpts) error {
+	if strings.TrimSpace(opts.ProviderName) == "" {
+		return nil
+	}
+	provider := aghconfig.ProviderConfig{}
+	if opts.ProviderConfig != nil {
+		provider = *opts.ProviderConfig
+	}
+	report := authproviders.PreStart(ctx, provider, opts.ProviderAuthEnv)
+	if report.Item == nil {
+		return nil
+	}
+	message := "provider auth pre-start probe failed"
+	code := strings.TrimSpace(report.Item.Code)
+	itemMessage := strings.TrimSpace(report.Item.Message)
+	switch {
+	case code != "" && itemMessage != "":
+		message = code + ": " + itemMessage
+	case code != "":
+		message = code
+	case itemMessage != "":
+		message = itemMessage
+	}
+	err := fmt.Errorf(
+		"acp: provider auth pre-start probe for %q failed: %s",
+		strings.TrimSpace(opts.ProviderName),
+		message,
+	)
+	return WrapFailure(
+		store.FailureProviderAuth,
+		"provider auth pre-start probe failed",
+		diagnostics.NewStructuredError(*report.Item, err),
+	)
 }
 
 func (d *Driver) launchAgentProcess(ctx context.Context, normalized StartOpts) (*AgentProcess, error) {
@@ -298,6 +347,7 @@ func (d *Driver) newAgentProcess(
 		permissionTimeout:    d.permissionWait,
 		systemPrompt:         normalized.SystemPrompt,
 		systemPromptDelivery: normalized.SystemPromptDelivery,
+		steerSource:          d.steerSource,
 	}
 }
 

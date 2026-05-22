@@ -1196,7 +1196,7 @@ func TestUnixSocketClientMethods(t *testing.T) {
 					), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/workspaces/ws-1/sessions/sess-1/stop":
 					return newHTTPResponse(http.StatusNoContent, ``), nil
-				case req.Method == http.MethodPost && req.URL.Path == "/api/workspaces/ws-1/sessions/sess-1/resume":
+				case req.Method == http.MethodPost && req.URL.Path == "/api/workspaces/ws-1/sessions/sess-1/attach":
 					return newHTTPResponse(
 						http.StatusOK,
 						`{"session":{"id":"sess-1","agent_name":"coder","workspace_id":"ws-1","workspace_path":"/tmp","state":"active","created_at":"2026-04-03T12:00:00Z","updated_at":"2026-04-03T12:00:00Z"}}`,
@@ -1223,12 +1223,14 @@ func TestUnixSocketClientMethods(t *testing.T) {
 					if !strings.Contains(string(body), `"message":"hello"`) {
 						t.Fatalf("prompt body = %s, want message", body)
 					}
-					return newHTTPResponse(http.StatusOK, strings.Join([]string{
+					resp := newHTTPResponse(http.StatusOK, strings.Join([]string{
 						"id: 1",
 						"event: agent_message",
 						`data: {"session_id":"sess-1","turn_id":"turn-1","type":"agent_message","timestamp":"2026-04-03T12:00:00Z","text":"hello back"}`,
 						"",
-					}, "\n")), nil
+					}, "\n"))
+					resp.Header.Set("Content-Type", "text/event-stream")
+					return resp, nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/workspaces/ws-1/sessions/sess-1/events":
 					if got := req.URL.Query().Get("type"); got != "tool_call" {
 						t.Fatalf("session events type query = %q, want %q", got, "tool_call")
@@ -1323,6 +1325,14 @@ func TestUnixSocketClientMethods(t *testing.T) {
 						t.Fatalf("skill content workspace query = %q, want %q", got, "alpha")
 					}
 					return newHTTPResponse(http.StatusOK, `{"content":"# Review\n\nUse this skill."}`), nil
+				case req.Method == http.MethodGet && req.URL.Path == "/api/skills/review/shadows":
+					if got := req.URL.Query().Get("workspace"); got != "alpha" {
+						t.Fatalf("skill shadows workspace query = %q, want %q", got, "alpha")
+					}
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"name":"review","winner":{"path":"/workspace/project/.agh/skills/review/SKILL.md","tier":"workspace","resolved_to_winner":true,"detected_at":"2026-04-03T12:00:00Z"},"shadows":[{"path":"/workspace/project/.agh/skills/review/SKILL.md","tier":"workspace","resolved_to_winner":true,"detected_at":"2026-04-03T12:00:00Z"}]}`,
+					), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/hooks/catalog":
 					if got := req.URL.Query().Get("workspace"); got != "alpha" {
 						t.Fatalf("hook catalog workspace query = %q, want %q", got, "alpha")
@@ -1374,15 +1384,21 @@ func TestUnixSocketClientMethods(t *testing.T) {
 						http.StatusOK,
 						`{"events":[{"event":"tool.pre_call","family":"tool","sync_eligible":true,"payload_schema":"ToolPreCallPayload","patch_schema":"ToolCallPatch"}]}`,
 					), nil
-				case req.Method == http.MethodGet && req.URL.Path == "/api/workspaces/ws-1/observe/events":
+				case req.Method == http.MethodGet && req.URL.Path == "/api/logs":
+					if got := req.URL.Query().Get("workspace_id"); got != "ws-1" {
+						t.Fatalf("logs workspace_id query = %q, want %q", got, "ws-1")
+					}
 					if got := req.URL.Query().Get("session_id"); got != "sess-1" {
-						t.Fatalf("observe session_id query = %q, want %q", got, "sess-1")
+						t.Fatalf("logs session_id query = %q, want %q", got, "sess-1")
 					}
 					return newHTTPResponse(
 						http.StatusOK,
 						`{"events":[{"id":"sum-1","session_id":"sess-1","type":"agent_message","agent_name":"coder","timestamp":"2026-04-03T12:00:00Z"}]}`,
 					), nil
-				case req.Method == http.MethodGet && req.URL.Path == "/api/workspaces/ws-1/observe/events/stream":
+				case req.Method == http.MethodGet && req.URL.Path == "/api/logs/stream":
+					if got := req.URL.Query().Get("workspace_id"); got != "ws-1" {
+						t.Fatalf("logs stream workspace_id query = %q, want %q", got, "ws-1")
+					}
 					if got := req.Header.Get("Last-Event-ID"); got != "cursor-1" {
 						t.Fatalf("Last-Event-ID = %q, want %q", got, "cursor-1")
 					}
@@ -1392,10 +1408,24 @@ func TestUnixSocketClientMethods(t *testing.T) {
 						`data: {"id":"sum-1","session_id":"sess-1","type":"agent_message","agent_name":"coder","timestamp":"2026-04-03T12:00:00Z"}`,
 						"",
 					}, "\n")), nil
-				case req.Method == http.MethodGet && req.URL.Path == "/api/observe/health":
+				case req.Method == http.MethodGet && req.URL.Path == "/api/status":
 					return newHTTPResponse(
 						http.StatusOK,
-						`{"health":{"status":"ok","uptime_seconds":10,"active_sessions":1,"active_agents":1,"global_db_size_bytes":100,"session_db_size_bytes":200,"version":"dev"}}`,
+						`{"schema_version":"2026-05-20","generated_at":"2026-04-03T12:00:00Z","daemon":{"status":"running","pid":10,"started_at":"2026-04-03T12:00:00Z","socket":"/tmp/agh.sock","http_host":"localhost","http_port":2123,"active_sessions":1,"total_sessions":1,"version":"dev"},"health":{"status":"ok","uptime_seconds":10,"active_sessions":1,"active_agents":1,"global_db_size_bytes":100,"session_db_size_bytes":200,"version":"dev"}}`,
+					), nil
+				case req.Method == http.MethodGet && req.URL.Path == "/api/doctor":
+					if got := req.URL.Query()["only"]; len(got) != 1 || got[0] != "provider" {
+						t.Fatalf("doctor only query = %#v, want provider", got)
+					}
+					if got := req.URL.Query()["exclude"]; len(got) != 1 || got[0] != "network" {
+						t.Fatalf("doctor exclude query = %#v, want network", got)
+					}
+					if got := req.URL.Query().Get("quiet"); got != "true" {
+						t.Fatalf("doctor quiet query = %q, want true", got)
+					}
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"schema_version":"2026-05-20","generated_at":"2026-04-03T12:00:00Z","duration_ms":1,"status":"ok","summary":{"total":0,"counts_by_severity":{}},"items":[]}`,
 					), nil
 				case req.Method == http.MethodGet && req.URL.Path == "/api/memory/health":
 					if got := req.URL.Query().Get("workspace"); got != "/workspace/project" {
@@ -1502,11 +1532,6 @@ func TestUnixSocketClientMethods(t *testing.T) {
 						http.StatusOK,
 						`{"indexed_files":2,"scope":"workspace","workspace_id":"/workspace/project","completed_at":"2026-04-03T12:00:00Z"}`,
 					), nil
-				case req.Method == http.MethodGet && req.URL.Path == "/api/daemon/status":
-					return newHTTPResponse(
-						http.StatusOK,
-						`{"daemon":{"status":"running","pid":10,"started_at":"2026-04-03T12:00:00Z","socket":"/tmp/agh.sock","http_host":"localhost","http_port":2123,"active_sessions":1,"total_sessions":1,"version":"dev"}}`,
-					), nil
 				default:
 					return newHTTPResponse(http.StatusNotFound, `{"error":"missing"}`), nil
 				}
@@ -1588,6 +1613,11 @@ func TestUnixSocketClientMethods(t *testing.T) {
 		t.Fatalf("GetSkillContent() = %q, %v", content, err)
 	}
 
+	shadows, err := client.GetSkillShadows(ctx, "review", SkillQuery{Workspace: "alpha"})
+	if err != nil || shadows.Winner.Tier != "workspace" {
+		t.Fatalf("GetSkillShadows() = %#v, %v", shadows, err)
+	}
+
 	hookCatalog, err := client.HookCatalog(ctx, HookCatalogQuery{
 		Workspace: "alpha",
 		Agent:     "coder",
@@ -1647,30 +1677,39 @@ func TestUnixSocketClientMethods(t *testing.T) {
 		t.Fatalf("DeleteWorkspace() error = %v", err)
 	}
 
-	events, err := client.ObserveEvents(ctx, ObserveEventQuery{WorkspaceRef: "ws-1", SessionID: "sess-1"})
+	events, err := client.ListLogs(ctx, LogsListQuery{WorkspaceRef: "ws-1", SessionID: "sess-1"})
 	if err != nil || len(events) != 1 {
-		t.Fatalf("ObserveEvents() = %#v, %v", events, err)
+		t.Fatalf("ListLogs() = %#v, %v", events, err)
 	}
 
 	var streamed []SSEEvent
-	if err := client.StreamObserveEvents(
+	if err := client.StreamLogs(
 		ctx,
-		ObserveEventQuery{WorkspaceRef: "ws-1"},
+		LogsListQuery{WorkspaceRef: "ws-1"},
 		"cursor-1",
 		func(event SSEEvent) error {
 			streamed = append(streamed, event)
 			return nil
 		},
 	); err != nil {
-		t.Fatalf("StreamObserveEvents() error = %v", err)
+		t.Fatalf("StreamLogs() error = %v", err)
 	}
 	if len(streamed) != 1 || streamed[0].Event != "agent_message" {
 		t.Fatalf("streamed = %#v, want one event", streamed)
 	}
 
-	health, err := client.ObserveHealth(ctx)
-	if err != nil || health.Status != "ok" {
-		t.Fatalf("ObserveHealth() = %#v, %v", health, err)
+	runtimeStatus, err := client.Status(ctx)
+	if err != nil || runtimeStatus.Health.Status != "ok" {
+		t.Fatalf("Status() = %#v, %v", runtimeStatus, err)
+	}
+
+	doctor, err := client.Doctor(ctx, DoctorQuery{
+		Only:    []string{"provider"},
+		Exclude: []string{"network"},
+		Quiet:   true,
+	})
+	if err != nil || doctor.Status != "ok" {
+		t.Fatalf("Doctor() = %#v, %v", doctor, err)
 	}
 
 	memoryHealth, err := client.MemoryHealth(ctx, "/workspace/project")
@@ -2646,6 +2685,26 @@ func TestUnixSocketClientBridgeMethods(t *testing.T) {
 						http.StatusOK,
 						`{"routes":[{"routing_key_hash":"hash-a","scope":"global","bridge_instance_id":"brg-a","peer_id":"peer-1","thread_id":"thread-1","session_id":"sess-1","agent_name":"coder","last_activity_at":"2026-04-11T12:09:00Z","created_at":"2026-04-11T12:00:00Z","updated_at":"2026-04-11T12:09:00Z"}]}`,
 					), nil
+				case req.Method == http.MethodGet && req.URL.Path == "/api/bridges/brg-a/targets":
+					if req.URL.Query().Get("q") != "support" || req.URL.Query().Get("limit") != "25" {
+						t.Fatalf("bridge targets query = %s, want q=support&limit=25", req.URL.RawQuery)
+					}
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"bridge_id":"brg-a","targets":[{"bridge_id":"brg-a","canonical_route":"telegram:channel:support","display_name":"Support room","normalized":"support room","target_type":"channel","qualifier":"telegram","capabilities":["reply"],"updated_at":"2026-04-11T12:09:00Z","last_seen_at":"2026-04-11T12:09:00Z"}],"total":1,"cache_stale":false,"generated_at":"2026-04-11T12:09:30Z"}`,
+					), nil
+				case req.Method == http.MethodPost && req.URL.Path == "/api/bridges/brg-a/resolve":
+					var payload contract.BridgeResolveTargetRequest
+					if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+						t.Fatalf("json.Decode(resolve target body) error = %v", err)
+					}
+					if payload.Name != "Support room" {
+						t.Fatalf("resolve target payload = %#v, want Support room", payload)
+					}
+					return newHTTPResponse(
+						http.StatusOK,
+						`{"result":{"step":2,"ambiguous":false,"match":{"bridge_id":"brg-a","canonical_route":"telegram:channel:support","display_name":"Support room","normalized":"support room","target_type":"channel","qualifier":"telegram","capabilities":["reply"],"updated_at":"2026-04-11T12:09:00Z","last_seen_at":"2026-04-11T12:09:00Z"}}}`,
+					), nil
 				case req.Method == http.MethodPost && req.URL.Path == "/api/bridges/brg-a/test-delivery":
 					var payload contract.BridgeTestDeliveryRequest
 					if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
@@ -2722,6 +2781,17 @@ func TestUnixSocketClientBridgeMethods(t *testing.T) {
 		t.Fatalf("BridgeRoutes() = %#v, %v", routes, err)
 	}
 
+	targets, err := client.BridgeTargets(ctx, "brg-a", "support", 25)
+	if err != nil || len(targets.Targets) != 1 || targets.Targets[0].CanonicalRoute != "telegram:channel:support" {
+		t.Fatalf("BridgeTargets() = %#v, %v", targets, err)
+	}
+
+	resolved, err := client.ResolveBridgeTarget(ctx, "brg-a", "Support room")
+	if err != nil || resolved.Result.Match == nil ||
+		resolved.Result.Match.CanonicalRoute != "telegram:channel:support" {
+		t.Fatalf("ResolveBridgeTarget() = %#v, %v", resolved, err)
+	}
+
 	delivery, err := client.TestBridgeDelivery(ctx, "brg-a", BridgeTestDeliveryRequest{
 		Message: "hello",
 		Target: BridgeDeliveryTargetInput{
@@ -2786,14 +2856,14 @@ func TestReadAPIErrorAndHelpers(t *testing.T) {
 		t.Fatalf("sessionListValues() = %v, want workspace filter", got)
 	}
 
-	if got := observeEventValues(ObserveEventQuery{
+	if got := logsListValues(LogsListQuery{
 		SessionID: "sess-1",
 		AgentName: "coder",
 		Type:      "done",
 		Since:     fixedTestNow,
 		Last:      2,
 	}); got.Get("session_id") != "sess-1" || got.Get("limit") != "2" {
-		t.Fatalf("observeEventValues() = %v, want session_id/limit", got)
+		t.Fatalf("logsListValues() = %v, want session_id/limit", got)
 	}
 
 	if got := hookCatalogValues(HookCatalogQuery{
@@ -3120,8 +3190,8 @@ func TestDoRequestSetsHeaders(t *testing.T) {
 	err := client.doSSE(
 		context.Background(),
 		http.MethodGet,
-		"/api/workspaces/ws-1/observe/events/stream",
-		observeEventValues(ObserveEventQuery{Since: time.Now().UTC()}),
+		"/api/logs/stream",
+		logsListValues(LogsListQuery{Since: time.Now().UTC()}),
 		nil,
 		"cursor-9",
 		func(SSEEvent) error {
@@ -3141,7 +3211,7 @@ func TestDoRequestRejectsNilContext(t *testing.T) {
 		httpClient: &http.Client{},
 	}
 
-	response, err := client.doRequest(nilContext(), http.MethodGet, "/api/daemon/status", nil, nil, "")
+	response, err := client.doRequest(nilContext(), http.MethodGet, "/api/status", nil, nil)
 	if response != nil {
 		defer func() {
 			_ = response.Body.Close()
@@ -3236,9 +3306,9 @@ func TestCLIUsesSharedContractAliases(t *testing.T) {
 			want:    contract.HookEventPayload{},
 		},
 		{
-			name:    "Should alias ObserveEventRecord to the shared contract",
-			cliType: ObserveEventRecord{},
-			want:    contract.ObserveEventPayload{},
+			name:    "Should alias LogEventRecord to the shared contract",
+			cliType: LogEventRecord{},
+			want:    contract.LogEventPayload{},
 		},
 		{
 			name:    "Should alias WorkspaceCreateRequest to the shared contract",
@@ -3448,13 +3518,13 @@ func TestSharedContractJSONParity(t *testing.T) {
 
 	observeResponse := `{"events":[{"id":"sum-1","session_id":"sess-1","type":"done","agent_name":"coder","summary":"complete","timestamp":"2026-04-03T12:00:00Z"}]}`
 	var cliObserve struct {
-		Events []ObserveEventRecord `json:"events"`
+		Events []LogEventRecord `json:"events"`
 	}
 	if err := json.Unmarshal([]byte(observeResponse), &cliObserve); err != nil {
 		t.Fatalf("json.Unmarshal(cli observe response) error = %v", err)
 	}
 	var sharedObserve struct {
-		Events []contract.ObserveEventPayload `json:"events"`
+		Events []contract.LogEventPayload `json:"events"`
 	}
 	if err := json.Unmarshal([]byte(observeResponse), &sharedObserve); err != nil {
 		t.Fatalf("json.Unmarshal(shared observe response) error = %v", err)

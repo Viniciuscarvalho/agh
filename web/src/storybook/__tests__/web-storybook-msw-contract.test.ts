@@ -4,12 +4,13 @@ import { describe, expect, it } from "vitest";
 import { handlers as agentHandlers } from "@/systems/agent/mocks";
 import { handlers as automationHandlers } from "@/systems/automation/mocks";
 import { handlers as bridgeHandlers } from "@/systems/bridges/mocks";
-import { handlers as daemonHandlers } from "@/systems/daemon/mocks";
+import { handlers as daemonHandlers } from "@/systems/status/mocks";
 import { handlers as knowledgeHandlers } from "@/systems/knowledge/mocks";
 import { handlers as networkHandlers } from "@/systems/network/mocks";
 import { handlers as sessionHandlers } from "@/systems/session/mocks";
 import { handlers as settingsHandlers } from "@/systems/settings/mocks";
 import { handlers as skillHandlers } from "@/systems/skill/mocks";
+import { handlers as schedulerHandlers } from "@/systems/scheduler/mocks";
 import { handlers as tasksHandlers } from "@/systems/tasks/mocks";
 import { handlers as workspaceHandlers } from "@/systems/workspace/mocks";
 
@@ -35,6 +36,7 @@ describe("web Storybook MSW contract", () => {
       session: sessionHandlers,
       settings: settingsHandlers,
       skill: skillHandlers,
+      scheduler: schedulerHandlers,
       tasks: tasksHandlers,
       workspace: workspaceHandlers,
     });
@@ -50,6 +52,7 @@ describe("web Storybook MSW contract", () => {
     expect(sessionHandlers.length).toBeGreaterThan(0);
     expect(settingsHandlers.length).toBeGreaterThan(0);
     expect(skillHandlers.length).toBeGreaterThan(0);
+    expect(schedulerHandlers.length).toBeGreaterThan(0);
     expect(tasksHandlers.length).toBeGreaterThan(0);
     expect(workspaceHandlers.length).toBeGreaterThan(0);
   });

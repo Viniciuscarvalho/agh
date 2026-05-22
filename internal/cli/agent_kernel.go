@@ -435,7 +435,7 @@ func agentMeBundle(record AgentMeRecord) outputBundle {
 			return renderToonObject("agent_me", []string{
 				automationSessionIDKey,
 				agentKernelAgentNameKey,
-				memoryProviderKey,
+				cliProviderKey,
 				agentKernelModelKey,
 				"workspace_id",
 				"workspace_root",
@@ -468,7 +468,7 @@ func agentChannelsBundle(channels []AgentChannelRecord) outputBundle {
 		channels,
 		channels,
 		"Agent Channels",
-		[]string{"ID", agentKernelChannelValue, "Purpose", "Task", "Run"},
+		[]string{"ID", agentKernelChannelValue, "Purpose", taskTaskValue, taskRunValue},
 		"agent_channels",
 		[]string{"id", agentKernelChannelKey, "purpose", "task_id", agentKernelRunIDKey},
 		func(channel AgentChannelRecord) []string {
@@ -523,8 +523,8 @@ func agentChannelMessageBundle(message AgentChannelMessageRecord) outputBundle {
 				{Label: "ID", Value: message.MessageID},
 				{Label: agentKernelChannelValue, Value: message.ChannelID},
 				{Label: bridgeKindValue, Value: string(message.Metadata.MessageKind)},
-				{Label: "Task", Value: stringOrDash(message.Metadata.TaskID)},
-				{Label: "Run", Value: stringOrDash(message.Metadata.RunID)},
+				{Label: taskTaskValue, Value: stringOrDash(message.Metadata.TaskID)},
+				{Label: taskRunValue, Value: stringOrDash(message.Metadata.RunID)},
 			}), nil
 		},
 		toon: func() (string, error) {

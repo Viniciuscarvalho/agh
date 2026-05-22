@@ -47,13 +47,16 @@ type Server struct {
 	now               func() time.Time
 	pollInterval      time.Duration
 	sessions          core.SessionManager
+	sessionCatalog    core.SessionCatalog
 	tasks             core.TaskService
 	network           core.NetworkService
 	networkStore      core.NetworkStore
 	observer          core.Observer
 	automation        core.AutomationManager
 	bridges           core.BridgeService
+	notifications     core.NotificationPresetService
 	bundles           core.BundleService
+	supportBundles    core.SupportBundleService
 	tools             core.ToolRegistry
 	toolsets          core.ToolsetRegistry
 	toolApprovals     core.ToolApprovalIssuer
@@ -164,6 +167,13 @@ func WithSessionManager(manager core.SessionManager) Option {
 	}
 }
 
+// WithSessionCatalog injects the daemon-owned session catalog.
+func WithSessionCatalog(catalog core.SessionCatalog) Option {
+	return func(server *Server) {
+		server.sessionCatalog = catalog
+	}
+}
+
 // WithTaskService injects the daemon-owned task service.
 func WithTaskService(service core.TaskService) Option {
 	return func(server *Server) {
@@ -206,10 +216,24 @@ func WithBridgeService(bridges core.BridgeService) Option {
 	}
 }
 
+// WithNotificationPresetService injects the daemon-owned notification preset runtime.
+func WithNotificationPresetService(service core.NotificationPresetService) Option {
+	return func(server *Server) {
+		server.notifications = service
+	}
+}
+
 // WithBundleService injects the daemon-owned bundle runtime.
 func WithBundleService(service core.BundleService) Option {
 	return func(server *Server) {
 		server.bundles = service
+	}
+}
+
+// WithSupportBundleService injects the daemon-owned support bundle operation service.
+func WithSupportBundleService(service core.SupportBundleService) Option {
+	return func(server *Server) {
+		server.supportBundles = service
 	}
 }
 
@@ -545,6 +569,7 @@ func (s *Server) ensureEngine() {
 func (s *Server) handlerConfig(staticFS fs.FS) *handlerConfig {
 	return &handlerConfig{
 		sessions:          s.sessions,
+		sessionCatalog:    s.sessionCatalog,
 		tasks:             s.tasks,
 		network:           s.network,
 		networkStore:      s.networkStore,
@@ -552,7 +577,9 @@ func (s *Server) handlerConfig(staticFS fs.FS) *handlerConfig {
 		resources:         s.resources,
 		automation:        s.automation,
 		bridges:           s.bridges,
+		notifications:     s.notifications,
 		bundles:           s.bundles,
+		supportBundles:    s.supportBundles,
 		tools:             s.tools,
 		toolsets:          s.toolsets,
 		toolApprovals:     s.toolApprovals,

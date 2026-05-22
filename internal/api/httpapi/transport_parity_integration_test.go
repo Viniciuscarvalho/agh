@@ -104,7 +104,7 @@ func TestHTTPTransportApprovalFlowUsesSharedRuntimeHarness(t *testing.T) {
 		t,
 		clients.HTTPClient,
 		http.MethodGet,
-		runtimeHarness.HTTPURL("/api/workspaces/ws-workspace/sessions/"+url.PathEscape(session.ID)),
+		runtimeHarness.HTTPURL(transportHarnessSessionPath(t, runtimeHarness, session.ID, "")),
 		nil,
 		nil,
 	)
@@ -162,7 +162,7 @@ func TestHTTPTransportSessionProviderLifecycle(t *testing.T) {
 		if err := runtimeHarness.HTTPJSON(
 			ctx,
 			http.MethodGet,
-			"/api/workspaces/ws-workspace/sessions/"+url.PathEscape(created.Session.ID),
+			transportHarnessSessionPath(t, runtimeHarness, created.Session.ID, ""),
 			nil,
 			&detail,
 		); err != nil {
@@ -177,7 +177,7 @@ func TestHTTPTransportSessionProviderLifecycle(t *testing.T) {
 		}
 	})
 
-	t.Run("Should return explicit bad request when the persisted provider is missing on resume", func(t *testing.T) {
+	t.Run("Should return conflict when attaching a stopped session", func(t *testing.T) {
 		writeTransportProviderOverrideConfig(
 			t,
 			runtimeHarness.WorkspaceRoot,
@@ -199,7 +199,7 @@ func TestHTTPTransportSessionProviderLifecycle(t *testing.T) {
 			t,
 			runtimeHarness.HTTPClient,
 			http.MethodPost,
-			runtimeHarness.HTTPURL("/api/workspaces/ws-workspace/sessions/"+url.PathEscape(created.Session.ID)+"/stop"),
+			runtimeHarness.HTTPURL(transportHarnessSessionPath(t, runtimeHarness, created.Session.ID, "/stop")),
 			nil,
 			nil,
 		)
@@ -233,7 +233,7 @@ func TestHTTPTransportSessionProviderLifecycle(t *testing.T) {
 			runtimeHarness.HTTPClient,
 			http.MethodPost,
 			runtimeHarness.HTTPURL(
-				"/api/workspaces/ws-workspace/sessions/"+url.PathEscape(created.Session.ID)+"/resume",
+				transportHarnessSessionPath(t, runtimeHarness, created.Session.ID, "/attach"),
 			),
 			nil,
 			nil,
@@ -246,11 +246,11 @@ func TestHTTPTransportSessionProviderLifecycle(t *testing.T) {
 		if resumeCloseErr != nil {
 			t.Fatalf("close HTTP resume body error = %v", resumeCloseErr)
 		}
-		if resumeResp.StatusCode != http.StatusBadRequest {
+		if resumeResp.StatusCode != http.StatusConflict {
 			t.Fatalf(
-				"HTTP resume status = %d, want %d; body=%s",
+				"HTTP attach status = %d, want %d; body=%s",
 				resumeResp.StatusCode,
-				http.StatusBadRequest,
+				http.StatusConflict,
 				string(resumeBody),
 			)
 		}
@@ -263,13 +263,10 @@ func TestHTTPTransportSessionProviderLifecycle(t *testing.T) {
 		}
 
 		if !strings.Contains(payload.Error, created.Session.ID) {
-			t.Fatalf("HTTP resume error = %s, want session id %q", payload.Error, created.Session.ID)
+			t.Fatalf("HTTP attach error = %s, want session id %q", payload.Error, created.Session.ID)
 		}
-		if !strings.Contains(payload.Error, transportOverrideProvider) {
-			t.Fatalf("HTTP resume error = %s, want provider %q", payload.Error, transportOverrideProvider)
-		}
-		if !strings.Contains(payload.Error, `resolve session agent with provider "`+transportOverrideProvider+`"`) {
-			t.Fatalf("HTTP resume error = %s, want override context", payload.Error)
+		if !strings.Contains(payload.Error, "not attachable") {
+			t.Fatalf("HTTP attach error = %s, want attachability context", payload.Error)
 		}
 	})
 }
@@ -359,7 +356,7 @@ func TestHTTPTransportPromptFailureProjectionUsesSharedRuntimeHarness(t *testing
 	if err := runtimeHarness.HTTPJSON(
 		ctx,
 		http.MethodGet,
-		"/api/workspaces/ws-workspace/sessions/"+url.PathEscape(session.ID)+"/events",
+		transportHarnessSessionPath(t, runtimeHarness, session.ID, "/events"),
 		nil,
 		&eventsResp,
 	); err != nil {
@@ -368,6 +365,22 @@ func TestHTTPTransportPromptFailureProjectionUsesSharedRuntimeHarness(t *testing
 	if !httpSessionEventsContainType(eventsResp.Events, "error") {
 		t.Fatalf("HTTP session events = %#v, want error projection", eventsResp.Events)
 	}
+}
+
+func transportHarnessSessionPath(
+	t testing.TB,
+	harness *e2etest.RuntimeHarness,
+	sessionID string,
+	suffix string,
+) string {
+	t.Helper()
+
+	workspaceID := strings.TrimSpace(harness.WorkspaceID)
+	if workspaceID == "" {
+		t.Fatal("runtime harness WorkspaceID = empty")
+	}
+	return "/api/workspaces/" + url.PathEscape(workspaceID) +
+		"/sessions/" + url.PathEscape(sessionID) + suffix
 }
 
 func TestHTTPTransportExtensionParityMatchesUDS(t *testing.T) {

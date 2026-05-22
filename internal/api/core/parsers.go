@@ -40,8 +40,8 @@ func ParseSessionEventQuery(c *gin.Context) (store.EventQuery, error) {
 	}, nil
 }
 
-// ParseObserveEventQuery parses the shared observe query parameters.
-func ParseObserveEventQuery(c *gin.Context) (store.EventSummaryQuery, error) {
+// ParseLogsQuery parses the shared logs query parameters.
+func ParseLogsQuery(c *gin.Context) (store.EventSummaryQuery, error) {
 	since, err := ParseOptionalTime(c.Query("since"))
 	if err != nil {
 		return store.EventSummaryQuery{}, err
@@ -50,14 +50,81 @@ func ParseObserveEventQuery(c *gin.Context) (store.EventSummaryQuery, error) {
 	if err != nil {
 		return store.EventSummaryQuery{}, err
 	}
+	afterSequenceRaw, err := firstQueryAlias(c, "after_seq", "after_sequence")
+	if err != nil {
+		return store.EventSummaryQuery{}, err
+	}
+	afterSequence, err := ParseOptionalInt64(afterSequenceRaw)
+	if err != nil {
+		return store.EventSummaryQuery{}, err
+	}
+	workspaceID, err := firstQueryAlias(c, "workspace_id", "workspace")
+	if err != nil {
+		return store.EventSummaryQuery{}, err
+	}
+	runID, err := firstQueryAlias(c, "run", "run_id")
+	if err != nil {
+		return store.EventSummaryQuery{}, err
+	}
+	errorOnly, err := ParseOptionalBool(c.Query("error_only"))
+	if err != nil {
+		return store.EventSummaryQuery{}, err
+	}
+	actorKind, actorID, err := parseActorQuery(c)
+	if err != nil {
+		return store.EventSummaryQuery{}, err
+	}
 
 	return store.EventSummaryQuery{
-		SessionID: strings.TrimSpace(c.Query("session_id")),
-		AgentName: strings.TrimSpace(c.Query("agent_name")),
-		Type:      strings.TrimSpace(c.Query("type")),
-		Since:     since,
-		Limit:     limit,
+		WorkspaceID:   strings.TrimSpace(workspaceID),
+		SessionID:     strings.TrimSpace(c.Query("session_id")),
+		AgentName:     strings.TrimSpace(c.Query("agent_name")),
+		Type:          strings.TrimSpace(c.Query("type")),
+		RunID:         strings.TrimSpace(runID),
+		ActorKind:     actorKind,
+		ActorID:       actorID,
+		Provider:      strings.TrimSpace(c.Query("provider")),
+		Outcome:       strings.TrimSpace(c.Query("outcome")),
+		Component:     strings.TrimSpace(c.Query("component")),
+		ErrorOnly:     errorOnly,
+		AfterSequence: afterSequence,
+		Since:         since,
+		Limit:         limit,
 	}, nil
+}
+
+func firstQueryAlias(c *gin.Context, names ...string) (string, error) {
+	selected := ""
+	selectedName := ""
+	for _, name := range names {
+		value := strings.TrimSpace(c.Query(name))
+		if value == "" {
+			continue
+		}
+		if selected != "" && value != selected {
+			return "", fmt.Errorf("conflicting query values for %s, %s", selectedName, name)
+		}
+		selected = value
+		selectedName = name
+	}
+	return selected, nil
+}
+
+func parseActorQuery(c *gin.Context) (string, string, error) {
+	actorKind := strings.TrimSpace(c.Query("actor_kind"))
+	actorID := strings.TrimSpace(c.Query("actor_id"))
+	actor := strings.TrimSpace(c.Query("actor"))
+	if actor == "" {
+		return actorKind, actorID, nil
+	}
+	if actorKind != "" || actorID != "" {
+		return "", "", fmt.Errorf("actor cannot be combined with actor_kind or actor_id")
+	}
+	parsedKind, parsedID, ok := strings.Cut(actor, ":")
+	if !ok || strings.TrimSpace(parsedKind) == "" || strings.TrimSpace(parsedID) == "" {
+		return "", "", fmt.Errorf("actor must use kind:id format")
+	}
+	return strings.TrimSpace(parsedKind), strings.TrimSpace(parsedID), nil
 }
 
 // ParseHookCatalogFilter parses the shared hook catalog query parameters.
@@ -146,24 +213,24 @@ func ParseHookEventFilter(c *gin.Context) (hookspkg.EventFilter, error) {
 	return filter, nil
 }
 
-// ParseObserveCursor parses a Last-Event-ID cursor for observe streaming.
-func ParseObserveCursor(raw string) (ObserveCursor, error) {
+// ParseLogsCursor parses a Last-Event-ID cursor for logs streaming.
+func ParseLogsCursor(raw string) (LogsCursor, error) {
 	value := strings.TrimSpace(raw)
 	if value == "" {
-		return ObserveCursor{}, nil
+		return LogsCursor{}, nil
 	}
 
 	parts := strings.SplitN(value, "|", 2)
 	if len(parts) != 2 {
-		return ObserveCursor{}, fmt.Errorf("invalid Last-Event-ID %q", value)
+		return LogsCursor{}, fmt.Errorf("invalid Last-Event-ID %q", value)
 	}
 
 	timestamp, err := time.Parse(time.RFC3339Nano, parts[0])
 	if err != nil {
-		return ObserveCursor{}, fmt.Errorf("invalid Last-Event-ID timestamp %q: %w", parts[0], err)
+		return LogsCursor{}, fmt.Errorf("invalid Last-Event-ID timestamp %q: %w", parts[0], err)
 	}
 
-	cursor := ObserveCursor{
+	cursor := LogsCursor{
 		Timestamp: timestamp.UTC(),
 	}
 

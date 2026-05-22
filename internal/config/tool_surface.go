@@ -64,6 +64,7 @@ const (
 	toolSurfaceTaskOrchestrationSchedulerBadTickThresholdPath = "task.orchestration.scheduler_bad_tick_threshold"
 	toolSurfaceTaskOrchestrationSpawnFailureLimitPath         = "task.orchestration.spawn_failure_limit"
 	toolSurfaceTaskOrchestrationSummaryMaxBytesPath           = "task.orchestration.summary_max_bytes"
+	toolSurfaceTaskRecoveryAllowAgentForcePath                = "task.recovery.allow_agent_force"
 	toolSurfaceToolsDefaultMaxResultBytesPath                 = "tools.default_max_result_bytes"
 	toolSurfaceWebhookSecretRefKey                            = "webhook_secret_ref"
 )
@@ -145,6 +146,9 @@ var (
 		"session.supervision.inactivity_warning_after":                ConfigValueDuration,
 		"session.supervision.inactivity_timeout":                      ConfigValueDuration,
 		"session.supervision.timeout_cancel_grace":                    ConfigValueDuration,
+		"session.busy_input.default_mode":                             ConfigValueString,
+		"session.busy_input.queue_cap":                                ConfigValueInt,
+		"session.busy_input.max_text_bytes":                           ConfigValueInt,
 		"memory.enabled":                                              ConfigValueBool,
 		"memory.controller.mode":                                      ConfigValueString,
 		"memory.controller.max_latency":                               ConfigValueDuration,
@@ -255,6 +259,7 @@ var (
 		toolSurfaceTaskOrchestrationReviewReviewTextMaxBytesPath:      ConfigValueInt,
 		reviewNextGuidanceBytesPath:                                   ConfigValueInt,
 		toolSurfaceTaskOrchestrationReviewFailurePolicyPath:           ConfigValueString,
+		toolSurfaceTaskRecoveryAllowAgentForcePath:                    ConfigValueBool,
 		toolSurfaceToolsDefaultMaxResultBytesPath:                     ConfigValueInt64,
 	}
 )

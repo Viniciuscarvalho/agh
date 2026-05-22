@@ -7,9 +7,12 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pedronauck/agh/internal/api/contract"
 	bridgepkg "github.com/pedronauck/agh/internal/bridges"
+	diagnosticcontract "github.com/pedronauck/agh/internal/diagnosticcontract"
+	diagnosticitems "github.com/pedronauck/agh/internal/diagnostics"
 	"github.com/pedronauck/agh/internal/network"
 	taskpkg "github.com/pedronauck/agh/internal/task"
 	"github.com/spf13/cobra"
@@ -64,6 +67,7 @@ const (
 	taskDescriptionKey           = "description"
 	taskEndedAtKey               = "ended_at"
 	taskErrorKey                 = "error"
+	taskFailureKindKey           = "failure_kind"
 	taskGetIDValue               = "get <id>"
 	taskGroupIDKey               = "group_id"
 	taskIdentifierKey            = "identifier"
@@ -72,6 +76,7 @@ const (
 	taskNetworkChannelKey        = "network_channel"
 	taskNextKey                  = "next"
 	taskOriginKey                = "origin"
+	taskOutcomeKey               = "outcome"
 	taskPeerIDKey                = "peer_id"
 	taskProfileKey               = "profile"
 	taskQueuedAtKey              = "queued_at"
@@ -144,6 +149,52 @@ type taskNotificationSubscribeInput struct {
 	DeliveryModeRaw  string
 }
 
+type taskInspectTarget string
+
+const (
+	taskInspectTargetTask taskInspectTarget = "task"
+	taskInspectTargetRun  taskInspectTarget = "run"
+)
+
+func taskInspectTargetForID(id string) taskInspectTarget {
+	trimmed := strings.TrimSpace(id)
+	switch {
+	case strings.HasPrefix(trimmed, "task_"), strings.HasPrefix(trimmed, "task-"):
+		return taskInspectTargetTask
+	case strings.HasPrefix(trimmed, "run_"), strings.HasPrefix(trimmed, "run-"):
+		return taskInspectTargetRun
+	default:
+		return ""
+	}
+}
+
+func cliNow(now func() time.Time) time.Time {
+	if now == nil {
+		return time.Now().UTC()
+	}
+	return now().UTC()
+}
+
+func taskInspectUnknownIDRecord(id string, asOf time.Time) TaskInspectRecord {
+	return TaskInspectRecord{
+		Target:     providerModelAvailabilityUnknown,
+		NextAction: providerModelAvailabilityUnknown,
+		AsOf:       asOf,
+		Diagnostics: []contract.DiagnosticItem{
+			diagnosticitems.NewItem(
+				"task.inspect.id_format_unknown",
+				diagnosticcontract.CodeIDFormatUnknown,
+				diagnosticcontract.CategoryTask,
+				"Task inspect id format is unknown",
+				"Task inspect accepts ids with task_ / task- or run_ / run- prefixes.",
+				diagnosticcontract.SeverityError,
+				diagnosticcontract.FreshnessLive,
+				diagnosticitems.WithEvidence(map[string]any{"id": id}),
+			),
+		},
+	}
+}
+
 func newTaskCommand(deps commandDeps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   taskTaskKey,
@@ -164,6 +215,7 @@ func newTaskCommand(deps commandDeps) *cobra.Command {
 	cmd.AddCommand(newTaskListCommand(deps))
 	cmd.AddCommand(newTaskCreateCommand(deps))
 	cmd.AddCommand(newTaskGetCommand(deps))
+	cmd.AddCommand(newTaskInspectCommand(deps))
 	cmd.AddCommand(newTaskUpdateCommand(deps))
 	cmd.AddCommand(newTaskDeleteCommand(deps))
 	cmd.AddCommand(newTaskProfileCommand(deps))
@@ -179,6 +231,9 @@ func newTaskCommand(deps commandDeps) *cobra.Command {
 	cmd.AddCommand(newTaskCompleteCommand(deps))
 	cmd.AddCommand(newTaskFailCommand(deps))
 	cmd.AddCommand(newTaskReleaseCommand(deps))
+	cmd.AddCommand(newTaskRetryCommand(deps))
+	cmd.AddCommand(newTaskPauseCommand(deps))
+	cmd.AddCommand(newTaskResumeCommand(deps))
 	cmd.AddCommand(newTaskChildCommand(deps))
 	cmd.AddCommand(newTaskDependencyCommand(deps))
 	cmd.AddCommand(newTaskRunCommand(deps))
@@ -337,6 +392,35 @@ func newTaskGetCommand(deps commandDeps) *cobra.Command {
 				return err
 			}
 			return writeCommandOutput(cmd, taskDetailBundle(&taskDetail))
+		},
+	}
+}
+
+func newTaskInspectCommand(deps commandDeps) *cobra.Command {
+	return &cobra.Command{
+		Use:   "inspect <id>",
+		Short: "Inspect a task or run with diagnostics",
+		Args:  exactOneNonBlankArg(),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := clientFromDeps(deps)
+			if err != nil {
+				return err
+			}
+
+			id := strings.TrimSpace(args[0])
+			var inspect TaskInspectRecord
+			switch taskInspectTargetForID(id) {
+			case taskInspectTargetTask:
+				inspect, err = client.InspectTask(cmd.Context(), id)
+			case taskInspectTargetRun:
+				inspect, err = client.InspectRun(cmd.Context(), id)
+			default:
+				inspect = taskInspectUnknownIDRecord(id, cliNow(deps.now))
+			}
+			if err != nil {
+				return err
+			}
+			return writeCommandOutput(cmd, taskInspectBundle(&inspect))
 		},
 	}
 }
@@ -947,7 +1031,7 @@ func newTaskReviewSubmitCommand(deps commandDeps) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&input.RunID, "run", "", "Task run ID")
-	cmd.Flags().StringVar(&input.OutcomeRaw, "outcome", "", "Verdict outcome")
+	cmd.Flags().StringVar(&input.OutcomeRaw, cliOutcomeKey, "", "Verdict outcome")
 	cmd.Flags().Float64Var(&input.Confidence, "confidence", 0, "Verdict confidence from 0 to 1")
 	cmd.Flags().StringVar(&input.Reason, "reason", "", "Verdict reason")
 	cmd.Flags().StringVar(&input.DeliveryID, "delivery-id", "", "Idempotent delivery ID")
@@ -958,7 +1042,7 @@ func newTaskReviewSubmitCommand(deps commandDeps) *cobra.Command {
 	cmd.Flags().
 		BoolVar(&asAgent, "as-agent", false, "Submit review using the current AGH-managed agent session identity")
 	mustMarkFlagRequired(cmd, "run")
-	mustMarkFlagRequired(cmd, "outcome")
+	mustMarkFlagRequired(cmd, cliOutcomeKey)
 	mustMarkFlagRequired(cmd, "confidence")
 	mustMarkFlagRequired(cmd, "reason")
 	mustMarkFlagRequired(cmd, "delivery-id")
@@ -1330,30 +1414,160 @@ func newTaskCompleteCommand(deps commandDeps) *cobra.Command {
 }
 
 func newTaskFailCommand(deps commandDeps) *cobra.Command {
-	var errorMessage string
+	flags := taskFailCommandFlags{}
+
+	cmd := &cobra.Command{
+		Use:   "fail <run-id> [run-id...]",
+		Short: "Fail task runs through a session-bound lease or operator override",
+		Args:  cobra.MinimumNArgs(1),
+		Example: `  # Fail the current session's claimed run
+  agh task fail run-123 --error "provider returned invalid JSON"
+
+  # Force fail one run
+  agh task fail run-123 --reason "operator recovery"
+
+  # Force fail multiple runs with shared audit evidence
+  agh task fail run-123 run-456 \
+    --reason "provider credentials revoked" \
+    --metadata '{"incident":"INC-42"}'`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runTaskFailCommand(cmd, args, deps, flags)
+		},
+	}
+	cmd.Flags().StringVar(&flags.reason, "reason", "", "Forced-failure reason")
+	cmd.Flags().StringVar(&flags.errorMessage, taskErrorKey, "", "Session-bound failure message")
+	cmd.Flags().StringVar(&flags.metadataRaw, "metadata", "", "Optional failure metadata JSON")
+	return cmd
+}
+
+type taskFailCommandFlags struct {
+	reason       string
+	errorMessage string
+	metadataRaw  string
+}
+
+func runTaskFailCommand(
+	cmd *cobra.Command,
+	args []string,
+	deps commandDeps,
+	flags taskFailCommandFlags,
+) error {
+	runIDs, err := requiredTaskRunIDs(args)
+	if err != nil {
+		return err
+	}
+	if cmd.Flags().Changed(taskErrorKey) {
+		return runSessionTaskFailCommand(cmd, deps, runIDs, flags)
+	}
+	return runForceTaskFailCommand(cmd, deps, runIDs, flags)
+}
+
+func runSessionTaskFailCommand(
+	cmd *cobra.Command,
+	deps commandDeps,
+	runIDs []string,
+	flags taskFailCommandFlags,
+) error {
+	if cmd.Flags().Changed("reason") {
+		return errors.New(
+			"cli: choose either --error for session-bound failure or --reason for force failure",
+		)
+	}
+	if len(runIDs) != 1 {
+		return errors.New("cli: --error supports exactly one run id")
+	}
+	request := AgentTaskFailRequest{Error: strings.TrimSpace(flags.errorMessage)}
+	if request.Error == "" {
+		return errors.New("cli: --error is required")
+	}
+	if cmd.Flags().Changed("metadata") {
+		metadata, err := parseAgentTaskJSONFlag("metadata", flags.metadataRaw)
+		if err != nil {
+			return err
+		}
+		request.Metadata = metadata
+	}
+	client, err := clientFromDeps(deps)
+	if err != nil {
+		return err
+	}
+	credentials, err := requireAgentCommandIdentity(
+		cmd.Context(),
+		deps,
+		client,
+		agentActionCLI("task.fail"),
+	)
+	if err != nil {
+		return err
+	}
+	record, err := client.AgentTaskFail(cmd.Context(), runIDs[0], request, credentials)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, agentTaskLeaseBundle(record))
+}
+
+func runForceTaskFailCommand(
+	cmd *cobra.Command,
+	deps commandDeps,
+	runIDs []string,
+	flags taskFailCommandFlags,
+) error {
+	request := ForceFailTaskRunRequest{
+		Reason: strings.TrimSpace(flags.reason),
+	}
+	if request.Reason == "" {
+		return errors.New("cli: --reason is required")
+	}
+	if cmd.Flags().Changed("metadata") {
+		metadata, err := parseAgentTaskJSONFlag("metadata", flags.metadataRaw)
+		if err != nil {
+			return err
+		}
+		request.Metadata = metadata
+	}
+	client, err := clientFromDeps(deps)
+	if err != nil {
+		return err
+	}
+	if len(runIDs) == 1 {
+		record, err := client.ForceFailTaskRun(cmd.Context(), runIDs[0], request)
+		if err != nil {
+			return err
+		}
+		return writeCommandOutput(cmd, taskRunBundle(record))
+	}
+	record, err := client.BulkForceFailTaskRuns(cmd.Context(), BulkForceTaskRunRequest{
+		RunIDs:   runIDs,
+		Reason:   request.Reason,
+		Metadata: request.Metadata,
+	})
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, bulkForceTaskRunBundle(record))
+}
+
+func newTaskReleaseCommand(deps commandDeps) *cobra.Command {
+	var reason string
 	var metadataRaw string
 
 	cmd := &cobra.Command{
-		Use:   "fail <run-id>",
-		Short: "Fail a claimed task run for the current agent session",
-		Args:  cobra.ExactArgs(1),
-		Example: `  # Mark a claimed run failed
-  agh task fail run-123 --error "tests failed"
+		Use:   "release <run-id> [run-id...]",
+		Short: "Force release claimed task runs back to the queue",
+		Args:  cobra.MinimumNArgs(1),
+		Example: `  # Release a claim without completing the run
+  agh task release run-123
 
-	  # Include structured failure metadata
-	  agh task fail run-123 \
-	    --error "tests failed" \
-	    --metadata '{"command":"make test"}'`,
+  # Release multiple claims with shared audit evidence
+  agh task release run-123 run-456 --reason handoff`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			runID, err := requiredAgentTaskRunID(args[0])
+			runIDs, err := requiredTaskRunIDs(args)
 			if err != nil {
 				return err
 			}
-			request := AgentTaskFailRequest{
-				Error: strings.TrimSpace(errorMessage),
-			}
-			if request.Error == "" {
-				return errors.New("cli: --error is required")
+			request := ForceReleaseTaskRunRequest{
+				Reason: strings.TrimSpace(reason),
 			}
 			if cmd.Flags().Changed("metadata") {
 				request.Metadata, err = parseAgentTaskJSONFlag("metadata", metadataRaw)
@@ -1366,65 +1580,140 @@ func newTaskFailCommand(deps commandDeps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			credentials, err := requireAgentCommandIdentity(cmd.Context(), deps, client, agentActionCLI("task.fail"))
+			if len(runIDs) == 1 {
+				record, err := client.ForceReleaseTaskRun(cmd.Context(), runIDs[0], request)
+				if err != nil {
+					return err
+				}
+				return writeCommandOutput(cmd, taskRunBundle(record))
+			}
+			record, err := client.BulkForceReleaseTaskRuns(cmd.Context(), BulkForceTaskRunRequest{
+				RunIDs:   runIDs,
+				Reason:   request.Reason,
+				Metadata: request.Metadata,
+			})
 			if err != nil {
 				return err
 			}
-			record, err := client.AgentTaskFail(cmd.Context(), runID, request, credentials)
-			if err != nil {
-				return err
-			}
-			return writeCommandOutput(cmd, agentTaskLeaseBundle(record))
+			return writeCommandOutput(cmd, bulkForceTaskRunBundle(record))
 		},
 	}
-	cmd.Flags().StringVar(&errorMessage, taskErrorKey, "", "Failure message")
-	cmd.Flags().StringVar(&metadataRaw, "metadata", "", "Optional failure metadata JSON")
-	mustMarkFlagRequired(cmd, taskErrorKey)
+	cmd.Flags().StringVar(&reason, "reason", "", "Optional release reason")
+	cmd.Flags().StringVar(&metadataRaw, "metadata", "", "Optional release metadata JSON")
 	return cmd
 }
 
-func newTaskReleaseCommand(deps commandDeps) *cobra.Command {
-	var reason string
+func newTaskRetryCommand(deps commandDeps) *cobra.Command {
+	var metadataRaw string
 
 	cmd := &cobra.Command{
-		Use:   "release <run-id>",
-		Short: "Release a claimed task run for the current agent session",
+		Use:   "retry <run-id>",
+		Short: "Retry one failed task run",
 		Args:  cobra.ExactArgs(1),
-		Example: `  # Release a claim without completing the run
-  agh task release run-123
-
-	  # Include a structured reason for observability
-  agh task release run-123 --reason handoff`,
+		Example: `  # Re-enqueue one failed run
+  agh task retry run-123`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			runID, err := requiredAgentTaskRunID(args[0])
+			runIDs, err := requiredTaskRunIDs(args)
 			if err != nil {
 				return err
 			}
-			request := AgentTaskReleaseRequest{
-				Reason: strings.TrimSpace(reason),
+			request := RetryTaskRunRequest{}
+			if cmd.Flags().Changed("metadata") {
+				request.Metadata, err = parseAgentTaskJSONFlag("metadata", metadataRaw)
+				if err != nil {
+					return err
+				}
 			}
-
 			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
-			credentials, err := requireAgentCommandIdentity(
-				cmd.Context(),
-				deps,
-				client,
-				agentActionCLI("task.release"),
-			)
+			record, err := client.RetryTaskRun(cmd.Context(), runIDs[0], request)
 			if err != nil {
 				return err
 			}
-			record, err := client.AgentTaskRelease(cmd.Context(), runID, request, credentials)
-			if err != nil {
-				return err
-			}
-			return writeCommandOutput(cmd, agentTaskLeaseBundle(record))
+			return writeCommandOutput(cmd, retryTaskRunBundle(&record))
 		},
 	}
-	cmd.Flags().StringVar(&reason, "reason", "", "Optional release reason")
+	cmd.Flags().StringVar(&metadataRaw, "metadata", "", "Optional retry metadata JSON")
+	return cmd
+}
+
+func newTaskPauseCommand(deps commandDeps) *cobra.Command {
+	var reason string
+	var metadataRaw string
+
+	cmd := &cobra.Command{
+		Use:   "pause <task-id>",
+		Short: "Pause new runs for one task",
+		Args:  cobra.ExactArgs(1),
+		Example: `  # Pause a noisy task while current claims finish
+  agh task pause task-123 --reason "provider incident"`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			taskID, err := requiredTaskID(args[0])
+			if err != nil {
+				return err
+			}
+			request := PauseTaskRequest{Reason: strings.TrimSpace(reason)}
+			if request.Reason == "" {
+				return errors.New("cli: --reason is required")
+			}
+			if cmd.Flags().Changed("metadata") {
+				request.Metadata, err = parseAgentTaskJSONFlag("metadata", metadataRaw)
+				if err != nil {
+					return err
+				}
+			}
+			client, err := clientFromDeps(deps)
+			if err != nil {
+				return err
+			}
+			record, err := client.PauseTask(cmd.Context(), taskID, request)
+			if err != nil {
+				return err
+			}
+			return writeCommandOutput(cmd, taskBundle(record))
+		},
+	}
+	cmd.Flags().StringVar(&reason, "reason", "", "Task-pause reason")
+	cmd.Flags().StringVar(&metadataRaw, "metadata", "", "Optional task-pause metadata JSON")
+	mustMarkFlagRequired(cmd, "reason")
+	return cmd
+}
+
+func newTaskResumeCommand(deps commandDeps) *cobra.Command {
+	var metadataRaw string
+
+	cmd := &cobra.Command{
+		Use:   "resume <task-id>",
+		Short: "Resume new runs for one paused task",
+		Args:  cobra.ExactArgs(1),
+		Example: `  # Re-enable scheduler claims for a task
+  agh task resume task-123`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			taskID, err := requiredTaskID(args[0])
+			if err != nil {
+				return err
+			}
+			request := ResumeTaskRequest{}
+			if cmd.Flags().Changed("metadata") {
+				request.Metadata, err = parseAgentTaskJSONFlag("metadata", metadataRaw)
+				if err != nil {
+					return err
+				}
+			}
+			client, err := clientFromDeps(deps)
+			if err != nil {
+				return err
+			}
+			record, err := client.ResumeTask(cmd.Context(), taskID, request)
+			if err != nil {
+				return err
+			}
+			return writeCommandOutput(cmd, taskBundle(record))
+		},
+	}
+	cmd.Flags().StringVar(&metadataRaw, "metadata", "", "Optional task-resume metadata JSON")
 	return cmd
 }
 
@@ -2142,6 +2431,29 @@ func requiredAgentTaskRunID(rawRunID string) (string, error) {
 	return runID, nil
 }
 
+func requiredTaskID(rawTaskID string) (string, error) {
+	taskID := strings.TrimSpace(rawTaskID)
+	if taskID == "" {
+		return "", errors.New("cli: task id is required")
+	}
+	return taskID, nil
+}
+
+func requiredTaskRunIDs(rawRunIDs []string) ([]string, error) {
+	if len(rawRunIDs) == 0 {
+		return nil, errors.New("cli: at least one run id is required")
+	}
+	runIDs := make([]string, 0, len(rawRunIDs))
+	for _, rawRunID := range rawRunIDs {
+		runID, err := requiredAgentTaskRunID(rawRunID)
+		if err != nil {
+			return nil, err
+		}
+		runIDs = append(runIDs, runID)
+	}
+	return runIDs, nil
+}
+
 func validateAgentTaskLeaseSeconds(seconds int64) error {
 	if seconds < 0 {
 		return fmt.Errorf("cli: --lease-seconds must be zero or positive: %d", seconds)
@@ -2303,6 +2615,9 @@ func taskBundle(item TaskRecord) outputBundle {
 				{Label: taskTitleValue, Value: stringOrDash(item.Title)},
 				{Label: taskDescriptionValue, Value: stringOrDash(item.Description)},
 				{Label: taskStatusValue, Value: stringOrDash(string(item.Status))},
+				{Label: "Paused", Value: strconv.FormatBool(item.Paused)},
+				{Label: "Paused By", Value: stringOrDash(item.PausedBy)},
+				{Label: taskReasonValue, Value: stringOrDash(item.PausedReason)},
 				{Label: taskOwnerValue, Value: stringOrDash(formatTaskOwnership(item.Owner))},
 				{Label: taskCreatedByValue, Value: stringOrDash(formatTaskActor(item.CreatedBy))},
 				{Label: taskOriginValue, Value: stringOrDash(formatTaskOrigin(item.Origin))},
@@ -2323,6 +2638,9 @@ func taskBundle(item TaskRecord) outputBundle {
 				taskTitleKey,
 				taskDescriptionKey,
 				taskStatusKey,
+				"paused",
+				"paused_by",
+				"paused_reason",
 				taskOwnerKey,
 				"created_by",
 				taskOriginKey,
@@ -2340,6 +2658,9 @@ func taskBundle(item TaskRecord) outputBundle {
 				item.Title,
 				item.Description,
 				string(item.Status),
+				strconv.FormatBool(item.Paused),
+				item.PausedBy,
+				item.PausedReason,
 				formatTaskOwnership(item.Owner),
 				formatTaskActor(item.CreatedBy),
 				formatTaskOrigin(item.Origin),
@@ -2600,7 +2921,7 @@ func taskRunReviewListBundle(items []TaskRunReviewRecord) outputBundle {
 			taskTaskIDKey,
 			taskRunIDKey,
 			taskStatusKey,
-			"outcome",
+			cliOutcomeKey,
 			"reviewer_session_id",
 			taskUpdatedAtKey,
 		},
@@ -2770,6 +3091,232 @@ func taskDetailBundle(detail *TaskDetailRecord) outputBundle {
 	}
 }
 
+func taskInspectBundle(record *TaskInspectRecord) outputBundle {
+	return outputBundle{
+		jsonValue: record,
+		human:     func() (string, error) { return renderTaskInspectHuman(record) },
+		toon:      func() (string, error) { return renderTaskInspectToon(record) },
+	}
+}
+
+func renderTaskInspectHuman(record *TaskInspectRecord) (string, error) {
+	blocks := []string{
+		renderHumanSection("Task Inspect", []keyValue{
+			{Label: "Target", Value: stringOrDash(record.Target)},
+			{Label: taskTaskValue, Value: stringOrDash(record.Task.ID)},
+			{Label: taskTitleValue, Value: stringOrDash(record.Task.Title)},
+			{Label: taskStatusValue, Value: stringOrDash(string(record.Task.Status))},
+			{Label: "Current Run", Value: stringOrDash(taskInspectCurrentRunID(record.CurrentRun))},
+			{Label: cliNextActionValue, Value: stringOrDash(record.NextAction)},
+			{Label: "As Of", Value: stringOrDash(formatTime(record.AsOf))},
+		}),
+	}
+	if record.CurrentRun != nil {
+		blocks = append(blocks, renderHumanSection("Current Run", taskInspectRunSectionRows(record.CurrentRun)))
+	}
+	if record.BoundSession != nil {
+		blocks = append(blocks, renderHumanSection("Bound Session", taskInspectSessionRows(record.BoundSession)))
+	}
+	blocks = append(
+		blocks,
+		renderHumanTable(
+			"Diagnostics",
+			[]string{cliCodeValue, cliSeverityValue, "Message", cliCommandValue},
+			taskInspectDiagnosticRows(record.Diagnostics),
+		),
+		renderHumanTable(
+			"Recent Runs",
+			[]string{
+				taskRunValue,
+				taskStatusValue,
+				taskAttemptValue,
+				taskSessionValue,
+				cliHashValue,
+				"Heartbeat Age",
+				taskErrorValue,
+			},
+			taskInspectRunRows(record.RecentRuns),
+		),
+		renderHumanTable(
+			"Recent Events",
+			[]string{"ID", taskTypeValue, taskRunValue, taskOutcomeValue, authoredContextSummaryValue, taskTimeValue},
+			taskInspectEventRows(record.RecentEvents),
+		),
+	)
+	return renderHumanBlocks(blocks...), nil
+}
+
+func renderTaskInspectToon(record *TaskInspectRecord) (string, error) {
+	blocks := []string{
+		renderToonObject("task_inspect", []string{
+			"target",
+			taskTaskIDKey,
+			taskTitleKey,
+			taskStatusKey,
+			"current_run_id",
+			"next_action",
+			"as_of",
+		}, []string{
+			record.Target,
+			record.Task.ID,
+			record.Task.Title,
+			string(record.Task.Status),
+			taskInspectCurrentRunID(record.CurrentRun),
+			record.NextAction,
+			formatTime(record.AsOf),
+		}),
+		renderToonArray(
+			"diagnostics",
+			[]string{"code", "severity", "message", "command"},
+			taskInspectDiagnosticToonRows(record.Diagnostics),
+		),
+		renderToonArray(
+			"recent_runs",
+			[]string{
+				taskRunIDKey,
+				taskStatusKey,
+				taskAttemptKey,
+				taskSessionIDKey,
+				"hash",
+				"heartbeat_age_seconds",
+				taskErrorKey,
+			},
+			taskInspectRunToonRows(record.RecentRuns),
+		),
+		renderToonArray(
+			"recent_events",
+			[]string{"id", extensionTypeKey, taskRunIDKey, taskOutcomeKey, memorySummaryKey, taskTimestampKey},
+			taskInspectEventToonRows(record.RecentEvents),
+		),
+	}
+	return renderHumanBlocks(blocks...), nil
+}
+
+func taskInspectRunSectionRows(run *contract.TaskInspectRunPayload) []keyValue {
+	return []keyValue{
+		{Label: taskRunValue, Value: stringOrDash(run.RunID)},
+		{Label: taskTaskValue, Value: stringOrDash(run.TaskID)},
+		{Label: taskStatusValue, Value: stringOrDash(string(run.Status))},
+		{Label: taskAttemptValue, Value: intOrDash(run.Attempt)},
+		{Label: taskSessionValue, Value: stringOrDash(run.BoundSessionID)},
+		{Label: "Claim Hash", Value: stringOrDash(run.ClaimTokenHashTruncated)},
+		{Label: "Lease Until", Value: stringOrDash(formatTimePtr(run.LeaseUntil))},
+		{Label: "Heartbeat Age", Value: stringOrDash(taskInspectHeartbeatAge(run.HeartbeatAgeSeconds))},
+		{Label: taskErrorValue, Value: stringOrDash(run.LastErrorSummary)},
+	}
+}
+
+func taskInspectSessionRows(session *contract.TaskInspectSessionPayload) []keyValue {
+	return []keyValue{
+		{Label: taskSessionValue, Value: stringOrDash(session.SessionID)},
+		{Label: taskStatusValue, Value: stringOrDash(session.State)},
+		{Label: "Agent", Value: stringOrDash(session.AgentName)},
+		{Label: installProviderValue, Value: stringOrDash(session.ProviderName)},
+		{Label: taskWorkspaceValue, Value: stringOrDash(session.WorkspaceID)},
+		{Label: taskStartedValue, Value: stringOrDash(formatTimePtr(session.StartedAt))},
+		{Label: "Last Activity", Value: stringOrDash(formatTimePtr(session.LastActivityAt))},
+		{Label: taskReasonValue, Value: stringOrDash(session.StopReason)},
+		{Label: "Failure", Value: stringOrDash(session.FailureKind)},
+	}
+}
+
+func taskInspectDiagnosticRows(items []contract.DiagnosticItem) [][]string {
+	rows := make([][]string, 0, len(items))
+	for _, item := range items {
+		rows = append(rows, []string{
+			stringOrDash(item.Code),
+			stringOrDash(item.Severity),
+			stringOrDash(item.Message),
+			stringOrDash(item.SuggestedCommand),
+		})
+	}
+	return rows
+}
+
+func taskInspectDiagnosticToonRows(items []contract.DiagnosticItem) [][]string {
+	rows := make([][]string, 0, len(items))
+	for _, item := range items {
+		rows = append(rows, []string{item.Code, item.Severity, item.Message, item.SuggestedCommand})
+	}
+	return rows
+}
+
+func taskInspectRunRows(items []contract.TaskInspectRunPayload) [][]string {
+	rows := make([][]string, 0, len(items))
+	for _, item := range items {
+		rows = append(rows, []string{
+			stringOrDash(item.RunID),
+			stringOrDash(string(item.Status)),
+			intOrDash(item.Attempt),
+			stringOrDash(item.BoundSessionID),
+			stringOrDash(item.ClaimTokenHashTruncated),
+			stringOrDash(taskInspectHeartbeatAge(item.HeartbeatAgeSeconds)),
+			stringOrDash(item.LastErrorSummary),
+		})
+	}
+	return rows
+}
+
+func taskInspectRunToonRows(items []contract.TaskInspectRunPayload) [][]string {
+	rows := make([][]string, 0, len(items))
+	for _, item := range items {
+		rows = append(rows, []string{
+			item.RunID,
+			string(item.Status),
+			strconv.Itoa(item.Attempt),
+			item.BoundSessionID,
+			item.ClaimTokenHashTruncated,
+			taskInspectHeartbeatAge(item.HeartbeatAgeSeconds),
+			item.LastErrorSummary,
+		})
+	}
+	return rows
+}
+
+func taskInspectEventRows(items []contract.TaskInspectEventPayload) [][]string {
+	rows := make([][]string, 0, len(items))
+	for _, item := range items {
+		rows = append(rows, []string{
+			stringOrDash(item.ID),
+			stringOrDash(item.Type),
+			stringOrDash(item.RunID),
+			stringOrDash(item.Outcome),
+			stringOrDash(item.Summary),
+			stringOrDash(formatTime(item.Timestamp)),
+		})
+	}
+	return rows
+}
+
+func taskInspectEventToonRows(items []contract.TaskInspectEventPayload) [][]string {
+	rows := make([][]string, 0, len(items))
+	for _, item := range items {
+		rows = append(rows, []string{
+			item.ID,
+			item.Type,
+			item.RunID,
+			item.Outcome,
+			item.Summary,
+			formatTime(item.Timestamp),
+		})
+	}
+	return rows
+}
+
+func taskInspectCurrentRunID(run *contract.TaskInspectRunPayload) string {
+	if run == nil {
+		return ""
+	}
+	return run.RunID
+}
+
+func taskInspectHeartbeatAge(value *int64) string {
+	if value == nil {
+		return ""
+	}
+	return int64OrDash(*value)
+}
+
 func renderTaskDetailHuman(detail *TaskDetailRecord) (string, error) {
 	taskBlock, err := taskBundle(detail.Task).human()
 	if err != nil {
@@ -2879,6 +3426,8 @@ func taskRunBundle(item TaskRunRecord) outputBundle {
 				{Label: taskTaskValue, Value: stringOrDash(item.TaskID)},
 				{Label: taskStatusValue, Value: stringOrDash(string(item.Status))},
 				{Label: taskAttemptValue, Value: intOrDash(item.Attempt)},
+				{Label: "Previous Run", Value: stringOrDash(item.PreviousRunID)},
+				{Label: "Failure Kind", Value: stringOrDash(item.FailureKind)},
 				{Label: taskClaimedByValue, Value: stringOrDash(formatTaskActorPtr(item.ClaimedBy))},
 				{Label: taskSessionValue, Value: stringOrDash(item.SessionID)},
 				{Label: taskOriginValue, Value: stringOrDash(formatTaskOrigin(item.Origin))},
@@ -2899,6 +3448,8 @@ func taskRunBundle(item TaskRunRecord) outputBundle {
 				taskTaskIDKey,
 				taskStatusKey,
 				taskAttemptKey,
+				"previous_run_id",
+				taskFailureKindKey,
 				taskClaimedByKey,
 				taskSessionIDKey,
 				taskOriginKey,
@@ -2916,6 +3467,8 @@ func taskRunBundle(item TaskRunRecord) outputBundle {
 				item.TaskID,
 				string(item.Status),
 				strconv.Itoa(item.Attempt),
+				item.PreviousRunID,
+				item.FailureKind,
 				formatTaskActorPtr(item.ClaimedBy),
 				item.SessionID,
 				formatTaskOrigin(item.Origin),
@@ -2931,6 +3484,86 @@ func taskRunBundle(item TaskRunRecord) outputBundle {
 			}), nil
 		},
 	}
+}
+
+func retryTaskRunBundle(record *RetryTaskRunRecord) outputBundle {
+	return outputBundle{
+		jsonValue: record,
+		human: func() (string, error) {
+			return renderHumanSection("Task Run Retry", []keyValue{
+				{Label: "Source Run", Value: stringOrDash(record.PreviousRun.ID)},
+				{Label: "Source Status", Value: stringOrDash(string(record.PreviousRun.Status))},
+				{Label: "New Run", Value: stringOrDash(record.Run.ID)},
+				{Label: taskTaskValue, Value: stringOrDash(record.Run.TaskID)},
+				{Label: taskStatusValue, Value: stringOrDash(string(record.Run.Status))},
+				{Label: taskAttemptValue, Value: intOrDash(record.Run.Attempt)},
+			}), nil
+		},
+		toon: func() (string, error) {
+			return renderToonObject("task_run_retry", []string{
+				"source_run_id",
+				"source_status",
+				"new_run_id",
+				taskTaskIDKey,
+				taskStatusKey,
+				taskAttemptKey,
+			}, []string{
+				record.PreviousRun.ID,
+				string(record.PreviousRun.Status),
+				record.Run.ID,
+				record.Run.TaskID,
+				string(record.Run.Status),
+				strconv.Itoa(record.Run.Attempt),
+			}), nil
+		},
+	}
+}
+
+func bulkForceTaskRunBundle(record BulkForceTaskRunRecord) outputBundle {
+	return listBundle(
+		record,
+		record.Results,
+		"Task Run Force Operations",
+		[]string{"Run ID", "OK", taskStatusValue, taskErrorValue},
+		"task_run_force_operations",
+		[]string{taskRunIDKey, "ok", taskStatusKey, taskErrorKey},
+		func(item BulkForceTaskRunItemRecord) []string {
+			return []string{
+				item.RunID,
+				strconv.FormatBool(item.OK),
+				bulkForceTaskRunStatus(item),
+				bulkForceTaskRunError(item),
+			}
+		},
+		func(item BulkForceTaskRunItemRecord) []string {
+			return []string{
+				item.RunID,
+				strconv.FormatBool(item.OK),
+				bulkForceTaskRunStatus(item),
+				bulkForceTaskRunError(item),
+			}
+		},
+	)
+}
+
+func bulkForceTaskRunStatus(item BulkForceTaskRunItemRecord) string {
+	if item.Run == nil {
+		return ""
+	}
+	return string(item.Run.Status)
+}
+
+func bulkForceTaskRunError(item BulkForceTaskRunItemRecord) string {
+	if item.Error == nil {
+		return ""
+	}
+	if strings.TrimSpace(item.Error.Error) != "" {
+		return item.Error.Error
+	}
+	if item.Error.Diagnostic != nil {
+		return item.Error.Diagnostic.Code
+	}
+	return ""
 }
 
 func taskRunListBundle(items []TaskRunRecord) outputBundle {

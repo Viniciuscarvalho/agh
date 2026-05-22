@@ -3,8 +3,10 @@ title: config.toml
 description: Complete AGH config.toml schema, defaults, valid values, merge behavior, and annotated examples.
 ---
 
-`config.toml` is the main AGH runtime configuration file. AGH loads the built-in defaults, then
-overlays global and workspace files when they exist.
+`config.toml` is the main AGH runtime desired-state file. AGH loads the built-in defaults, then
+overlays global and workspace files when they exist. The daemon only treats a change as runtime
+truth after `ConfigApplyService` advances the active generation and writes a `config_apply_records`
+audit row.
 
 | File                           | Scope                 | Loaded when                                                        |
 | ------------------------------ | --------------------- | ------------------------------------------------------------------ |
@@ -27,6 +29,7 @@ Use only `[sandboxes.<name>]` for session execution boundaries.
 | Section                              | Purpose                                                                         | Default                                                                            |
 | ------------------------------------ | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | `[daemon]`                           | Unix domain socket path for CLI and UDS API traffic.                            | `socket = "$AGH_HOME/daemon.sock"`                                                 |
+| `[daemon.reload_timeouts]`           | Live reload timeout budgets for provider, MCP, and bridge subsystem applies.    | providers `5s`, MCP `10s`, bridges `30s`                                           |
 | `[http]`                             | HTTP and SSE bind address.                                                      | `host = "localhost"`, `port = 2123`                                                |
 | `[defaults]`                         | Default agent, provider, and sandbox resolution.                                | `agent = "general"`, `provider = ""`, `sandbox = ""`                               |
 | `[limits]`                           | Daemon-level concurrently running agent cap.                                    | `max_concurrent_agents = 20`                                                       |
@@ -44,7 +47,7 @@ Use only `[sandboxes.<name>]` for session execution boundaries.
 | `[sandboxes.<name>]`                 | Local or provider-backed execution sandbox profiles.                            | local backend when no profile is selected                                          |
 | `[observability]`                    | Event summary retention and global byte cap.                                    | enabled, 7 days, 1 GiB                                                             |
 | `[observability.transcripts]`        | Transcript segment sizing and per-session cap.                                  | enabled, 1 MiB segments, 256 MiB per session                                       |
-| `[log]`                              | Structured log level.                                                           | `level = "info"`                                                                   |
+| `[log]`                              | Structured log level and daemon-owned rotation.                                 | `level = "info"`, 10 MiB, 5 backups, 30 days, compression off                      |
 | `[memory]`                           | Persistent memory runtime and global memory directory.                          | enabled, `$AGH_HOME/memory`                                                        |
 | `[memory.controller]`                | Hybrid write controller mode, latency, and fallback op.                         | hybrid, 300 ms, noop                                                               |
 | `[memory.controller.llm]`            | Controller LLM tiebreaker.                                                      | enabled, `anthropic/claude-haiku-4`, 250 ms, top_k 5                               |
@@ -68,6 +71,7 @@ Use only `[sandboxes.<name>]` for session execution boundaries.
 | `[task.orchestration]`               | Bounds for run summaries, context bundles, scheduler health, and max-runtime.   | 4 KiB summaries, 8 KiB context, prior 5/recent 50 events, spawn fail limit 5       |
 | `[task.orchestration.profile]`       | Defaults and gates for task execution profiles.                                 | inherit coordinator/worker/sandbox; provider override + sandbox `none` allowed     |
 | `[task.orchestration.review]`        | Defaults and bounds for the post-terminal review gate.                          | policy `none`, max rounds 3, max attempts 2, timeout 20m, failure `block_task`     |
+| `[task.recovery]`                    | Gates agent access to task-run force recovery verbs.                            | agents may force release, force fail, and retry                                    |
 | `[[hooks.declarations]]`             | Config-defined runtime hooks.                                                   | empty list                                                                         |
 | `[network]`                          | Experimental AGH network runtime.                                               | enabled, channel `default`                                                         |
 
@@ -97,6 +101,14 @@ global and workspace MCP sidecars for session and runtime resolution.
 [daemon]
 # Path to the Unix domain socket used by AGH CLI commands.
 socket = "~/.agh/daemon.sock"
+
+[daemon.reload_timeouts]
+# Provider runtime reload budget. Valid range: 1s to 60s.
+providers = "5s"
+# MCP runtime reload budget. Valid range: 1s to 60s.
+mcp = "10s"
+# Bridge runtime reload budget. Valid range: 1s to 300s.
+bridges = "30s"
 
 [http]
 # HTTP/SSE API bind address.
@@ -281,6 +293,10 @@ max_bytes_per_session = 268435456
 
 [log]
 level = "info"
+max_size_mb = 10
+max_backups = 5
+max_age_days = 30
+compress_backups = false
 
 [memory]
 enabled = true
@@ -503,6 +519,11 @@ review_text_max_bytes = 12000
 next_round_guidance_max_bytes = 4096
 failure_policy = "block_task"
 
+[task.recovery]
+# When true, agent identities may use force release, force fail, retry, and bulk recovery surfaces.
+# Set false to reserve those verbs for non-agent operator identities.
+allow_agent_force = true
+
 [[hooks.declarations]]
 name = "record-session-start"
 event = "session.post_create"
@@ -679,8 +700,8 @@ They can point at local stdio processes or remote HTTP/SSE MCP endpoints.
 
 OAuth-enabled remote servers store only metadata in config. Token material is kept in the AGH
 Vault as encrypted refs and is exposed through API, settings, CLI, logs, and the agent-callable
-`agh__mcp_auth_status` tool only as redacted status. Login/logout happen on CLI and HTTP. These are
-operator-only management flows.
+`agh__mcp_status` / `agh__mcp_auth_status` tools only as redacted status. Login/logout happen on
+CLI and HTTP. These are operator-only management flows.
 
 | `auth` field        | Type         | Required    | Description                                                                                             |
 | ------------------- | ------------ | ----------- | ------------------------------------------------------------------------------------------------------- |
@@ -704,9 +725,10 @@ agh mcp auth status remote-docs --refresh
 agh mcp auth logout remote-docs
 ```
 
-Agents can read the same redacted status from inside a session through the
-`agh__mcp_auth_status` tool. The tool never triggers an OAuth browser flow; missing or expired
-authentication is repaired through the operator login/logout commands above.
+Agents can read the same redacted status from inside a session through `agh__mcp_status` or
+`agh__mcp_auth_status`. These tools never trigger an OAuth browser flow; missing or expired
+authentication is repaired through the operator login/logout commands above. Auth-blocked MCP
+tools are omitted from callable discovery while status/probe output explains the repair path.
 
 ## `[providers.<name>]`
 
@@ -715,23 +737,24 @@ Provider keys override built-ins with the same name or create a custom provider.
 `goose`, `hermes`, `junie`, `kimi-cli`, `openclaw`, `openhands`, `qoder`, `qwen-code`, `pi`,
 `openrouter`, `zai`, `moonshot`, `vercel-ai-gateway`, `xai`, `minimax`, `mistral`, and `groq`.
 
-| Field                 | Type                        | Default                                                                           | Valid values                                      | Description                                                                                                                    |
-| --------------------- | --------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `command`             | string                      | Built-in command or empty for custom providers.                                   | Required after built-in plus override resolution. | ACP launch command for this provider.                                                                                          |
-| `display_name`        | string                      | Built-in label or empty.                                                          | Any string.                                       | Operator-facing label shown in settings and provider pickers.                                                                  |
-| `models`              | table                       | Built-in defaults or empty.                                                       | Nested model config block (see below).            | Pre-session model defaults, curated metadata, and optional discovery wiring.                                                   |
-| `harness`             | string                      | `acp` unless a built-in sets `pi_acp`.                                            | `acp`, `pi_acp`.                                  | Launch strategy. `pi_acp` routes the provider through Pi's ACP adapter.                                                        |
-| `runtime_provider`    | string                      | Provider key.                                                                     | Harness-specific provider id.                     | Downstream provider id used by Pi and other harnesses.                                                                         |
-| `transport`           | string                      | empty.                                                                            | Harness-specific string.                          | Optional Pi models override transport/API family.                                                                              |
-| `base_url`            | string                      | empty.                                                                            | URL string.                                       | Optional Pi models override base URL for custom gateways.                                                                      |
-| `auth_mode`           | string                      | `bound_secret` only when credential slots are configured; otherwise `native_cli`. | `native_cli`, `bound_secret`, `none`.             | Declares whether auth belongs to the provider CLI, AGH secret binding, or no auth.                                             |
-| `env_policy`          | string                      | `filtered`.                                                                       | `filtered`, `isolated`.                           | Controls which daemon environment variables the provider subprocess inherits.                                                  |
-| `home_policy`         | string                      | `operator`.                                                                       | `operator`, `isolated`.                           | Controls whether native CLI state comes from the operator home or an AGH provider home.                                        |
-| `auth_status_command` | string                      | empty.                                                                            | Shell-style command string.                       | Optional status probe run by `agh provider auth status <provider>`.                                                            |
-| `auth_login_command`  | string                      | empty unless a built-in provider defines one.                                     | Shell-style command string.                       | Optional login command surfaced by `agh provider auth login <provider>`; isolated homes print the required environment prefix. |
-| `session_mcp`         | boolean                     | `true` unless a provider disables it.                                             | `true`, `false`.                                  | Enables AGH session MCP injection for providers that support it.                                                               |
-| `credential_slots`    | array                       | empty.                                                                            | See below.                                        | Bound secret refs injected into provider subprocess environment variables at launch.                                           |
-| `mcp_servers`         | array of MCP server objects | empty.                                                                            | Same shape as `[[mcp_servers]]`.                  | Provider-specific MCP servers merged after top-level config and before agent MCP servers.                                      |
+| Field                 | Type                        | Default                                                                           | Valid values                                               | Description                                                                                                                    |
+| --------------------- | --------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `command`             | string                      | Built-in command or empty for custom providers.                                   | Required after built-in plus override resolution.          | ACP launch command for this provider.                                                                                          |
+| `display_name`        | string                      | Built-in label or empty.                                                          | Any string.                                                | Operator-facing label shown in settings and provider pickers.                                                                  |
+| `models`              | table                       | Built-in defaults or empty.                                                       | Nested model config block (see below).                     | Pre-session model defaults, curated metadata, and optional discovery wiring.                                                   |
+| `harness`             | string                      | `acp` unless a built-in sets `pi_acp`.                                            | `acp`, `pi_acp`.                                           | Launch strategy. `pi_acp` routes the provider through Pi's ACP adapter.                                                        |
+| `runtime_provider`    | string                      | Provider key.                                                                     | Harness-specific provider id.                              | Downstream provider id used by Pi and other harnesses.                                                                         |
+| `transport`           | string                      | empty.                                                                            | Harness-specific string.                                   | Optional Pi models override transport/API family.                                                                              |
+| `base_url`            | string                      | empty.                                                                            | URL string.                                                | Optional Pi models override base URL for custom gateways.                                                                      |
+| `auth_mode`           | string                      | `bound_secret` only when credential slots are configured; otherwise `native_cli`. | `native_cli`, `bound_secret`, `none`.                      | Declares whether auth belongs to the provider CLI, AGH secret binding, or no auth.                                             |
+| `none_security`       | string                      | `local_transport`.                                                                | `local_transport`, `external_identity`, `public_readonly`. | Safety rationale required for `auth_mode = "none"`.                                                                            |
+| `env_policy`          | string                      | `filtered`.                                                                       | `filtered`, `isolated`.                                    | Controls which daemon environment variables the provider subprocess inherits.                                                  |
+| `home_policy`         | string                      | `operator`.                                                                       | `operator`, `isolated`.                                    | Controls whether native CLI state comes from the operator home or an AGH provider home.                                        |
+| `auth_status_command` | string                      | empty.                                                                            | Shell-style command string.                                | Optional status probe run by `agh provider auth status <provider>`.                                                            |
+| `auth_login_command`  | string                      | empty unless a built-in provider defines one.                                     | Shell-style command string.                                | Optional login command surfaced by `agh provider auth login <provider>`; isolated homes print the required environment prefix. |
+| `session_mcp`         | boolean                     | `true` unless a provider disables it.                                             | `true`, `false`.                                           | Enables AGH session MCP injection for providers that support it.                                                               |
+| `credential_slots`    | array                       | empty.                                                                            | See below.                                                 | Bound secret refs injected into provider subprocess environment variables at launch.                                           |
+| `mcp_servers`         | array of MCP server objects | empty.                                                                            | Same shape as `[[mcp_servers]]`.                           | Provider-specific MCP servers merged after top-level config and before agent MCP servers.                                      |
 
 The flat keys `default_model`, `supported_models`, and `supports_reasoning_effort` are no longer
 accepted. Config that still sets them is rejected with a deterministic hard-cut error citing the
@@ -743,6 +766,15 @@ canonical provider ID before config is applied. Provider-scoped model aliases su
 `opus`, `haiku`, `gpt5`, `mini`, `kimi`, `glm`, `grok`, and `qwen` resolve to the concrete model ID
 for the selected provider. Runtime diagnostics, session metadata, and model catalog rows use the
 canonical resolved value.
+
+The old `providers.<id>.aliases` config key was removed for v1. Reference providers by canonical
+name only; config files that set `aliases = [...]` under a provider are rejected during load.
+
+`auth_mode = "none"` means `No auth required` and is only valid when the provider needs no AGH or
+provider-owned credential. Set `none_security` to state why that is safe: local-only transport,
+external identity enforcement, or public read-only access. No-auth providers cannot define
+`credential_slots`, `auth_status_command`, or `auth_login_command`; those keys are rejected during
+config validation.
 
 ### `[providers.<id>.models]`
 
@@ -895,9 +927,19 @@ concurrent refresh requests for the same provider coalesce behind the in-flight 
 
 ## `[log]`
 
-| Field   | Type   | Default | Valid values                     | Description                  |
-| ------- | ------ | ------- | -------------------------------- | ---------------------------- |
-| `level` | string | `info`  | `debug`, `info`, `warn`, `error` | Structured daemon log level. |
+The daemon writes structured logs to `$AGH_HOME/logs/agh.log`. Rotation is owned by the daemon's
+LogSink, so operators do not need an external `logrotate` rule for the default file.
+
+Changing any `[log]` key is `restart-required` in v1. The daemon applies the new rotation
+writer on the next start.
+
+| Field              | Type    | Default | Valid values                     | Description                                                           |
+| ------------------ | ------- | ------- | -------------------------------- | --------------------------------------------------------------------- |
+| `level`            | string  | `info`  | `debug`, `info`, `warn`, `error` | Structured daemon log level.                                          |
+| `max_size_mb`      | integer | `10`    | Positive integer.                | Rotate `agh.log` when the active file would exceed this size.         |
+| `max_backups`      | integer | `5`     | Zero or positive integer.        | Maximum rotated backups to keep. `0` disables backup count retention. |
+| `max_age_days`     | integer | `30`    | Zero or positive integer.        | Delete backups older than this many days. `0` disables age retention. |
+| `compress_backups` | boolean | `false` | `true` or `false`                | Compress rotated backups with gzip after rotation.                    |
 
 ## `[memory]`
 
@@ -1240,6 +1282,11 @@ when neither the global file nor a workspace overlay sets a value.
 (`agh config set` and the `agh__config_*` native tools). Workspace overlays apply through the
 existing config loader without any special handling.
 
+Config and hook mutation tools return lifecycle truth in their structured payloads. Writes under
+`hooks.*` and `extensions.*` are persisted as desired state with `applied=false`,
+`lifecycle="restart-required"`, and `next_action="restart-daemon"`; agents should not treat
+those writes as active runtime truth until the daemon restarts.
+
 ### `[task.orchestration.profile]`
 
 Defaults and gates that apply when a task does not store its own execution profile, plus the gates
@@ -1281,6 +1328,20 @@ defaults and the bounded reviewer evidence enforced by `task.Service.RecordRunRe
 
 Workspace overlays may tighten or relax these values per workspace through
 `<workspace>/.agh/config.toml`. Unknown keys still fail validation.
+
+## `[task.recovery]`
+
+`[task.recovery]` controls who may call the task-run recovery verbs documented in
+[Task Runs and Leases](/runtime/core/autonomy/task-runs-and-leases#force-operations). The setting
+does not change normal token-fenced claim, heartbeat, complete, fail, or release tools.
+
+| Field               | Type    | Default | Valid values      | Description                                                                                 |
+| ------------------- | ------- | ------- | ----------------- | ------------------------------------------------------------------------------------------- |
+| `allow_agent_force` | boolean | `true`  | `true` or `false` | When false, agent identities cannot force release, force fail, retry, or bulk-recover runs. |
+
+Set `allow_agent_force = false` when recovery should require a non-agent operator identity. The
+CLI/API/UDS surfaces then return a deterministic authorization diagnostic for agent callers and
+leave the run unchanged.
 
 ## `[[hooks.declarations]]`
 

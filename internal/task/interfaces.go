@@ -17,6 +17,8 @@ type Manager interface {
 	ApproveTask(ctx context.Context, id string, req ExecutionRequest, actor ActorContext) (*Execution, error)
 	RejectTask(ctx context.Context, id string, actor ActorContext) (*Task, error)
 	CancelTask(ctx context.Context, id string, req CancelTask, actor ActorContext) (*Task, error)
+	PauseTask(ctx context.Context, id string, req PauseTaskRequest, actor ActorContext) (*Task, error)
+	ResumeTask(ctx context.Context, id string, req ResumeTaskRequest, actor ActorContext) (*Task, error)
 	MarkTaskRead(ctx context.Context, id string, actor ActorContext) (TriageState, error)
 	ArchiveTask(ctx context.Context, id string, actor ActorContext) (TriageState, error)
 	DismissTask(ctx context.Context, id string, actor ActorContext) (TriageState, error)
@@ -51,6 +53,11 @@ type Manager interface {
 	AttachRunSession(ctx context.Context, runID string, sessionID string, actor ActorContext) (*Run, error)
 	HeartbeatRunLease(ctx context.Context, heartbeat LeaseHeartbeat, actor ActorContext) (*Run, error)
 	ReleaseRunLease(ctx context.Context, release LeaseRelease, actor ActorContext) (*Run, error)
+	ForceReleaseRun(ctx context.Context, runID string, release ForceReleaseRun, actor ActorContext) (*Run, error)
+	ForceFailRun(ctx context.Context, runID string, failure ForceFailRun, actor ActorContext) (*Run, error)
+	RetryRun(ctx context.Context, runID string, retry RetryRunRequest, actor ActorContext) (*RetryRunResult, error)
+	BulkForceReleaseRuns(ctx context.Context, req BulkForceRunRequest, actor ActorContext) (BulkForceRunResult, error)
+	BulkForceFailRuns(ctx context.Context, req BulkForceRunRequest, actor ActorContext) (BulkForceRunResult, error)
 	CompleteRunLease(ctx context.Context, completion LeaseCompletion, actor ActorContext) (*Run, error)
 	FailRunLease(ctx context.Context, failure LeaseFailure, actor ActorContext) (*Run, error)
 	CompleteRun(ctx context.Context, runID string, result RunResult, actor ActorContext) (*Run, error)
@@ -61,8 +68,15 @@ type Manager interface {
 		recovery ExpiredLeaseRecovery,
 		actor ActorContext,
 	) ([]ExpiredLeaseRecoveryResult, error)
+	SchedulerStatus(ctx context.Context, actor ActorContext) (SchedulerStatus, error)
+	PauseScheduler(ctx context.Context, req SchedulerPauseRequest, actor ActorContext) (SchedulerStatus, error)
+	ResumeScheduler(ctx context.Context, req SchedulerResumeRequest, actor ActorContext) (SchedulerStatus, error)
+	DrainScheduler(ctx context.Context, req SchedulerDrainRequest, actor ActorContext) (SchedulerDrainResult, error)
+	SchedulerBacklog(ctx context.Context, query SchedulerBacklogQuery, actor ActorContext) (SchedulerBacklog, error)
 
 	GetTask(ctx context.Context, id string, actor ActorContext) (*View, error)
+	InspectTask(ctx context.Context, taskID string, actor ActorContext) (*InspectView, error)
+	InspectRun(ctx context.Context, runID string, actor ActorContext) (*InspectView, error)
 	ListTaskRuns(ctx context.Context, taskID string, query RunQuery, actor ActorContext) ([]Run, error)
 	ListTasks(ctx context.Context, query Query, actor ActorContext) ([]Summary, error)
 
@@ -121,6 +135,9 @@ type RunStore interface {
 	ReleaseRunLease(ctx context.Context, release LeaseRelease) (Run, error)
 	CompleteRunLease(ctx context.Context, completion LeaseCompletion) (Run, error)
 	FailRunLease(ctx context.Context, failure LeaseFailure) (Run, error)
+	ForceReleaseTaskRun(ctx context.Context, release ForceReleaseRunMutation) (ForceRunMutationResult, error)
+	ForceFailTaskRun(ctx context.Context, failure ForceFailRunMutation) (ForceRunMutationResult, error)
+	RetryTaskRun(ctx context.Context, retry RetryRunMutation) (RetryRunResult, error)
 	RecoverExpiredRunLeases(ctx context.Context, recovery ExpiredLeaseRecovery) ([]ExpiredLeaseRecoveryResult, error)
 	ReserveQueuedRun(
 		ctx context.Context,

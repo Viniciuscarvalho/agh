@@ -45,7 +45,7 @@ func TestBundlesRenderHumanAndToon(t *testing.T) {
 		Timestamp: fixedTestNow,
 		Text:      "hello",
 	}}
-	observeEvents := []ObserveEventRecord{{
+	listLogs := []LogEventRecord{{
 		ID:        "sum-1",
 		SessionID: "sess-1",
 		Type:      "done",
@@ -68,21 +68,7 @@ func TestBundlesRenderHumanAndToon(t *testing.T) {
 		{name: "sessionEvents", bundle: sessionEventsBundle(sessionEvents)},
 		{name: "sessionHistory", bundle: sessionHistoryBundle(history)},
 		{name: "agentEvents", bundle: agentEventsBundle(agentEvents)},
-		{name: "observeEvents", bundle: observeEventsBundle(observeEvents)},
-		{
-			name: "observeHealth",
-			bundle: observeHealthBundle(
-				HealthStatus{
-					Status:             "ok",
-					UptimeSeconds:      10,
-					ActiveSessions:     1,
-					ActiveAgents:       1,
-					GlobalDBSizeBytes:  100,
-					SessionDBSizeBytes: 200,
-					Version:            "dev",
-				},
-			),
-		},
+		{name: "listLogs", bundle: logsBundle(listLogs)},
 		{
 			name: "daemonStatus",
 			bundle: daemonStatusBundle(

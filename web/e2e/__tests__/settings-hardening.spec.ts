@@ -102,7 +102,9 @@ test("operator applies Memory, Network, Automation, and Observability settings w
       network: await runtime.requestJSON<unknown>("/api/settings/network"),
       automation: await runtime.requestJSON<unknown>("/api/settings/automation"),
       observability: await runtime.requestJSON<unknown>("/api/settings/observability"),
-      provider_catalog: await runtime.requestJSON<unknown>("/api/providers/codex/models/status"),
+      provider_catalog: await runtime.requestJSON<unknown>(
+        "/api/model-catalog/providers/codex/models/status"
+      ),
     },
     uds: {
       memory: await requestOperatorJSON<unknown>(runtime, "/api/settings/memory"),
@@ -111,7 +113,7 @@ test("operator applies Memory, Network, Automation, and Observability settings w
       observability: await requestOperatorJSON<unknown>(runtime, "/api/settings/observability"),
       provider_catalog: await requestOperatorJSON<unknown>(
         runtime,
-        "/api/providers/codex/models/status"
+        "/api/model-catalog/providers/codex/models/status"
       ),
     },
     cli: {
@@ -239,14 +241,14 @@ test("operator sees restart failure and active-session warning without losing re
   await appPage.getByTestId("settings-page-general-save").click();
   await expect(appPage.getByTestId("settings-page-general-restart-banner")).toBeVisible();
 
-  await appPage.getByTestId("settings-page-general-restart-banner-trigger").click();
+  await restartBannerTrigger(appPage, "general").click();
   await expect(appPage.getByTestId("settings-page-general-restart-banner-message")).toContainText(
     "Daemon restart failed: browser restart fault injection"
   );
   await expect(
     appPage.getByTestId("settings-page-general-restart-banner-active-sessions")
   ).toContainText("2 active sessions");
-  await expect(appPage.getByTestId("settings-page-general-restart-banner-trigger")).toBeEnabled();
+  await expect(restartBannerTrigger(appPage, "general")).toBeEnabled();
 
   const snapshot = {
     restart_failure_message: await appPage
@@ -429,4 +431,10 @@ async function readFileIfExists(filePath: string): Promise<string> {
 function nextNumberString(value: string): string {
   const parsed = Number.parseInt(value.trim(), 10);
   return String(Number.isFinite(parsed) ? parsed + 1 : 46);
+}
+
+function restartBannerTrigger(page: Page, slug: string) {
+  return page.getByTestId(`settings-page-${slug}-restart-banner`).getByRole("button", {
+    name: "Restart daemon",
+  });
 }

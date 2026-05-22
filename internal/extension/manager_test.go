@@ -182,6 +182,9 @@ func TestManagerStartRegistersResourcesAndActivatesExtension(t *testing.T) {
 	if len(loaded.Skills) != 1 || loaded.Skills[0].Meta.Name != "ext-review" {
 		t.Fatalf("Get(ext-runtime).Skills = %#v, want ext-review extension snapshot", loaded.Skills)
 	}
+	if got, want := loaded.Skills[0].InstalledFromExtension, "ext-runtime"; got != want {
+		t.Fatalf("Get(ext-runtime).Skills[0].InstalledFromExtension = %q, want %q", got, want)
+	}
 	if !loaded.Status.Active {
 		t.Fatalf("Get(ext-runtime).Status.Active = false, want true")
 	}
@@ -193,6 +196,54 @@ func TestManagerStartRegistersResourcesAndActivatesExtension(t *testing.T) {
 	}
 	if got, want := loaded.Status.Phase, ExtensionPhaseActivate; got != want {
 		t.Fatalf("Get(ext-runtime).Status.Phase = %q, want %q", got, want)
+	}
+}
+
+func TestExtensionSkillInstalledFrom(t *testing.T) {
+	t.Parallel()
+
+	registrySlug := "acme/marketplace-ext"
+	tests := []struct {
+		name string
+		info ExtensionInfo
+		want string
+	}{
+		{
+			name: "Should prefer marketplace registry slug",
+			info: ExtensionInfo{
+				Name:         "runtime-name",
+				RegistrySlug: &registrySlug,
+				Provenance: ExtensionProvenance{
+					Slug: "acme/provenance-ext",
+				},
+			},
+			want: "acme/marketplace-ext",
+		},
+		{
+			name: "Should use provenance slug when registry slug is absent",
+			info: ExtensionInfo{
+				Name: "runtime-name",
+				Provenance: ExtensionProvenance{
+					Slug: "acme/provenance-ext",
+				},
+			},
+			want: "acme/provenance-ext",
+		},
+		{
+			name: "Should fall back to extension name for local installs",
+			info: ExtensionInfo{Name: "runtime-name"},
+			want: "runtime-name",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := extensionSkillInstalledFrom(tt.info); got != tt.want {
+				t.Fatalf("extensionSkillInstalledFrom() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -248,8 +299,11 @@ func TestManagerStartBridgeAdapterNegotiatesScopedLaunchRuntime(t *testing.T) {
 	}
 
 	request := requests[0]
-	if !slices.Equal(request.Methods.ExtensionServices, []string{"bridges/deliver"}) {
-		t.Fatalf("initialize extension services = %#v, want [bridges/deliver]", request.Methods.ExtensionServices)
+	if !slices.Equal(request.Methods.ExtensionServices, []string{"bridges/deliver", "bridges/targets/snapshot"}) {
+		t.Fatalf(
+			"initialize extension services = %#v, want [bridges/deliver bridges/targets/snapshot]",
+			request.Methods.ExtensionServices,
+		)
 	}
 	if !slices.Equal(request.Capabilities.GrantedActions, []extensionprotocol.HostAPIMethod{
 		extensionprotocol.HostAPIMethodBridgesInstancesGet,
@@ -1902,6 +1956,22 @@ func (h *extensionHelperServer) handleRequest(req helperRequest) error {
 			ack.ReplaceRemoteMessageID = fmt.Sprintf("remote-%d", ack.Seq-1)
 		}
 		return h.sendResult(req.ID, ack)
+	case "bridges/targets/snapshot":
+		var params bridgepkg.BridgeTargetSnapshotRequest
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			return err
+		}
+		return h.sendResult(req.ID, bridgepkg.BridgeTargetSnapshotResponse{
+			Targets: []bridgepkg.BridgeTargetSnapshot{
+				{
+					CanonicalRoute: "bridge://" + strings.TrimSpace(params.BridgeInstanceID) + "/general",
+					DisplayName:    "general",
+					TargetType:     bridgepkg.BridgeTargetTypeChannel,
+					Qualifier:      "workspace",
+					Capabilities:   []string{"send"},
+				},
+			},
+		})
 	case "models/list":
 		var params extensioncontract.ModelSourceListParams
 		if err := json.Unmarshal(req.Params, &params); err != nil {

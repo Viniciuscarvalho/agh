@@ -21,6 +21,7 @@ const (
 	taskDraftOverfetchMaxLimit = 500
 	taskActionCreate           = "create"
 	taskActionGet              = "get"
+	taskActionInspect          = "inspect"
 	taskActionDelete           = "delete"
 	taskActionPublish          = "publish"
 	taskActionStart            = "start"
@@ -37,6 +38,11 @@ const (
 	taskActionAttachRun        = "attach_run_session"
 	taskActionCompleteRun      = "complete_run"
 	taskActionFailRun          = "fail_run"
+	taskActionForceReleaseRun  = "force_release_run"
+	taskActionForceFailRun     = "force_fail_run"
+	taskActionRetryRun         = "retry_run"
+	taskActionBulkReleaseRuns  = "bulk_release_runs"
+	taskActionBulkFailRuns     = "bulk_fail_runs"
 	taskActionCancelRun        = "cancel_run"
 	taskActionTimeline         = "timeline"
 	taskActionStream           = "stream"
@@ -59,6 +65,13 @@ const (
 	taskActionTriageRead       = "triage_read"
 	taskActionTriageArchive    = "triage_archive"
 	taskActionTriageDismiss    = "triage_dismiss"
+	taskActionPauseTask        = "pause_task"
+	taskActionResumeTask       = "resume_task"
+	taskActionSchedulerStatus  = "scheduler_status"
+	taskActionSchedulerPause   = "scheduler_pause"
+	taskActionSchedulerResume  = "scheduler_resume"
+	taskActionSchedulerDrain   = "scheduler_drain"
+	taskActionSchedulerBacklog = "scheduler_backlog"
 )
 
 func (h *BaseHandlers) requireTaskManager(c *gin.Context) (TaskService, bool) {
@@ -234,6 +247,62 @@ func (h *BaseHandlers) GetTask(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, contract.TaskDetailResponse{Task: TaskDetailPayloadFromView(view)})
+}
+
+// InspectTask returns a diagnostic snapshot for one task.
+func (h *BaseHandlers) InspectTask(c *gin.Context) {
+	manager, ok := h.requireTaskManager(c)
+	if !ok {
+		return
+	}
+
+	taskID, err := requiredPathID(c.Param("id"), "task id")
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+
+	actor, err := h.taskActorContext(c, taskActionInspect)
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+
+	view, err := manager.InspectTask(c.Request.Context(), taskID, actor)
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+
+	c.JSON(http.StatusOK, contract.TaskInspectResponse{Inspect: TaskInspectPayloadFromView(view)})
+}
+
+// InspectRun returns a diagnostic snapshot rooted at one run.
+func (h *BaseHandlers) InspectRun(c *gin.Context) {
+	manager, ok := h.requireTaskManager(c)
+	if !ok {
+		return
+	}
+
+	runID, err := requiredPathID(c.Param("id"), "run id")
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+
+	actor, err := h.taskActorContext(c, taskActionInspect)
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+
+	view, err := manager.InspectRun(c.Request.Context(), runID, actor)
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+
+	c.JSON(http.StatusOK, contract.TaskInspectResponse{Inspect: TaskInspectPayloadFromView(view)})
 }
 
 // DeleteTask removes one task record and any cascade-owned child rows.
@@ -1284,6 +1353,167 @@ func (h *BaseHandlers) FailTaskRun(c *gin.Context) {
 	c.JSON(http.StatusOK, contract.TaskRunResponse{Run: TaskRunPayloadFromRun(run)})
 }
 
+// ForceReleaseTaskRun force releases one claimed run without requiring the raw claim token.
+func (h *BaseHandlers) ForceReleaseTaskRun(c *gin.Context) {
+	manager, ok := h.requireTaskManager(c)
+	if !ok {
+		return
+	}
+	runID, err := requiredPathID(c.Param("id"), "run id")
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+	var req contract.ForceReleaseTaskRunRequest
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewTaskValidationError(fmt.Errorf("%s: decode force release run request: %w", h.transportName(), err)),
+		)
+		return
+	}
+	actor, err := h.taskActorContext(c, taskActionForceReleaseRun)
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+	run, err := manager.ForceReleaseRun(
+		c.Request.Context(),
+		runID,
+		taskpkg.ForceReleaseRun{Reason: req.Reason, Metadata: req.Metadata},
+		actor,
+	)
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+	c.JSON(http.StatusOK, contract.TaskRunResponse{Run: TaskRunPayloadFromRun(run)})
+}
+
+// ForceFailTaskRun force fails one queued or claimed run without requiring the raw claim token.
+func (h *BaseHandlers) ForceFailTaskRun(c *gin.Context) {
+	manager, ok := h.requireTaskManager(c)
+	if !ok {
+		return
+	}
+	runID, err := requiredPathID(c.Param("id"), "run id")
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+	var req contract.ForceFailTaskRunRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewTaskValidationError(fmt.Errorf("%s: decode force fail run request: %w", h.transportName(), err)),
+		)
+		return
+	}
+	actor, err := h.taskActorContext(c, taskActionForceFailRun)
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+	run, err := manager.ForceFailRun(
+		c.Request.Context(),
+		runID,
+		taskpkg.ForceFailRun{Reason: req.Reason, Metadata: req.Metadata},
+		actor,
+	)
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+	c.JSON(http.StatusOK, contract.TaskRunResponse{Run: TaskRunPayloadFromRun(run)})
+}
+
+// RetryTaskRun enqueues a new run linked to one failed source run.
+func (h *BaseHandlers) RetryTaskRun(c *gin.Context) {
+	manager, ok := h.requireTaskManager(c)
+	if !ok {
+		return
+	}
+	runID, err := requiredPathID(c.Param("id"), "run id")
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+	var req contract.RetryTaskRunRequest
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewTaskValidationError(fmt.Errorf("%s: decode retry run request: %w", h.transportName(), err)),
+		)
+		return
+	}
+	actor, err := h.taskActorContext(c, taskActionRetryRun)
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+	result, err := manager.RetryRun(
+		c.Request.Context(),
+		runID,
+		taskpkg.RetryRunRequest{Metadata: req.Metadata},
+		actor,
+	)
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+	c.JSON(http.StatusCreated, RetryTaskRunResponseFromResult(result))
+}
+
+// BulkForceReleaseTaskRuns force releases a bounded set of runs.
+func (h *BaseHandlers) BulkForceReleaseTaskRuns(c *gin.Context) {
+	h.bulkForceTaskRuns(c, taskActionBulkReleaseRuns, false)
+}
+
+// BulkForceFailTaskRuns force fails a bounded set of runs.
+func (h *BaseHandlers) BulkForceFailTaskRuns(c *gin.Context) {
+	h.bulkForceTaskRuns(c, taskActionBulkFailRuns, true)
+}
+
+func (h *BaseHandlers) bulkForceTaskRuns(c *gin.Context, action string, fail bool) {
+	manager, ok := h.requireTaskManager(c)
+	if !ok {
+		return
+	}
+	var req contract.BulkForceTaskRunRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.respondError(
+			c,
+			http.StatusBadRequest,
+			NewTaskValidationError(fmt.Errorf("%s: decode bulk force run request: %w", h.transportName(), err)),
+		)
+		return
+	}
+	actor, err := h.taskActorContext(c, action)
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+	domainReq := taskpkg.BulkForceRunRequest{
+		RunIDs:   req.RunIDs,
+		Reason:   req.Reason,
+		Metadata: req.Metadata,
+	}
+	var result taskpkg.BulkForceRunResult
+	if fail {
+		result, err = manager.BulkForceFailRuns(c.Request.Context(), domainReq, actor)
+	} else {
+		result, err = manager.BulkForceReleaseRuns(c.Request.Context(), domainReq, actor)
+	}
+	if err != nil {
+		h.respondError(c, StatusForTaskError(err), err)
+		return
+	}
+	c.JSON(http.StatusOK, BulkForceTaskRunResponseFromResult(result, h.MaskInternalErrors))
+}
+
 // CancelTaskRun cancels one non-terminal run.
 func (h *BaseHandlers) CancelTaskRun(c *gin.Context) {
 	manager, ok := h.requireTaskManager(c)
@@ -1759,7 +1989,14 @@ func TaskSummaryPayloadFromSummary(record taskpkg.Summary) contract.TaskSummaryP
 		ApprovalState:   record.ApprovalState,
 		Draft:           record.Draft,
 		Owner:           cloneOwnership(record.Owner),
+		CurrentRunID:    record.CurrentRunID,
 		LatestEventSeq:  record.LatestEventSeq,
+		Paused:          record.Paused,
+		PausedBy:        record.PausedBy,
+		PausedAt:        optionalTime(record.PausedAt),
+		PausedReason:    record.PausedReason,
+		EffectivePaused: record.EffectivePaused,
+		PausedByTaskID:  record.PausedByTaskID,
 		CreatedBy:       record.CreatedBy,
 		Origin:          record.Origin,
 		CreatedAt:       record.CreatedAt,
@@ -1780,28 +2017,40 @@ func TaskPayloadFromTask(record *taskpkg.Task) contract.TaskPayload {
 	}
 
 	return contract.TaskPayload{
-		ID:             record.ID,
-		Identifier:     record.Identifier,
-		Scope:          record.Scope,
-		WorkspaceID:    record.WorkspaceID,
-		ParentTaskID:   record.ParentTaskID,
-		NetworkChannel: record.NetworkChannel,
-		Title:          record.Title,
-		Description:    record.Description,
-		Priority:       record.Priority,
-		MaxAttempts:    record.MaxAttempts,
-		Status:         record.Status,
-		ApprovalPolicy: record.ApprovalPolicy,
-		ApprovalState:  record.ApprovalState,
-		Draft:          record.Status.Normalize() == taskpkg.TaskStatusDraft,
-		Owner:          cloneOwnership(record.Owner),
-		LatestEventSeq: record.LatestEventSeq,
-		CreatedBy:      record.CreatedBy,
-		Origin:         record.Origin,
-		CreatedAt:      record.CreatedAt,
-		UpdatedAt:      record.UpdatedAt,
-		ClosedAt:       optionalTime(record.ClosedAt),
-		Metadata:       cloneRawMessage(record.Metadata),
+		ID:              record.ID,
+		Identifier:      record.Identifier,
+		Scope:           record.Scope,
+		WorkspaceID:     record.WorkspaceID,
+		ParentTaskID:    record.ParentTaskID,
+		NetworkChannel:  record.NetworkChannel,
+		Title:           record.Title,
+		Description:     record.Description,
+		Priority:        record.Priority,
+		MaxAttempts:     record.MaxAttempts,
+		Status:          record.Status,
+		ApprovalPolicy:  record.ApprovalPolicy,
+		ApprovalState:   record.ApprovalState,
+		Draft:           record.Status.Normalize() == taskpkg.TaskStatusDraft,
+		Owner:           cloneOwnership(record.Owner),
+		CurrentRunID:    record.CurrentRunID,
+		LatestEventSeq:  record.LatestEventSeq,
+		Paused:          record.Paused,
+		PausedBy:        record.PausedBy,
+		PausedAt:        optionalTime(record.PausedAt),
+		PausedReason:    record.PausedReason,
+		EffectivePaused: record.Paused,
+		PausedByTaskID: func() string {
+			if record.Paused {
+				return record.ID
+			}
+			return ""
+		}(),
+		CreatedBy: record.CreatedBy,
+		Origin:    record.Origin,
+		CreatedAt: record.CreatedAt,
+		UpdatedAt: record.UpdatedAt,
+		ClosedAt:  optionalTime(record.ClosedAt),
+		Metadata:  cloneRawMessage(record.Metadata),
 	}
 }
 
@@ -1850,6 +2099,8 @@ func TaskRunPayloadFromRun(run *taskpkg.Run) contract.TaskRunPayload {
 		TaskID:                run.TaskID,
 		Status:                run.Status,
 		Attempt:               run.Attempt,
+		PreviousRunID:         run.PreviousRunID,
+		FailureKind:           run.FailureKind,
 		ClaimedBy:             cloneActorIdentity(run.ClaimedBy),
 		SessionID:             run.SessionID,
 		Origin:                run.Origin,
@@ -1867,6 +2118,46 @@ func TaskRunPayloadFromRun(run *taskpkg.Run) contract.TaskRunPayload {
 		Metadata:              redactRawClaimTokenFields(run.Metadata),
 		Result:                redactRawClaimTokenFields(run.Result),
 	}
+}
+
+// RetryTaskRunResponseFromResult converts one retry result into the shared payload.
+func RetryTaskRunResponseFromResult(result *taskpkg.RetryRunResult) contract.RetryTaskRunResponse {
+	if result == nil {
+		return contract.RetryTaskRunResponse{}
+	}
+	return contract.RetryTaskRunResponse{
+		PreviousRun: TaskRunPayloadFromRun(&result.PreviousRun),
+		Run:         TaskRunPayloadFromRun(&result.Run),
+	}
+}
+
+// BulkForceTaskRunResponseFromResult converts per-row bulk force outcomes into shared payloads.
+func BulkForceTaskRunResponseFromResult(
+	result taskpkg.BulkForceRunResult,
+	maskInternalErrors bool,
+) contract.BulkForceTaskRunResponse {
+	items := make([]contract.BulkForceTaskRunItemPayload, 0, len(result.Items))
+	for _, item := range result.Items {
+		payload := contract.BulkForceTaskRunItemPayload{
+			RunID: item.RunID,
+			OK:    item.OK,
+			Run:   optionalTaskRunPayload(item.Run),
+		}
+		if item.Err != nil {
+			errorPayload := ErrorPayloadForStatus(StatusForTaskError(item.Err), item.Err, maskInternalErrors)
+			payload.Error = &errorPayload
+		}
+		items = append(items, payload)
+	}
+	return contract.BulkForceTaskRunResponse{Results: items}
+}
+
+func optionalTaskRunPayload(run *taskpkg.Run) *contract.TaskRunPayload {
+	if run == nil {
+		return nil
+	}
+	payload := TaskRunPayloadFromRun(run)
+	return &payload
 }
 
 func redactRawClaimTokenFields(raw json.RawMessage) json.RawMessage {
@@ -1941,14 +2232,129 @@ func TaskDetailPayloadFromView(view *taskpkg.View) contract.TaskDetailPayload {
 		return contract.TaskDetailPayload{}
 	}
 
+	summary := TaskSummaryPayloadFromSummary(view.Summary)
+	taskRecord := TaskPayloadFromTask(&view.Task)
+	taskRecord.EffectivePaused = summary.EffectivePaused
+	taskRecord.PausedByTaskID = summary.PausedByTaskID
+
 	return contract.TaskDetailPayload{
-		Summary:              TaskSummaryPayloadFromSummary(view.Summary),
-		Task:                 TaskPayloadFromTask(&view.Task),
+		Summary:              summary,
+		Task:                 taskRecord,
 		Children:             TaskSummaryPayloadsFromSummaries(view.Children),
 		Dependencies:         TaskDependencyPayloadsFromDependencies(view.Dependencies),
 		DependencyReferences: TaskDependencyReferencePayloadsFromReferences(view.DependencyReferences),
 		Runs:                 TaskRunPayloadsFromRuns(view.Runs),
 		Events:               TaskEventPayloadsFromEvents(view.Events),
+	}
+}
+
+// TaskInspectPayloadFromView converts one inspect view into the shared payload.
+func TaskInspectPayloadFromView(view *taskpkg.InspectView) contract.TaskInspectPayload {
+	if view == nil {
+		return contract.TaskInspectPayload{}
+	}
+
+	return contract.TaskInspectPayload{
+		Target:       string(view.Target),
+		Task:         TaskSummaryPayloadFromSummary(view.Task),
+		CurrentRun:   TaskInspectRunPayloadFromSummary(view.CurrentRun),
+		BoundSession: TaskInspectSessionPayloadFromSummary(view.BoundSession),
+		RecentRuns:   TaskInspectRunPayloadsFromSummaries(view.RecentRuns),
+		RecentEvents: TaskInspectEventPayloadsFromSummaries(view.RecentEvents),
+		Scheduler:    TaskInspectSchedulerPayloadFromState(view.Scheduler),
+		Diagnostics:  append([]contract.DiagnosticItem(nil), view.Diagnostics...),
+		NextAction:   string(view.NextAction),
+		AsOf:         view.AsOf,
+	}
+}
+
+// TaskInspectRunPayloadFromSummary converts an inspect run summary into the shared payload.
+func TaskInspectRunPayloadFromSummary(summary *taskpkg.InspectRunSummary) *contract.TaskInspectRunPayload {
+	if summary == nil {
+		return nil
+	}
+	return &contract.TaskInspectRunPayload{
+		RunID:                   summary.RunID,
+		TaskID:                  summary.TaskID,
+		Status:                  summary.Status,
+		ClaimTokenHashTruncated: summary.ClaimTokenHashTruncated,
+		LeaseUntil:              optionalTime(summary.LeaseUntil),
+		HeartbeatAt:             optionalTime(summary.HeartbeatAt),
+		HeartbeatAgeSeconds:     cloneInt64Ptr(summary.HeartbeatAgeSeconds),
+		Retries:                 summary.Retries,
+		LastErrorSummary:        summary.LastErrorSummary,
+		FailureKind:             summary.FailureKind,
+		BoundSessionID:          summary.BoundSessionID,
+		StartedAt:               optionalTime(summary.StartedAt),
+		EndedAt:                 optionalTime(summary.EndedAt),
+		PreviousRunID:           summary.PreviousRunID,
+		QueuedAt:                summary.QueuedAt,
+		Attempt:                 summary.Attempt,
+	}
+}
+
+// TaskInspectRunPayloadsFromSummaries converts inspect run summaries into shared payloads.
+func TaskInspectRunPayloadsFromSummaries(
+	summaries []taskpkg.InspectRunSummary,
+) []contract.TaskInspectRunPayload {
+	payloads := make([]contract.TaskInspectRunPayload, 0, len(summaries))
+	for idx := range summaries {
+		payload := TaskInspectRunPayloadFromSummary(&summaries[idx])
+		if payload != nil {
+			payloads = append(payloads, *payload)
+		}
+	}
+	return payloads
+}
+
+// TaskInspectSessionPayloadFromSummary converts an inspect session summary into the shared payload.
+func TaskInspectSessionPayloadFromSummary(
+	summary *taskpkg.InspectSessionSummary,
+) *contract.TaskInspectSessionPayload {
+	if summary == nil {
+		return nil
+	}
+	return &contract.TaskInspectSessionPayload{
+		SessionID:      summary.SessionID,
+		State:          summary.State,
+		AgentName:      summary.AgentName,
+		ProviderName:   summary.ProviderName,
+		WorkspaceID:    summary.WorkspaceID,
+		StartedAt:      optionalTime(summary.StartedAt),
+		LastActivityAt: optionalTime(summary.LastActivityAt),
+		StopReason:     summary.StopReason,
+		FailureKind:    summary.FailureKind,
+	}
+}
+
+// TaskInspectEventPayloadsFromSummaries converts inspect event summaries into shared payloads.
+func TaskInspectEventPayloadsFromSummaries(
+	summaries []taskpkg.InspectEventSummary,
+) []contract.TaskInspectEventPayload {
+	payloads := make([]contract.TaskInspectEventPayload, 0, len(summaries))
+	for _, summary := range summaries {
+		payloads = append(payloads, contract.TaskInspectEventPayload{
+			ID:        summary.ID,
+			Type:      summary.Type,
+			SessionID: summary.SessionID,
+			TaskID:    summary.TaskID,
+			RunID:     summary.RunID,
+			Outcome:   summary.Outcome,
+			Summary:   summary.Summary,
+			Timestamp: summary.Timestamp,
+		})
+	}
+	return payloads
+}
+
+// TaskInspectSchedulerPayloadFromState converts scheduler state into the shared payload.
+func TaskInspectSchedulerPayloadFromState(state taskpkg.InspectSchedulerState) contract.TaskInspectSchedulerPayload {
+	return contract.TaskInspectSchedulerPayload{
+		Paused:    state.Paused,
+		PausedBy:  state.PausedBy,
+		PausedAt:  optionalTime(state.PausedAt),
+		Reason:    state.Reason,
+		UpdatedAt: optionalTime(state.UpdatedAt),
 	}
 }
 

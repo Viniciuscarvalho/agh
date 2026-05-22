@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
+	"github.com/pedronauck/agh/internal/api/contract"
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	"github.com/pedronauck/agh/internal/observe"
 	"github.com/pedronauck/agh/internal/session"
@@ -24,32 +26,38 @@ func TestCreateGetResumeDeleteAndStopHandlersReturnExpectedErrors(t *testing.T) 
 		method string
 		path   string
 		body   []byte
+		error  string
 	}{
 		{
 			name:   "ShouldReturnNotFoundWhenCreateFails",
 			method: http.MethodPost,
 			path:   "/api/sessions",
 			body:   []byte(`{"agent_name":"coder","workspace":"alpha"}`),
+			error:  "file does not exist",
 		},
 		{
 			name:   "ShouldReturnNotFoundWhenSessionLookupFails",
 			method: http.MethodGet,
 			path:   "/api/workspaces/ws-workspace/sessions/missing",
+			error:  "session not found",
 		},
 		{
-			name:   "ShouldReturnNotFoundWhenResumeFails",
+			name:   "ShouldReturnNotFoundWhenAttachFails",
 			method: http.MethodPost,
-			path:   "/api/workspaces/ws-workspace/sessions/missing/resume",
+			path:   "/api/workspaces/ws-workspace/sessions/missing/attach",
+			error:  "session not found",
 		},
 		{
 			name:   "ShouldReturnNotFoundWhenDeleteFails",
 			method: http.MethodDelete,
 			path:   "/api/workspaces/ws-workspace/sessions/missing",
+			error:  "session not found",
 		},
 		{
 			name:   "ShouldReturnNotFoundWhenStopFails",
 			method: http.MethodPost,
 			path:   "/api/workspaces/ws-workspace/sessions/missing/stop",
+			error:  "session not found",
 		},
 	}
 
@@ -87,6 +95,11 @@ func TestCreateGetResumeDeleteAndStopHandlersReturnExpectedErrors(t *testing.T) 
 					http.StatusNotFound,
 					resp.Body.String(),
 				)
+			}
+			var payload contract.ErrorPayload
+			decodeJSONResponse(t, resp, &payload)
+			if !strings.Contains(payload.Error, tt.error) {
+				t.Fatalf("error = %q, want substring %q", payload.Error, tt.error)
 			}
 		})
 	}
@@ -263,7 +276,7 @@ func TestGetAgentAndObserveHandlersReturnErrors(t *testing.T) {
 		t.Fatalf("agent status = %d, want %d", agentResp.Code, http.StatusNotFound)
 	}
 
-	observeResp := performRequest(t, engine, http.MethodGet, "/api/workspaces/ws-workspace/observe/events", nil)
+	observeResp := performRequest(t, engine, http.MethodGet, "/api/logs?workspace_id=ws-workspace", nil)
 	if observeResp.Code != http.StatusInternalServerError {
 		t.Fatalf("observe status = %d, want %d", observeResp.Code, http.StatusInternalServerError)
 	}
@@ -298,7 +311,7 @@ func TestObserveStreamAndHealthAndDaemonStatusErrorPaths(t *testing.T) {
 	req := httptest.NewRequestWithContext(
 		context.Background(),
 		http.MethodGet,
-		"/api/workspaces/ws-workspace/observe/events/stream",
+		"/api/logs/stream?workspace_id=ws-workspace",
 		http.NoBody,
 	)
 	req.Header.Set("Last-Event-ID", "bad")
@@ -308,7 +321,7 @@ func TestObserveStreamAndHealthAndDaemonStatusErrorPaths(t *testing.T) {
 		t.Fatalf("observe stream bad header status = %d, want %d", recorder.Code, http.StatusBadRequest)
 	}
 
-	healthResp := performRequest(t, engine, http.MethodGet, "/api/observe/health", nil)
+	healthResp := performRequest(t, engine, http.MethodGet, "/api/status", nil)
 	if healthResp.Code != http.StatusInternalServerError {
 		t.Fatalf("health status = %d, want %d", healthResp.Code, http.StatusInternalServerError)
 	}
@@ -323,7 +336,7 @@ func TestObserveStreamAndHealthAndDaemonStatusErrorPaths(t *testing.T) {
 		},
 	}, homePaths)
 	statusEngine := newTestRouter(t, statusHandlers)
-	statusResp := performRequest(t, statusEngine, http.MethodGet, "/api/daemon/status", nil)
+	statusResp := performRequest(t, statusEngine, http.MethodGet, "/api/status", nil)
 	if statusResp.Code != http.StatusInternalServerError {
 		t.Fatalf("daemon status = %d, want %d", statusResp.Code, http.StatusInternalServerError)
 	}

@@ -3,6 +3,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,8 +14,10 @@ import (
 	"time"
 
 	"github.com/pedronauck/agh/internal/agentidentity"
+	"github.com/pedronauck/agh/internal/api/contract"
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	aghdaemon "github.com/pedronauck/agh/internal/daemon"
+	diagnosticspkg "github.com/pedronauck/agh/internal/diagnostics"
 	"github.com/pedronauck/agh/internal/procutil"
 	aghupdate "github.com/pedronauck/agh/internal/update"
 	"github.com/pedronauck/agh/internal/version"
@@ -29,6 +32,7 @@ const (
 const (
 	outputFlagName = "output"
 	jsonFlagName   = "json"
+	yesFlagName    = "yes"
 
 	defaultPollInterval = 100 * time.Millisecond
 	defaultStartTimeout = 15 * time.Second
@@ -47,32 +51,32 @@ type runtimeContext struct {
 type installWizardRunner func(context.Context, installWizardInput) (installWizardSelection, error)
 
 type commandDeps struct {
-	loadConfig                   func() (aghconfig.Config, error)
-	loadExtensionRegistrySources extensionRegistrySourceLoader
-	loadSkillRegistrySources     skillRegistrySourceLoader
-	resolveHome                  func() (aghconfig.HomePaths, error)
-	resolveHomeForWorkspace      func(workspaceRoot string) (aghconfig.HomePaths, error)
-	ensureHome                   func(aghconfig.HomePaths) error
-	runInstallWizard             installWizardRunner
-	newClient                    func(socketPath string) (DaemonClient, error)
-	newDaemon                    func() (daemonRunner, error)
-	runRelaunchHelper            func(context.Context, aghdaemon.RelaunchHelperConfig) error
-	readDaemonInfo               func(path string) (aghdaemon.Info, error)
-	signalProcess                func(pid int, sig syscall.Signal) error
-	processAlive                 func(pid int) bool
-	processMatchesStartTime      func(pid int, startedAt time.Time) bool
-	executable                   func() (string, error)
-	getwd                        func() (string, error)
-	getenv                       func(string) string
-	lookPath                     func(string) (string, error)
-	now                          func() time.Time
-	pollInterval                 time.Duration
-	startTimeout                 time.Duration
-	stopTimeout                  time.Duration
-	spawnDetached                func(context.Context, aghconfig.HomePaths) (daemonProcess, error)
-	newUpdateManager             func(aghconfig.HomePaths) (updateManager, error)
-	newMCPAuthClient             newMCPAuthClientFunc
-	runProviderAuthCommand       providerAuthCommandRunner
+	loadConfig                  func() (aghconfig.Config, error)
+	loadSkillRegistrySources    skillRegistrySourceLoader
+	resolveHome                 func() (aghconfig.HomePaths, error)
+	resolveHomeForWorkspace     func(workspaceRoot string) (aghconfig.HomePaths, error)
+	ensureHome                  func(aghconfig.HomePaths) error
+	runInstallWizard            installWizardRunner
+	newClient                   func(socketPath string) (DaemonClient, error)
+	newDaemon                   func() (daemonRunner, error)
+	runRelaunchHelper           func(context.Context, aghdaemon.RelaunchHelperConfig) error
+	readDaemonInfo              func(path string) (aghdaemon.Info, error)
+	signalProcess               func(pid int, sig syscall.Signal) error
+	processAlive                func(pid int) bool
+	processMatchesStartTime     func(pid int, startedAt time.Time) bool
+	executable                  func() (string, error)
+	getwd                       func() (string, error)
+	getenv                      func(string) string
+	lookPath                    func(string) (string, error)
+	now                         func() time.Time
+	pollInterval                time.Duration
+	startTimeout                time.Duration
+	stopTimeout                 time.Duration
+	spawnDetached               func(context.Context, aghconfig.HomePaths) (daemonProcess, error)
+	newUpdateManager            func(aghconfig.HomePaths) (updateManager, error)
+	newMCPAuthClient            newMCPAuthClientFunc
+	runProviderAuthCommand      providerAuthCommandRunner
+	runProviderAuthLoginCommand providerAuthCommandRunner
 }
 
 // NewRootCommand constructs the AGH v1 CLI command tree.
@@ -106,8 +110,11 @@ func newRootCommand(deps commandDeps) *cobra.Command {
 	cmd.AddCommand(newVersionCommand())
 	cmd.AddCommand(newInstallCommand(deps))
 	cmd.AddCommand(newConfigCommand(deps))
+	cmd.AddCommand(newSupportCommand(deps))
 	cmd.AddCommand(newUpdateCommand(deps))
 	cmd.AddCommand(newUninstallCommand(deps))
+	cmd.AddCommand(newStatusCommand(deps))
+	cmd.AddCommand(newDoctorCommand(deps))
 	cmd.AddCommand(newDaemonCommand(deps))
 	cmd.AddCommand(newNetworkCommand(deps))
 	cmd.AddCommand(newMeCommand(deps))
@@ -116,12 +123,14 @@ func newRootCommand(deps commandDeps) *cobra.Command {
 	cmd.AddCommand(newSessionCommand(deps))
 	cmd.AddCommand(newProviderCommand(deps))
 	cmd.AddCommand(newBridgeCommand(deps))
+	cmd.AddCommand(newNotificationsCommand(deps))
 	cmd.AddCommand(newBundleCommand(deps))
 	cmd.AddCommand(newWorkspaceCommand(deps))
 	cmd.AddCommand(newAgentCommand(deps))
 	cmd.AddCommand(newExtensionCommand(deps))
 	cmd.AddCommand(newHooksCommand(deps))
 	cmd.AddCommand(newAutomationCommand(deps))
+	cmd.AddCommand(newSchedulerCommand(deps))
 	cmd.AddCommand(newTaskCommand(deps))
 	cmd.AddCommand(newSkillCommand(deps))
 	cmd.AddCommand(newResourceCommand(deps))
@@ -130,7 +139,7 @@ func newRootCommand(deps commandDeps) *cobra.Command {
 	cmd.AddCommand(newToolCommand(deps))
 	cmd.AddCommand(newToolsetsCommand(deps))
 	cmd.AddCommand(newMCPCommand(deps))
-	cmd.AddCommand(newObserveCommand(deps))
+	cmd.AddCommand(newLogsCommand(deps))
 	cmd.AddCommand(newWhoamiCommand(deps))
 	cmd.AddCommand(newDocCommand())
 
@@ -189,7 +198,7 @@ func writeExecutionError(stderr io.Writer, args []string, err error) int {
 
 func marshalStructuredExecutionError(args []string, err error) ([]byte, bool) {
 	if !isStructuredAgentCommandError(err) {
-		return nil, false
+		return marshalDiagnosticExecutionError(args, err)
 	}
 
 	switch requestedOutputFormat(args) {
@@ -205,6 +214,36 @@ func marshalStructuredExecutionError(args []string, err error) ([]byte, bool) {
 			return nil, false
 		}
 		return payload, true
+	default:
+		return nil, false
+	}
+}
+
+func marshalDiagnosticExecutionError(args []string, err error) ([]byte, bool) {
+	item, ok := diagnosticspkg.ItemFromError(err)
+	if !ok {
+		return nil, false
+	}
+	payload := contract.ErrorPayload{Error: diagnosticspkg.Redact(err.Error()), Diagnostic: &item}
+	switch requestedOutputFormat(args) {
+	case OutputJSON:
+		encoded, marshalErr := json.Marshal(payload)
+		if marshalErr != nil {
+			return nil, false
+		}
+		return encoded, true
+	case OutputJSONL:
+		encoded, marshalErr := json.Marshal(struct {
+			Type  string                `json:"type"`
+			Error contract.ErrorPayload `json:"error"`
+		}{
+			Type:  "error",
+			Error: payload,
+		})
+		if marshalErr != nil {
+			return nil, false
+		}
+		return append(encoded, '\n'), true
 	default:
 		return nil, false
 	}
@@ -247,9 +286,6 @@ func (d commandDeps) withRegistryDefaults() commandDeps {
 		d.loadConfig = func() (aghconfig.Config, error) {
 			return aghconfig.Load()
 		}
-	}
-	if d.loadExtensionRegistrySources == nil {
-		d.loadExtensionRegistrySources = defaultExtensionRegistrySourceLoader
 	}
 	if d.loadSkillRegistrySources == nil {
 		d.loadSkillRegistrySources = defaultSkillRegistrySourceLoader

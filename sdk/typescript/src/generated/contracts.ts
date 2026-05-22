@@ -35,6 +35,7 @@ export type HostAPIMethod =
   | "bridges/instances/list"
   | "bridges/instances/report_state"
   | "bridges/messages/ingest"
+  | "logs/list"
   | "memory/forget"
   | "memory/recall"
   | "memory/store"
@@ -52,7 +53,6 @@ export type HostAPIMethod =
   | "network/thread/messages"
   | "network/threads"
   | "network/work/get"
-  | "observe/events"
   | "observe/health"
   | "resources/get"
   | "resources/list"
@@ -169,7 +169,9 @@ export type HookEvent =
   | "network.message.persisted"
   | "network.work.opened"
   | "network.work.transitioned"
-  | "network.work.closed";
+  | "network.work.closed"
+  | "network.peer.joined"
+  | "network.peer.left";
 
 export interface AgentCrashedPayload {
   event: HookEvent;
@@ -961,6 +963,7 @@ export interface BridgeInstance {
   routing_policy: RoutingPolicy;
   provider_config?: JSONValue;
   delivery_defaults?: JSONValue;
+  notification_suppress: boolean;
   degradation?: BridgeDegradation;
   created_at: ISODateTime;
   updated_at: ISODateTime;
@@ -968,6 +971,25 @@ export interface BridgeInstance {
 
 export interface BridgeInstanceTargetParams {
   bridge_instance_id: string;
+}
+
+export type BridgeTargetType = string;
+
+export interface BridgeTargetSnapshot {
+  canonical_route: string;
+  display_name: string;
+  target_type: BridgeTargetType;
+  qualifier?: string;
+  capabilities?: string[];
+  last_seen_at?: ISODateTime;
+}
+
+export interface BridgeTargetSnapshotRequest {
+  bridge_instance_id: string;
+}
+
+export interface BridgeTargetSnapshotResponse {
+  targets: BridgeTargetSnapshot[];
 }
 
 export interface BridgesInstancesReportStateParams {
@@ -2003,6 +2025,23 @@ export interface Job {
   updated_at: ISODateTime;
 }
 
+export interface ListLogsParams {
+  workspace_id: string;
+  session_id?: string;
+  agent_name?: string;
+  type?: string;
+  run?: string;
+  actor_kind?: string;
+  actor_id?: string;
+  provider?: string;
+  outcome?: string;
+  component?: string;
+  error_only?: boolean;
+  after_seq?: number;
+  since?: ISODateTime;
+  limit?: number;
+}
+
 export type MemoryScope = "global" | "workspace" | "agent";
 
 export interface MemoryForgetParams {
@@ -2281,6 +2320,7 @@ export interface NetworkDirectResolveParams {
 export interface NetworkDirectRoomOpenedPayload {
   event: HookEvent;
   timestamp: ISODateTime;
+  workspace_id?: string;
   session_id?: string;
   channel?: string;
   surface?: string;
@@ -2291,8 +2331,10 @@ export interface NetworkDirectRoomOpenedPayload {
   direction?: string;
   work_id?: string;
   work_state?: string;
+  peer_id?: string;
   peer_from?: string;
   peer_to?: string;
+  last_seen_at?: ISODateTime;
   trace_id?: string;
   causation_id?: string;
 }
@@ -2329,6 +2371,7 @@ export interface NetworkMatcher {
 export interface NetworkMessagePersistedPayload {
   event: HookEvent;
   timestamp: ISODateTime;
+  workspace_id?: string;
   session_id?: string;
   channel?: string;
   surface?: string;
@@ -2339,8 +2382,10 @@ export interface NetworkMessagePersistedPayload {
   direction?: string;
   work_id?: string;
   work_state?: string;
+  peer_id?: string;
   peer_from?: string;
   peer_to?: string;
+  last_seen_at?: ISODateTime;
   trace_id?: string;
   causation_id?: string;
 }
@@ -2352,6 +2397,7 @@ export interface NetworkObservationPatch {
 export interface NetworkPayload {
   event: HookEvent;
   timestamp: ISODateTime;
+  workspace_id?: string;
   session_id?: string;
   channel?: string;
   surface?: string;
@@ -2362,8 +2408,54 @@ export interface NetworkPayload {
   direction?: string;
   work_id?: string;
   work_state?: string;
+  peer_id?: string;
   peer_from?: string;
   peer_to?: string;
+  last_seen_at?: ISODateTime;
+  trace_id?: string;
+  causation_id?: string;
+}
+
+export interface NetworkPeerJoinedPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  workspace_id?: string;
+  session_id?: string;
+  channel?: string;
+  surface?: string;
+  thread_id?: string;
+  direct_id?: string;
+  message_id?: string;
+  kind?: string;
+  direction?: string;
+  work_id?: string;
+  work_state?: string;
+  peer_id?: string;
+  peer_from?: string;
+  peer_to?: string;
+  last_seen_at?: ISODateTime;
+  trace_id?: string;
+  causation_id?: string;
+}
+
+export interface NetworkPeerLeftPayload {
+  event: HookEvent;
+  timestamp: ISODateTime;
+  workspace_id?: string;
+  session_id?: string;
+  channel?: string;
+  surface?: string;
+  thread_id?: string;
+  direct_id?: string;
+  message_id?: string;
+  kind?: string;
+  direction?: string;
+  work_id?: string;
+  work_state?: string;
+  peer_id?: string;
+  peer_from?: string;
+  peer_to?: string;
+  last_seen_at?: ISODateTime;
   trace_id?: string;
   causation_id?: string;
 }
@@ -2394,6 +2486,8 @@ export interface NetworkPeerPayload {
   joined_at?: ISODateTime;
   last_seen?: ISODateTime;
   expires_at?: ISODateTime;
+  presence_state: string;
+  last_seen_age_seconds?: number;
 }
 
 export interface NetworkPeersParams {
@@ -2502,6 +2596,7 @@ export interface NetworkThreadMessagesParams {
 export interface NetworkThreadOpenedPayload {
   event: HookEvent;
   timestamp: ISODateTime;
+  workspace_id?: string;
   session_id?: string;
   channel?: string;
   surface?: string;
@@ -2512,8 +2607,10 @@ export interface NetworkThreadOpenedPayload {
   direction?: string;
   work_id?: string;
   work_state?: string;
+  peer_id?: string;
   peer_from?: string;
   peer_to?: string;
+  last_seen_at?: ISODateTime;
   trace_id?: string;
   causation_id?: string;
 }
@@ -2550,6 +2647,7 @@ export interface NetworkThreadsParams {
 export interface NetworkWorkClosedPayload {
   event: HookEvent;
   timestamp: ISODateTime;
+  workspace_id?: string;
   session_id?: string;
   channel?: string;
   surface?: string;
@@ -2560,8 +2658,10 @@ export interface NetworkWorkClosedPayload {
   direction?: string;
   work_id?: string;
   work_state?: string;
+  peer_id?: string;
   peer_from?: string;
   peer_to?: string;
+  last_seen_at?: ISODateTime;
   trace_id?: string;
   causation_id?: string;
 }
@@ -2574,6 +2674,7 @@ export interface NetworkWorkGetParams {
 export interface NetworkWorkOpenedPayload {
   event: HookEvent;
   timestamp: ISODateTime;
+  workspace_id?: string;
   session_id?: string;
   channel?: string;
   surface?: string;
@@ -2584,8 +2685,10 @@ export interface NetworkWorkOpenedPayload {
   direction?: string;
   work_id?: string;
   work_state?: string;
+  peer_id?: string;
   peer_from?: string;
   peer_to?: string;
+  last_seen_at?: ISODateTime;
   trace_id?: string;
   causation_id?: string;
 }
@@ -2609,6 +2712,7 @@ export interface NetworkWorkPayload {
 export interface NetworkWorkTransitionedPayload {
   event: HookEvent;
   timestamp: ISODateTime;
+  workspace_id?: string;
   session_id?: string;
   channel?: string;
   surface?: string;
@@ -2619,19 +2723,12 @@ export interface NetworkWorkTransitionedPayload {
   direction?: string;
   work_id?: string;
   work_state?: string;
+  peer_id?: string;
   peer_from?: string;
   peer_to?: string;
+  last_seen_at?: ISODateTime;
   trace_id?: string;
   causation_id?: string;
-}
-
-export interface ObserveEventsParams {
-  workspace_id: string;
-  session_id?: string;
-  agent_name?: string;
-  type?: string;
-  since?: ISODateTime;
-  limit?: number;
 }
 
 export interface PersistenceHealth {
@@ -3958,7 +4055,14 @@ export interface Task {
   approval_state?: ApprovalState;
   draft?: boolean;
   owner?: Ownership;
+  current_run_id?: string;
   latest_event_seq: number;
+  paused?: boolean;
+  paused_by?: string;
+  paused_at?: ISODateTime;
+  paused_reason?: string;
+  effective_paused?: boolean;
+  paused_by_task_id?: string;
   created_by: ActorIdentity;
   origin: Origin;
   created_at: ISODateTime;
@@ -4157,6 +4261,9 @@ export interface TaskReferencePayload {
   scope: Scope;
   workspace_id?: string;
   latest_event_seq: number;
+  paused?: boolean;
+  effective_paused?: boolean;
+  paused_by_task_id?: string;
 }
 
 export interface TaskDependencyReferencePayload {
@@ -4187,6 +4294,8 @@ export interface TaskRunSummaryPayload {
   task_id: string;
   status: RunStatus;
   attempt: number;
+  previous_run_id?: string;
+  failure_kind?: string;
   max_attempts: number;
   session_id?: string;
   claimed_by?: ActorIdentity;
@@ -4217,7 +4326,14 @@ export interface TaskSummary {
   approval_state?: ApprovalState;
   draft?: boolean;
   owner?: Ownership;
+  current_run_id?: string;
   latest_event_seq: number;
+  paused?: boolean;
+  paused_by?: string;
+  paused_at?: ISODateTime;
+  paused_reason?: string;
+  effective_paused?: boolean;
+  paused_by_task_id?: string;
   created_by: ActorIdentity;
   origin: Origin;
   created_at: ISODateTime;
@@ -4242,6 +4358,8 @@ export interface TaskRun {
   task_id: string;
   status: RunStatus;
   attempt: number;
+  previous_run_id?: string;
+  failure_kind?: string;
   claimed_by?: ActorIdentity;
   session_id?: string;
   origin: Origin;
@@ -4840,6 +4958,8 @@ export interface Tool {
   description: string;
   input_schema: JSONValue;
   output_schema?: JSONValue;
+  input_schema_digest: string;
+  output_schema_digest?: string;
   source: SourceRef;
   visibility: Visibility;
   risk: RiskClass;
@@ -5133,6 +5253,8 @@ export interface HookPayloadByEvent {
   "network.work.opened": NetworkWorkOpenedPayload;
   "network.work.transitioned": NetworkWorkTransitionedPayload;
   "network.work.closed": NetworkWorkClosedPayload;
+  "network.peer.joined": NetworkPeerJoinedPayload;
+  "network.peer.left": NetworkPeerLeftPayload;
 }
 
 export interface HookPatchByEvent {
@@ -5206,6 +5328,8 @@ export interface HookPatchByEvent {
   "network.work.opened": NetworkObservationPatch;
   "network.work.transitioned": NetworkObservationPatch;
   "network.work.closed": NetworkObservationPatch;
+  "network.peer.joined": NetworkObservationPatch;
+  "network.peer.left": NetworkObservationPatch;
 }
 
 export interface HostAPIMethodMap {
@@ -5273,8 +5397,8 @@ export interface HostAPIMethodMap {
     params: undefined;
     result: ObserveHealth;
   };
-  "observe/events": {
-    params: ObserveEventsParams | undefined;
+  "logs/list": {
+    params: ListLogsParams | undefined;
     result: SessionEvent[];
   };
   "skills/list": {

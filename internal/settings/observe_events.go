@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	eventspkg "github.com/pedronauck/agh/internal/events"
 	"github.com/pedronauck/agh/internal/store"
 )
 
@@ -33,11 +34,11 @@ func WithMutationSource(ctx context.Context, source string) context.Context {
 
 func mutationSourceFromContext(ctx context.Context) string {
 	if ctx == nil {
-		return "runtime"
+		return applyRecordActorRuntime
 	}
 	source, ok := ctx.Value(mutationSourceContextKey{}).(string)
 	if !ok || strings.TrimSpace(source) == "" {
-		return "runtime"
+		return applyRecordActorRuntime
 	}
 	return strings.TrimSpace(source)
 }
@@ -71,7 +72,7 @@ func (s *service) emitSettingsChanged(
 	}
 
 	return s.eventSummaries.WriteEventSummary(ctx, store.EventSummary{
-		Type:    "settings.changed",
+		Type:    eventspkg.SettingsChanged,
 		Content: content,
 		Summary: summary,
 	})

@@ -21,8 +21,13 @@ vi.mock("@/systems/tasks/adapters/tasks-api", () => ({
   getTaskTimeline: vi.fn(),
   getTaskTree: vi.fn(),
   getTaskRun: vi.fn(),
+  inspectTask: vi.fn().mockResolvedValue(null),
+  inspectRun: vi.fn().mockResolvedValue(null),
   getTaskDashboard: vi.fn(),
   getTaskInbox: vi.fn(),
+  forceFailTaskRun: vi.fn(),
+  forceReleaseTaskRun: vi.fn(),
+  retryTaskRun: vi.fn(),
 }));
 
 import {

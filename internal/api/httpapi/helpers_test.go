@@ -19,6 +19,7 @@ import (
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	"github.com/pedronauck/agh/internal/session"
 	settingspkg "github.com/pedronauck/agh/internal/settings"
+	taskpkg "github.com/pedronauck/agh/internal/task"
 	"github.com/pedronauck/agh/internal/vault"
 	workspacepkg "github.com/pedronauck/agh/internal/workspace"
 )
@@ -50,11 +51,15 @@ func (stubVaultService) DeleteSecret(context.Context, string) error {
 }
 
 type stubExtensionService struct {
-	ListFn    func(context.Context) ([]contract.ExtensionPayload, error)
-	InstallFn func(context.Context, contract.InstallExtensionRequest) (contract.ExtensionPayload, error)
-	EnableFn  func(context.Context, string) (contract.ExtensionPayload, error)
-	DisableFn func(context.Context, string) (contract.ExtensionPayload, error)
-	StatusFn  func(context.Context, string) (contract.ExtensionPayload, error)
+	ListFn              func(context.Context) ([]contract.ExtensionPayload, error)
+	SearchMarketplaceFn func(context.Context, string, string, int) ([]contract.ExtensionMarketplaceEntry, error)
+	InstallFn           func(context.Context, contract.InstallExtensionRequest, taskpkg.ActorContext) (contract.ExtensionPayload, error)
+	UpdateFn            func(context.Context, string, contract.UpdateExtensionRequest, taskpkg.ActorContext) (contract.ManagedExtensionUpdatePayload, error)
+	RemoveFn            func(context.Context, string, taskpkg.ActorContext) (contract.ManagedExtensionRemovePayload, error)
+	EnableFn            func(context.Context, string, taskpkg.ActorContext) (contract.ExtensionPayload, error)
+	DisableFn           func(context.Context, string, taskpkg.ActorContext) (contract.ExtensionPayload, error)
+	StatusFn            func(context.Context, string) (contract.ExtensionPayload, error)
+	ProvenanceFn        func(context.Context, string) (contract.ExtensionProvenancePayload, error)
 }
 
 func (s stubExtensionService) List(ctx context.Context) ([]contract.ExtensionPayload, error) {
@@ -64,28 +69,72 @@ func (s stubExtensionService) List(ctx context.Context) ([]contract.ExtensionPay
 	return s.ListFn(ctx)
 }
 
+func (s stubExtensionService) SearchMarketplace(
+	ctx context.Context,
+	query string,
+	source string,
+	limit int,
+) ([]contract.ExtensionMarketplaceEntry, error) {
+	if s.SearchMarketplaceFn == nil {
+		return nil, nil
+	}
+	return s.SearchMarketplaceFn(ctx, query, source, limit)
+}
+
 func (s stubExtensionService) Install(
 	ctx context.Context,
 	req contract.InstallExtensionRequest,
+	actor taskpkg.ActorContext,
 ) (contract.ExtensionPayload, error) {
 	if s.InstallFn == nil {
 		return contract.ExtensionPayload{}, nil
 	}
-	return s.InstallFn(ctx, req)
+	return s.InstallFn(ctx, req, actor)
 }
 
-func (s stubExtensionService) Enable(ctx context.Context, name string) (contract.ExtensionPayload, error) {
+func (s stubExtensionService) Update(
+	ctx context.Context,
+	name string,
+	req contract.UpdateExtensionRequest,
+	actor taskpkg.ActorContext,
+) (contract.ManagedExtensionUpdatePayload, error) {
+	if s.UpdateFn == nil {
+		return contract.ManagedExtensionUpdatePayload{}, nil
+	}
+	return s.UpdateFn(ctx, name, req, actor)
+}
+
+func (s stubExtensionService) Remove(
+	ctx context.Context,
+	name string,
+	actor taskpkg.ActorContext,
+) (contract.ManagedExtensionRemovePayload, error) {
+	if s.RemoveFn == nil {
+		return contract.ManagedExtensionRemovePayload{}, nil
+	}
+	return s.RemoveFn(ctx, name, actor)
+}
+
+func (s stubExtensionService) Enable(
+	ctx context.Context,
+	name string,
+	actor taskpkg.ActorContext,
+) (contract.ExtensionPayload, error) {
 	if s.EnableFn == nil {
 		return contract.ExtensionPayload{}, nil
 	}
-	return s.EnableFn(ctx, name)
+	return s.EnableFn(ctx, name, actor)
 }
 
-func (s stubExtensionService) Disable(ctx context.Context, name string) (contract.ExtensionPayload, error) {
+func (s stubExtensionService) Disable(
+	ctx context.Context,
+	name string,
+	actor taskpkg.ActorContext,
+) (contract.ExtensionPayload, error) {
 	if s.DisableFn == nil {
 		return contract.ExtensionPayload{}, nil
 	}
-	return s.DisableFn(ctx, name)
+	return s.DisableFn(ctx, name, actor)
 }
 
 func (s stubExtensionService) Status(ctx context.Context, name string) (contract.ExtensionPayload, error) {
@@ -95,17 +144,33 @@ func (s stubExtensionService) Status(ctx context.Context, name string) (contract
 	return s.StatusFn(ctx, name)
 }
 
+func (s stubExtensionService) Provenance(
+	ctx context.Context,
+	name string,
+) (contract.ExtensionProvenancePayload, error) {
+	if s.ProvenanceFn == nil {
+		return contract.ExtensionProvenancePayload{}, nil
+	}
+	return s.ProvenanceFn(ctx, name)
+}
+
 type stubSettingsService struct {
 	GetSectionFn                func(context.Context, settingspkg.SectionRequest) (settingspkg.SectionEnvelope, error)
 	UpdateSectionFn             func(context.Context, settingspkg.SectionUpdateRequest) (settingspkg.MutationResult, error)
+	ApplySectionFn              func(context.Context, settingspkg.SectionUpdateRequest) (settingspkg.ApplyResult, error)
 	ListCollectionFn            func(context.Context, settingspkg.CollectionRequest) (settingspkg.CollectionEnvelope, error)
 	PutCollectionItemFn         func(context.Context, settingspkg.CollectionItemPutRequest) (settingspkg.MutationResult, error)
+	ApplyCollectionItemFn       func(context.Context, settingspkg.CollectionItemPutRequest) (settingspkg.ApplyResult, error)
 	DeleteCollectionItemFn      func(context.Context, settingspkg.CollectionItemDeleteRequest) (settingspkg.MutationResult, error)
+	ApplyCollectionDeleteFn     func(context.Context, settingspkg.CollectionItemDeleteRequest) (settingspkg.ApplyResult, error)
+	ReloadFn                    func(context.Context) (settingspkg.ApplyResult, error)
+	ListApplyRecordsFn          func(context.Context, settingspkg.ApplyRecordFilter) ([]settingspkg.ApplyRecord, error)
 	LastGetSectionRequest       settingspkg.SectionRequest
 	LastUpdateSectionRequest    settingspkg.SectionUpdateRequest
 	LastListCollectionRequest   settingspkg.CollectionRequest
 	LastPutCollectionRequest    settingspkg.CollectionItemPutRequest
 	LastDeleteCollectionRequest settingspkg.CollectionItemDeleteRequest
+	LastApplyRecordFilter       settingspkg.ApplyRecordFilter
 }
 
 func (s *stubSettingsService) GetSection(
@@ -136,6 +201,17 @@ func (s *stubSettingsService) UpdateSection(
 	return s.UpdateSectionFn(ctx, req)
 }
 
+func (s *stubSettingsService) ApplySection(
+	ctx context.Context,
+	req settingspkg.SectionUpdateRequest,
+) (settingspkg.ApplyResult, error) {
+	s.LastUpdateSectionRequest = req
+	if s.ApplySectionFn == nil {
+		return settingsTestApplyResultForScope(req.Section, req.Scope, req.WorkspaceID), nil
+	}
+	return s.ApplySectionFn(ctx, req)
+}
+
 func (s *stubSettingsService) ListCollection(
 	ctx context.Context,
 	req settingspkg.CollectionRequest,
@@ -164,6 +240,17 @@ func (s *stubSettingsService) PutCollectionItem(
 	return s.PutCollectionItemFn(ctx, req)
 }
 
+func (s *stubSettingsService) ApplyCollectionItem(
+	ctx context.Context,
+	req settingspkg.CollectionItemPutRequest,
+) (settingspkg.ApplyResult, error) {
+	s.LastPutCollectionRequest = req
+	if s.ApplyCollectionItemFn == nil {
+		return settingsTestApplyResultForScope(settingspkg.SectionName(req.Collection), req.Scope, req.WorkspaceID), nil
+	}
+	return s.ApplyCollectionItemFn(ctx, req)
+}
+
 func (s *stubSettingsService) DeleteCollectionItem(
 	ctx context.Context,
 	req settingspkg.CollectionItemDeleteRequest,
@@ -179,6 +266,64 @@ func (s *stubSettingsService) DeleteCollectionItem(
 		}, nil
 	}
 	return s.DeleteCollectionItemFn(ctx, req)
+}
+
+func (s *stubSettingsService) ApplyCollectionDelete(
+	ctx context.Context,
+	req settingspkg.CollectionItemDeleteRequest,
+) (settingspkg.ApplyResult, error) {
+	s.LastDeleteCollectionRequest = req
+	if s.ApplyCollectionDeleteFn == nil {
+		return settingsTestApplyResultForScope(settingspkg.SectionName(req.Collection), req.Scope, req.WorkspaceID), nil
+	}
+	return s.ApplyCollectionDeleteFn(ctx, req)
+}
+
+func (s *stubSettingsService) Reload(ctx context.Context) (settingspkg.ApplyResult, error) {
+	if s.ReloadFn == nil {
+		return settingsTestApplyResult(""), nil
+	}
+	return s.ReloadFn(ctx)
+}
+
+func (s *stubSettingsService) ListApplyRecords(
+	ctx context.Context,
+	filter settingspkg.ApplyRecordFilter,
+) ([]settingspkg.ApplyRecord, error) {
+	s.LastApplyRecordFilter = filter
+	if s.ListApplyRecordsFn == nil {
+		return nil, nil
+	}
+	return s.ListApplyRecordsFn(ctx, filter)
+}
+
+func settingsTestApplyResult(section settingspkg.SectionName) settingspkg.ApplyResult {
+	return settingsTestApplyResultForScope(section, settingspkg.ScopeGlobal, "")
+}
+
+func settingsTestApplyResultForScope(
+	section settingspkg.SectionName,
+	scope settingspkg.ScopeKind,
+	workspaceID string,
+) settingspkg.ApplyResult {
+	return settingspkg.ApplyResult{
+		Section:     section,
+		Scope:       scope,
+		WorkspaceID: workspaceID,
+		Applied:     true,
+		NextAction:  "none",
+		Record: settingspkg.ApplyRecord{
+			ID:         "cfgapp-test",
+			ActiveHash: "sha256:test",
+			Generation: 1,
+			DiffClass:  "live",
+			Status:     "applied",
+			Lifecycle:  "live",
+			NextAction: "none",
+			CreatedAt:  time.Unix(1, 0).UTC(),
+			UpdatedAt:  time.Unix(1, 0).UTC(),
+		},
+	}
 }
 
 type stubSettingsRestartController struct {
@@ -276,22 +421,23 @@ func newTestHandlersWithAutomationBridgesTasksAndWorkspace(
 	workspaces = defaultTestWorkspaceService(workspaces)
 
 	return newHandlers(&handlerConfig{
-		sessions:     manager,
-		tasks:        tasks,
-		observer:     observer,
-		automation:   automation,
-		bridges:      bridges,
-		workspaces:   workspaces,
-		staticFS:     mustStaticFS(t),
-		homePaths:    homePaths,
-		config:       cfg,
-		boundHost:    cfg.HTTP.Host,
-		logger:       discardLogger(),
-		startedAt:    time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC),
-		now:          func() time.Time { return time.Date(2026, 4, 3, 12, 0, 1, 0, time.UTC) },
-		pollInterval: 5 * time.Millisecond,
-		agentLoader:  aghconfig.LoadAgentDef,
-		httpPort:     cfg.HTTP.Port,
+		sessions:       manager,
+		sessionCatalog: defaultTestSessionCatalog(manager),
+		tasks:          tasks,
+		observer:       observer,
+		automation:     automation,
+		bridges:        bridges,
+		workspaces:     workspaces,
+		staticFS:       mustStaticFS(t),
+		homePaths:      homePaths,
+		config:         cfg,
+		boundHost:      cfg.HTTP.Host,
+		logger:         discardLogger(),
+		startedAt:      time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC),
+		now:            func() time.Time { return time.Date(2026, 4, 3, 12, 0, 1, 0, time.UTC) },
+		pollInterval:   5 * time.Millisecond,
+		agentLoader:    aghconfig.LoadAgentDef,
+		httpPort:       cfg.HTTP.Port,
 	})
 }
 
@@ -321,6 +467,14 @@ func defaultTestSessionManager(manager core.SessionManager) core.SessionManager 
 		return info, nil
 	}
 	return stub
+}
+
+func defaultTestSessionCatalog(manager core.SessionManager) core.SessionCatalog {
+	catalog, ok := manager.(core.SessionCatalog)
+	if !ok {
+		return nil
+	}
+	return catalog
 }
 
 func defaultTestWorkspaceService(workspaces core.WorkspaceService) core.WorkspaceService {
@@ -366,21 +520,22 @@ func newTestHandlersWithResources(
 	cfg.HTTP.Port = 2123
 
 	return newHandlers(&handlerConfig{
-		sessions:     manager,
-		tasks:        stubTaskManager{},
-		observer:     observer,
-		resources:    resources,
-		workspaces:   stubWorkspaceService{},
-		staticFS:     mustStaticFS(t),
-		homePaths:    homePaths,
-		config:       cfg,
-		boundHost:    cfg.HTTP.Host,
-		logger:       discardLogger(),
-		startedAt:    time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC),
-		now:          func() time.Time { return time.Date(2026, 4, 3, 12, 0, 1, 0, time.UTC) },
-		pollInterval: 5 * time.Millisecond,
-		agentLoader:  aghconfig.LoadAgentDef,
-		httpPort:     cfg.HTTP.Port,
+		sessions:       manager,
+		sessionCatalog: defaultTestSessionCatalog(manager),
+		tasks:          stubTaskManager{},
+		observer:       observer,
+		resources:      resources,
+		workspaces:     stubWorkspaceService{},
+		staticFS:       mustStaticFS(t),
+		homePaths:      homePaths,
+		config:         cfg,
+		boundHost:      cfg.HTTP.Host,
+		logger:         discardLogger(),
+		startedAt:      time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC),
+		now:            func() time.Time { return time.Date(2026, 4, 3, 12, 0, 1, 0, time.UTC) },
+		pollInterval:   5 * time.Millisecond,
+		agentLoader:    aghconfig.LoadAgentDef,
+		httpPort:       cfg.HTTP.Port,
 	})
 }
 
@@ -399,22 +554,23 @@ func newTestHandlersWithResourcesAndAuth(
 	cfg.HTTP.Port = 2123
 
 	return newHandlers(&handlerConfig{
-		sessions:     manager,
-		tasks:        stubTaskManager{},
-		observer:     observer,
-		resources:    resources,
-		workspaces:   stubWorkspaceService{},
-		staticFS:     mustStaticFS(t),
-		homePaths:    homePaths,
-		config:       cfg,
-		boundHost:    cfg.HTTP.Host,
-		logger:       discardLogger(),
-		startedAt:    time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC),
-		now:          func() time.Time { return time.Date(2026, 4, 3, 12, 0, 1, 0, time.UTC) },
-		pollInterval: 5 * time.Millisecond,
-		agentLoader:  aghconfig.LoadAgentDef,
-		httpPort:     cfg.HTTP.Port,
-		resourceAuth: append([]gin.HandlerFunc(nil), auth...),
+		sessions:       manager,
+		sessionCatalog: defaultTestSessionCatalog(manager),
+		tasks:          stubTaskManager{},
+		observer:       observer,
+		resources:      resources,
+		workspaces:     stubWorkspaceService{},
+		staticFS:       mustStaticFS(t),
+		homePaths:      homePaths,
+		config:         cfg,
+		boundHost:      cfg.HTTP.Host,
+		logger:         discardLogger(),
+		startedAt:      time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC),
+		now:            func() time.Time { return time.Date(2026, 4, 3, 12, 0, 1, 0, time.UTC) },
+		pollInterval:   5 * time.Millisecond,
+		agentLoader:    aghconfig.LoadAgentDef,
+		httpPort:       cfg.HTTP.Port,
+		resourceAuth:   append([]gin.HandlerFunc(nil), auth...),
 	})
 }
 

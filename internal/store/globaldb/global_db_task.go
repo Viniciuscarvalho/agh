@@ -49,8 +49,9 @@ const taskListOrderByActivitySQL = ` ORDER BY COALESCE((
 	)
 ), tasks.updated_at) DESC, updated_at DESC, created_at DESC, id DESC`
 
-const taskRunSelectColumnsSQL = `id, task_id, status, attempt, claimed_by_kind, claimed_by_ref,
-	session_id, origin_kind, origin_ref, idempotency_key, network_channel, '' AS claim_token,
+const taskRunSelectColumnsSQL = `id, task_id, status, attempt, previous_run_id, failure_kind,
+	claimed_by_kind, claimed_by_ref, session_id, origin_kind, origin_ref, idempotency_key,
+	network_channel, '' AS claim_token,
 	claim_token_hash, lease_until, heartbeat_at, coordination_channel_id, queued_at,
 	claimed_at, started_at, ended_at, error, metadata_json, result_json, review_required,
 	review_request_round, review_policy_snapshot, review_request_id, parent_run_id, review_id,
@@ -82,8 +83,8 @@ func (g *GlobalDB) CreateTask(ctx context.Context, record taskpkg.Task) error {
 			id, identifier, scope, workspace_id, parent_task_id, network_channel, title, description,
 			priority, max_attempts, status, approval_policy, approval_state,
 			owner_kind, owner_ref, created_by_kind, created_by_ref, origin_kind, origin_ref,
-			created_at, updated_at, closed_at, metadata_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			created_at, updated_at, closed_at, paused, paused_by, paused_at, paused_reason, metadata_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		normalized.ID,
 		store.NullableString(normalized.Identifier),
 		string(normalized.Scope),
@@ -106,6 +107,10 @@ func (g *GlobalDB) CreateTask(ctx context.Context, record taskpkg.Task) error {
 		store.FormatTimestamp(normalized.CreatedAt),
 		store.FormatTimestamp(normalized.UpdatedAt),
 		nullableTaskTimestamp(normalized.ClosedAt),
+		taskBoolToInt(normalized.Paused),
+		normalized.PausedBy,
+		nullableTaskTimestamp(normalized.PausedAt),
+		normalized.PausedReason,
 		nullableTaskJSON(normalized.Metadata),
 	)
 	if err != nil {
@@ -202,7 +207,8 @@ func (g *GlobalDB) updateTaskWithExecutor(
 		     max_attempts = ?, status = ?, approval_policy = ?, approval_state = ?,
 		     owner_kind = ?, owner_ref = ?, created_by_kind = ?,
 		     created_by_ref = ?, origin_kind = ?, origin_ref = ?,
-		     created_at = ?, updated_at = ?, closed_at = ?, metadata_json = ?
+		     created_at = ?, updated_at = ?, closed_at = ?,
+		     paused = ?, paused_by = ?, paused_at = ?, paused_reason = ?, metadata_json = ?
 		 WHERE id = ?`,
 		store.NullableString(normalized.Identifier),
 		string(normalized.Scope),
@@ -225,6 +231,10 @@ func (g *GlobalDB) updateTaskWithExecutor(
 		store.FormatTimestamp(normalized.CreatedAt),
 		store.FormatTimestamp(normalized.UpdatedAt),
 		nullableTaskTimestamp(normalized.ClosedAt),
+		taskBoolToInt(normalized.Paused),
+		normalized.PausedBy,
+		nullableTaskTimestamp(normalized.PausedAt),
+		normalized.PausedReason,
 		nullableTaskJSON(normalized.Metadata),
 		normalized.ID,
 	)
@@ -252,7 +262,8 @@ func (g *GlobalDB) GetTask(ctx context.Context, id string) (taskpkg.Task, error)
 			id, identifier, scope, workspace_id, parent_task_id, network_channel, title, description,
 			priority, max_attempts, status, approval_policy, approval_state,
 			owner_kind, owner_ref, created_by_kind, created_by_ref, origin_kind, origin_ref,
-			created_at, updated_at, closed_at, current_run_id, `+taskLatestEventSeqSelectSQL+`, metadata_json
+			created_at, updated_at, closed_at, current_run_id, `+taskLatestEventSeqSelectSQL+`,
+			paused, paused_by, paused_at, paused_reason, metadata_json
 			 FROM tasks
 			 WHERE id = ?`,
 		trimmedID,
@@ -282,7 +293,8 @@ func (g *GlobalDB) ListTasks(ctx context.Context, query taskpkg.Query) ([]taskpk
 		id, identifier, scope, workspace_id, parent_task_id, network_channel, title, description,
 		priority, max_attempts, status, approval_policy, approval_state,
 		owner_kind, owner_ref, created_by_kind, created_by_ref, origin_kind, origin_ref,
-		created_at, updated_at, closed_at, current_run_id, ` + taskLatestEventSeqSelectSQL + `, metadata_json
+		created_at, updated_at, closed_at, current_run_id, ` + taskLatestEventSeqSelectSQL + `,
+		paused, paused_by, paused_at, paused_reason, metadata_json
 		FROM tasks`
 	where, args := store.BuildClauses(
 		store.StringClause("scope", string(normalized.Scope)),
@@ -434,7 +446,7 @@ func updateTaskRunRecordWithExecutor(ctx context.Context, exec taskSQLExecutor, 
 	result, err := exec.ExecContext(
 		ctx,
 		`UPDATE task_runs
-		 SET task_id = ?, status = ?, attempt = ?, claimed_by_kind = ?,
+		 SET task_id = ?, status = ?, attempt = ?, previous_run_id = ?, failure_kind = ?, claimed_by_kind = ?,
 		     claimed_by_ref = ?, session_id = ?, origin_kind = ?,
 		     origin_ref = ?, idempotency_key = ?, network_channel = ?,
 		     claim_token = ?, claim_token_hash = ?, lease_until = ?,
@@ -448,6 +460,8 @@ func updateTaskRunRecordWithExecutor(ctx context.Context, exec taskSQLExecutor, 
 		run.TaskID,
 		string(run.Status),
 		run.Attempt,
+		store.NullableString(run.PreviousRunID),
+		strings.TrimSpace(run.FailureKind),
 		taskActorKindValue(run.ClaimedBy),
 		taskActorRefValue(run.ClaimedBy),
 		store.NullableString(run.SessionID),
@@ -771,17 +785,20 @@ func insertTaskRunWithExecutor(ctx context.Context, exec taskSQLExecutor, run ta
 	if _, err := exec.ExecContext(
 		ctx,
 		`INSERT INTO task_runs (
-			id, task_id, status, attempt, claimed_by_kind, claimed_by_ref, session_id, origin_kind, origin_ref,
-			idempotency_key, network_channel, claim_token, claim_token_hash, lease_until,
+			id, task_id, status, attempt, previous_run_id, failure_kind, claimed_by_kind,
+			claimed_by_ref, session_id, origin_kind, origin_ref, idempotency_key,
+			network_channel, claim_token, claim_token_hash, lease_until,
 			heartbeat_at, coordination_channel_id, queued_at, claimed_at, started_at, ended_at,
 			error, metadata_json, result_json, review_required, review_request_round,
 			review_policy_snapshot, review_request_id, parent_run_id, review_id, review_round,
 			continuation_reason, missing_work_json, next_round_guidance
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		run.ID,
 		run.TaskID,
 		string(run.Status),
 		run.Attempt,
+		store.NullableString(run.PreviousRunID),
+		strings.TrimSpace(run.FailureKind),
 		taskActorKindValue(run.ClaimedBy),
 		taskActorRefValue(run.ClaimedBy),
 		store.NullableString(run.SessionID),
@@ -1032,6 +1049,9 @@ func scanTaskRecord(scanner rowScanner) (taskpkg.Task, error) {
 	)
 	record.CurrentRunID = strings.TrimSpace(fields.currentRunID.String)
 	record.LatestEventSeq = fields.latestEventSeq
+	record.Paused = fields.paused != 0
+	record.PausedBy = strings.TrimSpace(fields.pausedBy)
+	record.PausedReason = strings.TrimSpace(fields.pausedReason)
 	if err := assignTaskRecordTimestamps(
 		&record,
 		fields.createdAtRaw,
@@ -1041,6 +1061,9 @@ func scanTaskRecord(scanner rowScanner) (taskpkg.Task, error) {
 		return taskpkg.Task{}, err
 	}
 	if err := assignTaskMetadata(&record.Metadata, fields.metadataJSON, "task.metadata_json"); err != nil {
+		return taskpkg.Task{}, err
+	}
+	if err := assignNullableTaskTimestamp(&record.PausedAt, fields.pausedAtRaw); err != nil {
 		return taskpkg.Task{}, err
 	}
 	record = normalizeTaskRecord(record)
@@ -1072,6 +1095,10 @@ type taskScanFields struct {
 	closedAtRaw    sql.NullString
 	currentRunID   sql.NullString
 	latestEventSeq int64
+	paused         int
+	pausedBy       string
+	pausedAtRaw    sql.NullString
+	pausedReason   string
 	metadataJSON   sql.NullString
 }
 
@@ -1103,6 +1130,10 @@ func scanTaskRecordColumns(scanner rowScanner) (taskpkg.Task, taskScanFields, er
 		&fields.closedAtRaw,
 		&fields.currentRunID,
 		&fields.latestEventSeq,
+		&fields.paused,
+		&fields.pausedBy,
+		&fields.pausedAtRaw,
+		&fields.pausedReason,
 		&fields.metadataJSON,
 	); err != nil {
 		return taskpkg.Task{}, taskScanFields{}, fmt.Errorf("store: scan task: %w", err)
@@ -1118,6 +1149,8 @@ func scanTaskRunRecord(scanner rowScanner) (taskpkg.Run, error) {
 		&run.TaskID,
 		&fields.status,
 		&run.Attempt,
+		&fields.previousRunID,
+		&fields.failureKind,
 		&fields.claimedByKind,
 		&fields.claimedByRef,
 		&fields.sessionID,
@@ -1155,6 +1188,8 @@ func scanTaskRunRecord(scanner rowScanner) (taskpkg.Run, error) {
 
 type taskRunScanFields struct {
 	status               string
+	previousRunID        sql.NullString
+	failureKind          string
 	claimedByKind        sql.NullString
 	claimedByRef         sql.NullString
 	sessionID            sql.NullString
@@ -1189,6 +1224,8 @@ func (fields *taskRunScanFields) record(run taskpkg.Run) (taskpkg.Run, error) {
 	assignScannedTaskRunRecord(
 		&run,
 		fields.status,
+		fields.previousRunID,
+		fields.failureKind,
 		fields.claimedByKind,
 		fields.claimedByRef,
 		fields.sessionID,
@@ -1295,6 +1332,8 @@ func assignTaskRecordTimestamps(
 func assignScannedTaskRunRecord(
 	run *taskpkg.Run,
 	status string,
+	previousRunID sql.NullString,
+	failureKind string,
 	claimedByKind sql.NullString,
 	claimedByRef sql.NullString,
 	sessionID sql.NullString,
@@ -1307,6 +1346,8 @@ func assignScannedTaskRunRecord(
 	runErr sql.NullString,
 ) {
 	run.Status = taskpkg.RunStatus(strings.TrimSpace(status))
+	run.PreviousRunID = taskNullStringValue(previousRunID)
+	run.FailureKind = strings.TrimSpace(failureKind)
 	if claimedByKind.Valid || claimedByRef.Valid {
 		run.ClaimedBy = &taskpkg.ActorIdentity{
 			Kind: taskpkg.ActorKind(strings.TrimSpace(claimedByKind.String)),
@@ -1384,6 +1425,8 @@ func normalizeTaskRecord(record taskpkg.Task) taskpkg.Task {
 	normalized.CurrentRunID = strings.TrimSpace(normalized.CurrentRunID)
 	normalized.Title = strings.TrimSpace(normalized.Title)
 	normalized.Description = strings.TrimSpace(normalized.Description)
+	normalized.PausedBy = strings.TrimSpace(normalized.PausedBy)
+	normalized.PausedReason = strings.TrimSpace(normalized.PausedReason)
 	normalized.Status = normalized.Status.Normalize()
 	normalized.CreatedBy.Kind = normalized.CreatedBy.Kind.Normalize()
 	normalized.CreatedBy.Ref = strings.TrimSpace(normalized.CreatedBy.Ref)
@@ -1427,6 +1470,9 @@ func normalizeTaskRecord(record taskpkg.Task) taskpkg.Task {
 	if !normalized.ClosedAt.IsZero() {
 		normalized.ClosedAt = normalized.ClosedAt.UTC()
 	}
+	if !normalized.PausedAt.IsZero() {
+		normalized.PausedAt = normalized.PausedAt.UTC()
+	}
 	return normalized
 }
 
@@ -1435,6 +1481,8 @@ func normalizeTaskRunRecord(run taskpkg.Run) taskpkg.Run {
 	normalized.ID = strings.TrimSpace(normalized.ID)
 	normalized.TaskID = strings.TrimSpace(normalized.TaskID)
 	normalized.Status = normalized.Status.Normalize()
+	normalized.PreviousRunID = strings.TrimSpace(normalized.PreviousRunID)
+	normalized.FailureKind = strings.TrimSpace(normalized.FailureKind)
 	if normalized.ClaimedBy != nil {
 		claimedBy := *normalized.ClaimedBy
 		claimedBy.Kind = claimedBy.Kind.Normalize()
@@ -1587,22 +1635,33 @@ func normalizeTaskRunQuery(query taskpkg.RunQuery) taskpkg.RunQuery {
 
 func taskSummaryFromRecord(record taskpkg.Task) taskpkg.Summary {
 	return taskpkg.Summary{
-		ID:             record.ID,
-		Identifier:     record.Identifier,
-		Scope:          record.Scope,
-		WorkspaceID:    record.WorkspaceID,
-		ParentTaskID:   record.ParentTaskID,
-		NetworkChannel: record.NetworkChannel,
-		Title:          record.Title,
-		Priority:       record.Priority,
-		MaxAttempts:    record.MaxAttempts,
-		Status:         record.Status,
-		ApprovalPolicy: record.ApprovalPolicy,
-		ApprovalState:  record.ApprovalState,
-		Draft:          record.Status.Normalize() == taskpkg.TaskStatusDraft,
-		Owner:          record.Owner,
-		CurrentRunID:   record.CurrentRunID,
-		LatestEventSeq: record.LatestEventSeq,
+		ID:              record.ID,
+		Identifier:      record.Identifier,
+		Scope:           record.Scope,
+		WorkspaceID:     record.WorkspaceID,
+		ParentTaskID:    record.ParentTaskID,
+		NetworkChannel:  record.NetworkChannel,
+		Title:           record.Title,
+		Priority:        record.Priority,
+		MaxAttempts:     record.MaxAttempts,
+		Status:          record.Status,
+		ApprovalPolicy:  record.ApprovalPolicy,
+		ApprovalState:   record.ApprovalState,
+		Draft:           record.Status.Normalize() == taskpkg.TaskStatusDraft,
+		Owner:           record.Owner,
+		CurrentRunID:    record.CurrentRunID,
+		LatestEventSeq:  record.LatestEventSeq,
+		Paused:          record.Paused,
+		PausedBy:        record.PausedBy,
+		PausedAt:        record.PausedAt,
+		PausedReason:    record.PausedReason,
+		EffectivePaused: record.Paused,
+		PausedByTaskID: func() string {
+			if record.Paused {
+				return record.ID
+			}
+			return ""
+		}(),
 		CreatedBy:      record.CreatedBy,
 		Origin:         record.Origin,
 		CreatedAt:      record.CreatedAt,
@@ -1625,6 +1684,13 @@ func taskOwnerKindValue(owner *taskpkg.Ownership) any {
 		return nil
 	}
 	return string(owner.Kind)
+}
+
+func taskBoolToInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 func taskOwnerRefValue(owner *taskpkg.Ownership) any {

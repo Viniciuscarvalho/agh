@@ -7,10 +7,17 @@ import {
   deleteSettingsProvider,
   disableSettingsExtension,
   enableSettingsExtension,
+  createSettingsNotificationPreset,
+  deleteSettingsNotificationPreset,
+  installSettingsExtension,
   putSettingsSandbox,
   putSettingsHook,
   putSettingsMCPServer,
   putSettingsProvider,
+  reloadSettings,
+  removeSettingsExtension,
+  updateSettingsNotificationPreset,
+  updateSettingsExtension,
   updateSettingsAutomation,
   updateSettingsGeneral,
   updateSettingsHooksExtensions,
@@ -23,14 +30,21 @@ import { settingsKeys } from "../lib/query-keys";
 import { useSettingsRestartStore } from "../stores/use-settings-restart-store";
 import type {
   SettingsSandboxRequest,
+  SettingsExtensionRemove,
   SettingsExtensionEntry,
+  SettingsExtensionUpdate,
   SettingsHookRequest,
+  SettingsInstallExtensionRequest,
+  SettingsCreateNotificationPresetRequest,
+  SettingsNotificationPresetEntry,
   SettingsMCPServerDeleteFilter,
   SettingsMCPServerPutFilter,
   SettingsMCPServerRequest,
   SettingsMutationResult,
+  SettingsUpdateNotificationPresetRequest,
   SettingsProviderRequest,
   SettingsUpdateAutomationRequest,
+  SettingsUpdateExtensionRequest,
   SettingsUpdateGeneralRequest,
   SettingsUpdateHooksExtensionsRequest,
   SettingsUpdateMemoryRequest,
@@ -44,22 +58,36 @@ import type {
 function recordMutation(result: SettingsMutationResult) {
   useSettingsRestartStore.getState().recordMutation({
     section: result.section,
-    restartRequired: result.restart_required,
+    restartRequired: Boolean(result.restart_required),
     restartScope: result.restart_scope,
     warnings: result.warnings ?? [],
+    lifecycle: result.lifecycle,
+    nextAction: result.next_action,
+    applyRecordId: result.apply_record_id,
+    activeGeneration: result.active_generation,
     completedAt: new Date().toISOString(),
   });
+}
+
+function invalidateApplyRecords(queryClient: ReturnType<typeof useQueryClient>) {
+  return queryClient.invalidateQueries({ queryKey: settingsKeys.applyRoot() });
 }
 
 function invalidateSection(
   queryClient: ReturnType<typeof useQueryClient>,
   section: SettingsSectionName
 ) {
-  return queryClient.invalidateQueries({ queryKey: settingsKeys.section(section) });
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: settingsKeys.section(section) }),
+    invalidateApplyRecords(queryClient),
+  ]);
 }
 
 function invalidateProviders(queryClient: ReturnType<typeof useQueryClient>, name?: string) {
-  const tasks = [queryClient.invalidateQueries({ queryKey: settingsKeys.providersRoot() })];
+  const tasks = [
+    queryClient.invalidateQueries({ queryKey: settingsKeys.providersRoot() }),
+    invalidateApplyRecords(queryClient),
+  ];
 
   if (name) {
     tasks.push(queryClient.invalidateQueries({ queryKey: settingsKeys.providerDetail(name) }));
@@ -69,7 +97,10 @@ function invalidateProviders(queryClient: ReturnType<typeof useQueryClient>, nam
 }
 
 function invalidateSandboxes(queryClient: ReturnType<typeof useQueryClient>, name?: string) {
-  const tasks = [queryClient.invalidateQueries({ queryKey: settingsKeys.sandboxesRoot() })];
+  const tasks = [
+    queryClient.invalidateQueries({ queryKey: settingsKeys.sandboxesRoot() }),
+    invalidateApplyRecords(queryClient),
+  ];
 
   if (name) {
     tasks.push(queryClient.invalidateQueries({ queryKey: settingsKeys.sandboxDetail(name) }));
@@ -82,11 +113,25 @@ function invalidateHooks(queryClient: ReturnType<typeof useQueryClient>) {
   return Promise.all([
     queryClient.invalidateQueries({ queryKey: settingsKeys.hooksRoot() }),
     queryClient.invalidateQueries({ queryKey: settingsKeys.section("hooks-extensions") }),
+    invalidateApplyRecords(queryClient),
   ]);
 }
 
 function invalidateMCPServers(queryClient: ReturnType<typeof useQueryClient>) {
-  return queryClient.invalidateQueries({ queryKey: settingsKeys.mcpRoot() });
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: settingsKeys.mcpRoot() }),
+    invalidateApplyRecords(queryClient),
+  ]);
+}
+
+export function useReloadSettings() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => reloadSettings(),
+    onSuccess: recordMutation,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: settingsKeys.all }),
+  });
 }
 
 export function useUpdateSettingsGeneral() {
@@ -244,6 +289,16 @@ interface MCPDeleteParams {
   filter?: SettingsMCPServerDeleteFilter;
 }
 
+interface SettingsExtensionUpdateParams {
+  name: string;
+  body: SettingsUpdateExtensionRequest;
+}
+
+interface SettingsNotificationPresetUpdateParams {
+  name: string;
+  body: SettingsUpdateNotificationPresetRequest;
+}
+
 export function usePutSettingsMCPServer() {
   const queryClient = useQueryClient();
 
@@ -272,6 +327,10 @@ function invalidateExtensions(queryClient: ReturnType<typeof useQueryClient>) {
   ]);
 }
 
+function invalidateNotificationPresets(queryClient: ReturnType<typeof useQueryClient>) {
+  return queryClient.invalidateQueries({ queryKey: settingsKeys.notificationsRoot() });
+}
+
 export function useEnableSettingsExtension() {
   const queryClient = useQueryClient();
 
@@ -287,5 +346,67 @@ export function useDisableSettingsExtension() {
   return useMutation<SettingsExtensionEntry, Error, string>({
     mutationFn: name => disableSettingsExtension(name),
     onSettled: () => invalidateExtensions(queryClient),
+  });
+}
+
+export function useInstallSettingsExtension() {
+  const queryClient = useQueryClient();
+
+  return useMutation<SettingsExtensionEntry, Error, SettingsInstallExtensionRequest>({
+    mutationFn: body => installSettingsExtension(body),
+    onSettled: () => invalidateExtensions(queryClient),
+  });
+}
+
+export function useUpdateSettingsExtension() {
+  const queryClient = useQueryClient();
+
+  return useMutation<SettingsExtensionUpdate, Error, SettingsExtensionUpdateParams>({
+    mutationFn: ({ name, body }) => updateSettingsExtension(name, body),
+    onSettled: () => invalidateExtensions(queryClient),
+  });
+}
+
+export function useRemoveSettingsExtension() {
+  const queryClient = useQueryClient();
+
+  return useMutation<SettingsExtensionRemove, Error, string>({
+    mutationFn: name => removeSettingsExtension(name),
+    onSettled: () => invalidateExtensions(queryClient),
+  });
+}
+
+export function useCreateSettingsNotificationPreset() {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    SettingsNotificationPresetEntry,
+    Error,
+    SettingsCreateNotificationPresetRequest
+  >({
+    mutationFn: body => createSettingsNotificationPreset(body),
+    onSettled: () => invalidateNotificationPresets(queryClient),
+  });
+}
+
+export function useUpdateSettingsNotificationPreset() {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    SettingsNotificationPresetEntry,
+    Error,
+    SettingsNotificationPresetUpdateParams
+  >({
+    mutationFn: ({ name, body }) => updateSettingsNotificationPreset(name, body),
+    onSettled: () => invalidateNotificationPresets(queryClient),
+  });
+}
+
+export function useDeleteSettingsNotificationPreset() {
+  const queryClient = useQueryClient();
+
+  return useMutation<void, Error, string>({
+    mutationFn: name => deleteSettingsNotificationPreset(name),
+    onSettled: () => invalidateNotificationPresets(queryClient),
   });
 }

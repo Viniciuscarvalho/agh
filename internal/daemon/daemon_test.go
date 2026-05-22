@@ -31,6 +31,7 @@ import (
 	automationpkg "github.com/pedronauck/agh/internal/automation"
 	bridgepkg "github.com/pedronauck/agh/internal/bridges"
 	aghconfig "github.com/pedronauck/agh/internal/config"
+	eventspkg "github.com/pedronauck/agh/internal/events"
 	extensionpkg "github.com/pedronauck/agh/internal/extension"
 	extensionprotocol "github.com/pedronauck/agh/internal/extension/protocol"
 	"github.com/pedronauck/agh/internal/heartbeat"
@@ -1557,7 +1558,12 @@ func TestDaemonExtensionServiceInstallStatusAndDisable(t *testing.T) {
 		homePaths,
 		discardLogger(),
 		func() time.Time { return fixedNow },
+		withDaemonExtensionEventWriter(db),
 	)
+	actor, err := taskpkg.DeriveHumanActorContext("user-1", taskpkg.OriginKindCLI, "agh extension install")
+	if err != nil {
+		t.Fatalf("DeriveHumanActorContext() error = %v", err)
+	}
 
 	fixtureDir := filepath.Join(t.TempDir(), "service-ext")
 	if err := os.MkdirAll(fixtureDir, 0o755); err != nil {
@@ -1580,9 +1586,10 @@ func TestDaemonExtensionServiceInstallStatusAndDisable(t *testing.T) {
 	}
 
 	installed, err := service.Install(testutil.Context(t), contract.InstallExtensionRequest{
-		Path:     fixtureDir,
-		Checksum: checksum,
-	})
+		Path:            fixtureDir,
+		Checksum:        checksum,
+		AllowUnverified: true,
+	}, actor)
 	if err != nil {
 		t.Fatalf("service.Install() error = %v", err)
 	}
@@ -1610,7 +1617,7 @@ func TestDaemonExtensionServiceInstallStatusAndDisable(t *testing.T) {
 		t.Fatalf("status = %#v, want active extension", status)
 	}
 
-	disabled, err := service.Disable(testutil.Context(t), "service-ext")
+	disabled, err := service.Disable(testutil.Context(t), "service-ext", actor)
 	if err != nil {
 		t.Fatalf("service.Disable() error = %v", err)
 	}
@@ -1618,7 +1625,7 @@ func TestDaemonExtensionServiceInstallStatusAndDisable(t *testing.T) {
 		t.Fatalf("disabled extension = %#v, want disabled extension", disabled)
 	}
 
-	enabled, err := service.Enable(testutil.Context(t), "service-ext")
+	enabled, err := service.Enable(testutil.Context(t), "service-ext", actor)
 	if err != nil {
 		t.Fatalf("service.Enable() error = %v", err)
 	}
@@ -1626,7 +1633,7 @@ func TestDaemonExtensionServiceInstallStatusAndDisable(t *testing.T) {
 		t.Fatalf("enabled extension = %#v, want active enabled extension", enabled)
 	}
 
-	disabled, err = service.Disable(testutil.Context(t), "service-ext")
+	disabled, err = service.Disable(testutil.Context(t), "service-ext", actor)
 	if err != nil {
 		t.Fatalf("service.Disable(second) error = %v", err)
 	}
@@ -1643,6 +1650,34 @@ func TestDaemonExtensionServiceInstallStatusAndDisable(t *testing.T) {
 	}
 	if syncs != 4 {
 		t.Fatalf("hook binding sync count = %d, want 4", syncs)
+	}
+	summaries, err := db.ListEventSummaries(testutil.Context(t), store.EventSummaryQuery{
+		Component: eventspkg.ComponentExtension,
+	})
+	if err != nil {
+		t.Fatalf("ListEventSummaries(extension) error = %v", err)
+	}
+	wantCounts := map[string]int{
+		eventspkg.ExtensionInstalled: 1,
+		eventspkg.ExtensionEnabled:   1,
+		eventspkg.ExtensionDisabled:  2,
+	}
+	gotCounts := make(map[string]int, len(wantCounts))
+	var installContent []byte
+	for i, summary := range summaries {
+		gotCounts[summary.Type]++
+		if summary.ActorKind != string(taskpkg.ActorKindHuman) || summary.ActorID != "user-1" {
+			t.Fatalf("summary[%d] actor = %s/%s, want human/user-1", i, summary.ActorKind, summary.ActorID)
+		}
+		if summary.Type == eventspkg.ExtensionInstalled {
+			installContent = summary.Content
+		}
+	}
+	if len(summaries) != 4 || !maps.Equal(gotCounts, wantCounts) {
+		t.Fatalf("extension event type counts = %#v from summaries=%#v, want %#v", gotCounts, summaries, wantCounts)
+	}
+	if !bytes.Contains(installContent, []byte("\"allow_unverified\":true")) {
+		t.Fatalf("install event content = %s, want allow_unverified=true", string(installContent))
 	}
 }
 
@@ -1678,6 +1713,10 @@ func TestDaemonExtensionServiceRollsBackFailedInstallReload(t *testing.T) {
 			discardLogger(),
 			time.Now,
 		)
+		actor, err := taskpkg.DeriveHumanActorContext("user-1", taskpkg.OriginKindCLI, "agh extension install")
+		if err != nil {
+			t.Fatalf("DeriveHumanActorContext() error = %v", err)
+		}
 
 		fixtureDir := filepath.Join(t.TempDir(), "rollback-ext")
 		agentDir := filepath.Join(fixtureDir, "agents", "broken")
@@ -1718,9 +1757,10 @@ Broken agent missing required name.
 		}
 
 		_, err = service.Install(testutil.Context(t), contract.InstallExtensionRequest{
-			Path:     fixtureDir,
-			Checksum: checksum,
-		})
+			Path:            fixtureDir,
+			Checksum:        checksum,
+			AllowUnverified: true,
+		}, actor)
 		if err == nil {
 			t.Fatal("service.Install(invalid extension) error = nil, want reload failure")
 		}
@@ -4936,6 +4976,54 @@ func (f *fakeSessionManager) Prompt(ctx context.Context, id string, msg string) 
 	return ch, nil
 }
 
+func (f *fakeSessionManager) SendPrompt(
+	ctx context.Context,
+	id string,
+	opts session.SendPromptOpts,
+) (session.SendPromptResult, error) {
+	events, err := f.Prompt(ctx, id, opts.Message)
+	if err != nil {
+		return session.SendPromptResult{}, err
+	}
+	return session.SendPromptResult{
+		Status: "accepted",
+		Mode:   opts.Mode,
+		Events: events,
+	}, nil
+}
+
+func (f *fakeSessionManager) InterruptPrompt(context.Context, string) (session.SendPromptResult, error) {
+	return session.SendPromptResult{
+		Status:      "interrupted",
+		Mode:        session.BusyInputModeInterrupt,
+		Interrupted: true,
+	}, nil
+}
+
+func (f *fakeSessionManager) SteerPrompt(
+	_ context.Context,
+	_ string,
+	_ string,
+) (session.SendPromptResult, error) {
+	return session.SendPromptResult{
+		Status: "staged",
+		Mode:   session.BusyInputModeSteer,
+		Staged: true,
+	}, nil
+}
+
+func (f *fakeSessionManager) CancelQueuedPrompt(
+	_ context.Context,
+	_ string,
+	queueEntryID string,
+) (session.SendPromptResult, error) {
+	return session.SendPromptResult{
+		Status:       "canceled",
+		Mode:         session.BusyInputModeQueue,
+		QueueEntryID: queueEntryID,
+	}, nil
+}
+
 func (f *fakeSessionManager) CancelPrompt(context.Context, string) error {
 	return nil
 }
@@ -5531,6 +5619,10 @@ func (r *recordingRegistry) ListSessions(context.Context, store.SessionListQuery
 	return nil, nil
 }
 
+func (r *recordingRegistry) AttachSession(context.Context, store.SessionAttachRequest) (store.SessionAttach, error) {
+	return store.SessionAttach{}, store.ErrSessionNotFound
+}
+
 func (r *recordingRegistry) ReconcileSessions(context.Context, []store.SessionInfo) (store.ReconcileResult, error) {
 	return store.ReconcileResult{}, nil
 }
@@ -5828,6 +5920,27 @@ func (r *recordingRegistry) ReleaseRunLease(
 	taskpkg.LeaseRelease,
 ) (taskpkg.Run, error) {
 	return taskpkg.Run{}, taskpkg.ErrTaskRunNotFound
+}
+
+func (r *recordingRegistry) ForceReleaseTaskRun(
+	context.Context,
+	taskpkg.ForceReleaseRunMutation,
+) (taskpkg.ForceRunMutationResult, error) {
+	return taskpkg.ForceRunMutationResult{}, taskpkg.ErrTaskRunNotFound
+}
+
+func (r *recordingRegistry) ForceFailTaskRun(
+	context.Context,
+	taskpkg.ForceFailRunMutation,
+) (taskpkg.ForceRunMutationResult, error) {
+	return taskpkg.ForceRunMutationResult{}, taskpkg.ErrTaskRunNotFound
+}
+
+func (r *recordingRegistry) RetryTaskRun(
+	context.Context,
+	taskpkg.RetryRunMutation,
+) (taskpkg.RetryRunResult, error) {
+	return taskpkg.RetryRunResult{}, taskpkg.ErrTaskRunNotFound
 }
 
 func (r *recordingRegistry) CompleteRunLease(
@@ -6787,6 +6900,20 @@ func (f *fakeHookRuntime) DispatchSessionHealthUpdateAfter(
 	_ context.Context,
 	payload hookspkg.SessionHealthUpdateAfterPayload,
 ) (hookspkg.SessionHealthUpdateAfterPayload, error) {
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchNetworkPeerJoined(
+	_ context.Context,
+	payload hookspkg.NetworkPeerJoinedPayload,
+) (hookspkg.NetworkPeerJoinedPayload, error) {
+	return payload, nil
+}
+
+func (f *fakeHookRuntime) DispatchNetworkPeerLeft(
+	_ context.Context,
+	payload hookspkg.NetworkPeerLeftPayload,
+) (hookspkg.NetworkPeerLeftPayload, error) {
 	return payload, nil
 }
 

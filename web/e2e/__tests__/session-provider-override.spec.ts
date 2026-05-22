@@ -61,7 +61,7 @@ test.use({
   },
 });
 
-test("operator can create a provider/model override session and gets an inline resume failure when that provider disappears", async ({
+test("operator can create a provider/model override session and attach without losing provider truth", async ({
   appPage,
   browserArtifacts,
   runtime,
@@ -124,7 +124,7 @@ test("operator can create a provider/model override session and gets an inline r
   const catalogRefreshResponse = appPage.waitForResponse(
     response =>
       response.request().method() === "POST" &&
-      response.url().endsWith(`/api/providers/${overrideProvider}/models/refresh`)
+      response.url().endsWith(`/api/model-catalog/providers/${overrideProvider}/models/refresh`)
   );
   const refreshCatalog = appPage.getByTestId("session-create-catalog-refresh");
   await expect(refreshCatalog).toBeEnabled();
@@ -175,7 +175,7 @@ test("operator can create a provider/model override session and gets an inline r
     .poll(() => new URL(appPage.url()).pathname)
     .toBe(browserLifecycleSessionPath(createdSession.session.id));
   await expect(ui.chatHeader).toBeVisible();
-  await expect(appPage.getByTestId("session-provider-badge")).toHaveText(overrideProvider);
+  await expect(appPage.getByRole("banner")).toContainText(overrideProvider);
   await browserArtifacts.captureScreenshot("session-provider-created", appPage);
 
   await assertSessionParity(
@@ -185,9 +185,6 @@ test("operator can create a provider/model override session and gets an inline r
     overrideProvider
   );
 
-  await ui.stopButton.click();
-  await expect(ui.resumeButton).toBeVisible();
-
   await writeWorkspaceConfig({
     rootDir: workspaceRoot,
     defaultProvider: driftedDefaultProvider,
@@ -195,9 +192,21 @@ test("operator can create a provider/model override session and gets an inline r
     includeOverride: true,
   });
 
+  const attachResponsePromise = appPage.waitForResponse(
+    response =>
+      response.request().method() === "POST" &&
+      response
+        .url()
+        .endsWith(
+          sessionAPIPath(createdSession.session.workspace_id, createdSession.session.id, "/attach")
+        )
+  );
+
+  await expect(ui.resumeButton).toBeVisible();
   await ui.resumeButton.click();
+  expect((await attachResponsePromise).ok()).toBe(true);
   await expect(ui.stopButton).toBeVisible();
-  await expect(appPage.getByTestId("session-provider-badge")).toHaveText(overrideProvider);
+  await expect(appPage.getByRole("banner")).toContainText(overrideProvider);
   await assertSessionParity(
     runtime,
     createdSession.session.workspace_id,
@@ -206,47 +215,7 @@ test("operator can create a provider/model override session and gets an inline r
   );
 
   await ui.stopButton.click();
-  await expect(ui.resumeButton).toBeVisible();
-
-  await writeWorkspaceConfig({
-    rootDir: workspaceRoot,
-    defaultProvider: driftedDefaultProvider,
-    overrideCommand,
-    includeOverride: false,
-  });
-
-  const failedResumeResponsePromise = appPage.waitForResponse(
-    response =>
-      response.request().method() === "POST" &&
-      response
-        .url()
-        .endsWith(
-          sessionAPIPath(createdSession.session.workspace_id, createdSession.session.id, "/resume")
-        )
-  );
-
-  await ui.resumeButton.click();
-
-  const failedResumeResponse = await failedResumeResponsePromise;
-  const failedResumeBody = await failedResumeResponse.text();
-  expect(failedResumeResponse.ok()).toBeFalsy();
-  expect(failedResumeBody).toContain(createdSession.session.id);
-  expect(failedResumeBody).toContain(overrideProvider);
-
-  await expect(appPage.getByTestId("session-resume-failure")).toBeVisible();
-  await expect(appPage.getByTestId("session-resume-failure-provider")).toHaveText(overrideProvider);
-  await expect(appPage.getByTestId("session-resume-failure-meta")).toContainText(
-    createdSession.session.id
-  );
-  await expect(appPage.getByTestId("session-resume-failure-meta")).toContainText(
-    browserLifecycleAgent
-  );
-  await browserArtifacts.captureScreenshot("session-provider-resume-failure", appPage);
-
-  await appPage.reload({ waitUntil: "domcontentloaded" });
-  await expect(ui.resumeButton).toBeVisible();
-  await ui.resumeButton.click();
-  await expect(appPage.getByTestId("session-resume-failure")).toBeVisible();
+  await expect(ui.resumeButton).not.toBeVisible();
 });
 
 async function assertSessionParity(

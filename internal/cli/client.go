@@ -23,6 +23,7 @@ import (
 	"github.com/pedronauck/agh/internal/api/contract"
 	automationpkg "github.com/pedronauck/agh/internal/automation"
 	bridgepkg "github.com/pedronauck/agh/internal/bridges"
+	diagnosticspkg "github.com/pedronauck/agh/internal/diagnostics"
 	mcppkg "github.com/pedronauck/agh/internal/mcp"
 	"github.com/pedronauck/agh/internal/resources"
 	"github.com/pedronauck/agh/internal/sse"
@@ -31,6 +32,7 @@ import (
 const (
 	clientErrorKey   = "error"
 	clientMessageKey = "message"
+	cliOutcomeKey    = "outcome"
 )
 
 const (
@@ -41,11 +43,20 @@ const (
 
 // DaemonClient is the CLI transport surface for talking to the AGH daemon over UDS.
 type DaemonClient interface {
+	Status(ctx context.Context) (StatusRecord, error)
+	Doctor(ctx context.Context, query DoctorQuery) (DoctorRecord, error)
 	DaemonStatus(ctx context.Context) (DaemonStatus, error)
 	TriggerSettingsRestart(ctx context.Context) (SettingsRestartActionRecord, error)
 	GetSettingsRestartStatus(ctx context.Context, operationID string) (SettingsRestartStatusRecord, error)
+	CreateSupportBundle(ctx context.Context, request CreateSupportBundleRequest) (SupportBundleOperationRecord, error)
+	GetSupportBundle(ctx context.Context, operationID string) (SupportBundleOperationRecord, error)
+	DownloadSupportBundle(ctx context.Context, operationID string, dst io.Writer) error
 	GetSettingsUpdate(ctx context.Context) (SettingsUpdateRecord, error)
 	UpdateSettingsSkills(ctx context.Context, request UpdateSettingsSkillsRequest) (SettingsMutationRecord, error)
+	ReloadSettings(ctx context.Context) (SettingsMutationRecord, error)
+	ListSettingsApplyRecords(ctx context.Context, query SettingsApplyHistoryQuery) (SettingsApplyHistoryRecord, error)
+	ListProviders(ctx context.Context) (contract.ProviderListResponse, error)
+	ProbeProviderAuth(ctx context.Context, providerID string) (contract.ProviderAuthProbeResponse, error)
 	ListProviderModels(ctx context.Context, query ProviderModelListQuery) (ProviderModelListRecord, error)
 	RefreshProviderModels(ctx context.Context, providerID string, request ProviderModelRefreshRequest) (
 		ProviderModelRefreshRecord,
@@ -96,10 +107,19 @@ type DaemonClient interface {
 	NetworkSend(ctx context.Context, request NetworkSendRequest) (NetworkSendRecord, error)
 	NetworkInbox(ctx context.Context, workspaceRef string, sessionID string) ([]NetworkEnvelopeRecord, error)
 	ListExtensions(ctx context.Context) ([]ExtensionRecord, error)
+	SearchExtensionMarketplace(
+		ctx context.Context,
+		query string,
+		source string,
+		limit int,
+	) ([]ExtensionMarketplaceRecord, error)
 	InstallExtension(ctx context.Context, request InstallExtensionRequest) (ExtensionRecord, error)
+	UpdateExtension(ctx context.Context, name string, request UpdateExtensionRequest) (ExtensionUpdateRecord, error)
+	RemoveExtension(ctx context.Context, name string) (ManagedExtensionRemoveRecord, error)
 	EnableExtension(ctx context.Context, name string) (ExtensionRecord, error)
 	DisableExtension(ctx context.Context, name string) (ExtensionRecord, error)
 	ExtensionStatus(ctx context.Context, name string) (ExtensionRecord, error)
+	ExtensionProvenance(ctx context.Context, name string) (ExtensionProvenanceRecord, error)
 	ListBundleCatalog(ctx context.Context) ([]BundleCatalogRecord, error)
 	PreviewBundleActivation(ctx context.Context, request ActivateBundleRequest) (BundleActivationRecord, error)
 	ActivateBundle(ctx context.Context, request ActivateBundleRequest) (BundleActivationRecord, error)
@@ -120,6 +140,20 @@ type DaemonClient interface {
 	DisableBridge(ctx context.Context, id string) (BridgeRecord, error)
 	RestartBridge(ctx context.Context, id string) (BridgeRecord, error)
 	BridgeRoutes(ctx context.Context, id string) ([]BridgeRouteRecord, error)
+	BridgeTargets(ctx context.Context, id string, query string, limit int) (BridgeTargetsRecord, error)
+	ResolveBridgeTarget(ctx context.Context, id string, name string) (BridgeResolveTargetRecord, error)
+	ListNotificationPresets(ctx context.Context, query NotificationPresetQuery) (NotificationPresetListRecord, error)
+	GetNotificationPreset(ctx context.Context, name string) (NotificationPresetRecord, error)
+	CreateNotificationPreset(
+		ctx context.Context,
+		request CreateNotificationPresetRequest,
+	) (NotificationPresetRecord, error)
+	UpdateNotificationPreset(
+		ctx context.Context,
+		name string,
+		request UpdateNotificationPresetRequest,
+	) (NotificationPresetRecord, error)
+	DeleteNotificationPreset(ctx context.Context, name string) error
 	ListBridgeSecretBindings(ctx context.Context, id string) ([]BridgeSecretBindingRecord, error)
 	PutBridgeSecretBinding(
 		ctx context.Context,
@@ -142,9 +176,13 @@ type DaemonClient interface {
 	RefreshSessionSoul(ctx context.Context, id string, request SessionSoulRefreshRequest) (AgentSoulRecord, error)
 	StopSession(ctx context.Context, id string) error
 	ResumeSession(ctx context.Context, id string) (SessionRecord, error)
+	SessionRecap(ctx context.Context, id string, limit int) (SessionRecapRecord, error)
 	RepairSession(ctx context.Context, id string, query SessionRepairQuery) (SessionRepairRecord, error)
 	ApproveSession(ctx context.Context, id string, request SessionApprovalRequest) (SessionApprovalRecord, error)
 	PromptSession(ctx context.Context, id string, message string) ([]AgentEventRecord, error)
+	SendSessionPrompt(ctx context.Context, id string, request SessionPromptRequest) (SessionPromptRecord, error)
+	SteerSessionPrompt(ctx context.Context, id string, text string) (SessionPromptRecord, error)
+	CancelQueuedSessionPrompt(ctx context.Context, id string, queueEntryID string) (SessionPromptRecord, error)
 	StreamPromptSession(ctx context.Context, id string, message string, handler SSEHandler) error
 	SessionEvents(ctx context.Context, id string, query SessionEventQuery) ([]SessionEventRecord, error)
 	StreamSessionEvents(
@@ -223,6 +261,7 @@ type DaemonClient interface {
 	ListSkills(ctx context.Context, query SkillQuery) ([]SkillRecord, error)
 	GetSkill(ctx context.Context, name string, query SkillQuery) (SkillRecord, error)
 	GetSkillContent(ctx context.Context, name string, query SkillQuery) (string, error)
+	GetSkillShadows(ctx context.Context, name string, query SkillQuery) (SkillShadowsRecord, error)
 	EnableSkill(ctx context.Context, name string, query SkillQuery) (SkillActionRecord, error)
 	DisableSkill(ctx context.Context, name string, query SkillQuery) (SkillActionRecord, error)
 	ListTools(ctx context.Context, query ToolQuery) (ToolsResponseRecord, error)
@@ -235,9 +274,8 @@ type DaemonClient interface {
 	HookCatalog(ctx context.Context, query HookCatalogQuery) ([]HookCatalogRecord, error)
 	HookRuns(ctx context.Context, workspaceRef string, query HookRunsQuery) ([]HookRunRecord, error)
 	HookEvents(ctx context.Context, query HookEventsQuery) ([]HookEventRecord, error)
-	ObserveEvents(ctx context.Context, query ObserveEventQuery) ([]ObserveEventRecord, error)
-	StreamObserveEvents(ctx context.Context, query ObserveEventQuery, lastEventID string, handler SSEHandler) error
-	ObserveHealth(ctx context.Context) (HealthStatus, error)
+	ListLogs(ctx context.Context, query LogsListQuery) ([]LogEventRecord, error)
+	StreamLogs(ctx context.Context, query LogsListQuery, lastEventID string, handler SSEHandler) error
 	MemoryHealth(ctx context.Context, workspace string) (MemoryHealthRecord, error)
 	MemoryHistory(ctx context.Context, query MemoryHistoryQuery) ([]MemoryHistoryRecord, error)
 	ListMemory(ctx context.Context, query MemoryListQuery) (MemoryListRecord, error)
@@ -313,6 +351,8 @@ type DaemonClient interface {
 		credentials agentidentity.Credentials,
 	) (TaskRecord, error)
 	GetTask(ctx context.Context, id string) (TaskDetailRecord, error)
+	InspectTask(ctx context.Context, id string) (TaskInspectRecord, error)
+	InspectRun(ctx context.Context, id string) (TaskInspectRecord, error)
 	UpdateTask(ctx context.Context, id string, request UpdateTaskRequest) (TaskRecord, error)
 	DeleteTask(ctx context.Context, id string) error
 	GetTaskExecutionProfile(ctx context.Context, id string) (TaskExecutionProfileRecord, error)
@@ -367,6 +407,8 @@ type DaemonClient interface {
 	ApproveTask(ctx context.Context, id string, request TaskExecutionRequest) (TaskExecutionRecord, error)
 	RejectTask(ctx context.Context, id string) (TaskRecord, error)
 	CancelTask(ctx context.Context, id string, request CancelTaskRequest) (TaskRecord, error)
+	PauseTask(ctx context.Context, id string, request PauseTaskRequest) (TaskRecord, error)
+	ResumeTask(ctx context.Context, id string, request ResumeTaskRequest) (TaskRecord, error)
 	CreateChildTask(ctx context.Context, id string, request CreateTaskChildRequest) (TaskRecord, error)
 	AddTaskDependency(ctx context.Context, id string, request AddTaskDependencyRequest) (TaskDetailRecord, error)
 	RemoveTaskDependency(ctx context.Context, id string, dependsOnID string) (TaskDetailRecord, error)
@@ -378,6 +420,16 @@ type DaemonClient interface {
 	CompleteTaskRun(ctx context.Context, id string, request CompleteTaskRunRequest) (TaskRunRecord, error)
 	FailTaskRun(ctx context.Context, id string, request FailTaskRunRequest) (TaskRunRecord, error)
 	CancelTaskRun(ctx context.Context, id string, request CancelTaskRunRequest) (TaskRunRecord, error)
+	ForceReleaseTaskRun(ctx context.Context, id string, request ForceReleaseTaskRunRequest) (TaskRunRecord, error)
+	ForceFailTaskRun(ctx context.Context, id string, request ForceFailTaskRunRequest) (TaskRunRecord, error)
+	RetryTaskRun(ctx context.Context, id string, request RetryTaskRunRequest) (RetryTaskRunRecord, error)
+	BulkForceReleaseTaskRuns(ctx context.Context, request BulkForceTaskRunRequest) (BulkForceTaskRunRecord, error)
+	BulkForceFailTaskRuns(ctx context.Context, request BulkForceTaskRunRequest) (BulkForceTaskRunRecord, error)
+	SchedulerStatus(ctx context.Context) (SchedulerStatusRecord, error)
+	PauseScheduler(ctx context.Context, request SchedulerPauseRequest) (SchedulerStatusRecord, error)
+	ResumeScheduler(ctx context.Context, request SchedulerResumeRequest) (SchedulerStatusRecord, error)
+	DrainScheduler(ctx context.Context, request SchedulerDrainRequest) (SchedulerDrainRecord, error)
+	SchedulerBacklog(ctx context.Context, query SchedulerBacklogQuery) (SchedulerBacklogRecord, error)
 	AgentMe(ctx context.Context, credentials agentidentity.Credentials) (AgentMeRecord, error)
 	AgentContext(ctx context.Context, credentials agentidentity.Credentials) (AgentContextRecord, error)
 	AgentSpawn(
@@ -440,10 +492,16 @@ type CreateSessionRequest = contract.CreateSessionRequest
 // SessionListQuery captures the CLI filters for session list queries.
 type SessionListQuery struct {
 	Workspace string
+	Resumable bool
+	Limit     int
+	Sort      string
 }
 
 // SessionRecord is the shared daemon session payload.
 type SessionRecord = contract.SessionPayload
+
+// SessionRecapRecord is the shared deterministic session recap payload.
+type SessionRecapRecord = contract.RecapPayload
 
 // SessionSoulRefreshRequest captures the managed session Soul refresh payload.
 type SessionSoulRefreshRequest = contract.SessionSoulRefreshRequest
@@ -485,6 +543,18 @@ type SessionApprovalRequest = contract.ApproveSessionRequest
 
 // SessionApprovalRecord is the shared session approval response payload.
 type SessionApprovalRecord = contract.SessionApprovalResponse
+
+// SessionPromptRequest captures a session prompt plus explicit busy-input mode.
+type SessionPromptRequest = contract.SendPromptRequest
+
+// SessionPromptResultRecord is the shared non-streaming prompt outcome payload.
+type SessionPromptResultRecord = contract.SendPromptResultPayload
+
+// SessionPromptRecord wraps prompt outcomes that may either stream events or return a busy-input decision.
+type SessionPromptRecord struct {
+	Prompt SessionPromptResultRecord `json:"prompt"`
+	Events []AgentEventRecord        `json:"events,omitempty"`
+}
 
 // SessionEventRecord is one persisted session event row returned by the daemon API.
 type SessionEventRecord = contract.SessionEventPayload
@@ -582,6 +652,12 @@ type AgentQuery struct {
 // SkillRecord is the shared daemon skill payload.
 type SkillRecord = contract.SkillPayload
 
+// SkillShadowsRecord is the shared daemon skill shadow payload.
+type SkillShadowsRecord = contract.SkillShadowsResponse
+
+// SkillProvenanceRecord is the shared daemon skill provenance payload.
+type SkillProvenanceRecord = contract.ProvenancePayload
+
 // SkillQuery captures daemon skill filters.
 type SkillQuery struct {
 	Workspace string
@@ -630,17 +706,25 @@ type HookEventsQuery = contract.HookEventsQuery
 // HookEventRecord is one supported hook taxonomy row returned by the daemon API.
 type HookEventRecord = contract.HookEventPayload
 
-// ObserveEventRecord is one cross-session observability event row.
-type ObserveEventRecord = contract.ObserveEventPayload
+// LogEventRecord is one cross-session runtime log row.
+type LogEventRecord = contract.LogEventPayload
 
-// ObserveEventQuery captures the CLI filters for cross-session observability queries.
-type ObserveEventQuery struct {
-	WorkspaceRef string
-	SessionID    string
-	AgentName    string
-	Type         string
-	Since        time.Time
-	Last         int
+// LogsListQuery captures the CLI filters for cross-session runtime log queries.
+type LogsListQuery struct {
+	WorkspaceRef  string
+	SessionID     string
+	AgentName     string
+	Type          string
+	RunID         string
+	ActorKind     string
+	ActorID       string
+	Provider      string
+	Outcome       string
+	Component     string
+	ErrorOnly     bool
+	AfterSequence int64
+	Since         time.Time
+	Last          int
 }
 
 // MemoryHealthRecord is the shared daemon memory health payload.
@@ -846,11 +930,50 @@ type TaskRecord = contract.TaskPayload
 // TaskDetailRecord is the shared expanded task payload.
 type TaskDetailRecord = contract.TaskDetailPayload
 
+// TaskInspectRecord is the shared task/run inspect payload.
+type TaskInspectRecord = contract.TaskInspectPayload
+
 // TaskDependencyRecord is the shared dependency-edge payload.
 type TaskDependencyRecord = contract.TaskDependencyPayload
 
 // TaskRunRecord is the shared task-run payload.
 type TaskRunRecord = contract.TaskRunPayload
+
+// PauseTaskRequest captures the shared task-pause payload.
+type PauseTaskRequest = contract.PauseTaskRequest
+
+// ResumeTaskRequest captures the shared task-resume payload.
+type ResumeTaskRequest = contract.ResumeTaskRequest
+
+// RetryTaskRunRecord is the shared retry response payload.
+type RetryTaskRunRecord = contract.RetryTaskRunResponse
+
+// BulkForceTaskRunRecord is the shared bulk force-operation response payload.
+type BulkForceTaskRunRecord = contract.BulkForceTaskRunResponse
+
+// BulkForceTaskRunItemRecord records one bulk force-operation row.
+type BulkForceTaskRunItemRecord = contract.BulkForceTaskRunItemPayload
+
+// SchedulerStatusRecord is the shared scheduler status payload.
+type SchedulerStatusRecord = contract.SchedulerStatusPayload
+
+// SchedulerPauseRequest captures the shared scheduler pause payload.
+type SchedulerPauseRequest = contract.SchedulerPauseRequest
+
+// SchedulerResumeRequest captures the shared scheduler resume payload.
+type SchedulerResumeRequest = contract.SchedulerResumeRequest
+
+// SchedulerDrainRequest captures the shared scheduler drain payload.
+type SchedulerDrainRequest = contract.SchedulerDrainRequest
+
+// SchedulerDrainRecord is the shared scheduler drain response payload.
+type SchedulerDrainRecord = contract.SchedulerDrainResponse
+
+// SchedulerBacklogQuery captures scheduler backlog filters.
+type SchedulerBacklogQuery = contract.SchedulerBacklogQuery
+
+// SchedulerBacklogRecord is the shared scheduler backlog payload.
+type SchedulerBacklogRecord = contract.SchedulerBacklogPayload
 
 // TaskExecutionRecord is the shared task execution-boundary payload.
 type TaskExecutionRecord = contract.TaskExecutionResponse
@@ -1001,11 +1124,33 @@ type CompleteTaskRunRequest = contract.CompleteTaskRunRequest
 // FailTaskRunRequest captures the shared run-fail payload.
 type FailTaskRunRequest = contract.FailTaskRunRequest
 
+// ForceReleaseTaskRunRequest captures the shared force-release request payload.
+type ForceReleaseTaskRunRequest = contract.ForceReleaseTaskRunRequest
+
+// ForceFailTaskRunRequest captures the shared forced-failure request payload.
+type ForceFailTaskRunRequest = contract.ForceFailTaskRunRequest
+
+// RetryTaskRunRequest captures the shared retry request payload.
+type RetryTaskRunRequest = contract.RetryTaskRunRequest
+
+// BulkForceTaskRunRequest captures the shared bounded bulk force-operation payload.
+type BulkForceTaskRunRequest = contract.BulkForceTaskRunRequest
+
 // CancelTaskRunRequest captures the shared run-cancel payload.
 type CancelTaskRunRequest = contract.CancelTaskRunRequest
 
-// HealthStatus is the daemon API observability health payload.
-type HealthStatus = contract.ObserveHealthPayload
+// StatusRecord is the hard-cut daemon API status payload.
+type StatusRecord = contract.StatusPayload
+
+// DoctorRecord is the hard-cut daemon API doctor payload.
+type DoctorRecord = contract.DoctorPayload
+
+// DoctorQuery controls daemon-side doctor probe selection.
+type DoctorQuery struct {
+	Only    []string
+	Exclude []string
+	Quiet   bool
+}
 
 // DaemonStatus is the shared daemon status payload.
 type DaemonStatus = contract.DaemonStatusPayload
@@ -1016,11 +1161,27 @@ type SettingsRestartActionRecord = contract.RestartActionResponse
 // SettingsRestartStatusRecord is the shared restart polling payload.
 type SettingsRestartStatusRecord = contract.RestartActionStatus
 
+// CreateSupportBundleRequest captures one daemon-owned support bundle request.
+type CreateSupportBundleRequest = contract.CreateSupportBundleRequest
+
+// SupportBundleOperationRecord is the shared support bundle operation payload.
+type SupportBundleOperationRecord = contract.SupportBundleOperationPayload
+
 // SettingsUpdateRecord is the shared settings update status payload.
 type SettingsUpdateRecord = contract.SettingsUpdateResponse
 
 // SettingsMutationRecord is the shared settings mutation response payload.
-type SettingsMutationRecord = contract.SettingsSkillsMutationResult
+type SettingsMutationRecord = contract.SettingsApplyResponse
+
+// SettingsApplyHistoryRecord is the shared settings apply-history response payload.
+type SettingsApplyHistoryRecord = contract.ConfigApplyRecordsResponse
+
+// SettingsApplyHistoryQuery captures apply-history filters.
+type SettingsApplyHistoryQuery struct {
+	Status string
+	Actor  string
+	Limit  int
+}
 
 // UpdateSettingsSkillsRequest captures the shared skills settings update payload.
 type UpdateSettingsSkillsRequest = contract.UpdateSettingsSkillsRequest
@@ -1121,8 +1282,23 @@ type NetworkConversationMessagesQuery struct {
 // InstallExtensionRequest captures the shared extension install payload.
 type InstallExtensionRequest = contract.InstallExtensionRequest
 
+// UpdateExtensionRequest captures the shared extension update payload.
+type UpdateExtensionRequest = contract.UpdateExtensionRequest
+
 // ExtensionRecord is the shared extension response payload.
 type ExtensionRecord = contract.ExtensionPayload
+
+// ExtensionMarketplaceRecord is one marketplace browse result.
+type ExtensionMarketplaceRecord = contract.ExtensionMarketplaceEntry
+
+// ExtensionProvenanceRecord is one installed extension provenance payload.
+type ExtensionProvenanceRecord = contract.ExtensionProvenancePayload
+
+// ExtensionUpdateRecord is one daemon-owned extension update result.
+type ExtensionUpdateRecord = contract.ManagedExtensionUpdatePayload
+
+// ManagedExtensionRemoveRecord is one daemon-owned extension removal result.
+type ManagedExtensionRemoveRecord = contract.ManagedExtensionRemovePayload
 
 // BundleCatalogRecord is one extension bundle catalog entry.
 type BundleCatalogRecord = contract.BundleCatalogPayload
@@ -1181,6 +1357,18 @@ type BridgeRecord = bridgepkg.BridgeInstance
 // BridgeRouteRecord is one persisted bridge route returned by the daemon API.
 type BridgeRouteRecord = bridgepkg.BridgeRoute
 
+// BridgeTargetRecord is one persisted bridge target returned by the daemon API.
+type BridgeTargetRecord = bridgepkg.BridgeTarget
+
+// BridgeTargetsRecord wraps the bridge target directory response.
+type BridgeTargetsRecord = contract.BridgeTargetsResponse
+
+// BridgeResolveTargetRequest captures one bridge target resolve lookup.
+type BridgeResolveTargetRequest = contract.BridgeResolveTargetRequest
+
+// BridgeResolveTargetRecord wraps one bridge target resolver response.
+type BridgeResolveTargetRecord = contract.BridgeResolveTargetResponse
+
 // BridgeSecretBindingRequest captures one bridge secret binding write payload.
 type BridgeSecretBindingRequest = contract.PutBridgeSecretBindingRequest
 
@@ -1192,6 +1380,29 @@ type DeliveryTargetRecord = bridgepkg.DeliveryTarget
 
 // BridgeTestDeliveryRecord is the shared dry-run bridge delivery response payload.
 type BridgeTestDeliveryRecord = contract.BridgeTestDeliveryResponse
+
+// NotificationPresetRecord is one persisted notification preset.
+type NotificationPresetRecord = contract.NotificationPresetPayload
+
+// NotificationPresetTarget is one bridge target attached to a preset.
+type NotificationPresetTarget = contract.NotificationTargetPayload
+
+// NotificationPresetListRecord wraps notification preset list results.
+type NotificationPresetListRecord = contract.NotificationPresetListResponse
+
+// CreateNotificationPresetRequest captures notification preset creation input.
+type CreateNotificationPresetRequest = contract.CreateNotificationPresetRequest
+
+// UpdateNotificationPresetRequest captures mutable notification preset fields.
+type UpdateNotificationPresetRequest = contract.UpdateNotificationPresetRequest
+
+// NotificationPresetQuery filters preset list operations.
+type NotificationPresetQuery struct {
+	Enabled *bool
+	BuiltIn *bool
+	Name    string
+	Limit   int
+}
 
 // IdentityRecord is the local agent identity exposed by `agh whoami`.
 type IdentityRecord struct {
@@ -1263,14 +1474,46 @@ func NewClient(socketPath string) (DaemonClient, error) {
 	}, nil
 }
 
-func (c *unixSocketClient) DaemonStatus(ctx context.Context) (DaemonStatus, error) {
-	var response struct {
-		Daemon DaemonStatus `json:"daemon"`
+func (c *unixSocketClient) Status(ctx context.Context) (StatusRecord, error) {
+	var response StatusRecord
+	if err := c.doJSON(ctx, http.MethodGet, "/api/status", nil, nil, &response); err != nil {
+		return StatusRecord{}, err
 	}
-	if err := c.doJSON(ctx, http.MethodGet, "/api/daemon/status", nil, nil, &response); err != nil {
+	return response, nil
+}
+
+func (c *unixSocketClient) Doctor(ctx context.Context, query DoctorQuery) (DoctorRecord, error) {
+	var response DoctorRecord
+	if err := c.doJSON(ctx, http.MethodGet, "/api/doctor", doctorQueryValues(query), nil, &response); err != nil {
+		return DoctorRecord{}, err
+	}
+	return response, nil
+}
+
+func doctorQueryValues(query DoctorQuery) url.Values {
+	values := url.Values{}
+	for _, value := range query.Only {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			values.Add("only", trimmed)
+		}
+	}
+	for _, value := range query.Exclude {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			values.Add("exclude", trimmed)
+		}
+	}
+	if query.Quiet {
+		values.Set("quiet", "true")
+	}
+	return values
+}
+
+func (c *unixSocketClient) DaemonStatus(ctx context.Context) (DaemonStatus, error) {
+	status, err := c.Status(ctx)
+	if err != nil {
 		return DaemonStatus{}, err
 	}
-	return response.Daemon, nil
+	return status.Daemon, nil
 }
 
 func (c *unixSocketClient) TriggerSettingsRestart(ctx context.Context) (SettingsRestartActionRecord, error) {
@@ -1293,6 +1536,64 @@ func (c *unixSocketClient) GetSettingsRestartStatus(
 	return response, nil
 }
 
+func (c *unixSocketClient) CreateSupportBundle(
+	ctx context.Context,
+	request CreateSupportBundleRequest,
+) (SupportBundleOperationRecord, error) {
+	var response contract.SupportBundleOperationResponse
+	if err := c.doJSON(ctx, http.MethodPost, "/api/support/bundles", nil, request, &response); err != nil {
+		return SupportBundleOperationRecord{}, err
+	}
+	return response.Operation, nil
+}
+
+func (c *unixSocketClient) GetSupportBundle(
+	ctx context.Context,
+	operationID string,
+) (SupportBundleOperationRecord, error) {
+	path := supportBundleOperationPath(operationID)
+	var response contract.SupportBundleOperationResponse
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, nil, &response); err != nil {
+		return SupportBundleOperationRecord{}, err
+	}
+	return response.Operation, nil
+}
+
+func (c *unixSocketClient) DownloadSupportBundle(
+	ctx context.Context,
+	operationID string,
+	dst io.Writer,
+) (err error) {
+	if dst == nil {
+		return errors.New("cli: support bundle download writer is required")
+	}
+	response, err := c.doRequest(ctx, http.MethodGet, supportBundleOperationPath(operationID)+"/download", nil, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := response.Body.Close(); closeErr != nil {
+			closeErr = fmt.Errorf("cli: close support bundle download response: %w", closeErr)
+			if err == nil {
+				err = closeErr
+				return
+			}
+			err = errors.Join(err, closeErr)
+		}
+	}()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return readAPIError(response)
+	}
+	if _, err := io.Copy(dst, response.Body); err != nil {
+		return fmt.Errorf("cli: download support bundle: %w", err)
+	}
+	return nil
+}
+
+func supportBundleOperationPath(operationID string) string {
+	return "/api/support/bundles/" + url.PathEscape(strings.TrimSpace(operationID))
+}
+
 func (c *unixSocketClient) GetSettingsUpdate(ctx context.Context) (SettingsUpdateRecord, error) {
 	var response SettingsUpdateRecord
 	if err := c.doJSON(ctx, http.MethodGet, "/api/settings/update", nil, nil, &response); err != nil {
@@ -1308,6 +1609,35 @@ func (c *unixSocketClient) UpdateSettingsSkills(
 	var response SettingsMutationRecord
 	if err := c.doJSON(ctx, http.MethodPatch, "/api/settings/skills", nil, request, &response); err != nil {
 		return SettingsMutationRecord{}, err
+	}
+	return response, nil
+}
+
+func (c *unixSocketClient) ReloadSettings(ctx context.Context) (SettingsMutationRecord, error) {
+	var response SettingsMutationRecord
+	if err := c.doJSON(ctx, http.MethodPost, "/api/settings/reload", nil, nil, &response); err != nil {
+		return SettingsMutationRecord{}, err
+	}
+	return response, nil
+}
+
+func (c *unixSocketClient) ListSettingsApplyRecords(
+	ctx context.Context,
+	query SettingsApplyHistoryQuery,
+) (SettingsApplyHistoryRecord, error) {
+	values := url.Values{}
+	if strings.TrimSpace(query.Status) != "" {
+		values.Set("status", strings.TrimSpace(query.Status))
+	}
+	if strings.TrimSpace(query.Actor) != "" {
+		values.Set("actor", strings.TrimSpace(query.Actor))
+	}
+	if query.Limit > 0 {
+		values.Set("limit", strconv.Itoa(query.Limit))
+	}
+	var response SettingsApplyHistoryRecord
+	if err := c.doJSON(ctx, http.MethodGet, "/api/settings/apply", values, nil, &response); err != nil {
+		return SettingsApplyHistoryRecord{}, err
 	}
 	return response, nil
 }
@@ -1669,6 +1999,31 @@ func (c *unixSocketClient) ListExtensions(ctx context.Context) ([]ExtensionRecor
 	return response.Extensions, nil
 }
 
+func (c *unixSocketClient) SearchExtensionMarketplace(
+	ctx context.Context,
+	query string,
+	source string,
+	limit int,
+) ([]ExtensionMarketplaceRecord, error) {
+	values := url.Values{}
+	if strings.TrimSpace(query) != "" {
+		values.Set("q", strings.TrimSpace(query))
+	}
+	if strings.TrimSpace(source) != "" {
+		values.Set("source", strings.TrimSpace(source))
+	}
+	if limit > 0 {
+		values.Set("limit", strconv.Itoa(limit))
+	}
+	var response struct {
+		Extensions []ExtensionMarketplaceRecord `json:"extensions"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, "/api/extensions/marketplace", values, nil, &response); err != nil {
+		return nil, err
+	}
+	return response.Extensions, nil
+}
+
 func (c *unixSocketClient) InstallExtension(
 	ctx context.Context,
 	request InstallExtensionRequest,
@@ -1678,6 +2033,44 @@ func (c *unixSocketClient) InstallExtension(
 	}
 	if err := c.doJSON(ctx, http.MethodPost, "/api/extensions", nil, request, &response); err != nil {
 		return ExtensionRecord{}, err
+	}
+	return response.Extension, nil
+}
+
+func (c *unixSocketClient) UpdateExtension(
+	ctx context.Context,
+	name string,
+	request UpdateExtensionRequest,
+) (ExtensionUpdateRecord, error) {
+	var response struct {
+		Update ExtensionUpdateRecord `json:"update"`
+	}
+	if err := c.doJSON(
+		ctx,
+		http.MethodPut,
+		"/api/extensions/"+url.PathEscape(strings.TrimSpace(name)),
+		nil,
+		request,
+		&response,
+	); err != nil {
+		return ExtensionUpdateRecord{}, err
+	}
+	return response.Update, nil
+}
+
+func (c *unixSocketClient) RemoveExtension(ctx context.Context, name string) (ManagedExtensionRemoveRecord, error) {
+	var response struct {
+		Extension ManagedExtensionRemoveRecord `json:"extension"`
+	}
+	if err := c.doJSON(
+		ctx,
+		http.MethodDelete,
+		"/api/extensions/"+url.PathEscape(strings.TrimSpace(name)),
+		nil,
+		nil,
+		&response,
+	); err != nil {
+		return ManagedExtensionRemoveRecord{}, err
 	}
 	return response.Extension, nil
 }
@@ -1705,6 +2098,23 @@ func (c *unixSocketClient) ExtensionStatus(ctx context.Context, name string) (Ex
 		return ExtensionRecord{}, err
 	}
 	return response.Extension, nil
+}
+
+func (c *unixSocketClient) ExtensionProvenance(ctx context.Context, name string) (ExtensionProvenanceRecord, error) {
+	var response struct {
+		Provenance ExtensionProvenanceRecord `json:"provenance"`
+	}
+	if err := c.doJSON(
+		ctx,
+		http.MethodGet,
+		"/api/extensions/"+url.PathEscape(strings.TrimSpace(name))+"/provenance",
+		nil,
+		nil,
+		&response,
+	); err != nil {
+		return ExtensionProvenanceRecord{}, err
+	}
+	return response.Provenance, nil
 }
 
 func (c *unixSocketClient) ListBundleCatalog(ctx context.Context) ([]BundleCatalogRecord, error) {
@@ -1861,6 +2271,153 @@ func (c *unixSocketClient) BridgeRoutes(ctx context.Context, id string) ([]Bridg
 		return nil, err
 	}
 	return response.Routes, nil
+}
+
+func (c *unixSocketClient) BridgeTargets(
+	ctx context.Context,
+	id string,
+	query string,
+	limit int,
+) (BridgeTargetsRecord, error) {
+	values := url.Values{}
+	if strings.TrimSpace(query) != "" {
+		values.Set("q", strings.TrimSpace(query))
+	}
+	if limit > 0 {
+		values.Set("limit", fmt.Sprintf("%d", limit))
+	}
+	path := "/api/bridges/" + url.PathEscape(strings.TrimSpace(id)) + "/targets"
+	var response BridgeTargetsRecord
+	if err := c.doJSON(ctx, http.MethodGet, path, values, nil, &response); err != nil {
+		return BridgeTargetsRecord{}, err
+	}
+	return response, nil
+}
+
+func (c *unixSocketClient) ResolveBridgeTarget(
+	ctx context.Context,
+	id string,
+	name string,
+) (record BridgeResolveTargetRecord, err error) {
+	path := "/api/bridges/" + url.PathEscape(strings.TrimSpace(id)) + "/resolve"
+	var response BridgeResolveTargetRecord
+	requestBody := BridgeResolveTargetRequest{Name: strings.TrimSpace(name)}
+	httpResponse, err := c.doRequest(
+		ctx,
+		http.MethodPost,
+		path,
+		nil,
+		requestBody,
+	)
+	if err != nil {
+		return BridgeResolveTargetRecord{}, err
+	}
+	defer func() {
+		if closeErr := httpResponse.Body.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("cli: close %s %s response: %w", http.MethodPost, path, closeErr))
+		}
+	}()
+	if httpResponse.StatusCode >= 200 && httpResponse.StatusCode < 300 {
+		if err := json.NewDecoder(httpResponse.Body).Decode(&response); err != nil {
+			return BridgeResolveTargetRecord{}, fmt.Errorf("cli: decode %s %s response: %w", http.MethodPost, path, err)
+		}
+		return response, nil
+	}
+	if httpResponse.StatusCode == http.StatusNotFound || httpResponse.StatusCode == http.StatusUnprocessableEntity {
+		body, readErr := io.ReadAll(io.LimitReader(httpResponse.Body, 1<<20))
+		if readErr != nil {
+			return BridgeResolveTargetRecord{}, fmt.Errorf("cli: read bridge target resolve response: %w", readErr)
+		}
+		if json.Unmarshal(body, &response) == nil && bridgeResolveTargetHasStructuredPayload(response) {
+			return response, nil
+		}
+		return BridgeResolveTargetRecord{}, readAPIErrorBody(httpResponse.StatusCode, httpResponse.Status, body)
+	}
+	return BridgeResolveTargetRecord{}, readAPIError(httpResponse)
+}
+
+func bridgeResolveTargetHasStructuredPayload(response BridgeResolveTargetRecord) bool {
+	return response.Diagnostic != nil ||
+		response.Result.Match != nil ||
+		response.Result.Ambiguous ||
+		len(response.Result.Candidates) > 0 ||
+		response.Result.Step != 0
+}
+
+func (c *unixSocketClient) ListNotificationPresets(
+	ctx context.Context,
+	query NotificationPresetQuery,
+) (NotificationPresetListRecord, error) {
+	var response NotificationPresetListRecord
+	if err := c.doJSON(
+		ctx,
+		http.MethodGet,
+		"/api/notifications/presets",
+		notificationPresetValues(query),
+		nil,
+		&response,
+	); err != nil {
+		return NotificationPresetListRecord{}, err
+	}
+	return response, nil
+}
+
+func (c *unixSocketClient) GetNotificationPreset(
+	ctx context.Context,
+	name string,
+) (NotificationPresetRecord, error) {
+	var response contract.NotificationPresetResponse
+	path := "/api/notifications/presets/" + url.PathEscape(strings.TrimSpace(name))
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, nil, &response); err != nil {
+		return NotificationPresetRecord{}, err
+	}
+	return response.Preset, nil
+}
+
+func (c *unixSocketClient) CreateNotificationPreset(
+	ctx context.Context,
+	request CreateNotificationPresetRequest,
+) (NotificationPresetRecord, error) {
+	var response contract.NotificationPresetResponse
+	if err := c.doJSON(ctx, http.MethodPost, "/api/notifications/presets", nil, request, &response); err != nil {
+		return NotificationPresetRecord{}, err
+	}
+	return response.Preset, nil
+}
+
+func (c *unixSocketClient) UpdateNotificationPreset(
+	ctx context.Context,
+	name string,
+	request UpdateNotificationPresetRequest,
+) (NotificationPresetRecord, error) {
+	var response contract.NotificationPresetResponse
+	path := "/api/notifications/presets/" + url.PathEscape(strings.TrimSpace(name))
+	if err := c.doJSON(ctx, http.MethodPut, path, nil, request, &response); err != nil {
+		return NotificationPresetRecord{}, err
+	}
+	return response.Preset, nil
+}
+
+func (c *unixSocketClient) DeleteNotificationPreset(ctx context.Context, name string) error {
+	path := "/api/notifications/presets/" + url.PathEscape(strings.TrimSpace(name))
+	return c.doJSON(ctx, http.MethodDelete, path, nil, nil, nil)
+}
+
+func notificationPresetValues(query NotificationPresetQuery) url.Values {
+	values := url.Values{}
+	if query.Enabled != nil {
+		values.Set("enabled", strconv.FormatBool(*query.Enabled))
+	}
+	if query.BuiltIn != nil {
+		values.Set("built_in", strconv.FormatBool(*query.BuiltIn))
+	}
+	if strings.TrimSpace(query.Name) != "" {
+		values.Set("name", strings.TrimSpace(query.Name))
+	}
+	if query.Limit > 0 {
+		values.Set("limit", strconv.Itoa(query.Limit))
+	}
+	return values
 }
 
 func (c *unixSocketClient) ListBridgeSecretBindings(
@@ -2062,7 +2619,7 @@ func (c *unixSocketClient) ResumeSession(ctx context.Context, id string) (Sessio
 	var response struct {
 		Session SessionRecord `json:"session"`
 	}
-	path, err := c.sessionScopedPath(ctx, id, "/resume")
+	path, err := c.sessionScopedPath(ctx, id, "/attach")
 	if err != nil {
 		return SessionRecord{}, err
 	}
@@ -2077,6 +2634,24 @@ func (c *unixSocketClient) ResumeSession(ctx context.Context, id string) (Sessio
 		return SessionRecord{}, err
 	}
 	return response.Session, nil
+}
+
+func (c *unixSocketClient) SessionRecap(ctx context.Context, id string, limit int) (SessionRecapRecord, error) {
+	var response struct {
+		Recap SessionRecapRecord `json:"recap"`
+	}
+	path, err := c.sessionScopedPath(ctx, id, "/recap")
+	if err != nil {
+		return SessionRecapRecord{}, err
+	}
+	values := url.Values{}
+	if limit > 0 {
+		values.Set("limit", strconv.Itoa(limit))
+	}
+	if err := c.doJSON(ctx, http.MethodGet, path, values, nil, &response); err != nil {
+		return SessionRecapRecord{}, err
+	}
+	return response.Recap, nil
 }
 
 func (c *unixSocketClient) RepairSession(
@@ -2121,38 +2696,56 @@ func (c *unixSocketClient) ApproveSession(
 }
 
 func (c *unixSocketClient) PromptSession(ctx context.Context, id string, message string) ([]AgentEventRecord, error) {
-	var events []AgentEventRecord
+	record, err := c.SendSessionPrompt(ctx, id, SessionPromptRequest{Message: message})
+	if err != nil {
+		return nil, err
+	}
+	if record.Events == nil {
+		return []AgentEventRecord{}, nil
+	}
+	return record.Events, nil
+}
+
+func (c *unixSocketClient) SendSessionPrompt(
+	ctx context.Context,
+	id string,
+	request SessionPromptRequest,
+) (SessionPromptRecord, error) {
 	query := url.Values{}
 	query.Set("format", "raw")
 	path, err := c.sessionScopedPath(ctx, id, "/prompt")
 	if err != nil {
-		return nil, err
+		return SessionPromptRecord{}, err
 	}
-	err = c.doSSE(
-		ctx,
-		http.MethodPost,
-		path,
-		query,
-		map[string]string{clientMessageKey: message},
-		"",
-		func(event SSEEvent) error {
-			var payload AgentEventRecord
-			if len(event.Data) > 0 {
-				if err := json.Unmarshal(event.Data, &payload); err != nil {
-					return fmt.Errorf("cli: decode prompt event: %w", err)
-				}
-			}
-			if payload.Type == "" {
-				payload.Type = event.Event
-			}
-			events = append(events, payload)
-			return nil
-		},
-	)
+	return c.doSessionPrompt(ctx, http.MethodPost, path, query, request)
+}
+
+func (c *unixSocketClient) SteerSessionPrompt(
+	ctx context.Context,
+	id string,
+	text string,
+) (SessionPromptRecord, error) {
+	path, err := c.sessionScopedPath(ctx, id, "/steer")
 	if err != nil {
-		return nil, err
+		return SessionPromptRecord{}, err
 	}
-	return events, nil
+	return c.doSessionPrompt(ctx, http.MethodPost, path, nil, contract.SteerPromptRequest{Text: text})
+}
+
+func (c *unixSocketClient) CancelQueuedSessionPrompt(
+	ctx context.Context,
+	id string,
+	queueEntryID string,
+) (SessionPromptRecord, error) {
+	entryID, err := requireNetworkPathValue("queue_entry_id", queueEntryID)
+	if err != nil {
+		return SessionPromptRecord{}, err
+	}
+	path, err := c.sessionScopedPath(ctx, id, "/prompt/queue/"+url.PathEscape(entryID))
+	if err != nil {
+		return SessionPromptRecord{}, err
+	}
+	return c.doSessionPrompt(ctx, http.MethodDelete, path, nil, nil)
 }
 
 func (c *unixSocketClient) StreamPromptSession(
@@ -2744,6 +3337,25 @@ func (c *unixSocketClient) GetSkillContent(ctx context.Context, name string, que
 	return response.Content, nil
 }
 
+func (c *unixSocketClient) GetSkillShadows(
+	ctx context.Context,
+	name string,
+	query SkillQuery,
+) (SkillShadowsRecord, error) {
+	var response SkillShadowsRecord
+	if err := c.doJSON(
+		ctx,
+		http.MethodGet,
+		"/api/skills/"+url.PathEscape(strings.TrimSpace(name))+"/shadows",
+		skillValues(query),
+		nil,
+		&response,
+	); err != nil {
+		return SkillShadowsRecord{}, err
+	}
+	return response, nil
+}
+
 func (c *unixSocketClient) EnableSkill(ctx context.Context, name string, query SkillQuery) (SkillActionRecord, error) {
 	return c.skillAction(ctx, strings.TrimSpace(name), "enable", query)
 }
@@ -2797,19 +3409,15 @@ func (c *unixSocketClient) HookEvents(ctx context.Context, query HookEventsQuery
 	return response.Events, nil
 }
 
-func (c *unixSocketClient) ObserveEvents(ctx context.Context, query ObserveEventQuery) ([]ObserveEventRecord, error) {
+func (c *unixSocketClient) ListLogs(ctx context.Context, query LogsListQuery) ([]LogEventRecord, error) {
 	var response struct {
-		Events []ObserveEventRecord `json:"events"`
-	}
-	path, err := observeBasePath(query.WorkspaceRef)
-	if err != nil {
-		return nil, err
+		Events []LogEventRecord `json:"events"`
 	}
 	if err := c.doJSON(
 		ctx,
 		http.MethodGet,
-		path+"/events",
-		observeEventValues(query),
+		"/api/logs",
+		logsListValues(query),
 		nil,
 		&response,
 	); err != nil {
@@ -2818,35 +3426,21 @@ func (c *unixSocketClient) ObserveEvents(ctx context.Context, query ObserveEvent
 	return response.Events, nil
 }
 
-func (c *unixSocketClient) StreamObserveEvents(
+func (c *unixSocketClient) StreamLogs(
 	ctx context.Context,
-	query ObserveEventQuery,
+	query LogsListQuery,
 	lastEventID string,
 	handler SSEHandler,
 ) error {
-	path, err := observeBasePath(query.WorkspaceRef)
-	if err != nil {
-		return err
-	}
 	return c.doSSE(
 		ctx,
 		http.MethodGet,
-		path+"/events/stream",
-		observeEventValues(query),
+		"/api/logs/stream",
+		logsListValues(query),
 		nil,
 		lastEventID,
 		handler,
 	)
-}
-
-func (c *unixSocketClient) ObserveHealth(ctx context.Context) (HealthStatus, error) {
-	var response struct {
-		Health HealthStatus `json:"health"`
-	}
-	if err := c.doJSON(ctx, http.MethodGet, "/api/observe/health", nil, nil, &response); err != nil {
-		return HealthStatus{}, err
-	}
-	return response.Health, nil
 }
 
 func (c *unixSocketClient) MemoryHealth(ctx context.Context, workspace string) (MemoryHealthRecord, error) {
@@ -3482,6 +4076,24 @@ func (c *unixSocketClient) GetTask(ctx context.Context, id string) (TaskDetailRe
 	return response.Task, nil
 }
 
+func (c *unixSocketClient) InspectTask(ctx context.Context, id string) (TaskInspectRecord, error) {
+	var response contract.TaskInspectResponse
+	path := "/api/tasks/" + url.PathEscape(strings.TrimSpace(id)) + "/inspect"
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, nil, &response); err != nil {
+		return TaskInspectRecord{}, err
+	}
+	return response.Inspect, nil
+}
+
+func (c *unixSocketClient) InspectRun(ctx context.Context, id string) (TaskInspectRecord, error) {
+	var response contract.TaskInspectResponse
+	path := "/api/runs/" + url.PathEscape(strings.TrimSpace(id)) + "/inspect"
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, nil, &response); err != nil {
+		return TaskInspectRecord{}, err
+	}
+	return response.Inspect, nil
+}
+
 func (c *unixSocketClient) UpdateTask(ctx context.Context, id string, request UpdateTaskRequest) (TaskRecord, error) {
 	var response contract.TaskResponse
 	path := "/api/tasks/" + url.PathEscape(strings.TrimSpace(id))
@@ -3729,6 +4341,28 @@ func (c *unixSocketClient) CancelTask(ctx context.Context, id string, request Ca
 	return response.Task, nil
 }
 
+func (c *unixSocketClient) PauseTask(ctx context.Context, id string, request PauseTaskRequest) (TaskRecord, error) {
+	var response contract.TaskResponse
+	path := "/api/tasks/" + url.PathEscape(strings.TrimSpace(id)) + "/pause"
+	if err := c.doJSON(ctx, http.MethodPost, path, nil, request, &response); err != nil {
+		return TaskRecord{}, err
+	}
+	return response.Task, nil
+}
+
+func (c *unixSocketClient) ResumeTask(
+	ctx context.Context,
+	id string,
+	request ResumeTaskRequest,
+) (TaskRecord, error) {
+	var response contract.TaskResponse
+	path := "/api/tasks/" + url.PathEscape(strings.TrimSpace(id)) + "/resume"
+	if err := c.doJSON(ctx, http.MethodPost, path, nil, request, &response); err != nil {
+		return TaskRecord{}, err
+	}
+	return response.Task, nil
+}
+
 func (c *unixSocketClient) CreateChildTask(
 	ctx context.Context,
 	id string,
@@ -3844,6 +4478,108 @@ func (c *unixSocketClient) CancelTaskRun(
 	request CancelTaskRunRequest,
 ) (TaskRunRecord, error) {
 	return c.taskRunAction(ctx, strings.TrimSpace(id), "cancel", request)
+}
+
+func (c *unixSocketClient) ForceReleaseTaskRun(
+	ctx context.Context,
+	id string,
+	request ForceReleaseTaskRunRequest,
+) (TaskRunRecord, error) {
+	return c.forceTaskRunAction(ctx, strings.TrimSpace(id), "release", request)
+}
+
+func (c *unixSocketClient) ForceFailTaskRun(
+	ctx context.Context,
+	id string,
+	request ForceFailTaskRunRequest,
+) (TaskRunRecord, error) {
+	return c.forceTaskRunAction(ctx, strings.TrimSpace(id), "fail", request)
+}
+
+func (c *unixSocketClient) RetryTaskRun(
+	ctx context.Context,
+	id string,
+	request RetryTaskRunRequest,
+) (RetryTaskRunRecord, error) {
+	var response contract.RetryTaskRunResponse
+	path := "/api/runs/" + url.PathEscape(strings.TrimSpace(id)) + "/retry"
+	if err := c.doJSON(ctx, http.MethodPost, path, nil, request, &response); err != nil {
+		return RetryTaskRunRecord{}, err
+	}
+	return response, nil
+}
+
+func (c *unixSocketClient) BulkForceReleaseTaskRuns(
+	ctx context.Context,
+	request BulkForceTaskRunRequest,
+) (BulkForceTaskRunRecord, error) {
+	return c.bulkForceTaskRunAction(ctx, "release", request)
+}
+
+func (c *unixSocketClient) BulkForceFailTaskRuns(
+	ctx context.Context,
+	request BulkForceTaskRunRequest,
+) (BulkForceTaskRunRecord, error) {
+	return c.bulkForceTaskRunAction(ctx, "fail", request)
+}
+
+func (c *unixSocketClient) SchedulerStatus(ctx context.Context) (SchedulerStatusRecord, error) {
+	var response contract.SchedulerStatusResponse
+	if err := c.doJSON(ctx, http.MethodGet, "/api/scheduler", nil, nil, &response); err != nil {
+		return SchedulerStatusRecord{}, err
+	}
+	return response.Scheduler, nil
+}
+
+func (c *unixSocketClient) PauseScheduler(
+	ctx context.Context,
+	request SchedulerPauseRequest,
+) (SchedulerStatusRecord, error) {
+	var response contract.SchedulerStatusResponse
+	if err := c.doJSON(ctx, http.MethodPost, "/api/scheduler/pause", nil, request, &response); err != nil {
+		return SchedulerStatusRecord{}, err
+	}
+	return response.Scheduler, nil
+}
+
+func (c *unixSocketClient) ResumeScheduler(
+	ctx context.Context,
+	request SchedulerResumeRequest,
+) (SchedulerStatusRecord, error) {
+	var response contract.SchedulerStatusResponse
+	if err := c.doJSON(ctx, http.MethodPost, "/api/scheduler/resume", nil, request, &response); err != nil {
+		return SchedulerStatusRecord{}, err
+	}
+	return response.Scheduler, nil
+}
+
+func (c *unixSocketClient) DrainScheduler(
+	ctx context.Context,
+	request SchedulerDrainRequest,
+) (SchedulerDrainRecord, error) {
+	var response contract.SchedulerDrainResponse
+	if err := c.doJSON(ctx, http.MethodPost, "/api/scheduler/drain", nil, request, &response); err != nil {
+		return SchedulerDrainRecord{}, err
+	}
+	return response, nil
+}
+
+func (c *unixSocketClient) SchedulerBacklog(
+	ctx context.Context,
+	query SchedulerBacklogQuery,
+) (SchedulerBacklogRecord, error) {
+	var response contract.SchedulerBacklogResponse
+	if err := c.doJSON(
+		ctx,
+		http.MethodGet,
+		"/api/scheduler/backlog",
+		schedulerBacklogValues(query),
+		nil,
+		&response,
+	); err != nil {
+		return SchedulerBacklogRecord{}, err
+	}
+	return response.Backlog, nil
 }
 
 func (c *unixSocketClient) AgentMe(
@@ -4096,6 +4832,33 @@ func (c *unixSocketClient) taskRunAction(
 	return response.Run, nil
 }
 
+func (c *unixSocketClient) forceTaskRunAction(
+	ctx context.Context,
+	id string,
+	action string,
+	requestBody any,
+) (TaskRunRecord, error) {
+	var response contract.TaskRunResponse
+	path := "/api/runs/" + url.PathEscape(id) + "/" + strings.TrimSpace(action)
+	if err := c.doJSON(ctx, http.MethodPost, path, nil, requestBody, &response); err != nil {
+		return TaskRunRecord{}, err
+	}
+	return response.Run, nil
+}
+
+func (c *unixSocketClient) bulkForceTaskRunAction(
+	ctx context.Context,
+	action string,
+	requestBody BulkForceTaskRunRequest,
+) (BulkForceTaskRunRecord, error) {
+	var response contract.BulkForceTaskRunResponse
+	path := "/api/runs/bulk/" + strings.TrimSpace(action)
+	if err := c.doJSON(ctx, http.MethodPost, path, nil, requestBody, &response); err != nil {
+		return BulkForceTaskRunRecord{}, err
+	}
+	return response, nil
+}
+
 func (c *unixSocketClient) taskExecutionAction(
 	ctx context.Context,
 	id string,
@@ -4118,7 +4881,7 @@ func (c *unixSocketClient) doJSON(
 	requestBody any,
 	responseBody any,
 ) error {
-	response, err := c.doRequest(ctx, method, path, query, requestBody, "")
+	response, err := c.doRequest(ctx, method, path, query, requestBody)
 	if err != nil {
 		return err
 	}
@@ -4204,13 +4967,67 @@ func (c *unixSocketClient) doSSE(
 	return decodeSSE(ctx, response.Body, handler)
 }
 
+func (c *unixSocketClient) doSessionPrompt(
+	ctx context.Context,
+	method string,
+	path string,
+	query url.Values,
+	requestBody any,
+) (SessionPromptRecord, error) {
+	response, err := c.doRequestWithCredentialsAndClient(
+		ctx,
+		method,
+		path,
+		query,
+		requestBody,
+		"",
+		agentidentity.Credentials{},
+		c.streamHTTPClient(),
+	)
+	if err != nil {
+		return SessionPromptRecord{}, err
+	}
+	defer func() {
+		_ = response.Body.Close()
+	}()
+
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return SessionPromptRecord{}, readAPIError(response)
+	}
+
+	if strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "text/event-stream") {
+		var events []AgentEventRecord
+		if err := decodeSSE(ctx, response.Body, func(event SSEEvent) error {
+			var payload AgentEventRecord
+			if len(event.Data) > 0 {
+				if err := json.Unmarshal(event.Data, &payload); err != nil {
+					return fmt.Errorf("cli: decode prompt event: %w", err)
+				}
+			}
+			if payload.Type == "" {
+				payload.Type = event.Event
+			}
+			events = append(events, payload)
+			return nil
+		}); err != nil {
+			return SessionPromptRecord{}, err
+		}
+		return SessionPromptRecord{Events: events}, nil
+	}
+
+	var responseBody contract.SendPromptResultResponse
+	if err := json.NewDecoder(response.Body).Decode(&responseBody); err != nil {
+		return SessionPromptRecord{}, fmt.Errorf("cli: decode %s %s response: %w", method, path, err)
+	}
+	return SessionPromptRecord{Prompt: responseBody.Prompt}, nil
+}
+
 func (c *unixSocketClient) doRequest(
 	ctx context.Context,
 	method string,
 	path string,
 	query url.Values,
 	requestBody any,
-	lastEventID string,
 ) (*http.Response, error) {
 	return c.doRequestWithCredentials(
 		ctx,
@@ -4218,7 +5035,7 @@ func (c *unixSocketClient) doRequest(
 		path,
 		query,
 		requestBody,
-		lastEventID,
+		"",
 		agentidentity.Credentials{},
 	)
 }
@@ -4299,40 +5116,24 @@ func (c *unixSocketClient) doRequestWithCredentialsAndClient(
 	return response, nil
 }
 
-type daemonUnavailableError struct {
-	socketPath string
-	method     string
-	path       string
-	err        error
-}
-
 func newDaemonUnavailableError(socketPath string, method string, path string, err error) error {
-	return &daemonUnavailableError{
-		socketPath: socketPath,
-		method:     method,
-		path:       path,
-		err:        err,
-	}
-}
-
-func (e *daemonUnavailableError) Error() string {
-	if e == nil {
-		return "cli: daemon unavailable"
-	}
-	return fmt.Sprintf(
-		"cli: daemon unavailable at %s while requesting %s %s: %v\nnext: run `agh daemon start`; then retry or inspect with `agh daemon status`",
-		e.socketPath,
-		e.method,
-		e.path,
-		e.err,
+	item := diagnosticspkg.NewItem(
+		"cli.daemon_unavailable",
+		contract.CodeDaemonUnavailable,
+		contract.CategoryDaemon,
+		"Daemon unavailable",
+		fmt.Sprintf("AGH daemon is not reachable at %s while requesting %s %s.", socketPath, method, path),
+		contract.SeverityError,
+		contract.FreshnessOffline,
+		diagnosticspkg.WithSuggestedCommand("agh daemon start"),
+		diagnosticspkg.WithEvidence(map[string]any{
+			"socket_path": socketPath,
+			"method":      method,
+			"path":        path,
+			"cause":       err,
+		}),
 	)
-}
-
-func (e *daemonUnavailableError) Unwrap() error {
-	if e == nil {
-		return nil
-	}
-	return e.err
+	return diagnosticspkg.NewStructuredError(item, err)
 }
 
 func isDaemonUnavailableTransportError(err error) bool {
@@ -4373,6 +5174,15 @@ func sessionListValues(query SessionListQuery) url.Values {
 	values := url.Values{}
 	if trimmed := strings.TrimSpace(query.Workspace); trimmed != "" {
 		values.Set("workspace", trimmed)
+	}
+	if query.Resumable {
+		values.Set("resumable", "true")
+	}
+	if query.Limit > 0 {
+		values.Set("limit", strconv.Itoa(query.Limit))
+	}
+	if sortKey := strings.TrimSpace(query.Sort); sortKey != "" {
+		values.Set("sort", sortKey)
 	}
 	return values
 }
@@ -4447,14 +5257,6 @@ func networkBasePath(workspaceRef string) (string, error) {
 		return "", err
 	}
 	return "/api/workspaces/" + url.PathEscape(workspaceRef) + "/network", nil
-}
-
-func observeBasePath(workspaceRef string) (string, error) {
-	workspaceRef, err := requireNetworkPathValue("workspace_id", workspaceRef)
-	if err != nil {
-		return "", err
-	}
-	return "/api/workspaces/" + url.PathEscape(workspaceRef) + "/observe", nil
 }
 
 func hooksBasePath(workspaceRef string) (string, error) {
@@ -4678,8 +5480,11 @@ func sessionEventValues(query SessionEventQuery) url.Values {
 	return values
 }
 
-func observeEventValues(query ObserveEventQuery) url.Values {
+func logsListValues(query LogsListQuery) url.Values {
 	values := url.Values{}
+	if trimmed := strings.TrimSpace(query.WorkspaceRef); trimmed != "" {
+		values.Set("workspace_id", trimmed)
+	}
 	if trimmed := strings.TrimSpace(query.SessionID); trimmed != "" {
 		values.Set("session_id", trimmed)
 	}
@@ -4688,6 +5493,30 @@ func observeEventValues(query ObserveEventQuery) url.Values {
 	}
 	if trimmed := strings.TrimSpace(query.Type); trimmed != "" {
 		values.Set("type", trimmed)
+	}
+	if trimmed := strings.TrimSpace(query.RunID); trimmed != "" {
+		values.Set("run", trimmed)
+	}
+	if trimmed := strings.TrimSpace(query.ActorKind); trimmed != "" {
+		values.Set("actor_kind", trimmed)
+	}
+	if trimmed := strings.TrimSpace(query.ActorID); trimmed != "" {
+		values.Set("actor_id", trimmed)
+	}
+	if trimmed := strings.TrimSpace(query.Provider); trimmed != "" {
+		values.Set(cliProviderKey, trimmed)
+	}
+	if trimmed := strings.TrimSpace(query.Outcome); trimmed != "" {
+		values.Set(cliOutcomeKey, trimmed)
+	}
+	if trimmed := strings.TrimSpace(query.Component); trimmed != "" {
+		values.Set("component", trimmed)
+	}
+	if query.ErrorOnly {
+		values.Set("error_only", "true")
+	}
+	if query.AfterSequence > 0 {
+		values.Set("after_seq", strconv.FormatInt(query.AfterSequence, 10))
 	}
 	if !query.Since.IsZero() {
 		values.Set("since", query.Since.UTC().Format(time.RFC3339Nano))
@@ -4727,7 +5556,7 @@ func hookRunsValues(query HookRunsQuery) url.Values {
 		values.Set("event", trimmed)
 	}
 	if trimmed := strings.TrimSpace(query.Outcome); trimmed != "" {
-		values.Set("outcome", trimmed)
+		values.Set(cliOutcomeKey, trimmed)
 	}
 	if trimmed := strings.TrimSpace(query.Since); trimmed != "" {
 		values.Set("since", trimmed)
@@ -4917,6 +5746,20 @@ func taskRunValues(query TaskRunListQuery) url.Values {
 	}
 	if query.Limit > 0 {
 		values.Set("limit", strconv.Itoa(query.Limit))
+	}
+	return values
+}
+
+func schedulerBacklogValues(query SchedulerBacklogQuery) url.Values {
+	values := url.Values{}
+	if query.Limit > 0 {
+		values.Set("limit", strconv.Itoa(query.Limit))
+	}
+	if trimmed := strings.TrimSpace(query.WorkspaceID); trimmed != "" {
+		values.Set("workspace", trimmed)
+	}
+	if query.IncludePaused {
+		values.Set("include_paused", "true")
 	}
 	return values
 }

@@ -45,8 +45,31 @@ func TestDocumentTracksRequiredFieldsAndEnums(t *testing.T) {
 				}
 
 				sessionSchema := sessionsSchema.Items.Value
-				assertRequired(t, sessionSchema, "id", "agent_name", "provider", "state", "created_at", "updated_at")
-				assertNotRequired(t, sessionSchema, "workspace_id", "workspace_path", "stop_reason", "stop_detail")
+				assertRequired(
+					t,
+					sessionSchema,
+					"id",
+					"agent_name",
+					"provider",
+					"state",
+					"badge",
+					"attachable",
+					"created_at",
+					"updated_at",
+				)
+				assertNotRequired(
+					t,
+					sessionSchema,
+					"workspace_id",
+					"workspace_path",
+					"stop_reason",
+					"stop_detail",
+					"attached_to",
+					"attach_expires_at",
+				)
+				assertParameter(t, listSessions, "resumable", openapi3.ParameterInQuery, false)
+				assertParameter(t, listSessions, "sort", openapi3.ParameterInQuery, false)
+				assertParameter(t, listSessions, "limit", openapi3.ParameterInQuery, false)
 				assertEnumValues(
 					t,
 					propertySchema(t, sessionSchema, "type"),
@@ -75,6 +98,63 @@ func TestDocumentTracksRequiredFieldsAndEnums(t *testing.T) {
 					"agent_crashed",
 					"hook_stopped",
 					"shutdown",
+				)
+			},
+		},
+		{
+			name: "ShouldDescribeSessionAttachAndRecapContracts",
+			check: func(t *testing.T, doc *openapi3.T) {
+				t.Helper()
+
+				attachSession := operationFor(
+					t,
+					doc,
+					"/api/workspaces/{workspace_id}/sessions/{session_id}/attach",
+					"POST",
+				)
+				attachRequest := jsonRequestSchema(t, attachSession)
+				assertNotRequired(t, attachRequest, "attached_to", "ttl_seconds")
+				attachResponse := jsonResponseSchema(t, attachSession, 200)
+				assertRequired(t, attachResponse, "session", "attach")
+				assertRequired(
+					t,
+					propertySchema(t, attachResponse, "attach"),
+					"session_id",
+					"attached_to",
+					"attach_expires_at",
+					"attached_at",
+				)
+				assertResponseStatus(t, attachSession, 409)
+
+				recapSession := operationFor(
+					t,
+					doc,
+					"/api/workspaces/{workspace_id}/sessions/{session_id}/recap",
+					"GET",
+				)
+				assertParameter(t, recapSession, "limit", openapi3.ParameterInQuery, false)
+				recapResponse := jsonResponseSchema(t, recapSession, 200)
+				assertRequired(t, recapResponse, "recap")
+				recapSchema := propertySchema(t, recapResponse, "recap")
+				assertRequired(
+					t,
+					recapSchema,
+					"session",
+					"recent_markers",
+					"recent_messages",
+					"pending_inputs",
+					"pending_markers",
+					"snapshot",
+				)
+				snapshotSchema := propertySchema(t, recapSchema, "snapshot")
+				assertRequired(
+					t,
+					snapshotSchema,
+					"generated_at",
+					"event_cursor",
+					"transcript_cursor",
+					"queue_generation",
+					"consistency",
 				)
 			},
 		},
@@ -144,7 +224,7 @@ func TestDocumentTracksRequiredFieldsAndEnums(t *testing.T) {
 			check: func(t *testing.T, doc *openapi3.T) {
 				t.Helper()
 
-				listModels := operationFor(t, doc, "/api/providers/{provider_id}/models", "GET")
+				listModels := operationFor(t, doc, "/api/model-catalog/providers/{provider_id}/models", "GET")
 				assertTagsContain(t, listModels, "providers")
 				assertParameter(t, listModels, "provider_id", openapi3.ParameterInPath, true)
 				assertParameter(t, listModels, "source_id", openapi3.ParameterInQuery, false)
@@ -153,14 +233,14 @@ func TestDocumentTracksRequiredFieldsAndEnums(t *testing.T) {
 				listSchema := jsonResponseSchema(t, listModels, 200)
 				assertRequired(t, listSchema, "models")
 
-				refresh := operationFor(t, doc, "/api/providers/{provider_id}/models/refresh", "POST")
+				refresh := operationFor(t, doc, "/api/model-catalog/providers/{provider_id}/models/refresh", "POST")
 				if refresh.RequestBody == nil || refresh.RequestBody.Value == nil ||
 					refresh.RequestBody.Value.Required {
 					t.Fatalf("refresh request body required = %#v, want optional body", refresh.RequestBody)
 				}
 				assertResponseStatus(t, refresh, 503)
 
-				status := operationFor(t, doc, "/api/providers/models/status", "GET")
+				status := operationFor(t, doc, "/api/model-catalog/sources/status", "GET")
 				statusSchema := jsonResponseSchema(t, status, 200)
 				assertRequired(t, statusSchema, "sources")
 
@@ -330,9 +410,9 @@ func TestDocumentTracksRequiredFieldsAndEnums(t *testing.T) {
 				)
 				assertEnumValues(t, propertySchema(t, createTriggerSchema, "scope"), "global", "workspace")
 
-				healthOperation := operationFor(t, doc, "/api/observe/health", "GET")
+				healthOperation := operationFor(t, doc, "/api/status", "GET")
 				healthSchema := jsonResponseSchema(t, healthOperation, 200)
-				assertRequired(t, healthSchema, "health", "memory", "automation")
+				assertRequired(t, healthSchema, "daemon", "health", "memory", "automation", "config", "log_tail")
 
 				automationSchema := propertySchema(t, healthSchema, "automation")
 				assertRequired(t, automationSchema, "enabled", "jobs", "triggers", "scheduler_running")
@@ -374,6 +454,10 @@ func TestDocumentTracksRequiredFieldsAndEnums(t *testing.T) {
 				assertParameter(t, listSkills, "for_agent", openapi3.ParameterInQuery, false)
 				listSkillsSchema := jsonResponseSchema(t, listSkills, 200)
 				skillSchema := propertySchema(t, listSkillsSchema, "skills").Items.Value
+				provenanceSchema := propertySchema(t, skillSchema, "provenance")
+				assertRequired(t, provenanceSchema, "precedence_tier")
+				shadowEntrySchema := propertySchema(t, provenanceSchema, "shadowed_by").Items.Value
+				assertRequired(t, shadowEntrySchema, "path", "tier", "resolved_to_winner", "detected_at")
 				skillDiagnosticsSchema := propertySchema(t, skillSchema, "diagnostics").Items.Value
 				assertRequired(t, skillDiagnosticsSchema, "name", "state", "verification_status")
 				assertEnumValues(
@@ -401,6 +485,14 @@ func TestDocumentTracksRequiredFieldsAndEnums(t *testing.T) {
 				getSkillContent := operationFor(t, doc, "/api/skills/{name}/content", "GET")
 				assertParameter(t, getSkillContent, "workspace", openapi3.ParameterInQuery, false)
 				assertParameter(t, getSkillContent, "for_agent", openapi3.ParameterInQuery, false)
+
+				getSkillShadows := operationFor(t, doc, "/api/skills/{name}/shadows", "GET")
+				assertParameter(t, getSkillShadows, "workspace", openapi3.ParameterInQuery, false)
+				assertParameter(t, getSkillShadows, "for_agent", openapi3.ParameterInQuery, false)
+				shadowsSchema := jsonResponseSchema(t, getSkillShadows, 200)
+				assertRequired(t, shadowsSchema, "name", "winner", "shadows")
+				winnerSchema := propertySchema(t, shadowsSchema, "winner")
+				assertRequired(t, winnerSchema, "path", "tier", "resolved_to_winner", "detected_at")
 
 				enableSkill := operationFor(t, doc, "/api/skills/{name}/enable", "POST")
 				assertParameter(t, enableSkill, "workspace", openapi3.ParameterInQuery, false)
@@ -1133,6 +1225,123 @@ func TestDocumentTracksRequiredFieldsAndEnums(t *testing.T) {
 				assertRequired(t, startTaskResponse, "task", "run")
 				assertResponseStatus(t, startTask, 409)
 				assertResponseStatus(t, startTask, 422)
+
+				pauseTask := operationFor(t, doc, "/api/tasks/{id}/pause", "POST")
+				assertParameter(t, pauseTask, "id", openapi3.ParameterInPath, true)
+				pauseTaskSchema := jsonRequestSchema(t, pauseTask)
+				assertRequired(t, pauseTaskSchema, "reason")
+				assertNotRequired(t, pauseTaskSchema, "metadata")
+				pauseTaskResponse := jsonResponseSchema(t, pauseTask, 200)
+				assertRequired(t, pauseTaskResponse, "task")
+				assertResponseStatus(t, pauseTask, 403)
+				assertResponseStatus(t, pauseTask, 409)
+				assertResponseStatus(t, pauseTask, 429)
+
+				resumeTask := operationFor(t, doc, "/api/tasks/{id}/resume", "POST")
+				assertParameter(t, resumeTask, "id", openapi3.ParameterInPath, true)
+				if resumeTask.RequestBody == nil || resumeTask.RequestBody.Value == nil {
+					t.Fatal("resume task missing optional request body schema")
+				}
+				if resumeTask.RequestBody.Value.Required {
+					t.Fatal("resume task request body is required, want optional")
+				}
+				resumeTaskSchema := jsonRequestSchema(t, resumeTask)
+				assertNotRequired(t, resumeTaskSchema, "metadata")
+				resumeTaskResponse := jsonResponseSchema(t, resumeTask, 200)
+				assertRequired(t, resumeTaskResponse, "task")
+				assertResponseStatus(t, resumeTask, 403)
+				assertResponseStatus(t, resumeTask, 409)
+				assertResponseStatus(t, resumeTask, 429)
+			},
+		},
+		{
+			name: "ShouldDescribeSchedulerControlSchemas",
+			check: func(t *testing.T, doc *openapi3.T) {
+				t.Helper()
+
+				status := operationFor(t, doc, "/api/scheduler", "GET")
+				assertTagsContain(t, status, "tasks")
+				statusResponse := jsonResponseSchema(t, status, 200)
+				assertRequired(t, statusResponse, "scheduler")
+				schedulerSchema := propertySchema(t, statusResponse, "scheduler")
+				assertRequired(
+					t,
+					schedulerSchema,
+					"paused",
+					"active_claim_count",
+					"queued_run_count",
+					"paused_task_count",
+					"drain_in_progress",
+					"as_of",
+				)
+				assertNotRequired(t, schedulerSchema, "paused_by", "paused_at", "paused_reason", "drain_started_at")
+
+				pauseScheduler := operationFor(t, doc, "/api/scheduler/pause", "POST")
+				if pauseScheduler.RequestBody == nil || pauseScheduler.RequestBody.Value == nil {
+					t.Fatal("pause scheduler missing optional request body schema")
+				}
+				if pauseScheduler.RequestBody.Value.Required {
+					t.Fatal("pause scheduler request body is required, want optional")
+				}
+				pauseSchema := jsonRequestSchema(t, pauseScheduler)
+				assertNotRequired(t, pauseSchema, "reason")
+				assertRequired(t, jsonResponseSchema(t, pauseScheduler, 200), "scheduler")
+				assertResponseStatus(t, pauseScheduler, 403)
+				assertResponseStatus(t, pauseScheduler, 422)
+
+				resumeScheduler := operationFor(t, doc, "/api/scheduler/resume", "POST")
+				if resumeScheduler.RequestBody == nil || resumeScheduler.RequestBody.Value == nil {
+					t.Fatal("resume scheduler missing optional request body schema")
+				}
+				if resumeScheduler.RequestBody.Value.Required {
+					t.Fatal("resume scheduler request body is required, want optional")
+				}
+				resumeSchema := jsonRequestSchema(t, resumeScheduler)
+				assertNotRequired(t, resumeSchema, "reason")
+				assertRequired(t, jsonResponseSchema(t, resumeScheduler, 200), "scheduler")
+				assertResponseStatus(t, resumeScheduler, 403)
+				assertResponseStatus(t, resumeScheduler, 422)
+
+				drainScheduler := operationFor(t, doc, "/api/scheduler/drain", "POST")
+				if drainScheduler.RequestBody == nil || drainScheduler.RequestBody.Value == nil {
+					t.Fatal("drain scheduler missing optional request body schema")
+				}
+				if drainScheduler.RequestBody.Value.Required {
+					t.Fatal("drain scheduler request body is required, want optional")
+				}
+				drainSchema := jsonRequestSchema(t, drainScheduler)
+				assertNotRequired(t, drainSchema, "reason", "timeout_seconds")
+				drainResponse := jsonResponseSchema(t, drainScheduler, 200)
+				assertRequired(
+					t,
+					drainResponse,
+					"scheduler",
+					"completed",
+					"remaining_claims",
+					"started_at",
+					"completed_at",
+				)
+				assertResponseStatus(t, drainScheduler, 403)
+				assertResponseStatus(t, drainScheduler, 422)
+
+				backlog := operationFor(t, doc, "/api/scheduler/backlog", "GET")
+				assertParameter(t, backlog, "limit", openapi3.ParameterInQuery, false)
+				assertParameter(t, backlog, "workspace", openapi3.ParameterInQuery, false)
+				assertParameter(t, backlog, "include_paused", openapi3.ParameterInQuery, false)
+				backlogResponse := jsonResponseSchema(t, backlog, 200)
+				assertRequired(t, backlogResponse, "backlog")
+				backlogSchema := propertySchema(t, backlogResponse, "backlog")
+				assertRequired(t, backlogSchema, "runs", "total")
+				runsSchema := propertySchema(t, backlogSchema, "runs")
+				if runsSchema.Items == nil || runsSchema.Items.Value == nil {
+					t.Fatal("expected backlog runs to define an items schema")
+				}
+				backlogRunSchema := runsSchema.Items.Value
+				assertRequired(t, backlogRunSchema, "task", "run")
+				backlogTaskSchema := propertySchema(t, backlogRunSchema, "task")
+				propertySchema(t, backlogTaskSchema, "paused")
+				propertySchema(t, backlogTaskSchema, "effective_paused")
+				propertySchema(t, backlogTaskSchema, "paused_by_task_id")
 			},
 		},
 		{

@@ -15,6 +15,7 @@ import (
 	hookspkg "github.com/pedronauck/agh/internal/hooks"
 	"github.com/pedronauck/agh/internal/modelcatalog"
 	"github.com/pedronauck/agh/internal/network"
+	presetspkg "github.com/pedronauck/agh/internal/notifications/presets"
 	"github.com/pedronauck/agh/internal/observe"
 	registrypkg "github.com/pedronauck/agh/internal/registry"
 	"github.com/pedronauck/agh/internal/resources"
@@ -24,6 +25,7 @@ import (
 	skillmarketplace "github.com/pedronauck/agh/internal/skills/marketplace"
 	"github.com/pedronauck/agh/internal/soul"
 	"github.com/pedronauck/agh/internal/store"
+	"github.com/pedronauck/agh/internal/support"
 	taskpkg "github.com/pedronauck/agh/internal/task"
 	toolspkg "github.com/pedronauck/agh/internal/tools"
 	"github.com/pedronauck/agh/internal/transcript"
@@ -63,8 +65,19 @@ type SessionManager interface {
 	Resume(ctx context.Context, id string) (*session.Session, error)
 	ClearConversation(ctx context.Context, id string) (*session.Session, error)
 	Prompt(ctx context.Context, id string, msg string) (<-chan acp.AgentEvent, error)
+	SendPrompt(ctx context.Context, id string, opts session.SendPromptOpts) (session.SendPromptResult, error)
+	InterruptPrompt(ctx context.Context, id string) (session.SendPromptResult, error)
+	SteerPrompt(ctx context.Context, id string, msg string) (session.SendPromptResult, error)
+	CancelQueuedPrompt(ctx context.Context, id string, queueEntryID string) (session.SendPromptResult, error)
 	CancelPrompt(ctx context.Context, id string) error
 	ApprovePermission(ctx context.Context, id string, req acp.ApproveRequest) error
+}
+
+// SessionCatalog exposes daemon-owned session catalog operations that must not
+// create a second live session authority.
+type SessionCatalog interface {
+	ListSessions(ctx context.Context, query store.SessionListQuery) ([]store.SessionInfo, error)
+	AttachSession(ctx context.Context, req store.SessionAttachRequest) (store.SessionAttach, error)
 }
 
 // Observer is the observability surface exposed by API transports.
@@ -86,6 +99,7 @@ type Observer interface {
 // BridgeService is the daemon-owned bridge runtime surface exposed by API transports.
 type BridgeService interface {
 	bridgepkg.Registry
+	bridgepkg.TargetDirectory
 	bridgepkg.BridgeTaskSubscriptionStore
 	bridgepkg.TargetResolver
 	ListProviders(ctx context.Context) ([]bridgepkg.BridgeProvider, error)
@@ -95,6 +109,15 @@ type BridgeService interface {
 	StartInstance(ctx context.Context, id string) (*bridgepkg.BridgeInstance, error)
 	StopInstance(ctx context.Context, id string) (*bridgepkg.BridgeInstance, error)
 	RestartInstance(ctx context.Context, id string) (*bridgepkg.BridgeInstance, error)
+}
+
+// NotificationPresetService is the daemon-owned notification preset runtime.
+type NotificationPresetService interface {
+	List(ctx context.Context, query presetspkg.Query) ([]presetspkg.Preset, error)
+	Get(ctx context.Context, name string) (presetspkg.Preset, error)
+	Create(ctx context.Context, req presetspkg.CreateRequest) (presetspkg.Preset, error)
+	Update(ctx context.Context, name string, req presetspkg.UpdateRequest) (presetspkg.Preset, error)
+	Delete(ctx context.Context, name string) error
 }
 
 // BundleService exposes extension bundle catalog, activation, and effective
@@ -230,8 +253,13 @@ type MemorySessionLedgerService interface {
 type SettingsService interface {
 	GetSection(ctx context.Context, req settingspkg.SectionRequest) (settingspkg.SectionEnvelope, error)
 	UpdateSection(ctx context.Context, req settingspkg.SectionUpdateRequest) (settingspkg.MutationResult, error)
+	ApplySection(ctx context.Context, req settingspkg.SectionUpdateRequest) (settingspkg.ApplyResult, error)
 	ListCollection(ctx context.Context, req settingspkg.CollectionRequest) (settingspkg.CollectionEnvelope, error)
 	PutCollectionItem(ctx context.Context, req settingspkg.CollectionItemPutRequest) (settingspkg.MutationResult, error)
+	ApplyCollectionItem(
+		ctx context.Context,
+		req settingspkg.CollectionItemPutRequest,
+	) (settingspkg.ApplyResult, error)
 	DeleteCollectionItem(
 		ctx context.Context,
 		req settingspkg.CollectionItemDeleteRequest,
@@ -239,6 +267,19 @@ type SettingsService interface {
 		settingspkg.MutationResult,
 		error,
 	)
+	ApplyCollectionDelete(
+		ctx context.Context,
+		req settingspkg.CollectionItemDeleteRequest,
+	) (settingspkg.ApplyResult, error)
+	Reload(ctx context.Context) (settingspkg.ApplyResult, error)
+	ListApplyRecords(ctx context.Context, filter settingspkg.ApplyRecordFilter) ([]settingspkg.ApplyRecord, error)
+}
+
+// SupportBundleService exposes daemon-owned support bundle operations to transports.
+type SupportBundleService interface {
+	Create(ctx context.Context, req support.CreateRequest) (support.Operation, error)
+	Get(ctx context.Context, operationID string) (support.Operation, error)
+	DownloadPath(ctx context.Context, operationID string) (support.Operation, string, error)
 }
 
 // SkillsRegistry exposes the daemon-owned skill catalog.

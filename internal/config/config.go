@@ -29,6 +29,10 @@ const (
 	configExtractorKey                       = "extractor"
 	configHybridKey                          = "hybrid"
 	configJsonlKey                           = "jsonl"
+	configLogLevelDebug                      = "debug"
+	configLogLevelError                      = "error"
+	configLogLevelInfo                       = "info"
+	configLogLevelWarn                       = "warn"
 	configMemoryRecallWeightsBm25UnicodePath = "memory.recall.weights.bm25_unicode"
 	configProviderKey                        = "provider"
 	configToolKey                            = "tool"
@@ -53,9 +57,32 @@ const (
 	defaultMemoryWorkspaceTOMLPath = "<workspace>/.agh/workspace.toml"
 )
 
-// DaemonConfig controls the daemon-local socket settings.
+const (
+	defaultDaemonProviderReloadTimeout = 5 * time.Second
+	defaultDaemonMCPReloadTimeout      = 10 * time.Second
+	defaultDaemonBridgeReloadTimeout   = 30 * time.Second
+
+	minDaemonReloadTimeout       = time.Second
+	maxDaemonProviderReloadLimit = 60 * time.Second
+	maxDaemonMCPReloadLimit      = 60 * time.Second
+	maxDaemonBridgeReloadLimit   = 300 * time.Second
+
+	daemonReloadTimeoutProvidersPath = "daemon.reload_timeouts.providers"
+	daemonReloadTimeoutMCPPath       = "daemon.reload_timeouts.mcp"
+	daemonReloadTimeoutBridgesPath   = "daemon.reload_timeouts.bridges"
+)
+
+// DaemonConfig controls daemon-local socket and hot-reload settings.
 type DaemonConfig struct {
-	Socket string `toml:"socket"`
+	Socket         string                     `toml:"socket"`
+	ReloadTimeouts DaemonReloadTimeoutsConfig `toml:"reload_timeouts"`
+}
+
+// DaemonReloadTimeoutsConfig bounds subsystem reload attempts during config apply.
+type DaemonReloadTimeoutsConfig struct {
+	Providers time.Duration `toml:"providers"`
+	MCP       time.Duration `toml:"mcp"`
+	Bridges   time.Duration `toml:"bridges"`
 }
 
 // HTTPConfig controls the HTTP server bind address.
@@ -127,6 +154,7 @@ type LimitsConfig struct {
 type SessionConfig struct {
 	Limits      SessionLimitsConfig      `toml:"limits"`
 	Supervision SessionSupervisionConfig `toml:"supervision"`
+	BusyInput   SessionBusyInputConfig   `toml:"busy_input"`
 }
 
 // SessionLimitsConfig defines runtime limits applied to every session.
@@ -143,6 +171,20 @@ type SessionSupervisionConfig struct {
 	InactivityTimeout         time.Duration `toml:"inactivity_timeout,omitempty"`
 	TimeoutCancelGrace        time.Duration `toml:"timeout_cancel_grace,omitempty"`
 }
+
+// SessionBusyInputConfig controls operator input submitted while a turn is active.
+type SessionBusyInputConfig struct {
+	DefaultMode  string `toml:"default_mode,omitempty"`
+	QueueCap     int    `toml:"queue_cap,omitempty"`
+	MaxTextBytes int    `toml:"max_text_bytes,omitempty"`
+}
+
+const (
+	minSessionBusyInputQueueCap  = 1
+	maxSessionBusyInputQueueCap  = 1000
+	minSessionBusyInputTextBytes = 512
+	maxSessionBusyInputTextBytes = 1 << 20
+)
 
 // PermissionMode is the static permission policy applied by the daemon.
 type PermissionMode string
@@ -180,7 +222,11 @@ type ObservabilityTranscriptConfig struct {
 
 // LogConfig controls structured logging.
 type LogConfig struct {
-	Level string `toml:"level"`
+	Level           string `toml:"level"`
+	MaxSizeMB       int    `toml:"max_size_mb"`
+	MaxBackups      int    `toml:"max_backups"`
+	MaxAgeDays      int    `toml:"max_age_days"`
+	CompressBackups bool   `toml:"compress_backups"`
 }
 
 // MemoryConfig controls persistent memory features.
@@ -623,7 +669,8 @@ func defaultConfig() (Config, error) {
 func DefaultWithHome(homePaths HomePaths) Config {
 	return Config{
 		Daemon: DaemonConfig{
-			Socket: homePaths.DaemonSocket,
+			Socket:         homePaths.DaemonSocket,
+			ReloadTimeouts: DefaultDaemonReloadTimeoutsConfig(),
 		},
 		HTTP: HTTPConfig{
 			Host: "localhost",
@@ -642,6 +689,7 @@ func DefaultWithHome(homePaths HomePaths) Config {
 		Session: SessionConfig{
 			Limits:      SessionLimitsConfig{},
 			Supervision: DefaultSessionSupervisionConfig(),
+			BusyInput:   DefaultSessionBusyInputConfig(),
 		},
 		Permissions: PermissionsConfig{
 			Mode: PermissionModeApproveAll,
@@ -661,7 +709,11 @@ func DefaultWithHome(homePaths HomePaths) Config {
 			},
 		},
 		Log: LogConfig{
-			Level: "info",
+			Level:           configLogLevelInfo,
+			MaxSizeMB:       10,
+			MaxBackups:      5,
+			MaxAgeDays:      30,
+			CompressBackups: false,
 		},
 		Memory: DefaultMemoryConfig(homePaths),
 		Skills: SkillsConfig{
@@ -1111,12 +1163,47 @@ func (p DaytonaProfile) Resolve() sandbox.DaytonaConfig {
 	return resolved
 }
 
-// Validate ensures the daemon config contains a socket path.
+// DefaultDaemonReloadTimeoutsConfig returns daemon hot-reload timeout defaults.
+func DefaultDaemonReloadTimeoutsConfig() DaemonReloadTimeoutsConfig {
+	return DaemonReloadTimeoutsConfig{
+		Providers: defaultDaemonProviderReloadTimeout,
+		MCP:       defaultDaemonMCPReloadTimeout,
+		Bridges:   defaultDaemonBridgeReloadTimeout,
+	}
+}
+
+// Validate ensures the daemon config contains a socket path and reload timeouts.
 func (c DaemonConfig) Validate() error {
 	if strings.TrimSpace(c.Socket) == "" {
 		return errors.New("daemon.socket is required")
 	}
+	if err := c.ReloadTimeouts.Validate(); err != nil {
+		return err
+	}
 
+	return nil
+}
+
+// Validate ensures daemon reload timeout values stay within bounded retry budgets.
+func (c DaemonReloadTimeoutsConfig) Validate() error {
+	err := validateDaemonReloadTimeout(daemonReloadTimeoutProvidersPath, c.Providers, maxDaemonProviderReloadLimit)
+	if err != nil {
+		return err
+	}
+	if err := validateDaemonReloadTimeout(daemonReloadTimeoutMCPPath, c.MCP, maxDaemonMCPReloadLimit); err != nil {
+		return err
+	}
+	err = validateDaemonReloadTimeout(daemonReloadTimeoutBridgesPath, c.Bridges, maxDaemonBridgeReloadLimit)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateDaemonReloadTimeout(path string, value time.Duration, maxDuration time.Duration) error {
+	if value < minDaemonReloadTimeout || value > maxDuration {
+		return fmt.Errorf("%s must be between %s and %s: %s", path, minDaemonReloadTimeout, maxDuration, value)
+	}
 	return nil
 }
 
@@ -1282,7 +1369,10 @@ func (c SessionConfig) Validate() error {
 	if err := c.Limits.Validate(); err != nil {
 		return err
 	}
-	return c.Supervision.Validate()
+	if err := c.Supervision.Validate(); err != nil {
+		return err
+	}
+	return c.BusyInput.Validate()
 }
 
 // Validate ensures session timeout settings are internally consistent.
@@ -1303,6 +1393,65 @@ func DefaultSessionSupervisionConfig() SessionSupervisionConfig {
 		InactivityTimeout:         30 * time.Minute,
 		TimeoutCancelGrace:        30 * time.Second,
 	}
+}
+
+// DefaultSessionBusyInputConfig returns the default busy-input behavior.
+func DefaultSessionBusyInputConfig() SessionBusyInputConfig {
+	return SessionBusyInputConfig{
+		DefaultMode:  "queue",
+		QueueCap:     10,
+		MaxTextBytes: 64 << 10,
+	}
+}
+
+// Normalize returns a config copy with implicit defaults applied.
+func (c SessionBusyInputConfig) Normalize() SessionBusyInputConfig {
+	normalized := c
+	if strings.TrimSpace(normalized.DefaultMode) == "" {
+		normalized.DefaultMode = DefaultSessionBusyInputConfig().DefaultMode
+	} else {
+		normalized.DefaultMode = strings.TrimSpace(normalized.DefaultMode)
+	}
+	if normalized.QueueCap == 0 {
+		normalized.QueueCap = DefaultSessionBusyInputConfig().QueueCap
+	}
+	if normalized.MaxTextBytes == 0 {
+		normalized.MaxTextBytes = DefaultSessionBusyInputConfig().MaxTextBytes
+	}
+	return normalized
+}
+
+// Validate ensures busy-input controls are internally consistent.
+func (c SessionBusyInputConfig) Validate() error {
+	normalized := c.Normalize()
+	switch strings.TrimSpace(normalized.DefaultMode) {
+	case "queue", "interrupt", "steer":
+	case "":
+		return errors.New("session.busy_input.default_mode is required")
+	default:
+		return fmt.Errorf(
+			"session.busy_input.default_mode must be queue, interrupt, or steer: %q",
+			normalized.DefaultMode,
+		)
+	}
+	if normalized.QueueCap < minSessionBusyInputQueueCap || normalized.QueueCap > maxSessionBusyInputQueueCap {
+		return fmt.Errorf(
+			"session.busy_input.queue_cap must be between %d and %d: %d",
+			minSessionBusyInputQueueCap,
+			maxSessionBusyInputQueueCap,
+			normalized.QueueCap,
+		)
+	}
+	if normalized.MaxTextBytes < minSessionBusyInputTextBytes ||
+		normalized.MaxTextBytes > maxSessionBusyInputTextBytes {
+		return fmt.Errorf(
+			"session.busy_input.max_text_bytes must be between %d and %d: %d",
+			minSessionBusyInputTextBytes,
+			maxSessionBusyInputTextBytes,
+			normalized.MaxTextBytes,
+		)
+	}
+	return nil
 }
 
 // Validate ensures session supervision settings are internally consistent.
@@ -1407,11 +1556,27 @@ func (c ObservabilityTranscriptConfig) Validate() error {
 // Validate ensures the log level is supported.
 func (c LogConfig) Validate() error {
 	switch strings.ToLower(strings.TrimSpace(c.Level)) {
-	case "debug", "info", "warn", "error":
-		return nil
+	case configLogLevelDebug, configLogLevelInfo, configLogLevelWarn, configLogLevelError:
 	default:
-		return fmt.Errorf("log.level must be one of %q, %q, %q, %q: %q", "debug", "info", "warn", "error", c.Level)
+		return fmt.Errorf(
+			"log.level must be one of %q, %q, %q, %q: %q",
+			configLogLevelDebug,
+			configLogLevelInfo,
+			configLogLevelWarn,
+			configLogLevelError,
+			c.Level,
+		)
 	}
+	if c.MaxSizeMB <= 0 {
+		return fmt.Errorf("log.max_size_mb must be positive: %d", c.MaxSizeMB)
+	}
+	if c.MaxBackups < 0 {
+		return fmt.Errorf("log.max_backups must be zero or positive: %d", c.MaxBackups)
+	}
+	if c.MaxAgeDays < 0 {
+		return fmt.Errorf("log.max_age_days must be zero or positive: %d", c.MaxAgeDays)
+	}
+	return nil
 }
 
 // Validate ensures the memory configuration is internally consistent.

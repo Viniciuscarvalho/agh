@@ -11,6 +11,7 @@ import (
 	extensionpkg "github.com/pedronauck/agh/internal/extension"
 	registrypkg "github.com/pedronauck/agh/internal/registry"
 	registrygithub "github.com/pedronauck/agh/internal/registry/github"
+	taskpkg "github.com/pedronauck/agh/internal/task"
 	toolspkg "github.com/pedronauck/agh/internal/tools"
 )
 
@@ -42,19 +43,22 @@ type extensionNameInput struct {
 }
 
 type extensionInstallInput struct {
-	Source   string `json:"source"`
-	Path     string `json:"path"`
-	Checksum string `json:"checksum"`
-	Slug     string `json:"slug"`
-	Registry string `json:"registry"`
-	Version  string `json:"version"`
-	Asset    string `json:"asset"`
+	Source          string `json:"source"`
+	Path            string `json:"path"`
+	Checksum        string `json:"checksum"`
+	Slug            string `json:"slug"`
+	Registry        string `json:"registry"`
+	Version         string `json:"version"`
+	Asset           string `json:"asset"`
+	AllowUnverified bool   `json:"allow_unverified"`
 }
 
 type extensionUpdateInput struct {
-	Name      string `json:"name"`
-	All       bool   `json:"all"`
-	CheckOnly bool   `json:"check_only"`
+	Name            string `json:"name"`
+	All             bool   `json:"all"`
+	CheckOnly       bool   `json:"check_only"`
+	Version         string `json:"version"`
+	AllowUnverified bool   `json:"allow_unverified"`
 }
 
 func (n *daemonNativeTools) extensionToolBindings(
@@ -186,13 +190,21 @@ func (n *daemonNativeTools) extensionInstall(
 
 	switch source {
 	case extensionToolSourceLocal:
-		item, err := n.extensionInstallLocal(ctx, req.ToolID, input)
+		actor, err := nativeExtensionActorContext(req)
+		if err != nil {
+			return toolspkg.ToolResult{}, nativeExtensionToolError(req.ToolID, err)
+		}
+		item, err := n.extensionInstallLocal(ctx, req.ToolID, input, actor)
 		if err != nil {
 			return toolspkg.ToolResult{}, nativeExtensionToolError(req.ToolID, err)
 		}
 		return structuredResult(map[string]any{nativeExtensionToolsExtensionKey: item}, item.Name)
 	case extensionToolSourceMarketplace:
-		item, err := n.extensionInstallMarketplace(ctx, req.ToolID, input)
+		actor, err := nativeExtensionActorContext(req)
+		if err != nil {
+			return toolspkg.ToolResult{}, nativeExtensionToolError(req.ToolID, err)
+		}
+		item, err := n.extensionInstallMarketplace(ctx, req.ToolID, input, actor)
 		if err != nil {
 			return toolspkg.ToolResult{}, nativeExtensionToolError(req.ToolID, err)
 		}
@@ -224,19 +236,18 @@ func (n *daemonNativeTools) extensionUpdate(
 			errors.New("extension update accepts name or all, not both"),
 		)
 	}
+	actor, err := nativeExtensionActorContext(req)
+	if err != nil {
+		return toolspkg.ToolResult{}, nativeExtensionToolError(req.ToolID, err)
+	}
 
-	items, err := extensionpkg.UpdateMarketplaceManaged(
-		ctx,
-		n.deps.HomePaths,
-		n.deps.ExtensionRegistry,
-		n.extensionMarketplaceLoader(),
-		extensionpkg.MarketplaceUpdateRequest{
-			Names:     names,
-			All:       input.All,
-			CheckOnly: input.CheckOnly,
-		},
-		n.extensionService().reload,
-	)
+	items, err := n.extensionService().UpdateBatch(ctx, extensionpkg.MarketplaceUpdateRequest{
+		Names:           names,
+		All:             input.All,
+		CheckOnly:       input.CheckOnly,
+		Version:         input.Version,
+		AllowUnverified: input.AllowUnverified,
+	}, actor)
 	if err != nil {
 		return toolspkg.ToolResult{}, nativeExtensionToolError(req.ToolID, err)
 	}
@@ -256,8 +267,12 @@ func (n *daemonNativeTools) extensionRemove(
 	if err != nil {
 		return toolspkg.ToolResult{}, err
 	}
+	actor, err := nativeExtensionActorContext(req)
+	if err != nil {
+		return toolspkg.ToolResult{}, nativeExtensionToolError(req.ToolID, err)
+	}
 
-	item, err := extensionpkg.RemoveManagedExtension(ctx, n.deps.ExtensionRegistry, name, n.extensionService().reload)
+	item, err := n.extensionService().Remove(ctx, name, actor)
 	if err != nil {
 		return toolspkg.ToolResult{}, nativeExtensionToolError(req.ToolID, err)
 	}
@@ -277,7 +292,11 @@ func (n *daemonNativeTools) extensionEnable(
 	if err != nil {
 		return toolspkg.ToolResult{}, err
 	}
-	item, err := n.extensionService().Enable(ctx, name)
+	actor, err := nativeExtensionActorContext(req)
+	if err != nil {
+		return toolspkg.ToolResult{}, nativeExtensionToolError(req.ToolID, err)
+	}
+	item, err := n.extensionService().Enable(ctx, name, actor)
 	if err != nil {
 		return toolspkg.ToolResult{}, nativeExtensionToolError(req.ToolID, err)
 	}
@@ -297,7 +316,11 @@ func (n *daemonNativeTools) extensionDisable(
 	if err != nil {
 		return toolspkg.ToolResult{}, err
 	}
-	item, err := n.extensionService().Disable(ctx, name)
+	actor, err := nativeExtensionActorContext(req)
+	if err != nil {
+		return toolspkg.ToolResult{}, nativeExtensionToolError(req.ToolID, err)
+	}
+	item, err := n.extensionService().Disable(ctx, name, actor)
 	if err != nil {
 		return toolspkg.ToolResult{}, nativeExtensionToolError(req.ToolID, err)
 	}
@@ -308,6 +331,7 @@ func (n *daemonNativeTools) extensionInstallLocal(
 	ctx context.Context,
 	toolID toolspkg.ToolID,
 	input extensionInstallInput,
+	actor taskpkg.ActorContext,
 ) (contract.ExtensionPayload, error) {
 	if err := input.validateLocal(); err != nil {
 		return contract.ExtensionPayload{}, nativeExtensionValidationError(toolID, err)
@@ -322,39 +346,28 @@ func (n *daemonNativeTools) extensionInstallLocal(
 		checksum = computed
 	}
 	return n.extensionService().Install(ctx, contract.InstallExtensionRequest{
-		Path:     path,
-		Checksum: checksum,
-	})
+		Path:            path,
+		Checksum:        checksum,
+		AllowUnverified: input.AllowUnverified,
+	}, actor)
 }
 
 func (n *daemonNativeTools) extensionInstallMarketplace(
 	ctx context.Context,
 	toolID toolspkg.ToolID,
 	input extensionInstallInput,
+	actor taskpkg.ActorContext,
 ) (contract.ExtensionPayload, error) {
 	if err := input.validateMarketplace(); err != nil {
 		return contract.ExtensionPayload{}, nativeExtensionValidationError(toolID, err)
 	}
-	service := n.extensionService()
-	info, err := extensionpkg.InstallMarketplaceManaged(
-		ctx,
-		n.deps.HomePaths,
-		n.deps.ExtensionRegistry,
-		n.extensionMarketplaceLoader(),
-		extensionpkg.MarketplaceInstallRequest{
-			Slug:         input.Slug,
-			SourceFilter: input.Registry,
-			Version:      input.Version,
-			Asset:        input.Asset,
-		},
-	)
-	if err != nil {
-		return contract.ExtensionPayload{}, err
-	}
-	if err := service.reload(ctx); err != nil {
-		return contract.ExtensionPayload{}, service.rollbackFailedInstall(ctx, info.Name, err)
-	}
-	return service.Status(ctx, info.Name)
+	return n.extensionService().Install(ctx, contract.InstallExtensionRequest{
+		Slug:            input.Slug,
+		Source:          input.Registry,
+		Version:         input.Version,
+		Asset:           input.Asset,
+		AllowUnverified: input.AllowUnverified,
+	}, actor)
 }
 
 func (n *daemonNativeTools) extensionService() *daemonExtensionService {
@@ -368,15 +381,28 @@ func (n *daemonNativeTools) extensionService() *daemonExtensionService {
 		n.deps.HookBindings,
 		n.deps.AgentSkills,
 		n.deps.ToolMCP,
-		n.deps.Bundles,
+		n.deps.BundleResources,
 		n.deps.HomePaths,
 		nil,
 		nil,
+		withDaemonExtensionMarketplace(n.deps.ExtensionMarket, n.deps.ExtensionSources),
+		withDaemonExtensionEventWriter(n.deps.ExtensionEvents),
 	).(*daemonExtensionService)
 	if !ok {
 		return nil
 	}
 	return service
+}
+
+func nativeExtensionActorContext(req toolspkg.CallRequest) (taskpkg.ActorContext, error) {
+	if sessionID := strings.TrimSpace(req.SessionID); sessionID != "" {
+		return taskpkg.DeriveAgentSessionActorContextForOrigin(
+			sessionID,
+			taskpkg.OriginKindAgentSession,
+			strings.TrimSpace(string(req.ToolID)),
+		)
+	}
+	return taskpkg.DeriveDaemonActorContext("native-tools", strings.TrimSpace(string(req.ToolID)))
 }
 
 func (n *daemonNativeTools) extensionMarketplaceLoader() extensionpkg.MarketplaceSourceLoader {

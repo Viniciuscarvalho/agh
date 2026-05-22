@@ -6,6 +6,7 @@ import type {
   TaskBridgeNotificationSubscriptionCreateRequest,
   TaskExecutionProfileSetRequest,
   TaskInboxItem,
+  TaskInspectView,
   TaskListItem,
   TaskRecord,
   TaskRun,
@@ -21,6 +22,7 @@ import {
   buildBridgeNotificationCursorFixture,
   buildCreatedTaskFixture,
   buildDetailFixture,
+  buildTaskInspectFixture,
   buildTaskBridgeNotificationSubscriptionFixture,
   buildTaskExecutionProfileFixture,
   buildTaskRunRecordFixture,
@@ -313,6 +315,18 @@ export const handlers: HttpHandler[] = [
 
     return HttpResponse.json({ tree });
   }),
+  http.get("/api/tasks/:id/inspect", ({ params }) => {
+    const id = String(params.id);
+    const task = resolveTask(id);
+
+    if (!task) {
+      return notFound("Task", id);
+    }
+
+    return HttpResponse.json({
+      inspect: buildTaskInspectFixture({ task, target: "task" }),
+    });
+  }),
   http.get("/api/task-runs/:id", ({ params }) => {
     const id = String(params.id);
     const run = resolveTaskRun(id);
@@ -322,6 +336,34 @@ export const handlers: HttpHandler[] = [
     }
 
     return HttpResponse.json({ run });
+  }),
+  http.get("/api/runs/:id/inspect", ({ params }) => {
+    const id = String(params.id);
+    const run = resolveTaskRun(id);
+
+    if (!run) {
+      return notFound("Task run", id);
+    }
+
+    return HttpResponse.json({
+      inspect: buildTaskInspectFixture({
+        target: "run",
+        task: run.task as TaskInspectView["task"],
+        current_run: {
+          run_id: run.run.id,
+          task_id: run.run.task_id,
+          status: run.run.status,
+          claim_token_hash_truncated: "abcdef12",
+          bound_session_id: run.run.session_id ?? undefined,
+          queued_at: run.run.queued_at,
+          started_at: run.run.started_at ?? undefined,
+          ended_at: run.run.ended_at ?? undefined,
+          attempt: run.run.attempt,
+          retries: Math.max(0, run.run.attempt - 1),
+          last_error_summary: run.run.error,
+        },
+      }),
+    });
   }),
   http.get("/api/observe/tasks/dashboard", () =>
     HttpResponse.json({ dashboard: taskDashboardFixture })
@@ -383,6 +425,45 @@ export const handlers: HttpHandler[] = [
       task: {
         ...task,
         status: "canceled",
+      },
+    });
+  }),
+  http.post("/api/tasks/:id/pause", async ({ params, request }) => {
+    const id = String(params.id);
+    const task = resolveTaskRecord(id);
+    if (!task) {
+      return notFound("Task", id);
+    }
+    const body = (await request.json()) as { reason?: string };
+
+    return HttpResponse.json({
+      task: {
+        ...task,
+        paused: true,
+        effective_paused: true,
+        paused_by: "human:storybook",
+        paused_at: "2026-04-17T10:05:00Z",
+        paused_by_task_id: task.id,
+        paused_reason: body.reason ?? "storybook pause",
+      },
+    });
+  }),
+  http.post("/api/tasks/:id/resume", ({ params }) => {
+    const id = String(params.id);
+    const task = resolveTaskRecord(id);
+    if (!task) {
+      return notFound("Task", id);
+    }
+
+    return HttpResponse.json({
+      task: {
+        ...task,
+        paused: false,
+        effective_paused: false,
+        paused_by: "",
+        paused_at: null,
+        paused_by_task_id: "",
+        paused_reason: "",
       },
     });
   }),

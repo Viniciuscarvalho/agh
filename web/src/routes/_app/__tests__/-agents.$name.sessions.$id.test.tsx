@@ -42,6 +42,9 @@ const {
   mockStop,
   mockClear,
   mockDelete,
+  mockQueuePrompt,
+  mockInterruptPrompt,
+  mockSteerPrompt,
 } = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
   mockUseSession: vi.fn(),
@@ -75,6 +78,18 @@ const {
   },
   mockDelete: {
     mutate: vi.fn(),
+    isPending: false,
+  },
+  mockQueuePrompt: {
+    mutateAsync: vi.fn(),
+    isPending: false,
+  },
+  mockInterruptPrompt: {
+    mutateAsync: vi.fn(),
+    isPending: false,
+  },
+  mockSteerPrompt: {
+    mutateAsync: vi.fn(),
     isPending: false,
   },
 }));
@@ -123,6 +138,9 @@ vi.mock("@/systems/session/hooks/use-session-actions", () => ({
   useStopSession: () => mockStop,
   useClearSessionConversation: () => mockClear,
   useDeleteSession: () => mockDelete,
+  useQueueSessionPrompt: () => mockQueuePrompt,
+  useInterruptSessionPrompt: () => mockInterruptPrompt,
+  useSteerSessionPrompt: () => mockSteerPrompt,
 }));
 
 vi.mock("@/systems/session/adapters/session-api", () => ({
@@ -171,6 +189,8 @@ function makeSession(overrides: Partial<SessionPayload> = {}): SessionPayload {
     workspace_id: "ws_alpha",
     workspace_path: "/workspace/alpha",
     state: "stopped",
+    badge: "stopped",
+    attachable: false,
     name: "Old runtime",
     created_at: "2026-04-20T10:00:00Z",
     updated_at: "2026-04-20T11:00:00Z",
@@ -186,6 +206,12 @@ describe("Nested agent session route — Topbar slot migration", () => {
     mockStop.mutate.mockReset();
     mockClear.mutate.mockReset();
     mockDelete.mutate.mockReset();
+    mockQueuePrompt.mutateAsync.mockReset();
+    mockQueuePrompt.isPending = false;
+    mockInterruptPrompt.mutateAsync.mockReset();
+    mockInterruptPrompt.isPending = false;
+    mockSteerPrompt.mutateAsync.mockReset();
+    mockSteerPrompt.isPending = false;
     mockUseSession.mockReset();
     mockUseSessionVaultSecrets.mockReset();
     mockUseSessionVaultSecrets.mockReturnValue({ data: [], isLoading: false, error: null });
@@ -210,49 +236,49 @@ describe("Nested agent session route — Topbar slot migration", () => {
     expect(slotRef.current?.title).toBe("claude-agent");
   });
 
-  it("Should render the agent state + provider as bare mono identifiers in the Topbar meta slot", () => {
+  it("Should render the daemon badge + provider as bare mono identifiers in the Topbar meta slot", () => {
     renderSessionPage();
     const meta = screen.getByTestId("session-topbar-meta");
     expect(meta).toBeInTheDocument();
-    const state = screen.getByTestId("session-topbar-state");
-    expect(state).toHaveTextContent("stopped");
+    const badge = screen.getByTestId("session-topbar-badge");
+    expect(badge).toHaveTextContent("stopped");
     const provider = screen.getByTestId("session-topbar-provider");
     expect(provider).toHaveTextContent("codex");
   });
 
-  it("Should expose delete/stop/resume controls inside the Topbar actions slot for stopped sessions", () => {
+  it("Should expose delete without attach controls for stopped sessions", () => {
     renderSessionPage();
     expect(screen.getByTestId("session-topbar-actions")).toBeInTheDocument();
     expect(screen.getByTestId("delete-button")).toBeInTheDocument();
-    expect(screen.getByTestId("resume-button")).toBeInTheDocument();
+    expect(screen.queryByTestId("resume-button")).not.toBeInTheDocument();
     expect(screen.queryByTestId("stop-button")).not.toBeInTheDocument();
   });
 
-  it("Should expose the stop control inside the Topbar actions slot for active sessions", () => {
+  it("Should expose stop and attach controls for attachable active sessions", () => {
     mockUseSession.mockReturnValue({
-      data: makeSession({ state: "active" }),
+      data: makeSession({ state: "active", badge: "idle", attachable: true }),
       isLoading: false,
       error: null,
     });
     renderSessionPage();
     expect(screen.getByTestId("stop-button")).toBeInTheDocument();
-    expect(screen.queryByTestId("resume-button")).not.toBeInTheDocument();
+    expect(screen.getByTestId("resume-button")).toHaveAccessibleName("Attach session");
   });
 
-  it("Should flip the agent-status-dot to warning+pulse for starting sessions", () => {
+  it("Should flip the agent-status-dot to success+pulse for running badges", () => {
     mockUseSession.mockReturnValue({
-      data: makeSession({ state: "starting" }),
+      data: makeSession({ state: "starting", badge: "running" }),
       isLoading: false,
       error: null,
     });
     renderSessionPage();
     const dot = screen.getByTestId("agent-status-dot");
-    expect(dot.getAttribute("data-tone")).toBe("warning");
+    expect(dot.getAttribute("data-tone")).toBe("success");
     expect(dot.getAttribute("data-pulse")).toBe("true");
   });
 });
 
-describe("Nested agent session route — resume failure UX", () => {
+describe("Nested agent session route — attach failure UX", () => {
   beforeEach(() => {
     mockNavigate.mockReset();
     mockResume.mutate.mockReset();
@@ -260,6 +286,12 @@ describe("Nested agent session route — resume failure UX", () => {
     mockStop.mutate.mockReset();
     mockClear.mutate.mockReset();
     mockDelete.mutate.mockReset();
+    mockQueuePrompt.mutateAsync.mockReset();
+    mockQueuePrompt.isPending = false;
+    mockInterruptPrompt.mutateAsync.mockReset();
+    mockInterruptPrompt.isPending = false;
+    mockSteerPrompt.mutateAsync.mockReset();
+    mockSteerPrompt.isPending = false;
     mockUseSession.mockReset();
     mockUseSessionVaultSecrets.mockReset();
     mockUseSessionVaultSecrets.mockReturnValue({ data: [], isLoading: false, error: null });
@@ -267,13 +299,13 @@ describe("Nested agent session route — resume failure UX", () => {
     mockUseSessionLedger.mockReturnValue({ data: undefined, isLoading: false, error: null });
     mockSessionInspector.mockClear();
     mockUseSession.mockReturnValue({
-      data: makeSession(),
+      data: makeSession({ state: "active", badge: "idle", attachable: true }),
       isLoading: false,
       error: null,
     });
   });
 
-  it("renders a dedicated inline resume-failure state when resume rejects with a provider-validation error", () => {
+  it("renders a dedicated inline attach-failure state when attach rejects with a provider-validation error", () => {
     mockResume.mutate.mockImplementation((_id, opts) => {
       opts?.onError?.(
         new Error(
@@ -288,6 +320,9 @@ describe("Nested agent session route — resume failure UX", () => {
 
     const failure = screen.getByTestId("session-resume-failure");
     expect(failure).toBeInTheDocument();
+    expect(screen.getByTestId("session-resume-failure-title")).toHaveTextContent(
+      "Attach failed: provider no longer available"
+    );
     expect(screen.getByTestId("session-resume-failure-provider")).toHaveTextContent("codex");
     expect(screen.getByTestId("session-resume-failure-meta")).toHaveTextContent("sess_123");
     expect(screen.getByTestId("session-resume-failure-meta")).toHaveTextContent("claude-agent");
@@ -402,6 +437,11 @@ describe("Nested agent session route — resume failure UX", () => {
         { sequence: 2, event_type: "memory.recall", emitted_at: "2026-04-20T10:01:00Z" },
       ],
     };
+    mockUseSession.mockReturnValue({
+      data: makeSession({ state: "stopped", badge: "stopped", attachable: false }),
+      isLoading: false,
+      error: null,
+    });
     mockUseSessionLedger.mockReturnValue({ data: ledger, isLoading: false, error: null });
 
     renderSessionPage();

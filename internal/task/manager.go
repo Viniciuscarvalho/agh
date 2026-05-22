@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	eventspkg "github.com/pedronauck/agh/internal/events"
 	hookspkg "github.com/pedronauck/agh/internal/hooks"
 	"github.com/pedronauck/agh/internal/store"
 )
@@ -22,41 +23,45 @@ const (
 )
 
 const (
-	taskEventCreated            = "task.created"
-	taskEventUpdated            = "task.updated"
-	taskEventPublished          = "task.published"
-	taskEventApproved           = "task.approved"
-	taskEventRejected           = "task.rejected"
-	taskEventCanceled           = "task.canceled"
-	taskEventChildCreated       = "task.child_created"
-	taskEventDependencyAdded    = "task.dependency_added"
-	taskEventDependencyRemoved  = "task.dependency_removed"
-	taskEventRunEnqueued        = "task.run_enqueued"
-	taskEventRunClaimed         = "task.run_claimed"
-	taskEventRunStarting        = "task.run_starting"
-	taskEventRunSessionBound    = "task.run_session_bound"
-	taskEventRunStarted         = "task.run_started"
-	taskEventRunCompleted       = "task.run_completed"
-	taskEventRunFailed          = "task.run_failed"
-	taskEventRunCanceled        = "task.run_canceled"
-	taskEventRunForceStopped    = "task.run_force_stopped"
-	taskEventRunRecovered       = "task.run_recovered"
-	taskEventRunRejected        = "task.run_rejected"
-	taskEventRunLeaseExtended   = "task.run_lease_extended"
-	taskEventRunLeaseExpired    = "task.run_lease_expired"
-	taskEventRunReleased        = "task.run_released"
-	taskEventProfileUpdated     = "task.execution_profile_updated"
-	taskEventProfileDeleted     = "task.execution_profile_deleted"
-	taskEventRunReviewRequested = "task.run_review_requested"
-	taskEventRunReviewBound     = "task.run_review_bound"
-	taskEventRunReviewRecorded  = "task.run_review_recorded"
-	taskEventRunReviewApproved  = "task.run_review_approved"
-	taskEventRunReviewRejected  = "task.run_review_rejected"
-	taskEventRunReviewBlocked   = "task.run_review_blocked"
-	taskEventRunReviewError     = "task.run_review_error"
-	taskEventRunReviewTimeout   = "task.run_review_timeout"
-	taskEventRunReviewInvalid   = "task.run_review_invalid_output"
-	taskEventRunReviewRetry     = "task.run_review_retry_enqueued"
+	taskEventCreated               = eventspkg.TaskCreated
+	taskEventUpdated               = eventspkg.TaskUpdated
+	taskEventPublished             = eventspkg.TaskPublished
+	taskEventApproved              = eventspkg.TaskApproved
+	taskEventRejected              = eventspkg.TaskRejected
+	taskEventCanceled              = eventspkg.TaskCanceled
+	taskEventChildCreated          = eventspkg.TaskChildCreated
+	taskEventDependencyAdded       = eventspkg.TaskDependencyAdded
+	taskEventDependencyRemoved     = eventspkg.TaskDependencyRemoved
+	taskEventPaused                = eventspkg.TaskPaused
+	taskEventResumed               = eventspkg.TaskResumed
+	taskEventRunEnqueued           = eventspkg.TaskRunEnqueued
+	taskEventRunClaimed            = eventspkg.TaskRunClaimed
+	taskEventRunStarting           = eventspkg.TaskRunStarting
+	taskEventRunSessionBound       = eventspkg.TaskRunSessionBound
+	taskEventRunStarted            = eventspkg.TaskRunStarted
+	taskEventRunCompleted          = eventspkg.TaskRunCompleted
+	taskEventRunFailed             = eventspkg.TaskRunFailed
+	taskEventRunCanceled           = eventspkg.TaskRunCanceled
+	taskEventRunForceStopped       = eventspkg.TaskRunForceStopped
+	taskEventRunRecovered          = eventspkg.TaskRunRecovered
+	taskEventRunRejected           = eventspkg.TaskRunRejected
+	taskEventRunLeaseExtended      = eventspkg.TaskRunLeaseExtended
+	taskEventRunLeaseExpired       = eventspkg.TaskRunLeaseExpired
+	taskEventRunReleased           = eventspkg.TaskRunReleased
+	taskEventRunOperatorForcedFail = eventspkg.TaskRunOperatorForcedFail
+	taskEventRunOperatorRetry      = eventspkg.TaskRunOperatorRetry
+	taskEventProfileUpdated        = eventspkg.TaskExecutionProfileUpdated
+	taskEventProfileDeleted        = eventspkg.TaskExecutionProfileDeleted
+	taskEventRunReviewRequested    = eventspkg.TaskRunReviewRequested
+	taskEventRunReviewBound        = eventspkg.TaskRunReviewBound
+	taskEventRunReviewRecorded     = eventspkg.TaskRunReviewRecorded
+	taskEventRunReviewApproved     = eventspkg.TaskRunReviewApproved
+	taskEventRunReviewRejected     = eventspkg.TaskRunReviewRejected
+	taskEventRunReviewBlocked      = eventspkg.TaskRunReviewBlocked
+	taskEventRunReviewError        = eventspkg.TaskRunReviewError
+	taskEventRunReviewTimeout      = eventspkg.TaskRunReviewTimeout
+	taskEventRunReviewInvalid      = eventspkg.TaskRunReviewInvalidOutput
+	taskEventRunReviewRetry        = eventspkg.TaskRunReviewRetryEnqueued
 )
 
 // Option customizes Service construction.
@@ -66,11 +71,13 @@ type managerOptions struct {
 	store             Store
 	sessions          SessionExecutor
 	runtimeViews      RuntimeViewReader
+	inspectReader     InspectStateReader
 	eventObserver     EventObserver
 	reviewObserver    RunReviewRequestedObserver
 	taskHooks         RunHookDispatcher
 	channelValidator  func(string) error
 	profileValidation ExecutionProfileValidationOptions
+	forceRecovery     ForceRecoveryOptions
 	now               func() time.Time
 	newID             func(prefix string) string
 	cancelGracePeriod time.Duration
@@ -82,14 +89,17 @@ type Service struct {
 	store             Store
 	sessions          SessionExecutor
 	runtimeViews      RuntimeViewReader
+	inspectReader     InspectStateReader
 	eventObserver     EventObserver
 	reviewObserver    RunReviewRequestedObserver
 	taskHooks         RunHookDispatcher
 	channelValidator  func(string) error
 	profileValidation ExecutionProfileValidationOptions
+	forceRecovery     ForceRecoveryOptions
 	now               func() time.Time
 	newID             func(prefix string) string
 	cancelGracePeriod time.Duration
+	forceRateLimiter  *forceRunRateLimiter
 	liveMu            sync.Mutex
 	liveSubscribers   map[uint64]*taskStreamSubscriber
 	nextSubscriberID  uint64
@@ -116,6 +126,13 @@ func WithSessionExecutor(sessions SessionExecutor) Option {
 func WithRuntimeViewReader(reader RuntimeViewReader) Option {
 	return func(opts *managerOptions) {
 		opts.runtimeViews = reader
+	}
+}
+
+// WithInspectStateReader injects read-only runtime state used by task inspect.
+func WithInspectStateReader(reader InspectStateReader) Option {
+	return func(opts *managerOptions) {
+		opts.inspectReader = reader
 	}
 }
 
@@ -157,6 +174,13 @@ func WithExecutionProfileValidationOptions(options ExecutionProfileValidationOpt
 	}
 }
 
+// WithForceRecoveryOptions injects config-backed force-operation policy.
+func WithForceRecoveryOptions(options ForceRecoveryOptions) Option {
+	return func(opts *managerOptions) {
+		opts.forceRecovery = options
+	}
+}
+
 // WithManagerNow overrides the manager clock for deterministic tests.
 func WithManagerNow(now func() time.Time) Option {
 	return func(opts *managerOptions) {
@@ -183,6 +207,10 @@ func WithCancelGracePeriod(timeout time.Duration) Option {
 func NewManager(opts ...Option) (*Service, error) {
 	options := managerOptions{
 		profileValidation: DefaultExecutionProfileValidationOptions(),
+		forceRecovery: ForceRecoveryOptions{
+			AllowAgentForce:    true,
+			RateLimitPerMinute: DefaultForceRunRateLimitPerMinute,
+		},
 		now: func() time.Time {
 			return time.Now().UTC()
 		},
@@ -210,14 +238,17 @@ func NewManager(opts ...Option) (*Service, error) {
 		store:             options.store,
 		sessions:          options.sessions,
 		runtimeViews:      options.runtimeViews,
+		inspectReader:     options.inspectReader,
 		eventObserver:     options.eventObserver,
 		reviewObserver:    options.reviewObserver,
 		taskHooks:         defaultTaskRunHooks(options.taskHooks),
 		channelValidator:  options.channelValidator,
 		profileValidation: options.profileValidation,
+		forceRecovery:     normalizeForceRecoveryOptions(options.forceRecovery),
 		now:               options.now,
 		newID:             options.newID,
 		cancelGracePeriod: options.cancelGracePeriod,
+		forceRateLimiter:  newForceRunRateLimiter(),
 		liveSubscribers:   make(map[uint64]*taskStreamSubscriber),
 	}, nil
 }
@@ -1511,6 +1542,9 @@ func (m *Service) enrichTaskSummaryFromState(
 	summary.DependencyCount = len(dependencies)
 	summary.ActiveRun = activeRunSummary(runs, record.MaxAttempts)
 	summary.LastActivityAt = latestTaskActivityAt(record, runs, events)
+	if err := m.applyEffectivePauseToSummary(ctx, &summary); err != nil {
+		return Summary{}, err
+	}
 	summary.Dependencies, err = m.buildDependencyReferences(ctx, dependencies)
 	if err != nil {
 		return Summary{}, err
@@ -3513,22 +3547,33 @@ func marshalTaskEventPayload(payload any) (json.RawMessage, error) {
 
 func summaryFromTaskRecord(record Task) Summary {
 	return Summary{
-		ID:             record.ID,
-		Identifier:     record.Identifier,
-		Scope:          record.Scope,
-		WorkspaceID:    record.WorkspaceID,
-		ParentTaskID:   record.ParentTaskID,
-		NetworkChannel: record.NetworkChannel,
-		Title:          record.Title,
-		Priority:       record.Priority,
-		MaxAttempts:    record.MaxAttempts,
-		Status:         record.Status,
-		ApprovalPolicy: record.ApprovalPolicy,
-		ApprovalState:  record.ApprovalState,
-		Draft:          record.Status.Normalize() == TaskStatusDraft,
-		Owner:          cloneOwnership(record.Owner),
-		CurrentRunID:   record.CurrentRunID,
-		LatestEventSeq: record.LatestEventSeq,
+		ID:              record.ID,
+		Identifier:      record.Identifier,
+		Scope:           record.Scope,
+		WorkspaceID:     record.WorkspaceID,
+		ParentTaskID:    record.ParentTaskID,
+		NetworkChannel:  record.NetworkChannel,
+		Title:           record.Title,
+		Priority:        record.Priority,
+		MaxAttempts:     record.MaxAttempts,
+		Status:          record.Status,
+		ApprovalPolicy:  record.ApprovalPolicy,
+		ApprovalState:   record.ApprovalState,
+		Draft:           record.Status.Normalize() == TaskStatusDraft,
+		Owner:           cloneOwnership(record.Owner),
+		CurrentRunID:    record.CurrentRunID,
+		LatestEventSeq:  record.LatestEventSeq,
+		Paused:          record.Paused,
+		PausedBy:        record.PausedBy,
+		PausedAt:        record.PausedAt,
+		PausedReason:    record.PausedReason,
+		EffectivePaused: record.Paused,
+		PausedByTaskID: func() string {
+			if record.Paused {
+				return record.ID
+			}
+			return ""
+		}(),
 		CreatedBy:      record.CreatedBy,
 		Origin:         record.Origin,
 		CreatedAt:      record.CreatedAt,
@@ -3555,6 +3600,10 @@ func taskRecordFromSummary(summary Summary) Task {
 		Owner:          cloneOwnership(summary.Owner),
 		CurrentRunID:   summary.CurrentRunID,
 		LatestEventSeq: summary.LatestEventSeq,
+		Paused:         summary.Paused,
+		PausedBy:       summary.PausedBy,
+		PausedAt:       summary.PausedAt,
+		PausedReason:   summary.PausedReason,
 		CreatedBy:      summary.CreatedBy,
 		Origin:         summary.Origin,
 		CreatedAt:      summary.CreatedAt,
@@ -3580,21 +3629,79 @@ func (m *Service) taskReference(ctx context.Context, taskID string) (Reference, 
 	if err != nil {
 		return Reference{}, err
 	}
-	return taskReferenceFromTask(record, status), nil
+	reference := taskReferenceFromTask(record, status)
+	if err := m.applyEffectivePauseToReference(ctx, &reference); err != nil {
+		return Reference{}, err
+	}
+	return reference, nil
 }
 
 func taskReferenceFromTask(record Task, status Status) Reference {
 	return Reference{
-		ID:             record.ID,
-		Identifier:     record.Identifier,
-		Title:          record.Title,
-		Status:         status,
-		Priority:       record.Priority,
-		Owner:          cloneOwnership(record.Owner),
-		Scope:          record.Scope,
-		WorkspaceID:    record.WorkspaceID,
-		LatestEventSeq: record.LatestEventSeq,
+		ID:              record.ID,
+		Identifier:      record.Identifier,
+		Title:           record.Title,
+		Status:          status,
+		Priority:        record.Priority,
+		Owner:           cloneOwnership(record.Owner),
+		Scope:           record.Scope,
+		WorkspaceID:     record.WorkspaceID,
+		LatestEventSeq:  record.LatestEventSeq,
+		Paused:          record.Paused,
+		EffectivePaused: record.Paused,
+		PausedByTaskID: func() string {
+			if record.Paused {
+				return record.ID
+			}
+			return ""
+		}(),
 	}
+}
+
+type effectiveTaskPauseReader interface {
+	IsTaskEffectivelyPaused(ctx context.Context, taskID string) (bool, string, error)
+}
+
+func (m *Service) applyEffectivePauseToSummary(ctx context.Context, summary *Summary) error {
+	if summary == nil {
+		return nil
+	}
+	summary.EffectivePaused = summary.Paused
+	if summary.Paused {
+		summary.PausedByTaskID = summary.ID
+	}
+	reader, ok := m.store.(effectiveTaskPauseReader)
+	if !ok {
+		return nil
+	}
+	paused, pausedByTaskID, err := reader.IsTaskEffectivelyPaused(ctx, summary.ID)
+	if err != nil {
+		return err
+	}
+	summary.EffectivePaused = paused
+	summary.PausedByTaskID = pausedByTaskID
+	return nil
+}
+
+func (m *Service) applyEffectivePauseToReference(ctx context.Context, reference *Reference) error {
+	if reference == nil {
+		return nil
+	}
+	reference.EffectivePaused = reference.Paused
+	if reference.Paused {
+		reference.PausedByTaskID = reference.ID
+	}
+	reader, ok := m.store.(effectiveTaskPauseReader)
+	if !ok {
+		return nil
+	}
+	paused, pausedByTaskID, err := reader.IsTaskEffectivelyPaused(ctx, reference.ID)
+	if err != nil {
+		return err
+	}
+	reference.EffectivePaused = paused
+	reference.PausedByTaskID = pausedByTaskID
+	return nil
 }
 
 func activeRunSummary(runs []Run, maxAttempts int) *RunSummary {
@@ -3617,6 +3724,8 @@ func activeRunSummary(runs []Run, maxAttempts int) *RunSummary {
 		TaskID:                current.TaskID,
 		Status:                current.Status,
 		Attempt:               current.Attempt,
+		PreviousRunID:         current.PreviousRunID,
+		FailureKind:           current.FailureKind,
 		MaxAttempts:           maxAttempts,
 		SessionID:             current.SessionID,
 		ClaimedBy:             cloneActorIdentity(current.ClaimedBy),
@@ -3883,11 +3992,19 @@ type leaseExtendedPayload struct {
 }
 
 type releasedRunPayload struct {
-	PreviousStatus RunStatus `json:"previous_status"`
-	Status         RunStatus `json:"status"`
-	TaskStatus     Status    `json:"task_status"`
-	Reason         string    `json:"reason,omitempty"`
-	SessionID      string    `json:"session_id,omitempty"`
+	Manual                          bool       `json:"manual,omitempty"`
+	ActorKind                       ActorKind  `json:"actor_kind,omitempty"`
+	ActorID                         string     `json:"actor_id,omitempty"`
+	PreviousStatus                  RunStatus  `json:"previous_status"`
+	Status                          RunStatus  `json:"status"`
+	TaskStatus                      Status     `json:"task_status"`
+	Reason                          string     `json:"reason,omitempty"`
+	SessionID                       string     `json:"session_id,omitempty"`
+	PreviousSessionID               string     `json:"previous_session_id,omitempty"`
+	PreviousClaimTokenHashTruncated string     `json:"previous_claim_token_hash_truncated,omitempty"`
+	PreviousLeaseUntil              *time.Time `json:"previous_lease_until,omitempty"`
+	QueueGeneration                 int64      `json:"queue_generation,omitempty"`
+	CanceledQueuedInputs            int        `json:"canceled_queued_inputs,omitempty"`
 }
 
 type expiredLeasePayload struct {

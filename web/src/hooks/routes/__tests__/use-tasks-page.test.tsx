@@ -10,6 +10,8 @@ vi.mock("@/systems/tasks/adapters/tasks-api", () => ({
   getTaskTimeline: vi.fn(),
   getTaskTree: vi.fn(),
   getTaskRun: vi.fn(),
+  inspectTask: vi.fn().mockResolvedValue(null),
+  inspectRun: vi.fn().mockResolvedValue(null),
   getTaskDashboard: vi.fn(),
   getTaskInbox: vi.fn(),
   createTask: vi.fn(),
@@ -136,6 +138,9 @@ describe("useTasksPage", () => {
     expect(result.current.kanbanColumns.find(c => c.column.id === "pending")?.tasks).toHaveLength(
       2
     );
+    const [listFilters] = vi.mocked(listTasks).mock.calls.at(-1) ?? [];
+    expect(listFilters?.scope).toBeUndefined();
+    expect(listFilters?.workspace).toBeUndefined();
     expect(result.current.activeWorkspaceName).toBe("Alpha");
     expect(result.current.isEmpty).toBe(false);
   });
@@ -150,10 +155,9 @@ describe("useTasksPage", () => {
     });
 
     expect(result.current.mode).toBe("dashboard");
-    expect(getTaskDashboard).toHaveBeenLastCalledWith(
-      expect.objectContaining({ scope: "workspace", workspace: "ws_alpha" }),
-      expect.any(AbortSignal)
-    );
+    const [dashboardFilters] = vi.mocked(getTaskDashboard).mock.calls.at(-1) ?? [];
+    expect(dashboardFilters?.scope).toBeUndefined();
+    expect(dashboardFilters?.workspace).toBeUndefined();
     expect(listTasks).not.toHaveBeenCalled();
     expect(getTaskInbox).not.toHaveBeenCalled();
   });
@@ -170,10 +174,9 @@ describe("useTasksPage", () => {
     });
 
     expect(result.current.mode).toBe("inbox");
-    expect(getTaskInbox).toHaveBeenLastCalledWith(
-      expect.objectContaining({ scope: "workspace", workspace: "ws_alpha" }),
-      expect.any(AbortSignal)
-    );
+    const [inboxFilters] = vi.mocked(getTaskInbox).mock.calls.at(-1) ?? [];
+    expect(inboxFilters?.scope).toBeUndefined();
+    expect(inboxFilters?.workspace).toBeUndefined();
   });
 
   it("maps inbox unread + search state into the backend query (lane stays client-side)", async () => {

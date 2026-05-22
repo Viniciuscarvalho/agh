@@ -10,6 +10,7 @@ import (
 	hookspkg "github.com/pedronauck/agh/internal/hooks"
 	"github.com/pedronauck/agh/internal/session"
 	"github.com/pedronauck/agh/internal/store"
+	"github.com/pedronauck/agh/internal/transcript"
 )
 
 const (
@@ -35,6 +36,57 @@ type ApproveSessionRequest struct {
 	Decision  string `json:"decision"`
 }
 
+// PromptMode selects how prompt input is handled while the session is busy.
+type PromptMode string
+
+const (
+	PromptModeQueue     PromptMode = "queue"
+	PromptModeInterrupt PromptMode = "interrupt"
+	PromptModeSteer     PromptMode = "steer"
+)
+
+// SendPromptRequest captures user-facing prompt input plus optional busy-input mode.
+type SendPromptRequest struct {
+	Message  string            `json:"message,omitempty"`
+	Messages []PromptUIMessage `json:"messages,omitempty"`
+	Mode     PromptMode        `json:"mode,omitempty"`
+}
+
+// PromptUIMessage carries Vercel AI SDK compatible message input.
+type PromptUIMessage struct {
+	Role    string             `json:"role"`
+	Content string             `json:"content,omitempty"`
+	Parts   []PromptUITextPart `json:"parts,omitempty"`
+}
+
+// PromptUITextPart carries one text part from a Vercel AI SDK message.
+type PromptUITextPart struct {
+	Type string `json:"type,omitempty"`
+	Text string `json:"text,omitempty"`
+}
+
+// SteerPromptRequest captures staged steering guidance for an active session.
+type SteerPromptRequest struct {
+	Text string `json:"text"`
+}
+
+// SendPromptResultPayload reports non-streaming busy-input outcomes.
+type SendPromptResultPayload struct {
+	Status                     string     `json:"status"`
+	Mode                       PromptMode `json:"mode,omitempty"`
+	Queued                     bool       `json:"queued,omitempty"`
+	Staged                     bool       `json:"staged,omitempty"`
+	Interrupted                bool       `json:"interrupted,omitempty"`
+	QueueEntryID               string     `json:"queue_entry_id,omitempty"`
+	QueuePosition              int        `json:"queue_position,omitempty"`
+	QueueGeneration            int64      `json:"queue_generation,omitempty"`
+	EstimatedSendAt            *time.Time `json:"estimated_send_at,omitempty"`
+	PreviousTurnID             string     `json:"previous_turn_id,omitempty"`
+	NewTurnID                  string     `json:"new_turn_id,omitempty"`
+	CanceledQueuedEntries      int        `json:"canceled_queued_entries,omitempty"`
+	FallbackModeIfNoToolResult PromptMode `json:"fallback_mode_if_no_tool_result,omitempty"`
+}
+
 // SessionPayload is the shared session response payload.
 type SessionPayload struct {
 	ID              string        `json:"id"`
@@ -48,6 +100,10 @@ type SessionPayload struct {
 	Channel         string        `json:"channel,omitempty"`
 	Type            session.Type  `json:"type,omitempty"`
 	State           session.State `json:"state"`
+	Badge           session.Badge `json:"badge"`
+	Attachable      bool          `json:"attachable"`
+	AttachedTo      string        `json:"attached_to,omitempty"`
+	AttachExpiresAt *time.Time    `json:"attach_expires_at,omitempty"`
 	// StopReason is the session-level stop classification, distinct from AgentEventPayload.StopReason.
 	StopReason store.StopReason `json:"stop_reason,omitempty"`
 	// StopDetail is the session-level stop context paired with StopReason.
@@ -88,6 +144,50 @@ type RuntimeActivityPayload struct {
 	IdleSeconds        int64      `json:"idle_seconds"`
 	ElapsedSeconds     int64      `json:"elapsed_seconds"`
 	ElapsedMS          int64      `json:"elapsed_ms"`
+}
+
+// AttachSessionRequest captures explicit attach-lock options.
+type AttachSessionRequest struct {
+	AttachedTo string `json:"attached_to,omitempty"`
+	TTLSeconds int    `json:"ttl_seconds,omitempty"`
+}
+
+// SessionAttachPayload reports the attach lease acquired by one caller.
+type SessionAttachPayload struct {
+	SessionID       string    `json:"session_id"`
+	AttachedTo      string    `json:"attached_to"`
+	AttachExpiresAt time.Time `json:"attach_expires_at"`
+	AttachedAt      time.Time `json:"attached_at"`
+}
+
+// TranscriptMarkerPayload is the typed transcript marker shape shared by logs,
+// recap, and transcript UI projections.
+type TranscriptMarkerPayload struct {
+	Kind       string          `json:"kind"`
+	OccurredAt time.Time       `json:"occurred_at"`
+	Summary    string          `json:"summary"`
+	Evidence   map[string]any  `json:"evidence,omitempty"`
+	Diagnostic json.RawMessage `json:"diagnostic,omitempty"`
+}
+
+// RecapSnapshotPayload records the consistent read boundary for one recap.
+type RecapSnapshotPayload struct {
+	GeneratedAt      time.Time `json:"generated_at"`
+	EventCursor      int64     `json:"event_cursor"`
+	TranscriptCursor int64     `json:"transcript_cursor"`
+	QueueGeneration  int64     `json:"queue_generation"`
+	Consistency      string    `json:"consistency"`
+}
+
+// RecapPayload is a deterministic session recap composed from persisted daemon state.
+type RecapPayload struct {
+	Session        SessionPayload            `json:"session"`
+	ActiveRun      *TaskRunPayload           `json:"active_run,omitempty"`
+	RecentMarkers  []TranscriptMarkerPayload `json:"recent_markers"`
+	RecentMessages []transcript.UIMessage    `json:"recent_messages"`
+	PendingInputs  int                       `json:"pending_inputs"`
+	PendingMarkers int                       `json:"pending_markers"`
+	Snapshot       RecapSnapshotPayload      `json:"snapshot"`
 }
 
 // SessionSandboxPayload is the shared session sandbox response payload.
@@ -413,13 +513,16 @@ type TokenUsagePayload struct {
 	Timestamp        time.Time `json:"timestamp"`
 }
 
-// ObserveEventPayload is the shared observability event response payload.
-type ObserveEventPayload struct {
+// LogEventPayload is the shared runtime log response payload.
+type LogEventPayload struct {
 	ID          string          `json:"id"`
 	SessionID   string          `json:"session_id"`
 	WorkspaceID string          `json:"workspace_id,omitempty"`
 	Type        string          `json:"type"`
 	AgentName   string          `json:"agent_name"`
+	Provider    string          `json:"provider,omitempty"`
+	Component   string          `json:"component,omitempty"`
+	Outcome     string          `json:"outcome,omitempty"`
 	Content     json.RawMessage `json:"content,omitempty"`
 	store.EventCorrelation
 	ParentSessionID string    `json:"parent_session_id,omitempty"`
@@ -755,18 +858,33 @@ type NetworkPeerCardPayload struct {
 	Ext                 map[string]json.RawMessage      `json:"ext,omitempty"`
 }
 
+const (
+	// NetworkPresenceLocal identifies a daemon-local peer joined to a channel.
+	NetworkPresenceLocal = "local"
+	// NetworkPresenceActive identifies a remote peer seen within one greet interval.
+	NetworkPresenceActive = "active"
+	// NetworkPresenceInactive identifies a remote peer seen within the expiry window.
+	NetworkPresenceInactive = "inactive"
+	// NetworkPresenceExpired identifies a remote peer whose cleanup is due.
+	NetworkPresenceExpired = "expired"
+	// NetworkPresenceUnknown identifies a peer without a recent activity observation.
+	NetworkPresenceUnknown = "unknown"
+)
+
 // NetworkPeerPayload is the shared JSON representation of one visible peer.
 type NetworkPeerPayload struct {
-	WorkspaceID string                 `json:"workspace_id,omitempty"`
-	SessionID   *string                `json:"session_id,omitempty"`
-	PeerID      string                 `json:"peer_id"`
-	DisplayName string                 `json:"display_name,omitempty"`
-	Channel     string                 `json:"channel"`
-	Local       bool                   `json:"local"`
-	PeerCard    NetworkPeerCardPayload `json:"peer_card"`
-	JoinedAt    *time.Time             `json:"joined_at,omitempty"`
-	LastSeen    *time.Time             `json:"last_seen,omitempty"`
-	ExpiresAt   *time.Time             `json:"expires_at,omitempty"`
+	WorkspaceID        string                 `json:"workspace_id,omitempty"`
+	SessionID          *string                `json:"session_id,omitempty"`
+	PeerID             string                 `json:"peer_id"`
+	DisplayName        string                 `json:"display_name,omitempty"`
+	Channel            string                 `json:"channel"`
+	Local              bool                   `json:"local"`
+	PeerCard           NetworkPeerCardPayload `json:"peer_card"`
+	JoinedAt           *time.Time             `json:"joined_at,omitempty"`
+	LastSeen           *time.Time             `json:"last_seen,omitempty"`
+	ExpiresAt          *time.Time             `json:"expires_at,omitempty"`
+	PresenceState      string                 `json:"presence_state"`
+	LastSeenAgeSeconds *int64                 `json:"last_seen_age_seconds,omitempty"`
 }
 
 // NetworkChannelPayload is the shared JSON representation of one active channel.
@@ -933,23 +1051,77 @@ type NetworkPeerMetricsPayload struct {
 
 // NetworkPeerDetailPayload is the shared selected-peer detail payload.
 type NetworkPeerDetailPayload struct {
-	SessionID         *string                          `json:"session_id,omitempty"`
-	PeerID            string                           `json:"peer_id"`
-	DisplayName       string                           `json:"display_name,omitempty"`
-	Channel           string                           `json:"channel,omitempty"`
-	Local             bool                             `json:"local,omitempty"`
-	PeerCard          NetworkPeerCardPayload           `json:"peer_card"`
-	CapabilityCatalog *NetworkCapabilityCatalogPayload `json:"capability_catalog,omitempty"`
-	JoinedAt          *time.Time                       `json:"joined_at,omitempty"`
-	LastSeen          *time.Time                       `json:"last_seen,omitempty"`
-	ExpiresAt         *time.Time                       `json:"expires_at,omitempty"`
-	Metrics           NetworkPeerMetricsPayload        `json:"metrics"`
+	SessionID          *string                          `json:"session_id,omitempty"`
+	PeerID             string                           `json:"peer_id"`
+	DisplayName        string                           `json:"display_name,omitempty"`
+	Channel            string                           `json:"channel,omitempty"`
+	Local              bool                             `json:"local,omitempty"`
+	PeerCard           NetworkPeerCardPayload           `json:"peer_card"`
+	CapabilityCatalog  *NetworkCapabilityCatalogPayload `json:"capability_catalog,omitempty"`
+	JoinedAt           *time.Time                       `json:"joined_at,omitempty"`
+	LastSeen           *time.Time                       `json:"last_seen,omitempty"`
+	ExpiresAt          *time.Time                       `json:"expires_at,omitempty"`
+	PresenceState      string                           `json:"presence_state"`
+	LastSeenAgeSeconds *int64                           `json:"last_seen_age_seconds,omitempty"`
+	Metrics            NetworkPeerMetricsPayload        `json:"metrics"`
 }
 
 // InstallExtensionRequest is the shared extension install request payload.
 type InstallExtensionRequest struct {
-	Path     string `json:"path"`
-	Checksum string `json:"checksum"`
+	Path            string `json:"path,omitempty"`
+	Checksum        string `json:"checksum,omitempty"`
+	Slug            string `json:"slug,omitempty"`
+	Version         string `json:"version,omitempty"`
+	Source          string `json:"source,omitempty"`
+	Asset           string `json:"asset,omitempty"`
+	AllowUnverified bool   `json:"allow_unverified,omitempty"`
+}
+
+// UpdateExtensionRequest is the shared marketplace extension update payload.
+type UpdateExtensionRequest struct {
+	Version         string `json:"version,omitempty"`
+	CheckOnly       bool   `json:"check_only,omitempty"`
+	AllowUnverified bool   `json:"allow_unverified,omitempty"`
+}
+
+// ExtensionTrustReportPayload records the trust decision for an installed or
+// marketplace extension.
+type ExtensionTrustReportPayload struct {
+	Decision         string           `json:"decision"`
+	RegistryTier     string           `json:"registry_tier"`
+	ChecksumVerified bool             `json:"checksum_verified"`
+	AllowUnverified  bool             `json:"allow_unverified"`
+	Warnings         []DiagnosticItem `json:"warnings,omitempty"`
+}
+
+// ExtensionProvenancePayload is the persisted source and trust record for one
+// installed extension.
+type ExtensionProvenancePayload struct {
+	Slug             string                       `json:"slug,omitempty"`
+	InstalledFrom    string                       `json:"installed_from"`
+	SourceURL        string                       `json:"source_url,omitempty"`
+	ChecksumSHA256   string                       `json:"checksum_sha256"`
+	ChecksumVerified bool                         `json:"checksum_verified"`
+	RegistryTier     string                       `json:"registry_tier"`
+	Permissions      []string                     `json:"permissions,omitempty"`
+	InstalledAt      time.Time                    `json:"installed_at"`
+	InstalledBy      string                       `json:"installed_by"`
+	AllowUnverified  bool                         `json:"allow_unverified"`
+	Warnings         []DiagnosticItem             `json:"warnings,omitempty"`
+	Trust            *ExtensionTrustReportPayload `json:"trust,omitempty"`
+}
+
+// ExtensionMarketplaceEntry is one daemon-owned extension marketplace result.
+type ExtensionMarketplaceEntry struct {
+	Slug        string                       `json:"slug"`
+	Name        string                       `json:"name"`
+	Description string                       `json:"description,omitempty"`
+	Author      string                       `json:"author,omitempty"`
+	Version     string                       `json:"version,omitempty"`
+	Downloads   int                          `json:"downloads,omitempty"`
+	Source      string                       `json:"source"`
+	Type        string                       `json:"type"`
+	Trust       *ExtensionTrustReportPayload `json:"trust,omitempty"`
 }
 
 // ExtensionPayload is the shared extension response payload surfaced by CLI APIs.
@@ -971,6 +1143,9 @@ type ExtensionPayload struct {
 	LastError     string                          `json:"last_error,omitempty"`
 	DaemonRunning bool                            `json:"daemon_running"`
 	Bundles       []ExtensionBundleSummaryPayload `json:"bundles,omitempty"`
+	Provenance    *ExtensionProvenancePayload     `json:"provenance,omitempty"`
+	Trust         *ExtensionTrustReportPayload    `json:"trust,omitempty"`
+	Diagnostics   []DiagnosticItem                `json:"diagnostics,omitempty"`
 }
 
 // ExtensionBundleSummaryPayload captures the installed bundle catalog surfaced
@@ -983,7 +1158,8 @@ type ExtensionBundleSummaryPayload struct {
 
 // ErrorPayload is the shared error response payload.
 type ErrorPayload struct {
-	Error string `json:"error"`
+	Error      string          `json:"error"`
+	Diagnostic *DiagnosticItem `json:"diagnostic,omitempty"`
 }
 
 // MemoryWriteRequest is the shared memory write request payload.
@@ -1153,6 +1329,13 @@ type SkillDiagnosticPayload struct {
 	Failure            *SkillVerificationFailurePayload  `json:"failure,omitempty"`
 }
 
+type SkillShadowEntryPayload struct {
+	Path             string    `json:"path"`
+	Tier             string    `json:"tier"`
+	ResolvedToWinner bool      `json:"resolved_to_winner"`
+	DetectedAt       time.Time `json:"detected_at"`
+}
+
 // SkillPayload is the HTTP response type for a skill.
 type SkillPayload struct {
 	Name        string                   `json:"name"`
@@ -1243,10 +1426,14 @@ type SkillContentResponse struct {
 
 // ProvenancePayload is the nested provenance metadata for marketplace skills.
 type ProvenancePayload struct {
-	Slug        string    `json:"slug"`
-	Registry    string    `json:"registry"`
-	Version     string    `json:"version"`
-	InstalledAt time.Time `json:"installed_at"`
+	Slug                   string                    `json:"slug,omitempty"`
+	Registry               string                    `json:"registry,omitempty"`
+	Version                string                    `json:"version,omitempty"`
+	InstalledAt            *time.Time                `json:"installed_at,omitempty"`
+	InstalledFromBundle    string                    `json:"installed_from_bundle,omitempty"`
+	InstalledFromExtension string                    `json:"installed_from_extension,omitempty"`
+	PrecedenceTier         string                    `json:"precedence_tier"`
+	ShadowedBy             []SkillShadowEntryPayload `json:"shadowed_by,omitempty"`
 }
 
 // SkillActionResponse is the shared skill enable/disable response payload.

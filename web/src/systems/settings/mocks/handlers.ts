@@ -1,11 +1,15 @@
 import { http, HttpResponse, type HttpHandler } from "msw";
 
+import type { SettingsNotificationPresetCollection } from "@/systems/settings";
+
 import {
   settingsAppliedMutationFixture,
+  settingsApplyRecordsFixture,
   settingsAutomationSectionFixture,
   settingsSandboxesCollectionFixture,
   settingsSandboxFixtures,
   settingsExtensionsCollectionFixture,
+  settingsExtensionMarketplaceCollectionFixture,
   settingsExtensionFixtures,
   settingsGeneralSectionFixture,
   settingsHooksCollectionFixture,
@@ -13,9 +17,11 @@ import {
   settingsMCPServersCollectionFixture,
   settingsMemorySectionFixture,
   settingsNetworkSectionFixture,
+  settingsNotificationPresetCollectionFixture,
   settingsObservabilitySectionFixture,
   settingsProvidersCollectionFixture,
   settingsProviderFixtures,
+  settingsReloadBlockedFixture,
   settingsRestartRequiredMutationFixture,
   settingsRestartResponseFixture,
   settingsRestartStatusFixture,
@@ -27,6 +33,28 @@ function mutationResult(section: string, restartRequired = false) {
     ...(restartRequired ? settingsRestartRequiredMutationFixture : settingsAppliedMutationFixture),
     section,
   };
+}
+
+function applyRecordsForUrl(request: Request) {
+  const url = new URL(request.url);
+  const status = url.searchParams.get("status");
+  const actor = url.searchParams.get("actor");
+  const limit = Number.parseInt(url.searchParams.get("limit") ?? "", 10);
+  let entries = settingsApplyRecordsFixture.entries;
+
+  if (status) {
+    entries = entries.filter(record => record.status === status);
+  }
+
+  if (actor) {
+    entries = entries.filter(record => record.actor === actor);
+  }
+
+  if (Number.isFinite(limit) && limit >= 0) {
+    entries = entries.slice(0, limit);
+  }
+
+  return { entries };
 }
 
 export const handlers: HttpHandler[] = [
@@ -60,6 +88,54 @@ export const handlers: HttpHandler[] = [
   http.patch("/api/settings/hooks-extensions", () =>
     HttpResponse.json(mutationResult("hooks-extensions", true))
   ),
+
+  http.get("/api/notifications/presets", () =>
+    HttpResponse.json(settingsNotificationPresetCollectionFixture)
+  ),
+  http.post("/api/notifications/presets", async ({ request }) => {
+    const body = (await request.json()) as {
+      name?: string;
+      events?: string[];
+      targets?: SettingsNotificationPresetCollection["presets"][number]["targets"];
+      filter?: string;
+      enabled?: boolean;
+    };
+    return HttpResponse.json(
+      {
+        preset: {
+          name: body.name ?? "custom",
+          events: body.events ?? [],
+          targets: body.targets ?? [],
+          filter: body.filter ?? "",
+          enabled: body.enabled ?? false,
+          built_in: false,
+          default_version: "",
+          default_hash: "",
+          user_modified: false,
+          default_update_available: false,
+          created_at: "2026-04-17T11:30:00Z",
+          updated_at: "2026-04-17T11:30:00Z",
+        },
+      },
+      { status: 201 }
+    );
+  }),
+  http.put("/api/notifications/presets/:name", async ({ params, request }) => {
+    const name = String(params.name);
+    const body = (await request.json()) as { enabled?: boolean };
+    const existing = settingsNotificationPresetCollectionFixture.presets.find(
+      preset => preset.name === name
+    );
+    return HttpResponse.json({
+      preset: {
+        ...(existing ?? settingsNotificationPresetCollectionFixture.presets[0]),
+        name,
+        enabled: body.enabled ?? existing?.enabled ?? true,
+        updated_at: "2026-04-17T11:45:00Z",
+      },
+    });
+  }),
+  http.delete("/api/notifications/presets/:name", () => new HttpResponse(null, { status: 204 })),
 
   http.get("/api/settings/providers", () => HttpResponse.json(settingsProvidersCollectionFixture)),
   http.get("/api/settings/providers/:name", ({ params }) => {
@@ -123,6 +199,9 @@ export const handlers: HttpHandler[] = [
     HttpResponse.json(mutationResult("mcp-servers", true))
   ),
 
+  http.get("/api/settings/apply", ({ request }) => HttpResponse.json(applyRecordsForUrl(request))),
+  http.post("/api/settings/reload", () => HttpResponse.json(settingsReloadBlockedFixture)),
+
   http.post("/api/settings/actions/restart", () =>
     HttpResponse.json(settingsRestartResponseFixture, { status: 202 })
   ),
@@ -131,6 +210,66 @@ export const handlers: HttpHandler[] = [
   ),
 
   http.get("/api/extensions", () => HttpResponse.json(settingsExtensionsCollectionFixture)),
+  http.get("/api/extensions/marketplace", () =>
+    HttpResponse.json(settingsExtensionMarketplaceCollectionFixture)
+  ),
+  http.post("/api/extensions", async ({ request }) => {
+    const body = (await request.json()) as { slug?: string };
+    const marketplaceEntry = settingsExtensionMarketplaceCollectionFixture.extensions.find(
+      entry => entry.slug === body.slug
+    );
+    const installed = marketplaceEntry
+      ? {
+          ...settingsExtensionFixtures[0],
+          name: marketplaceEntry.name,
+          version: marketplaceEntry.version,
+        }
+      : settingsExtensionFixtures[0];
+
+    return HttpResponse.json({ extension: installed }, { status: 201 });
+  }),
+  http.put("/api/extensions/:name", ({ params }) => {
+    const name = String(params.name);
+    const extension = settingsExtensionFixtures.find(entry => entry.name === name);
+
+    if (!extension) {
+      return HttpResponse.json({ error: `Extension not found: ${name}` }, { status: 404 });
+    }
+
+    return HttpResponse.json({
+      update: {
+        name,
+        slug: extension.provenance?.slug ?? name,
+        registry: "github",
+        path: `/tmp/agh/extensions/${name}`,
+        current_version: extension.version,
+        latest_version: extension.version,
+        status: "current",
+      },
+    });
+  }),
+  http.delete("/api/extensions/:name", ({ params }) => {
+    const name = String(params.name);
+    const extension = settingsExtensionFixtures.find(entry => entry.name === name);
+
+    if (!extension) {
+      return HttpResponse.json({ error: `Extension not found: ${name}` }, { status: 404 });
+    }
+
+    return HttpResponse.json({
+      extension: { name, path: `/tmp/agh/extensions/${name}`, status: "removed" },
+    });
+  }),
+  http.get("/api/extensions/:name/provenance", ({ params }) => {
+    const name = String(params.name);
+    const extension = settingsExtensionFixtures.find(entry => entry.name === name);
+
+    if (!extension?.provenance) {
+      return HttpResponse.json({ error: `Extension not found: ${name}` }, { status: 404 });
+    }
+
+    return HttpResponse.json({ provenance: extension.provenance });
+  }),
   http.post("/api/extensions/:name/enable", ({ params }) => {
     const name = String(params.name);
     const extension = settingsExtensionFixtures.find(entry => entry.name === name);
@@ -139,7 +278,7 @@ export const handlers: HttpHandler[] = [
       return HttpResponse.json({ error: `Extension not found: ${name}` }, { status: 404 });
     }
 
-    return HttpResponse.json({ ...extension, enabled: true });
+    return HttpResponse.json({ extension: { ...extension, enabled: true } });
   }),
   http.post("/api/extensions/:name/disable", ({ params }) => {
     const name = String(params.name);
@@ -149,6 +288,6 @@ export const handlers: HttpHandler[] = [
       return HttpResponse.json({ error: `Extension not found: ${name}` }, { status: 404 });
     }
 
-    return HttpResponse.json({ ...extension, enabled: false });
+    return HttpResponse.json({ extension: { ...extension, enabled: false } });
   }),
 ];

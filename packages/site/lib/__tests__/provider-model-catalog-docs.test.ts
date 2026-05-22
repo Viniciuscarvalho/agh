@@ -82,10 +82,10 @@ describe("provider model catalog docs", () => {
 
   it("documents native model catalog endpoints", () => {
     const source = read(modelCatalogDoc);
-    expect(source).toContain("/api/providers/models");
-    expect(source).toContain("/api/providers/{provider_id}/models");
-    expect(source).toContain("/api/providers/models/refresh");
-    expect(source).toContain("/api/providers/models/status");
+    expect(source).toContain("/api/model-catalog/models");
+    expect(source).toContain("/api/model-catalog/providers/{provider_id}/models");
+    expect(source).toContain("/api/model-catalog/models/refresh");
+    expect(source).toContain("/api/model-catalog/sources/status");
     expect(source).toContain("agh__provider_models");
     expect(source).toContain("agh__provider_models_list");
     expect(source).toContain("agh__provider_models_refresh");
@@ -134,5 +134,28 @@ describe("provider model catalog docs", () => {
     expect(source).toContain("agh provider models");
     expect(source).toContain("agh models");
     expect(source).toContain("out of scope");
+  });
+
+  it("documents provider auth none and local login constraints", () => {
+    const providerSource = read(providersDoc);
+    const configSource = read(configTomlDoc);
+
+    for (const source of [providerSource, configSource]) {
+      expect(source).toContain("none_security");
+      expect(source).toContain("No auth required");
+      expect(source).toContain("local_transport");
+      expect(source).toContain("external_identity");
+      expect(source).toContain("public_readonly");
+      expect(source).toContain("credential_slots`, `auth_status_command`, or `auth_login_command`");
+      expect(source).toContain("providers.<id>.aliases");
+      expect(source).toContain("Reference providers by canonical");
+      expect(source).toContain("name only");
+    }
+
+    expect(providerSource).toContain("executes the configured login command locally");
+    expect(providerSource).toContain("--print-command");
+    expect(providerSource).toContain("--no-tty");
+    expect(providerSource).toContain("--timeout");
+    expect(providerSource).toContain("Remote HTTP/UDS surfaces never run login commands");
   });
 });

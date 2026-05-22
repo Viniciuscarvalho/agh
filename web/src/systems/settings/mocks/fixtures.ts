@@ -1,7 +1,10 @@
 import type {
+  ConfigApplyRecordsResponse,
   SettingsAutomationSection,
   SettingsSandboxEntry,
   SettingsExtensionEntry,
+  SettingsExtensionMarketplaceEntry,
+  SettingsApplyResponse,
   SettingsGeneralSection,
   SettingsHookEntry,
   SettingsHooksExtensionsSection,
@@ -9,6 +12,7 @@ import type {
   SettingsMemorySection,
   SettingsMutationResult,
   SettingsNetworkSection,
+  SettingsNotificationPresetCollection,
   SettingsObservabilitySection,
   SettingsProviderEntry,
   SettingsRestartResponse,
@@ -30,7 +34,10 @@ export const settingsGeneralSectionFixture: SettingsGeneralSection = {
     restart: { available: true, behavior: "action_trigger", name: "restart" },
   },
   config: {
-    daemon: { socket: "/tmp/agh.sock" },
+    daemon: {
+      reload_timeouts: { bridges: "30s", mcp: "10s", providers: "5s" },
+      socket: "/tmp/agh.sock",
+    },
     defaults: { agent: storyAgentNames.product, provider: "claude", sandbox: "local" },
     http: { host: "127.0.0.1", port: 2123 },
     limits: { max_concurrent_agents: 20 },
@@ -83,6 +90,67 @@ export const settingsNetworkSectionFixture: SettingsNetworkSection = {
     delivery_workers: 3,
   },
   links: [{ label: "network", path: "/network" }],
+};
+
+export const settingsNotificationPresetCollectionFixture: SettingsNotificationPresetCollection = {
+  presets: [
+    {
+      name: "task_terminal",
+      events: ["task.run_*"],
+      targets: [
+        {
+          bridge_id: "bridge_slack_ops",
+          canonical_route: "channel:ops",
+          display_name: "#ops",
+          delivery_mode: "direct-send",
+        },
+      ],
+      filter: "outcome >= warning",
+      enabled: true,
+      built_in: true,
+      default_version: "1",
+      default_hash: "hash_task_terminal_v1",
+      user_modified: true,
+      default_update_available: false,
+      created_at: "2026-04-17T09:00:00Z",
+      updated_at: "2026-04-17T11:00:00Z",
+    },
+    {
+      name: "session_unhealthy",
+      events: ["session.unhealthy", "session.hung", "session.recovered"],
+      targets: [],
+      filter: "",
+      enabled: false,
+      built_in: true,
+      default_version: "1",
+      default_hash: "hash_session_unhealthy_v1",
+      user_modified: false,
+      default_update_available: false,
+      created_at: "2026-04-17T09:00:00Z",
+      updated_at: "2026-04-17T09:00:00Z",
+    },
+    {
+      name: "provider_failure",
+      events: [
+        "provider.auth_required",
+        "provider.rate_limited",
+        "provider.permission_denied",
+        "provider.unavailable",
+      ],
+      targets: [],
+      filter: "",
+      enabled: false,
+      built_in: true,
+      default_version: "1",
+      default_hash: "hash_provider_failure_v1",
+      user_modified: false,
+      default_update_available: false,
+      created_at: "2026-04-17T09:00:00Z",
+      updated_at: "2026-04-17T09:00:00Z",
+    },
+  ],
+  total: 3,
+  generated_at: "2026-04-17T11:00:00Z",
 };
 
 export const settingsAutomationSectionFixture: SettingsAutomationSection = {
@@ -392,8 +460,10 @@ export const settingsProviderFixtures: SettingsProviderEntry[] = [
       mode: "native_cli",
       env_policy: "filtered",
       home_policy: "operator",
-      state: "native_cli",
-      message: "Provider owns authentication through its native CLI login state.",
+      state: "unknown",
+      code: "provider_classification_unknown",
+      message:
+        "Provider owns authentication through its native CLI; run a provider auth probe for live status.",
       status_command: "claude auth status",
       login_command: "claude login",
     },
@@ -445,8 +515,10 @@ export const settingsProviderFixtures: SettingsProviderEntry[] = [
       mode: "native_cli",
       env_policy: "filtered",
       home_policy: "operator",
-      state: "native_cli",
-      message: "Provider owns authentication through its native CLI login state.",
+      state: "unknown",
+      code: "provider_classification_unknown",
+      message:
+        "Provider owns authentication through its native CLI; run a provider auth probe for live status.",
       status_command: "codex auth status",
       login_command: "codex login",
     },
@@ -488,8 +560,9 @@ export const settingsProviderFixtures: SettingsProviderEntry[] = [
       mode: "bound_secret",
       env_policy: "filtered",
       home_policy: "operator",
-      state: "missing_required",
-      message: "Missing required AGH-managed provider credential.",
+      state: "missing_credential",
+      code: "provider_credential_unresolved",
+      message: 'Required AGH-managed provider credential "OPENROUTER_API_KEY" is unresolved.',
     },
     credentials: [
       {
@@ -523,8 +596,10 @@ export const settingsProviderFixtures: SettingsProviderEntry[] = [
       mode: "native_cli",
       env_policy: "filtered",
       home_policy: "operator",
-      state: "native_cli",
-      message: "Provider owns authentication through its native CLI login state.",
+      state: "unknown",
+      code: "provider_classification_unknown",
+      message:
+        "Provider owns authentication through its native CLI; run a provider auth probe for live status.",
     },
     source_metadata: {
       available_targets: ["global-config"],
@@ -591,8 +666,10 @@ export const settingsProviderFixtures: SettingsProviderEntry[] = [
       mode: "native_cli",
       env_policy: "filtered",
       home_policy: "operator",
-      state: "native_cli",
-      message: "Provider owns authentication through its native CLI login state.",
+      state: "unknown",
+      code: "provider_classification_unknown",
+      message:
+        "Provider owns authentication through its native CLI; run a provider auth probe for live status.",
     },
     source_metadata: {
       available_targets: ["global-config"],
@@ -635,8 +712,10 @@ export const settingsProviderFixtures: SettingsProviderEntry[] = [
       mode: "native_cli",
       env_policy: "filtered",
       home_policy: "operator",
-      state: "native_cli",
-      message: "Provider owns authentication through its native CLI login state.",
+      state: "unknown",
+      code: "provider_classification_unknown",
+      message:
+        "Provider owns authentication through its native CLI; run a provider auth probe for live status.",
     },
     source_metadata: {
       available_targets: ["global-config"],
@@ -720,6 +799,39 @@ export const settingsMCPServerFixtures: SettingsMCPServerEntry[] = [
 export const settingsHookFixtures: SettingsHookEntry[] =
   settingsHooksExtensionsSectionFixture.hooks ?? [];
 
+export const settingsExtensionTrustFixture = {
+  decision: "allowed_unverified",
+  registry_tier: "community",
+  checksum_verified: false,
+  allow_unverified: true,
+  warnings: [
+    {
+      id: "diag_extension_checksum_unverified",
+      code: "extension_checksum_unverified",
+      severity: "warning",
+      title: "Extension checksum is not registry-verified",
+      message: "The operator allowed an install without a registry checksum match.",
+      category: "extension",
+      data_freshness: "live",
+    },
+  ],
+} satisfies NonNullable<SettingsExtensionEntry["trust"]>;
+
+export const settingsExtensionProvenanceFixture = {
+  slug: "daytona/daytona-extension",
+  installed_from: "marketplace_registry",
+  source_url: "https://registry.example.com/daytona/daytona-extension",
+  checksum_sha256: "sha256:fixture-daytona",
+  checksum_verified: false,
+  registry_tier: "community",
+  permissions: ["logs.read", "session.read"],
+  installed_at: "2026-05-21T10:00:00Z",
+  installed_by: "operator:web",
+  allow_unverified: true,
+  trust: settingsExtensionTrustFixture,
+  warnings: settingsExtensionTrustFixture.warnings,
+} satisfies NonNullable<SettingsExtensionEntry["provenance"]>;
+
 export const settingsExtensionFixtures: SettingsExtensionEntry[] = [
   {
     name: "daytona",
@@ -732,6 +844,22 @@ export const settingsExtensionFixtures: SettingsExtensionEntry[] = [
     health: "healthy",
     requires_env: ["DAYTONA_TOKEN"],
     missing_env: ["DAYTONA_TOKEN"],
+    provenance: settingsExtensionProvenanceFixture,
+    trust: settingsExtensionTrustFixture,
+  },
+];
+
+export const settingsExtensionMarketplaceFixtures: SettingsExtensionMarketplaceEntry[] = [
+  {
+    slug: "daytona/daytona-extension",
+    name: "daytona",
+    source: "github",
+    type: "backend",
+    version: "1.2.4",
+    author: "daytona",
+    description: "Workspace sandbox integration for AGH sessions.",
+    downloads: 1204,
+    trust: settingsExtensionTrustFixture,
   },
 ];
 
@@ -755,6 +883,10 @@ export const settingsExtensionsCollectionFixture = {
   extensions: settingsExtensionFixtures,
 };
 
+export const settingsExtensionMarketplaceCollectionFixture = {
+  extensions: settingsExtensionMarketplaceFixtures,
+};
+
 export const settingsRestartResponseFixture: SettingsRestartResponse = {
   operation_id: "restart_northstar_pay",
   status: "pending",
@@ -774,21 +906,123 @@ export const settingsRestartStatusFixture: SettingsRestartStatus = {
 };
 
 export const settingsAppliedMutationFixture: SettingsMutationResult = {
+  active_config_hash: "sha256:active-live",
+  active_generation: 42,
   applied: true,
+  apply_record_id: "cfg_apply_live",
   section: "general",
   scope: "global",
-  behavior: "applied_now",
+  lifecycle: "live",
+  next_action: "none",
   restart_required: false,
   restart_scope: "none",
   warnings: [],
+  write_target: "global-config",
 };
 
 export const settingsRestartRequiredMutationFixture: SettingsMutationResult = {
+  active_config_hash: "sha256:active-blocked",
+  active_generation: 41,
   applied: true,
+  apply_record_id: "cfg_apply_blocked",
   section: "general",
   scope: "global",
-  behavior: "restart_required",
+  lifecycle: "restart-required",
+  next_action: "restart-daemon",
   restart_required: true,
   restart_scope: "daemon",
   warnings: [],
+  write_target: "global-config",
+};
+
+export const settingsReloadAppliedFixture: SettingsApplyResponse = {
+  active_config_hash: "sha256:active-live",
+  active_generation: 42,
+  applied: true,
+  apply_record_id: "cfg_apply_live",
+  lifecycle: "live",
+  next_action: "none",
+  restart_required: false,
+  warnings: [],
+};
+
+export const settingsReloadBlockedFixture: SettingsApplyResponse = {
+  active_config_hash: "sha256:active-blocked",
+  active_generation: 41,
+  applied: false,
+  apply_record_id: "cfg_apply_blocked",
+  lifecycle: "restart-required",
+  next_action: "restart-daemon",
+  restart_required: true,
+  restart_scope: "daemon",
+  warnings: ["restart the daemon to activate config.toml"],
+};
+
+export const settingsApplyRecordsFixture: ConfigApplyRecordsResponse = {
+  entries: [
+    {
+      id: "cfg_apply_blocked",
+      desired_config_hash: "sha256:desired-restart-required",
+      active_config_hash: "sha256:active-blocked",
+      generation: 41,
+      actor: "http",
+      diff_class: "restart-required",
+      status: "blocked",
+      lifecycle: "restart-required",
+      next_action: "restart-daemon",
+      diagnostics: [
+        {
+          id: "diag_restart_required",
+          code: "config.apply.restart_required",
+          title: "Restart required",
+          message: "daemon.socket changes require a daemon restart.",
+          severity: "warning",
+          category: "configuration",
+          data_freshness: "current",
+          suggested_command: "agh config reload",
+        },
+      ],
+      created_at: "2026-05-20T13:10:00Z",
+      updated_at: "2026-05-20T13:10:03Z",
+    },
+    {
+      id: "cfg_apply_live",
+      desired_config_hash: "sha256:desired-live",
+      active_config_hash: "sha256:active-live",
+      generation: 42,
+      actor: "web",
+      diff_class: "live",
+      status: "applied",
+      lifecycle: "live",
+      next_action: "none",
+      created_at: "2026-05-20T13:18:00Z",
+      applied_at: "2026-05-20T13:18:01Z",
+      updated_at: "2026-05-20T13:18:01Z",
+    },
+    {
+      id: "cfg_apply_failed",
+      desired_config_hash: "sha256:desired-failed",
+      active_config_hash: "sha256:active-live",
+      generation: 42,
+      actor: "autonomy",
+      diff_class: "session-rebind",
+      status: "failed",
+      lifecycle: "session-rebind",
+      next_action: "retry",
+      diagnostics: [
+        {
+          id: "diag_invalid_config",
+          code: "config.invalid",
+          title: "Invalid config",
+          message: "provider timeout must be a positive duration.",
+          severity: "error",
+          category: "configuration",
+          data_freshness: "current",
+          suggested_command: "agh config validate",
+        },
+      ],
+      created_at: "2026-05-20T13:24:00Z",
+      updated_at: "2026-05-20T13:24:02Z",
+    },
+  ],
 };

@@ -14,6 +14,17 @@ type SessionResponse struct {
 	Session SessionPayload `json:"session"`
 }
 
+// SessionAttachResponse wraps one explicit session attach lease.
+type SessionAttachResponse struct {
+	Session SessionPayload       `json:"session"`
+	Attach  SessionAttachPayload `json:"attach"`
+}
+
+// SessionRecapResponse wraps one deterministic session recap.
+type SessionRecapResponse struct {
+	Recap RecapPayload `json:"recap"`
+}
+
 // SessionEventsResponse wraps the shared session events payload.
 type SessionEventsResponse struct {
 	Events []SessionEventPayload `json:"events"`
@@ -32,6 +43,11 @@ type SessionTranscriptResponse struct {
 // SessionRepairResponse wraps the repair report for one session.
 type SessionRepairResponse struct {
 	Repair SessionRepairPayload `json:"repair"`
+}
+
+// SendPromptResultResponse wraps non-streaming busy-input prompt outcomes.
+type SendPromptResultResponse struct {
+	Prompt SendPromptResultPayload `json:"prompt"`
 }
 
 // SessionApprovalResponse wraps the approve-session success payload.
@@ -165,6 +181,17 @@ type TaskRunResponse struct {
 	Run TaskRunPayload `json:"run"`
 }
 
+// RetryTaskRunResponse wraps one retry source and newly queued run payload.
+type RetryTaskRunResponse struct {
+	PreviousRun TaskRunPayload `json:"previous_run"`
+	Run         TaskRunPayload `json:"run"`
+}
+
+// BulkForceTaskRunResponse wraps bounded per-row force-operation results.
+type BulkForceTaskRunResponse struct {
+	Results []BulkForceTaskRunItemPayload `json:"results"`
+}
+
 // TaskRunReviewRequestResponse wraps one review request and idempotent-create marker.
 type TaskRunReviewRequestResponse struct {
 	Review  TaskRunReviewPayload `json:"review"`
@@ -228,21 +255,9 @@ type HookEventsResponse struct {
 	Events []HookEventPayload `json:"events"`
 }
 
-// ObserveEventsResponse wraps the observe events payload.
-type ObserveEventsResponse struct {
-	Events []ObserveEventPayload `json:"events"`
-}
-
-// HealthResponse wraps daemon health plus memory health.
-type HealthResponse struct {
-	Health     ObserveHealthPayload    `json:"health"`
-	Memory     MemoryHealthPayload     `json:"memory"`
-	Automation AutomationHealthPayload `json:"automation"`
-}
-
-// DaemonStatusResponse wraps the daemon status payload.
-type DaemonStatusResponse struct {
-	Daemon DaemonStatusPayload `json:"daemon"`
+// LogsListResponse wraps the runtime logs payload.
+type LogsListResponse struct {
+	Events []LogEventPayload `json:"events"`
 }
 
 // NetworkStatusResponse wraps the network runtime status payload.
@@ -375,6 +390,13 @@ type SkillResponse struct {
 	Skill SkillPayload `json:"skill"`
 }
 
+// SkillShadowsResponse wraps the resolver shadow evidence for one skill name.
+type SkillShadowsResponse struct {
+	Name    string                    `json:"name"`
+	Winner  SkillShadowEntryPayload   `json:"winner"`
+	Shadows []SkillShadowEntryPayload `json:"shadows"`
+}
+
 // ExtensionsResponse wraps the extension list payload.
 type ExtensionsResponse struct {
 	Extensions []ExtensionPayload `json:"extensions"`
@@ -383,6 +405,44 @@ type ExtensionsResponse struct {
 // ExtensionResponse wraps one extension payload.
 type ExtensionResponse struct {
 	Extension ExtensionPayload `json:"extension"`
+}
+
+// ExtensionMarketplaceResponse wraps daemon-owned extension marketplace results.
+type ExtensionMarketplaceResponse struct {
+	Extensions []ExtensionMarketplaceEntry `json:"extensions"`
+}
+
+// ExtensionProvenanceResponse wraps one installed extension provenance record.
+type ExtensionProvenanceResponse struct {
+	Provenance ExtensionProvenancePayload `json:"provenance"`
+}
+
+// ExtensionUpdateResponse wraps one marketplace extension update result.
+type ExtensionUpdateResponse struct {
+	Update ManagedExtensionUpdatePayload `json:"update"`
+}
+
+// ExtensionRemoveResponse wraps one removed extension result.
+type ExtensionRemoveResponse struct {
+	Extension ManagedExtensionRemovePayload `json:"extension"`
+}
+
+// ManagedExtensionUpdatePayload describes one daemon-owned extension update.
+type ManagedExtensionUpdatePayload struct {
+	Name           string `json:"name"`
+	Slug           string `json:"slug"`
+	Registry       string `json:"registry"`
+	CurrentVersion string `json:"current_version,omitempty"`
+	LatestVersion  string `json:"latest_version,omitempty"`
+	Path           string `json:"path"`
+	Status         string `json:"status"`
+}
+
+// ManagedExtensionRemovePayload describes one daemon-owned extension removal.
+type ManagedExtensionRemovePayload struct {
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	Status string `json:"status"`
 }
 
 // ResourcesResponse wraps the shared desired-state resource list payload.

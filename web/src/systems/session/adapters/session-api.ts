@@ -13,6 +13,9 @@ import type {
   SessionMessage,
   SessionEventPayload,
   SessionPayload,
+  SessionPromptPayload,
+  SessionPromptRequest,
+  SessionRecapPayload,
   SessionRepairPayload,
   SessionRepairQuery,
   TurnHistoryPayload,
@@ -176,13 +179,105 @@ export async function cancelSessionPrompt(
   }
 }
 
+export async function sendSessionPrompt(
+  workspaceId: string,
+  id: string,
+  params: SessionPromptRequest,
+  signal?: AbortSignal
+): Promise<SessionPromptPayload> {
+  const { data, error, response } = await apiClient.POST(
+    "/api/workspaces/{workspace_id}/sessions/{session_id}/prompt",
+    {
+      params: { path: { workspace_id: workspaceId, session_id: id } },
+      body: params,
+      signal,
+    }
+  );
+  if (apiRequestFailed(response, error)) {
+    throwSessionRequestError(response, error, `Failed to send prompt to session "${id}"`, id);
+  }
+  return requireResponseData(data, response, `Failed to send prompt to session "${id}"`).prompt;
+}
+
+export async function interruptSessionPrompt(
+  workspaceId: string,
+  id: string,
+  signal?: AbortSignal
+): Promise<SessionPromptPayload> {
+  const { data, error, response } = await apiClient.POST(
+    "/api/workspaces/{workspace_id}/sessions/{session_id}/interrupt",
+    {
+      params: { path: { workspace_id: workspaceId, session_id: id } },
+      signal,
+    }
+  );
+  if (apiRequestFailed(response, error)) {
+    throwSessionRequestError(response, error, `Failed to interrupt session "${id}"`, id);
+  }
+  return requireResponseData(data, response, `Failed to interrupt session "${id}"`).prompt;
+}
+
+export async function steerSessionPrompt(
+  workspaceId: string,
+  id: string,
+  text: string,
+  signal?: AbortSignal
+): Promise<SessionPromptPayload> {
+  const { data, error, response } = await apiClient.POST(
+    "/api/workspaces/{workspace_id}/sessions/{session_id}/steer",
+    {
+      params: { path: { workspace_id: workspaceId, session_id: id } },
+      body: { text },
+      signal,
+    }
+  );
+  if (apiRequestFailed(response, error)) {
+    throwSessionRequestError(response, error, `Failed to steer session "${id}"`, id);
+  }
+  return requireResponseData(data, response, `Failed to steer session "${id}"`).prompt;
+}
+
+export async function cancelQueuedSessionPrompt(
+  workspaceId: string,
+  id: string,
+  queueEntryId: string,
+  signal?: AbortSignal
+): Promise<SessionPromptPayload> {
+  const { data, error, response } = await apiClient.DELETE(
+    "/api/workspaces/{workspace_id}/sessions/{session_id}/prompt/queue/{queue_entry_id}",
+    {
+      params: {
+        path: {
+          workspace_id: workspaceId,
+          session_id: id,
+          queue_entry_id: queueEntryId,
+        },
+      },
+      signal,
+    }
+  );
+  if (apiRequestFailed(response, error)) {
+    throwSessionRequestError(
+      response,
+      error,
+      `Failed to cancel queued prompt "${queueEntryId}" for session "${id}"`,
+      id
+    );
+  }
+  return requireResponseData(
+    data,
+    response,
+    `Failed to cancel queued prompt "${queueEntryId}" for session "${id}"`
+  ).prompt;
+}
+
 export async function resumeSession(
   workspaceId: string,
   id: string,
   signal?: AbortSignal
 ): Promise<SessionPayload> {
   const { data, error, response } = await apiClient.POST(
-    "/api/workspaces/{workspace_id}/sessions/{session_id}/resume",
+    "/api/workspaces/{workspace_id}/sessions/{session_id}/attach",
     {
       params: { path: { workspace_id: workspaceId, session_id: id } },
       signal,
@@ -192,6 +287,28 @@ export async function resumeSession(
     throwSessionRequestError(response, error, `Failed to resume session "${id}"`, id);
   }
   return requireResponseData(data, response, `Failed to resume session "${id}"`).session;
+}
+
+export async function fetchSessionRecap(
+  workspaceId: string,
+  id: string,
+  limit?: number,
+  signal?: AbortSignal
+): Promise<SessionRecapPayload> {
+  const { data, error, response } = await apiClient.GET(
+    "/api/workspaces/{workspace_id}/sessions/{session_id}/recap",
+    {
+      params: {
+        path: { workspace_id: workspaceId, session_id: id },
+        query: limit === undefined ? undefined : { limit },
+      },
+      signal,
+    }
+  );
+  if (apiRequestFailed(response, error)) {
+    throwSessionRequestError(response, error, `Failed to fetch session recap "${id}"`, id);
+  }
+  return requireResponseData(data, response, `Failed to fetch session recap "${id}"`).recap;
 }
 
 export async function repairSession(

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	aghconfig "github.com/pedronauck/agh/internal/config"
+	"github.com/pedronauck/agh/internal/config/lifecycle"
 	"github.com/pedronauck/agh/internal/resources"
 	skillspkg "github.com/pedronauck/agh/internal/skills"
 	workspacepkg "github.com/pedronauck/agh/internal/workspace"
@@ -25,6 +26,7 @@ const (
 	sectionsConsolidateKey            = "consolidate"
 	sectionsControllerKey             = "controller"
 	sectionsDailyKey                  = "daily"
+	sectionsDaemonKey                 = "daemon"
 	sectionsDecisionsKey              = "decisions"
 	sectionsDefaultsKey               = "defaults"
 	sectionsDreamKey                  = "dream"
@@ -42,6 +44,7 @@ const (
 	sectionsProviderKey               = "provider"
 	sectionsQueueKey                  = "queue"
 	sectionsRecallKey                 = "recall"
+	sectionsReloadTimeoutsKey         = "reload_timeouts"
 	sectionsResourcesKey              = "resources"
 	sectionsRestartKey                = "restart"
 	sectionsScoringKey                = "scoring"
@@ -256,9 +259,11 @@ func (s *service) updateGeneralSection(
 	if req.General == nil {
 		return MutationResult{}, validationError(errors.New("settings: general section payload is required"))
 	}
-	changed := diffGeneralSettings(&cfg, *req.General)
+	desired := *req.General
+	desired.Daemon.ReloadTimeouts = normalizeDaemonReloadTimeouts(desired.Daemon.ReloadTimeouts)
+	changed := diffGeneralSettings(&cfg, desired)
 	return s.updateConfigSection(req.Section, changed, target, func(editor *aghconfig.OverlayEditor) error {
-		return applyGeneralSettings(editor, *req.General)
+		return applyGeneralSettings(editor, desired)
 	})
 }
 
@@ -396,11 +401,13 @@ func (s *service) updateConfigSection(
 ) (MutationResult, error) {
 	if len(changed) == 0 {
 		return MutationResult{
-			Section:  section,
-			Scope:    ScopeGlobal,
-			Behavior: MutationBehaviorAppliedNow,
-			Applied:  true,
-			Warnings: []string{sectionsNoChangesValue},
+			Section:   section,
+			Scope:     ScopeGlobal,
+			Behavior:  MutationBehaviorAppliedNow,
+			Applied:   true,
+			Warnings:  []string{sectionsNoChangesValue},
+			Lifecycle: lifecycle.Live,
+			DiffClass: lifecycle.DiffClassForRoot(string(section)),
 		}, nil
 	}
 
@@ -421,6 +428,8 @@ func (s *service) updateConfigSection(
 		Applied:         classification.Applied,
 		RestartRequired: classification.RestartRequired,
 		RestartScope:    classification.RestartScope,
+		Lifecycle:       classification.Lifecycle,
+		DiffClass:       classification.DiffClass,
 	}, nil
 }
 
@@ -464,11 +473,13 @@ func (s *service) updateSkillsSection(
 	changed := diffSkillsSettings(current, next)
 	if len(changed) == 0 {
 		return MutationResult{
-			Section:  SectionSkills,
-			Scope:    ScopeGlobal,
-			Behavior: MutationBehaviorAppliedNow,
-			Applied:  true,
-			Warnings: []string{sectionsNoChangesValue},
+			Section:   SectionSkills,
+			Scope:     ScopeGlobal,
+			Behavior:  MutationBehaviorAppliedNow,
+			Applied:   true,
+			Warnings:  []string{sectionsNoChangesValue},
+			Lifecycle: lifecycle.Live,
+			DiffClass: lifecycle.DiffClassLive,
 		}, nil
 	}
 
@@ -500,6 +511,8 @@ func (s *service) updateSkillsSection(
 		Applied:         classification.Applied,
 		RestartRequired: classification.RestartRequired,
 		RestartScope:    classification.RestartScope,
+		Lifecycle:       classification.Lifecycle,
+		DiffClass:       classification.DiffClass,
 	}, nil
 }
 
@@ -536,6 +549,8 @@ func (s *service) updateAgentSkillsSection(
 			Behavior:    MutationBehaviorAppliedNow,
 			Applied:     true,
 			Warnings:    []string{sectionsNoChangesValue},
+			Lifecycle:   lifecycle.Live,
+			DiffClass:   lifecycle.DiffClassLive,
 		}, nil
 	}
 
@@ -564,6 +579,8 @@ func (s *service) updateAgentSkillsSection(
 		Applied:         classification.Applied,
 		RestartRequired: classification.RestartRequired,
 		RestartScope:    classification.RestartScope,
+		Lifecycle:       classification.Lifecycle,
+		DiffClass:       classification.DiffClass,
 	}, nil
 }
 
@@ -813,6 +830,15 @@ func diffGeneralSettings(cfg *aghconfig.Config, desired GeneralSettings) []strin
 	if cfg.Daemon.Socket != desired.Daemon.Socket {
 		changed = append(changed, "daemon.socket")
 	}
+	if cfg.Daemon.ReloadTimeouts.Providers != desired.Daemon.ReloadTimeouts.Providers {
+		changed = append(changed, "daemon.reload_timeouts.providers")
+	}
+	if cfg.Daemon.ReloadTimeouts.MCP != desired.Daemon.ReloadTimeouts.MCP {
+		changed = append(changed, "daemon.reload_timeouts.mcp")
+	}
+	if cfg.Daemon.ReloadTimeouts.Bridges != desired.Daemon.ReloadTimeouts.Bridges {
+		changed = append(changed, "daemon.reload_timeouts.bridges")
+	}
 	return changed
 }
 
@@ -969,9 +995,37 @@ func applyGeneralSettings(editor *aghconfig.OverlayEditor, settings GeneralSetti
 		{path: []string{"permissions", sectionsModeKey}, value: string(settings.Permissions.Mode)},
 		{path: []string{sectionsHTTPKey, "host"}, value: settings.HTTP.Host},
 		{path: []string{sectionsHTTPKey, "port"}, value: settings.HTTP.Port},
-		{path: []string{"daemon", "socket"}, value: settings.Daemon.Socket},
+		{path: []string{sectionsDaemonKey, "socket"}, value: settings.Daemon.Socket},
+		{
+			path:  []string{sectionsDaemonKey, sectionsReloadTimeoutsKey, string(CollectionProviders)},
+			value: settings.Daemon.ReloadTimeouts.Providers.String(),
+		},
+		{
+			path:  []string{sectionsDaemonKey, sectionsReloadTimeoutsKey, "mcp"},
+			value: settings.Daemon.ReloadTimeouts.MCP.String(),
+		},
+		{
+			path:  []string{sectionsDaemonKey, sectionsReloadTimeoutsKey, "bridges"},
+			value: settings.Daemon.ReloadTimeouts.Bridges.String(),
+		},
 	}
 	return applyValueUpdates(editor, updates)
+}
+
+func normalizeDaemonReloadTimeouts(
+	value aghconfig.DaemonReloadTimeoutsConfig,
+) aghconfig.DaemonReloadTimeoutsConfig {
+	defaults := aghconfig.DefaultDaemonReloadTimeoutsConfig()
+	if value.Providers == 0 {
+		value.Providers = defaults.Providers
+	}
+	if value.MCP == 0 {
+		value.MCP = defaults.MCP
+	}
+	if value.Bridges == 0 {
+		value.Bridges = defaults.Bridges
+	}
+	return value
 }
 
 func applyMemorySettings(editor *aghconfig.OverlayEditor, settings *aghconfig.MemoryConfig) error {

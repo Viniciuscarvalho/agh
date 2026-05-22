@@ -90,9 +90,11 @@ agh task complete run-123 \
 
 The optional result JSON must not contain raw lease credentials.
 
-## Failing a run
+## Failing a claimed run
 
-Use `fail` when the current claim cannot complete successfully.
+Use the session-bound fail path when the current claim cannot complete successfully. This path is
+token-fenced server-side: the caller supplies a `run_id`, and AGH resolves the managed session's
+active lease before mutating the run.
 
 Tool path:
 
@@ -103,16 +105,18 @@ agh__task_run_fail  { "run_id": "run-123", "error": "tests failed", "metadata": 
 CLI path:
 
 ```bash
-agh task fail run-123 \
+agh task run fail run-123 \
   --error "tests failed" \
   --metadata '{"command":"make test"}'
 ```
 
 Failure metadata must not contain raw lease credentials.
 
-## Releasing a run
+## Releasing a claimed run
 
-Use `release` when the session should give up ownership without making the run terminal.
+Use session-bound release when the current managed session should give up ownership without making
+the run terminal. The autonomy tool resolves the internal lease from the caller session and
+`run_id`; raw claim tokens never cross the public surface.
 
 Tool path:
 
@@ -120,15 +124,120 @@ Tool path:
 agh__task_run_release  { "run_id": "run-123", "reason": "handoff" }
 ```
 
-CLI path:
-
-```bash
-agh task release run-123 --reason handoff
-```
-
 Release is also used by daemon-owned cleanup. For example, if a spawned child reaches TTL or its
 parent stops, AGH releases active child leases with structured reasons such as `ttl_expired` or
 `parent_stopped` before stopping the child session.
+
+## Force operations
+
+Use force operations when a run needs operator recovery and the normal session-bound lease path is
+not available or should not be trusted. Force operations still mutate `task_runs` only through
+`task.Service`; they do not accept raw claim tokens, and they apply compare-and-swap state
+preconditions before committing.
+
+| Operation     | CLI path                                    | API route                     | Valid source state    |
+| ------------- | ------------------------------------------- | ----------------------------- | --------------------- |
+| Force release | `agh task release run-123 --reason handoff` | `POST /api/runs/{id}/release` | `claimed`             |
+| Force fail    | `agh task fail run-123 --reason "recovery"` | `POST /api/runs/{id}/fail`    | `queued` or `claimed` |
+| Retry         | `agh task retry run-123`                    | `POST /api/runs/{id}/retry`   | `failed`              |
+
+Bulk force release and force fail use bounded batches of run IDs:
+
+```bash
+agh task release run-123 run-456 --reason handoff -o json
+agh task fail run-123 run-456 --reason "provider credentials revoked" -o json
+```
+
+The HTTP and UDS bulk routes are `POST /api/runs/bulk/release` and
+`POST /api/runs/bulk/fail`. Bulk responses report one row per run so an agent can retry only the
+failed rows.
+
+Force fail requires a non-empty `reason` and records `failure_kind = "operator_forced"` on the
+run. Retry creates a new queued run linked through `previous_run_id` and refuses chains deeper
+than the runtime cap. Force release and force fail invalidate queued input generations for the
+previously bound session when that session exists, so stale prompts cannot be delivered after a
+recovery action.
+
+Every force operation emits canonical audit events:
+
+| Event                           | When AGH emits it                                                 |
+| ------------------------------- | ----------------------------------------------------------------- |
+| `task.run_released`             | A claimed run is force released back to the queue.                |
+| `task.run_operator_forced_fail` | A queued or claimed run is force failed with operator evidence.   |
+| `task.run_operator_retry`       | A failed run creates a new queued retry linked to the source run. |
+
+Agents may call these surfaces when `[task.recovery].allow_agent_force = true`. Set it to
+`false` when only non-agent operator identities should perform recovery.
+
+## Scheduler and task pause
+
+Pause controls stop new scheduler claims without freezing active ownership. In-flight runs keep
+heartbeating, completing, failing, releasing, and expiring through the normal lease recovery path.
+Use scheduler-wide pause when dispatch must stop globally, and task pause when one task or a task
+subtree must stop receiving new claims.
+
+| Operation         | CLI path                                      | API route                     | Effect                                       |
+| ----------------- | --------------------------------------------- | ----------------------------- | -------------------------------------------- |
+| Scheduler status  | `agh scheduler status`                        | `GET /api/scheduler`          | Shows pause state and queue pressure.        |
+| Scheduler pause   | `agh scheduler pause --reason "incident"`     | `POST /api/scheduler/pause`   | Stops new dispatch and claim eligibility.    |
+| Scheduler resume  | `agh scheduler resume`                        | `POST /api/scheduler/resume`  | Re-enables new dispatch and claims.          |
+| Scheduler drain   | `agh scheduler drain --timeout 30s`           | `POST /api/scheduler/drain`   | Pauses dispatch and waits for active claims. |
+| Scheduler backlog | `agh scheduler backlog --include-paused`      | `GET /api/scheduler/backlog`  | Lists queued runs in scheduler order.        |
+| Task pause        | `agh task pause task-123 --reason "incident"` | `POST /api/tasks/{id}/pause`  | Stops new claims for that task subtree.      |
+| Task resume       | `agh task resume task-123`                    | `POST /api/tasks/{id}/resume` | Clears the direct task pause.                |
+
+Task pause is inherited by descendants through typed task columns. Backlog responses expose
+`effective_paused` and `paused_by_task_id` so agents can tell whether a queued run is blocked by
+its own task or by an ancestor. Scheduler backlog excludes paused tasks by default; pass
+`include_paused=true` when diagnosing why a queued run is not claimable.
+
+Every pause mutation records actor evidence and emits canonical events:
+
+| Event                       | When AGH emits it                                     |
+| --------------------------- | ----------------------------------------------------- |
+| `scheduler.paused`          | Scheduler dispatch was paused or drain was requested. |
+| `scheduler.resumed`         | Scheduler dispatch was resumed.                       |
+| `scheduler.drain_started`   | Drain requested a scheduler pause and began waiting.  |
+| `scheduler.drain_completed` | Drain reached zero active claims or timed out.        |
+| `task.paused`               | A task was paused for future scheduler claims.        |
+| `task.resumed`              | A task's direct pause was cleared.                    |
+
+## Task inspect diagnostics
+
+Use inspect when an operator or agent needs a read-only triage snapshot before mutating a task run.
+The CLI auto-detects task and run IDs:
+
+```bash
+agh task inspect task-123 -o json
+agh task inspect run-123 -o json
+```
+
+The same snapshot is available over HTTP and UDS:
+
+| Target | Route                         |
+| ------ | ----------------------------- |
+| Task   | `GET /api/tasks/{id}/inspect` |
+| Run    | `GET /api/runs/{id}/inspect`  |
+
+Inspect reads task runs, bound-session summary, scheduler pause state, and recent event summaries.
+It does not read transcripts and it does not expose raw claim tokens. Claim evidence is limited to
+the 8-character `claim_token_hash_truncated` field.
+
+The response includes `task`, `current_run`, `bound_session`, `recent_runs`,
+`recent_events`, `scheduler`, `diagnostics`, `next_action`, and `as_of`. The web task and
+run detail surfaces render the same diagnostics card as the CLI/API payload.
+
+| Diagnostic code        | Meaning                                                                           |
+| ---------------------- | --------------------------------------------------------------------------------- |
+| `task_run_stuck`       | A claimed run has a stale heartbeat and may need release.                         |
+| `task_run_orphan`      | A claimed run points at a missing or terminal session.                            |
+| `task_run_stranded`    | A queued run is old, the scheduler is active, and no eligible session is visible. |
+| `task_run_crashed`     | The latest run failed without a later retry.                                      |
+| `task_run_stale_lease` | The run still looks claimed after its lease deadline.                             |
+
+`next_action` is a derived enum for agents: `claim_available`, `waiting_for_session`,
+`stranded`, `running`, `recovery_required`, or `terminal`. It is guidance, not a writer; use
+the task service commands to release, fail, retry, pause, or resume.
 
 ## Deterministic autonomy errors
 

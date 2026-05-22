@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	mcpauth "github.com/pedronauck/agh/internal/mcp/auth"
@@ -88,6 +89,11 @@ type MCPRuntimeProvider interface {
 	MCPServerRuntimeStatus(ctx context.Context, server aghconfig.MCPServer) (MCPServerRuntimeStatus, error)
 }
 
+// ConfigRuntimeApplier reconciles a validated config snapshot with daemon-owned runtime state.
+type ConfigRuntimeApplier interface {
+	ApplyActiveConfig(ctx context.Context, snap *aghconfig.Config) []ApplyFailure
+}
+
 // ProviderSecretStore stores provider-bound secrets and returns redacted metadata.
 type ProviderSecretStore interface {
 	GetMetadata(ctx context.Context, ref string) (vault.Metadata, error)
@@ -107,8 +113,10 @@ type Dependencies struct {
 	TransportParity            TransportParityProvider
 	MCPAuth                    MCPAuthRuntimeProvider
 	MCPRuntime                 MCPRuntimeProvider
+	RuntimeApplier             ConfigRuntimeApplier
 	ProviderSecrets            ProviderSecretStore
 	EventSummaries             store.EventSummaryStore
+	ApplyRecords               ApplyRecordStore
 	RestartActionAvailable     bool
 	ConsolidateActionAvailable bool
 	LogTailAvailable           bool
@@ -129,8 +137,12 @@ type service struct {
 	transportParity            TransportParityProvider
 	mcpAuth                    MCPAuthRuntimeProvider
 	mcpRuntime                 MCPRuntimeProvider
+	runtimeApplier             ConfigRuntimeApplier
 	providerSecrets            ProviderSecretStore
 	eventSummaries             store.EventSummaryStore
+	applyRecords               ApplyRecordStore
+	activeConfig               activeConfigState
+	applyMu                    sync.Mutex
 	restartActionAvailable     bool
 	consolidateActionAvailable bool
 	logTailAvailable           bool
@@ -168,8 +180,10 @@ func NewService(homePaths aghconfig.HomePaths, deps Dependencies) (Service, erro
 		transportParity:            deps.TransportParity,
 		mcpAuth:                    deps.MCPAuth,
 		mcpRuntime:                 deps.MCPRuntime,
+		runtimeApplier:             deps.RuntimeApplier,
 		providerSecrets:            deps.ProviderSecrets,
 		eventSummaries:             deps.EventSummaries,
+		applyRecords:               deps.ApplyRecords,
 		restartActionAvailable:     deps.RestartActionAvailable,
 		consolidateActionAvailable: deps.ConsolidateActionAvailable,
 		logTailAvailable:           deps.LogTailAvailable,

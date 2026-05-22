@@ -1,8 +1,10 @@
 import type {
   BridgeDetailResponse,
   BridgeProvider,
+  BridgeResolveTargetResponse,
   BridgeRoute,
   BridgeSecretBinding,
+  BridgeTargetsResponse,
   BridgesListResponse,
   CreateBridgeResponse,
   TestBridgeDeliveryResponse,
@@ -58,6 +60,7 @@ export const bridgesListFixture: BridgesListResponse = {
       enabled: true,
       extension_name: "ext-slack",
       id: "brg_launch_room",
+      notification_suppress: false,
       platform: "slack",
       provider_config: {
         workspace: "northstar-launch",
@@ -110,6 +113,46 @@ export const bridgeRoutesFixture: BridgeRoute[] = [
     workspace_id: storyWorkspaceIds.growth,
   },
 ];
+
+export const bridgeTargetsFixture: BridgeTargetsResponse = {
+  bridge_id: "brg_launch_room",
+  cache_stale: false,
+  generated_at: "2026-04-17T18:10:00Z",
+  last_successful_refresh_at: "2026-04-17T18:09:00Z",
+  targets: [
+    {
+      bridge_id: "brg_launch_room",
+      canonical_route: "slack:channel:slack_launch_room",
+      capabilities: ["direct-send", "reply"],
+      display_name: "Launch room",
+      last_seen_at: "2026-04-17T18:09:00Z",
+      normalized: "launch room",
+      qualifier: "slack",
+      target_type: "channel",
+      updated_at: "2026-04-17T18:09:00Z",
+    },
+    {
+      bridge_id: "brg_launch_room",
+      canonical_route: "slack:thread:thread_launch_2044",
+      capabilities: ["reply"],
+      display_name: "Merchant launch thread",
+      last_seen_at: "2026-04-17T18:08:00Z",
+      normalized: "merchant launch thread",
+      qualifier: "launch-room",
+      target_type: "thread",
+      updated_at: "2026-04-17T18:08:00Z",
+    },
+  ],
+  total: 2,
+};
+
+export const bridgeResolveTargetFixture: BridgeResolveTargetResponse = {
+  result: {
+    ambiguous: false,
+    match: bridgeTargetsFixture.targets[0],
+    step: 2,
+  },
+};
 
 export const bridgeSecretBindingsFixture: BridgeSecretBinding[] = [
   {

@@ -34,8 +34,8 @@ func TestBaseHandlersRejectInvalidRequestsAndMapErrors(t *testing.T) {
 		StatusFn: func(context.Context, string) (*session.Info, error) {
 			return nil, session.ErrSessionNotFound
 		},
-		ResumeFn: func(context.Context, string) (*session.Session, error) {
-			return nil, session.ErrSessionNotFound
+		AttachSessionFn: func(context.Context, store.SessionAttachRequest) (store.SessionAttach, error) {
+			return store.SessionAttach{}, store.ErrSessionNotFound
 		},
 		DeleteFn: func(context.Context, string) error {
 			return session.ErrSessionNotFound
@@ -97,16 +97,16 @@ func TestBaseHandlersRejectInvalidRequestsAndMapErrors(t *testing.T) {
 			want:   http.StatusNotFound,
 		},
 		{method: http.MethodGet, path: "/workspaces/ws-workspace/sessions/missing", want: http.StatusNotFound},
-		{method: http.MethodPost, path: "/workspaces/ws-workspace/sessions/missing/resume", want: http.StatusNotFound},
+		{method: http.MethodPost, path: "/workspaces/ws-workspace/sessions/missing/attach", want: http.StatusNotFound},
 		{method: http.MethodDelete, path: "/workspaces/ws-workspace/sessions/missing", want: http.StatusNotFound},
 		{
 			method: http.MethodGet,
 			path:   "/workspaces/ws-workspace/sessions/missing/events?since=bad",
 			want:   http.StatusBadRequest,
 		},
-		{method: http.MethodGet, path: "/workspaces/ws-workspace/observe/events", want: http.StatusInternalServerError},
-		{method: http.MethodGet, path: "/observe/health", want: http.StatusInternalServerError},
-		{method: http.MethodGet, path: "/daemon/status", want: http.StatusInternalServerError},
+		{method: http.MethodGet, path: "/logs?workspace_id=ws-workspace", want: http.StatusInternalServerError},
+		{method: http.MethodGet, path: "/status", want: http.StatusInternalServerError},
+		{method: http.MethodGet, path: "/doctor", want: http.StatusOK},
 		{
 			method: http.MethodPost,
 			path:   "/workspaces",
@@ -221,7 +221,7 @@ func TestStreamSessionAndObserveErrorBranches(t *testing.T) {
 		t,
 		observeFixture.Engine,
 		http.MethodGet,
-		"/workspaces/ws-workspace/observe/events/stream",
+		"/logs/stream?workspace_id=ws-workspace",
 		nil,
 		map[string]string{"Last-Event-ID": "bad"},
 	)

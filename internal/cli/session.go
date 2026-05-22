@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pedronauck/agh/internal/api/contract"
 	"github.com/pedronauck/agh/internal/session"
 	"github.com/spf13/cobra"
 )
@@ -26,6 +27,7 @@ const (
 	sessionBackendValue   = "Backend"
 	sessionChannelValue   = "Channel"
 	sessionCreatedValue   = "Created"
+	sessionBadgeValue     = "Badge"
 	sessionNameValue      = "Name"
 	sessionProfileValue   = "Profile"
 	sessionProviderValue  = "Provider"
@@ -36,10 +38,12 @@ const (
 	sessionUpdatedValue   = "Updated"
 	sessionWorkspaceValue = "Workspace"
 	sessionAgentNameKey   = "agent_name"
+	sessionBadgeKey       = "badge"
 	sessionChannelKey     = "channel"
 	sessionCreatedAtKey   = "created_at"
 	sessionHistoryIDValue = "history <id>"
 	sessionListKey        = "list"
+	sessionMessagesKey    = "messages"
 	sessionNameKey        = "name"
 	sessionNewKey         = "new"
 	sessionProviderKey    = "provider"
@@ -63,6 +67,7 @@ func newSessionCommand(deps commandDeps) *cobra.Command {
 	cmd.AddCommand(newSessionStatusCommand(deps))
 	cmd.AddCommand(newSessionInspectCommand(deps))
 	cmd.AddCommand(newSessionResumeCommand(deps))
+	cmd.AddCommand(newSessionRecapCommand(deps))
 	cmd.AddCommand(newSessionRepairCommand(deps))
 	cmd.AddCommand(newSessionApproveCommand(deps))
 	cmd.AddCommand(newSessionWaitCommand(deps))
@@ -147,6 +152,8 @@ func newSessionListCommand(deps commandDeps) *cobra.Command {
 	var (
 		includeAll      bool
 		workspaceFilter string
+		resumable       bool
+		limit           int
 	)
 
 	cmd := &cobra.Command{
@@ -165,11 +172,14 @@ func newSessionListCommand(deps commandDeps) *cobra.Command {
 
 			sessions, err := client.ListSessions(cmd.Context(), SessionListQuery{
 				Workspace: workspaceFilter,
+				Resumable: resumable,
+				Limit:     limit,
+				Sort:      sessionListSortKey(resumable),
 			})
 			if err != nil {
 				return err
 			}
-			if !includeAll {
+			if !includeAll && !resumable {
 				sessions = filterActiveSessions(sessions)
 			}
 
@@ -178,7 +188,16 @@ func newSessionListCommand(deps commandDeps) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&includeAll, "all", false, "Include stopped sessions")
 	cmd.Flags().StringVar(&workspaceFilter, workspaceSkillSource, "", "Filter by workspace name or ID")
+	cmd.Flags().BoolVar(&resumable, "resumable", false, "Show only sessions eligible for resume attach")
+	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum sessions to return")
 	return cmd
+}
+
+func sessionListSortKey(resumable bool) string {
+	if resumable {
+		return "last_activity"
+	}
+	return ""
 }
 
 func newSessionStopCommand(deps commandDeps) *cobra.Command {
@@ -232,25 +251,92 @@ func newSessionStatusCommand(deps commandDeps) *cobra.Command {
 }
 
 func newSessionResumeCommand(deps commandDeps) *cobra.Command {
-	return &cobra.Command{
-		Use:   "resume <id>",
-		Short: "Resume a stopped session",
-		Example: `  # Resume a stopped session by ID
-  agh session resume sess_1234`,
-		Args: exactOneNonBlankArg(),
+	var (
+		latest          bool
+		workspaceFilter string
+	)
+	cmd := &cobra.Command{
+		Use:   "resume [id]",
+		Short: "Attach to a resumable session",
+		Example: `  # Attach to a resumable session by ID
+  agh session resume sess_1234
+
+  # Attach to the latest eligible session in a workspace
+  agh session resume --latest --workspace checkout-api`,
+		Args: sessionResumeArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := clientFromDeps(deps)
 			if err != nil {
 				return err
 			}
-
-			info, err := client.ResumeSession(cmd.Context(), args[0])
+			if latest && len(args) > 0 {
+				return errors.New("cli: --latest cannot be combined with a session id")
+			}
+			if !latest && len(args) == 0 {
+				return errors.New("session_resume_ambiguous: pass a session id or --latest")
+			}
+			sessionID := ""
+			if latest {
+				candidates, err := client.ListSessions(cmd.Context(), SessionListQuery{
+					Workspace: workspaceFilter,
+					Resumable: true,
+					Sort:      "last_activity",
+					Limit:     1,
+				})
+				if err != nil {
+					return err
+				}
+				if len(candidates) == 0 {
+					return writeCommandOutput(cmd, sessionResumeEmptyBundle())
+				}
+				sessionID = candidates[0].ID
+			} else {
+				sessionID = args[0]
+			}
+			info, err := client.ResumeSession(cmd.Context(), sessionID)
 			if err != nil {
 				return err
 			}
 			return writeCommandOutput(cmd, sessionBundle(info, deps.now))
 		},
 	}
+	cmd.Flags().BoolVar(&latest, "latest", false, "Attach to the latest eligible session")
+	cmd.Flags().StringVar(&workspaceFilter, workspaceSkillSource, "", "Filter --latest by workspace name or ID")
+	return cmd
+}
+
+func sessionResumeArgs(_ *cobra.Command, args []string) error {
+	if len(args) > 1 {
+		return errors.New("cli: expected at most one session id")
+	}
+	if len(args) == 1 && strings.TrimSpace(args[0]) == "" {
+		return errors.New("cli: session id is required")
+	}
+	return nil
+}
+
+func newSessionRecapCommand(deps commandDeps) *cobra.Command {
+	var limit int
+	cmd := &cobra.Command{
+		Use:   "recap <id>",
+		Short: "Show deterministic session recap",
+		Example: `  # Show a bounded recap for one session
+  agh session recap sess_1234 --limit 20`,
+		Args: exactOneNonBlankArg(),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := clientFromDeps(deps)
+			if err != nil {
+				return err
+			}
+			recap, err := client.SessionRecap(cmd.Context(), args[0], limit)
+			if err != nil {
+				return err
+			}
+			return writeCommandOutput(cmd, sessionRecapBundle(recap))
+		},
+	}
+	cmd.Flags().IntVar(&limit, "limit", 20, "Maximum recent messages to include")
+	return cmd
 }
 
 func newSessionRepairCommand(deps commandDeps) *cobra.Command {
@@ -369,12 +455,52 @@ func newSessionWaitCommand(deps commandDeps) *cobra.Command {
 }
 
 func newSessionPromptCommand(deps commandDeps) *cobra.Command {
-	return &cobra.Command{
+	var (
+		queue       bool
+		interrupt   bool
+		steer       bool
+		cancelEntry string
+	)
+
+	cmd := &cobra.Command{
 		Use:   "prompt <id> <message>",
 		Short: "Send a prompt to a session",
 		Example: `  # Send a follow-up prompt to an active session
-  agh session prompt sess_1234 "Summarize the current changes."`,
-		Args: cobra.ExactArgs(2),
+  agh session prompt sess_1234 "Summarize the current changes."
+
+  # Queue input while the session is busy
+  agh session prompt sess_1234 "Run the next check." --queue
+
+  # Steer the current turn after the next tool result
+  agh session prompt sess_1234 "Prefer the smaller patch." --steer
+
+  # Cancel queued input by entry id
+  agh session prompt sess_1234 --cancel queue_entry_1234`,
+		Args: func(cmd *cobra.Command, args []string) error {
+			cancelChanged := cmd.Flags().Changed("cancel")
+			modeCount := 0
+			for _, enabled := range []bool{queue, interrupt, steer, cancelChanged} {
+				if enabled {
+					modeCount++
+				}
+			}
+			if modeCount > 1 {
+				return errors.New("cli: choose only one of --queue, --interrupt, --steer, or --cancel")
+			}
+			if cancelChanged {
+				if strings.TrimSpace(cancelEntry) == "" {
+					return errors.New("cli: --cancel requires a queue entry id")
+				}
+				if len(args) != 1 {
+					return fmt.Errorf("cli: session prompt --cancel accepts 1 arg, received %d", len(args))
+				}
+				return nil
+			}
+			if len(args) != 2 {
+				return fmt.Errorf("cli: session prompt accepts 2 args, received %d", len(args))
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mode, err := resolveOutputFormat(cmd)
 			if err != nil {
@@ -385,16 +511,55 @@ func newSessionPromptCommand(deps commandDeps) *cobra.Command {
 				return err
 			}
 			if mode == OutputJSONL {
+				if queue || interrupt || steer || cmd.Flags().Changed("cancel") {
+					return errors.New("cli: busy-input prompt actions do not support jsonl output")
+				}
 				return streamPromptEventsJSONL(cmd, client, args[0], args[1])
 			}
 
-			events, err := client.PromptSession(cmd.Context(), args[0], args[1])
+			record, err := runSessionPromptAction(cmd, client, args, queue, interrupt, steer, cancelEntry)
 			if err != nil {
 				return err
 			}
-			return writeCommandOutput(cmd, agentEventsBundle(events))
+			return writeCommandOutput(cmd, sessionPromptBundle(record))
 		},
 	}
+	cmd.Flags().BoolVar(&queue, "queue", false, "Queue the prompt if the session is busy")
+	cmd.Flags().BoolVar(&interrupt, "interrupt", false, "Interrupt the active turn before sending this prompt")
+	cmd.Flags().BoolVar(&steer, "steer", false, "Stage steering guidance for the active turn")
+	cmd.Flags().StringVar(&cancelEntry, "cancel", "", "Cancel a queued prompt entry by id")
+	return cmd
+}
+
+func runSessionPromptAction(
+	cmd *cobra.Command,
+	client DaemonClient,
+	args []string,
+	queue bool,
+	interrupt bool,
+	steer bool,
+	cancelEntry string,
+) (SessionPromptRecord, error) {
+	if cmd == nil {
+		return SessionPromptRecord{}, errors.New("cli: command is required")
+	}
+	if client == nil {
+		return SessionPromptRecord{}, errors.New("cli: daemon client is required")
+	}
+	if cmd.Flags().Changed("cancel") {
+		return client.CancelQueuedSessionPrompt(cmd.Context(), args[0], strings.TrimSpace(cancelEntry))
+	}
+	if steer {
+		return client.SteerSessionPrompt(cmd.Context(), args[0], args[1])
+	}
+	request := SessionPromptRequest{Message: args[1]}
+	if queue {
+		request.Mode = contract.PromptModeQueue
+	}
+	if interrupt {
+		request.Mode = contract.PromptModeInterrupt
+	}
+	return client.SendSessionPrompt(cmd.Context(), args[0], request)
 }
 
 func newSessionEventsCommand(deps commandDeps) *cobra.Command {
@@ -563,84 +728,105 @@ func streamSessionEvents(cmd *cobra.Command, client DaemonClient, id string, que
 func sessionBundle(info SessionRecord, now func() time.Time) outputBundle {
 	return outputBundle{
 		jsonValue: info,
-		human: func() (string, error) {
-			base := renderHumanSection(sessionSessionValue, []keyValue{
-				{Label: "ID", Value: stringOrDash(info.ID)},
-				{Label: sessionNameValue, Value: stringOrDash(info.Name)},
-				{Label: sessionAgentValue, Value: stringOrDash(info.AgentName)},
-				{Label: sessionProviderValue, Value: stringOrDash(info.Provider)},
-				{Label: sessionWorkspaceValue, Value: stringOrDash(displaySessionWorkspace(info))},
-				{Label: sessionChannelValue, Value: stringOrDash(info.Channel)},
-				{Label: sessionStateValue, Value: stringOrDash(string(info.State))},
-				{Label: "Stop Reason", Value: stringOrDash(string(info.StopReason))},
-				{Label: "Stop Detail", Value: stringOrDash(info.StopDetail)},
-				{Label: "Failure Kind", Value: stringOrDash(sessionFailureKind(info))},
-				{Label: "Failure Summary", Value: stringOrDash(sessionFailureSummary(info))},
-				{Label: "Crash Bundle", Value: stringOrDash(sessionCrashBundlePath(info))},
-				{Label: "ACP Session", Value: stringOrDash(info.ACPSessionID)},
-				{Label: sessionCreatedValue, Value: stringOrDash(formatTime(info.CreatedAt))},
-				{Label: sessionUpdatedValue, Value: stringOrDash(formatTime(info.UpdatedAt))},
-				{Label: "Age", Value: stringOrDash(formatAge(now, info.CreatedAt))},
-			})
-
-			blocks := []string{base}
-			if info.Sandbox != nil {
-				blocks = append(blocks, renderHumanSection("Sandbox", []keyValue{
-					{Label: sessionBackendValue, Value: stringOrDash(info.Sandbox.Backend)},
-					{Label: sessionProfileValue, Value: stringOrDash(info.Sandbox.Profile)},
-					{Label: "Sandbox ID", Value: stringOrDash(info.Sandbox.SandboxID)},
-					{Label: "Instance ID", Value: stringOrDash(info.Sandbox.InstanceID)},
-					{Label: sessionStateValue, Value: stringOrDash(info.Sandbox.State)},
-					{Label: "Last Sync Error", Value: stringOrDash(info.Sandbox.LastSyncError)},
-				}))
-			}
-			if info.ACPCaps == nil {
-				return renderHumanBlocks(blocks...), nil
-			}
-			caps := renderHumanSection("Capabilities", []keyValue{
-				{Label: "Supports Load", Value: strconv.FormatBool(info.ACPCaps.SupportsLoadSession)},
-				{Label: "Modes", Value: stringOrDash(strings.Join(info.ACPCaps.SupportedModes, ", "))},
-				{Label: "Models", Value: stringOrDash(strings.Join(info.ACPCaps.SupportedModels, ", "))},
-			})
-			blocks = append(blocks, caps)
-			return renderHumanBlocks(blocks...), nil
-		},
-		toon: func() (string, error) {
-			return renderToonObject(sessionSessionKey, []string{
-				"id",
-				sessionNameKey,
-				sessionAgentNameKey,
-				sessionProviderKey,
-				"sandbox_backend",
-				workspaceSkillSource,
-				sessionChannelKey,
-				sessionStateKey,
-				"stop_reason",
-				"failure_kind",
-				"failure_summary",
-				"crash_bundle_path",
-				"acp_session_id",
-				sessionCreatedAtKey,
-				sessionUpdatedAtKey,
-			}, []string{
-				info.ID,
-				info.Name,
-				info.AgentName,
-				info.Provider,
-				sessionSandboxBackend(info),
-				displaySessionWorkspace(info),
-				info.Channel,
-				string(info.State),
-				string(info.StopReason),
-				sessionFailureKind(info),
-				sessionFailureSummary(info),
-				sessionCrashBundlePath(info),
-				info.ACPSessionID,
-				formatTime(info.CreatedAt),
-				formatTime(info.UpdatedAt),
-			}), nil
-		},
+		human:     func() (string, error) { return renderSessionHuman(info, now) },
+		toon:      func() (string, error) { return renderSessionToon(info) },
 	}
+}
+
+func renderSessionHuman(info SessionRecord, now func() time.Time) (string, error) {
+	base := renderHumanSection(sessionSessionValue, []keyValue{
+		{Label: "ID", Value: stringOrDash(info.ID)},
+		{Label: sessionNameValue, Value: stringOrDash(info.Name)},
+		{Label: sessionAgentValue, Value: stringOrDash(info.AgentName)},
+		{Label: sessionProviderValue, Value: stringOrDash(info.Provider)},
+		{Label: sessionWorkspaceValue, Value: stringOrDash(displaySessionWorkspace(info))},
+		{Label: sessionChannelValue, Value: stringOrDash(info.Channel)},
+		{Label: sessionStateValue, Value: stringOrDash(string(info.State))},
+		{Label: sessionBadgeValue, Value: stringOrDash(string(info.Badge))},
+		{Label: "Attached To", Value: stringOrDash(info.AttachedTo)},
+		{Label: "Attach Expires", Value: stringOrDash(formatTimePtr(info.AttachExpiresAt))},
+		{Label: "Stop Reason", Value: stringOrDash(string(info.StopReason))},
+		{Label: "Stop Detail", Value: stringOrDash(info.StopDetail)},
+		{Label: "Failure Kind", Value: stringOrDash(sessionFailureKind(info))},
+		{Label: "Failure Summary", Value: stringOrDash(sessionFailureSummary(info))},
+		{Label: "Crash Bundle", Value: stringOrDash(sessionCrashBundlePath(info))},
+		{Label: "ACP Session", Value: stringOrDash(info.ACPSessionID)},
+		{Label: sessionCreatedValue, Value: stringOrDash(formatTime(info.CreatedAt))},
+		{Label: sessionUpdatedValue, Value: stringOrDash(formatTime(info.UpdatedAt))},
+		{Label: "Age", Value: stringOrDash(formatAge(now, info.CreatedAt))},
+	})
+
+	blocks := []string{base}
+	blocks = appendSessionSandboxBlock(blocks, info)
+	blocks = appendSessionCapsBlock(blocks, info)
+	return renderHumanBlocks(blocks...), nil
+}
+
+func appendSessionSandboxBlock(blocks []string, info SessionRecord) []string {
+	if info.Sandbox == nil {
+		return blocks
+	}
+	return append(blocks, renderHumanSection("Sandbox", []keyValue{
+		{Label: sessionBackendValue, Value: stringOrDash(info.Sandbox.Backend)},
+		{Label: sessionProfileValue, Value: stringOrDash(info.Sandbox.Profile)},
+		{Label: "Sandbox ID", Value: stringOrDash(info.Sandbox.SandboxID)},
+		{Label: "Instance ID", Value: stringOrDash(info.Sandbox.InstanceID)},
+		{Label: sessionStateValue, Value: stringOrDash(info.Sandbox.State)},
+		{Label: "Last Sync Error", Value: stringOrDash(info.Sandbox.LastSyncError)},
+	}))
+}
+
+func appendSessionCapsBlock(blocks []string, info SessionRecord) []string {
+	if info.ACPCaps == nil {
+		return blocks
+	}
+	return append(blocks, renderHumanSection("Capabilities", []keyValue{
+		{Label: "Supports Load", Value: strconv.FormatBool(info.ACPCaps.SupportsLoadSession)},
+		{Label: "Modes", Value: stringOrDash(strings.Join(info.ACPCaps.SupportedModes, ", "))},
+		{Label: "Models", Value: stringOrDash(strings.Join(info.ACPCaps.SupportedModels, ", "))},
+	}))
+}
+
+func renderSessionToon(info SessionRecord) (string, error) {
+	return renderToonObject(sessionSessionKey, []string{
+		"id",
+		sessionNameKey,
+		sessionAgentNameKey,
+		sessionProviderKey,
+		"sandbox_backend",
+		workspaceSkillSource,
+		sessionChannelKey,
+		sessionStateKey,
+		sessionBadgeKey,
+		"attached_to",
+		"attach_expires_at",
+		"stop_reason",
+		taskFailureKindKey,
+		"failure_summary",
+		"crash_bundle_path",
+		"acp_session_id",
+		sessionCreatedAtKey,
+		sessionUpdatedAtKey,
+	}, []string{
+		info.ID,
+		info.Name,
+		info.AgentName,
+		info.Provider,
+		sessionSandboxBackend(info),
+		displaySessionWorkspace(info),
+		info.Channel,
+		string(info.State),
+		string(info.Badge),
+		info.AttachedTo,
+		formatTimePtr(info.AttachExpiresAt),
+		string(info.StopReason),
+		sessionFailureKind(info),
+		sessionFailureSummary(info),
+		sessionCrashBundlePath(info),
+		info.ACPSessionID,
+		formatTime(info.CreatedAt),
+		formatTime(info.UpdatedAt),
+	}), nil
 }
 
 func sessionListBundle(items []SessionRecord, now func() time.Time) outputBundle {
@@ -655,6 +841,7 @@ func sessionListBundle(items []SessionRecord, now func() time.Time) outputBundle
 			sessionProviderValue,
 			sessionBackendValue,
 			sessionStateValue,
+			sessionBadgeValue,
 			"Failure",
 			sessionWorkspaceValue,
 			sessionChannelValue,
@@ -668,7 +855,8 @@ func sessionListBundle(items []SessionRecord, now func() time.Time) outputBundle
 			sessionProviderKey,
 			"sandbox_backend",
 			sessionStateKey,
-			"failure_kind",
+			sessionBadgeKey,
+			taskFailureKindKey,
 			workspaceSkillSource,
 			sessionChannelKey,
 			sessionUpdatedAtKey,
@@ -681,6 +869,7 @@ func sessionListBundle(items []SessionRecord, now func() time.Time) outputBundle
 				stringOrDash(item.Provider),
 				stringOrDash(sessionSandboxBackend(item)),
 				stringOrDash(string(item.State)),
+				stringOrDash(string(item.Badge)),
 				stringOrDash(sessionFailureKind(item)),
 				stringOrDash(displaySessionWorkspace(item)),
 				stringOrDash(item.Channel),
@@ -695,6 +884,7 @@ func sessionListBundle(items []SessionRecord, now func() time.Time) outputBundle
 				item.Provider,
 				sessionSandboxBackend(item),
 				string(item.State),
+				string(item.Badge),
 				sessionFailureKind(item),
 				displaySessionWorkspace(item),
 				item.Channel,
@@ -702,6 +892,70 @@ func sessionListBundle(items []SessionRecord, now func() time.Time) outputBundle
 			}
 		},
 	)
+}
+
+func sessionResumeEmptyBundle() outputBundle {
+	payload := struct {
+		Resumed *SessionRecord `json:"resumed"`
+		Reason  string         `json:"reason"`
+	}{
+		Reason: "no_eligible_sessions",
+	}
+	return outputBundle{
+		jsonValue: payload,
+		human: func() (string, error) {
+			return "No resumable sessions; start a new one with 'agh session new'.", nil
+		},
+		toon: func() (string, error) {
+			return renderToonObject("resume", []string{"resumed", "reason"}, []string{"", payload.Reason}), nil
+		},
+	}
+}
+
+func sessionRecapBundle(record SessionRecapRecord) outputBundle {
+	return outputBundle{
+		jsonValue: record,
+		human: func() (string, error) {
+			blocks := []string{
+				renderHumanSection("Session Recap", []keyValue{
+					{Label: sessionSessionValue, Value: stringOrDash(record.Session.ID)},
+					{Label: sessionBadgeValue, Value: stringOrDash(string(record.Session.Badge))},
+					{Label: "Markers", Value: strconv.Itoa(len(record.RecentMarkers))},
+					{Label: "Messages", Value: strconv.Itoa(len(record.RecentMessages))},
+					{Label: "Event Cursor", Value: strconv.FormatInt(record.Snapshot.EventCursor, 10)},
+					{Label: "Consistency", Value: stringOrDash(record.Snapshot.Consistency)},
+				}),
+			}
+			if len(record.RecentMarkers) > 0 {
+				items := make([]keyValue, 0, len(record.RecentMarkers))
+				for _, marker := range record.RecentMarkers {
+					items = append(items, keyValue{
+						Label: stringOrDash(marker.Kind),
+						Value: stringOrDash(marker.Summary),
+					})
+				}
+				blocks = append(blocks, renderHumanSection("Recent Markers", items))
+			}
+			return renderHumanBlocks(blocks...), nil
+		},
+		toon: func() (string, error) {
+			return renderToonObject("recap", []string{
+				sessionSessionIDKey,
+				sessionBadgeKey,
+				"markers",
+				sessionMessagesKey,
+				"event_cursor",
+				"consistency",
+			}, []string{
+				record.Session.ID,
+				string(record.Session.Badge),
+				strconv.Itoa(len(record.RecentMarkers)),
+				strconv.Itoa(len(record.RecentMessages)),
+				strconv.FormatInt(record.Snapshot.EventCursor, 10),
+				record.Snapshot.Consistency,
+			}), nil
+		},
+	}
 }
 
 func sessionSandboxBackend(info SessionRecord) string {
@@ -924,6 +1178,91 @@ func agentEventsBundle(events []AgentEventRecord) outputBundle {
 			}
 		},
 	)
+}
+
+func sessionPromptBundle(record SessionPromptRecord) outputBundle {
+	if record.Prompt.Status == "" && len(record.Events) > 0 {
+		return agentEventsBundle(record.Events)
+	}
+	return outputBundle{
+		jsonValue: record,
+		human: func() (string, error) {
+			return renderHumanSectionResult("Prompt", sessionPromptRows(record.Prompt))
+		},
+		toon: func() (string, error) {
+			return renderToonObject("prompt", sessionPromptFields(), sessionPromptValues(record.Prompt)), nil
+		},
+	}
+}
+
+func sessionPromptRows(result SessionPromptResultRecord) []keyValue {
+	rows := []keyValue{
+		{Label: sessionStatusValue, Value: stringOrDash(result.Status)},
+	}
+	if result.Mode != "" {
+		rows = append(rows, keyValue{Label: "Mode", Value: string(result.Mode)})
+	}
+	if result.QueueEntryID != "" {
+		rows = append(rows, keyValue{Label: "Queue Entry", Value: result.QueueEntryID})
+	}
+	if result.QueuePosition > 0 {
+		rows = append(rows, keyValue{Label: "Queue Position", Value: strconv.Itoa(result.QueuePosition)})
+	}
+	if result.QueueGeneration > 0 {
+		rows = append(rows, keyValue{Label: "Queue Generation", Value: strconv.FormatInt(result.QueueGeneration, 10)})
+	}
+	if result.PreviousTurnID != "" {
+		rows = append(rows, keyValue{Label: "Previous Turn", Value: result.PreviousTurnID})
+	}
+	if result.NewTurnID != "" {
+		rows = append(rows, keyValue{Label: "New Turn", Value: result.NewTurnID})
+	}
+	if result.CanceledQueuedEntries > 0 {
+		rows = append(rows, keyValue{Label: "Canceled Queued", Value: strconv.Itoa(result.CanceledQueuedEntries)})
+	}
+	if result.FallbackModeIfNoToolResult != "" {
+		rows = append(rows, keyValue{Label: "Fallback Mode", Value: string(result.FallbackModeIfNoToolResult)})
+	}
+	rows = append(rows,
+		keyValue{Label: "Queued", Value: strconv.FormatBool(result.Queued)},
+		keyValue{Label: "Staged", Value: strconv.FormatBool(result.Staged)},
+		keyValue{Label: "Interrupted", Value: strconv.FormatBool(result.Interrupted)},
+	)
+	return rows
+}
+
+func sessionPromptFields() []string {
+	return []string{
+		sessionStatusKey,
+		"mode",
+		"queued",
+		"staged",
+		"interrupted",
+		"queue_entry_id",
+		"queue_position",
+		"queue_generation",
+		"previous_turn_id",
+		"new_turn_id",
+		"canceled_queued_entries",
+		"fallback_mode_if_no_tool_result",
+	}
+}
+
+func sessionPromptValues(result SessionPromptResultRecord) []string {
+	return []string{
+		result.Status,
+		string(result.Mode),
+		strconv.FormatBool(result.Queued),
+		strconv.FormatBool(result.Staged),
+		strconv.FormatBool(result.Interrupted),
+		result.QueueEntryID,
+		strconv.Itoa(result.QueuePosition),
+		strconv.FormatInt(result.QueueGeneration, 10),
+		result.PreviousTurnID,
+		result.NewTurnID,
+		strconv.Itoa(result.CanceledQueuedEntries),
+		string(result.FallbackModeIfNoToolResult),
+	}
 }
 
 func filterActiveSessions(items []SessionRecord) []SessionRecord {

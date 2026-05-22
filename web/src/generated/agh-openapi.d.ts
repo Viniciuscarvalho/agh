@@ -714,6 +714,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/bridges/{id}/resolve": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Resolve a bridge target name without sending */
+    post: operations["resolveBridgeTarget"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/bridges/{id}/restart": {
     parameters: {
       query?: never;
@@ -778,6 +795,23 @@ export interface paths {
     post?: never;
     /** Delete one bridge secret binding */
     delete: operations["deleteBridgeSecretBinding"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/bridges/{id}/targets": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List discovered targets for a bridge instance */
+    get: operations["listBridgeTargets"];
+    put?: never;
+    post?: never;
+    delete?: never;
     options?: never;
     head?: never;
     patch?: never;
@@ -888,15 +922,15 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/api/daemon/status": {
+  "/api/doctor": {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /** Get the daemon status snapshot */
-    get: operations["getDaemonStatus"];
+    /** Run runtime diagnostics */
+    get: operations["getDoctor"];
     put?: never;
     post?: never;
     delete?: never;
@@ -915,8 +949,25 @@ export interface paths {
     /** List installed extensions */
     get: operations["listExtensions"];
     put?: never;
-    /** Install an extension by path and checksum */
+    /** Install a local or marketplace extension */
     post: operations["installExtension"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/extensions/marketplace": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Search configured extension marketplace sources */
+    get: operations["searchExtensionMarketplace"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -932,9 +983,11 @@ export interface paths {
     };
     /** Get one installed extension */
     get: operations["getExtension"];
-    put?: never;
+    /** Update one marketplace-installed extension */
+    put: operations["updateExtension"];
     post?: never;
-    delete?: never;
+    /** Remove one managed extension */
+    delete: operations["removeExtension"];
     options?: never;
     head?: never;
     patch?: never;
@@ -974,6 +1027,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/extensions/{name}/provenance": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get extension provenance and trust evidence */
+    get: operations["getExtensionProvenance"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/hooks/catalog": {
     parameters: {
       query?: never;
@@ -1000,6 +1070,40 @@ export interface paths {
     };
     /** List supported hook taxonomy metadata */
     get: operations["getHookEvents"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/logs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List runtime logs */
+    get: operations["listLogs"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/logs/stream": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Stream runtime logs */
+    get: operations["streamLogs"];
     put?: never;
     post?: never;
     delete?: never;
@@ -1572,6 +1676,108 @@ export interface paths {
     patch: operations["editMemory"];
     trace?: never;
   };
+  "/api/model-catalog/models": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List provider model catalog entries across providers */
+    get: operations["listProviderModels"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/model-catalog/models/refresh": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Refresh provider model catalog sources across providers */
+    post: operations["refreshProviderModels"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/model-catalog/providers/{provider_id}/models": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List provider model catalog entries for one provider */
+    get: operations["listProviderModelsByProvider"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/model-catalog/providers/{provider_id}/models/refresh": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Refresh provider model catalog sources for one provider */
+    post: operations["refreshProviderModelsByProvider"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/model-catalog/providers/{provider_id}/models/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List provider model catalog source status for one provider */
+    get: operations["getProviderModelStatusByProvider"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/model-catalog/sources/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List provider model catalog source status across providers */
+    get: operations["getProviderModelStatus"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/network/status": {
     parameters: {
       query?: never;
@@ -1589,18 +1795,38 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/api/observe/health": {
+  "/api/notifications/presets": {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /** Get daemon health and memory health */
-    get: operations["getObserveHealth"];
+    /** List notification presets */
+    get: operations["listNotificationPresets"];
     put?: never;
-    post?: never;
+    /** Create a notification preset */
+    post: operations["createNotificationPreset"];
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/notifications/presets/{name}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get one notification preset */
+    get: operations["getNotificationPreset"];
+    /** Update one notification preset */
+    put: operations["updateNotificationPreset"];
+    post?: never;
+    /** Delete one custom notification preset */
+    delete: operations["deleteNotificationPreset"];
     options?: never;
     head?: never;
     patch?: never;
@@ -1657,15 +1883,15 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/api/providers/models": {
+  "/api/providers": {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /** List provider model catalog entries across providers */
-    get: operations["listProviderModels"];
+    /** List providers and declared auth status */
+    get: operations["listProviders"];
     put?: never;
     post?: never;
     delete?: never;
@@ -1674,7 +1900,24 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/api/providers/models/refresh": {
+  "/api/providers/{provider_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get one provider and declared auth status */
+    get: operations["getProvider"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/providers/{provider_id}/auth/probe": {
     parameters: {
       query?: never;
       header?: never;
@@ -1683,76 +1926,8 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Refresh provider model catalog sources across providers */
-    post: operations["refreshProviderModels"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/providers/models/status": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List provider model catalog source status across providers */
-    get: operations["getProviderModelStatus"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/providers/{provider_id}/models": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List provider model catalog entries for one provider */
-    get: operations["listProviderModelsByProvider"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/providers/{provider_id}/models/refresh": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Refresh provider model catalog sources for one provider */
-    post: operations["refreshProviderModelsByProvider"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/providers/{provider_id}/models/status": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List provider model catalog source status for one provider */
-    get: operations["getProviderModelStatusByProvider"];
-    put?: never;
-    post?: never;
+    /** Run a non-interactive provider auth status probe */
+    post: operations["probeProviderAuth"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1812,6 +1987,193 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/runs/bulk/fail": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Force fail a bounded set of queued or claimed task runs */
+    post: operations["bulkForceFailTaskRuns"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/runs/bulk/release": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Force release a bounded set of claimed task runs */
+    post: operations["bulkForceReleaseTaskRuns"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/runs/{id}/fail": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Force fail one queued or claimed task run */
+    post: operations["forceFailTaskRun"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/runs/{id}/inspect": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Inspect one task run with diagnostics */
+    get: operations["inspectRun"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/runs/{id}/release": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Force release one claimed task run */
+    post: operations["forceReleaseTaskRun"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/runs/{id}/retry": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Retry one failed task run */
+    post: operations["retryTaskRun"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/scheduler": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get scheduler pause state and queue pressure */
+    get: operations["getScheduler"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/scheduler/backlog": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List queued scheduler backlog rows */
+    get: operations["getSchedulerBacklog"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/scheduler/drain": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Pause the scheduler and wait for active claims to drain */
+    post: operations["drainScheduler"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/scheduler/pause": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Pause scheduler dispatch and task-run claims */
+    post: operations["pauseScheduler"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/scheduler/resume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Resume scheduler dispatch and task-run claims */
+    post: operations["resumeScheduler"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/sessions": {
     parameters: {
       query?: never;
@@ -1856,6 +2218,23 @@ export interface paths {
     };
     /** Get the persisted status for one daemon restart operation */
     get: operations["getSettingsRestartStatus"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/settings/apply": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List config apply records for desired and active generation reconciliation */
+    get: operations["listSettingsApplyRecords"];
     put?: never;
     post?: never;
     delete?: never;
@@ -2090,6 +2469,23 @@ export interface paths {
     post?: never;
     /** Delete one settings-backed provider overlay */
     delete: operations["deleteSettingsProvider"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/settings/reload": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Reconcile config.toml with the daemon active generation */
+    post: operations["reloadSettings"];
+    delete?: never;
     options?: never;
     head?: never;
     patch?: never;
@@ -2330,6 +2726,91 @@ export interface paths {
     put?: never;
     /** Enable one skill */
     post: operations["enableSkill"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/skills/{name}/shadows": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get resolver provenance and shadow declarations for one skill */
+    get: operations["getSkillShadows"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get the runtime status snapshot */
+    get: operations["getStatus"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/support/bundles": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create a support bundle */
+    post: operations["createSupportBundle"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/support/bundles/{operation_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get support bundle operation status */
+    get: operations["getSupportBundle"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/support/bundles/{operation_id}/download": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Download a completed support bundle archive */
+    get: operations["downloadSupportBundle"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -2648,6 +3129,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/tasks/{id}/inspect": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Inspect one task with diagnostics */
+    get: operations["inspectTask"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/tasks/{id}/notifications/bridges": {
     parameters: {
       query?: never;
@@ -2684,6 +3182,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/tasks/{id}/pause": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Pause one task for future scheduler claims */
+    post: operations["pauseTask"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/tasks/{id}/publish": {
     parameters: {
       query?: never;
@@ -2712,6 +3227,23 @@ export interface paths {
     put?: never;
     /** Reject one approval-gated task */
     post: operations["rejectTask"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/tasks/{id}/resume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Resume one paused task for future scheduler claims */
+    post: operations["resumeTask"];
     delete?: never;
     options?: never;
     head?: never;
@@ -3405,23 +3937,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/api/workspaces/{workspace_id}/observe/events": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List observability events */
-    get: operations["listObserveEvents"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/api/workspaces/{workspace_id}/sessions/{session_id}": {
     parameters: {
       query?: never;
@@ -3451,6 +3966,23 @@ export interface paths {
     put?: never;
     /** Approve or deny an interactive permission request */
     post: operations["approveSession"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/workspaces/{workspace_id}/sessions/{session_id}/attach": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Attach to a resumable live session */
+    post: operations["attachSession"];
     delete?: never;
     options?: never;
     head?: never;
@@ -3525,6 +4057,74 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/workspaces/{workspace_id}/sessions/{session_id}/interrupt": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Interrupt the active prompt turn for a session */
+    post: operations["interruptSessionPrompt"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/workspaces/{workspace_id}/sessions/{session_id}/prompt": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Send, queue, interrupt, or steer a session prompt */
+    post: operations["sendSessionPrompt"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/workspaces/{workspace_id}/sessions/{session_id}/prompt/queue/{queue_entry_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Cancel a queued session prompt entry */
+    delete: operations["cancelQueuedSessionPrompt"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/workspaces/{workspace_id}/sessions/{session_id}/recap": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get a deterministic session recap */
+    get: operations["getSessionRecap"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/workspaces/{workspace_id}/sessions/{session_id}/repair": {
     parameters: {
       query?: never;
@@ -3536,23 +4136,6 @@ export interface paths {
     put?: never;
     /** Inspect and repair an interrupted session transcript */
     post: operations["repairSession"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/workspaces/{workspace_id}/sessions/{session_id}/resume": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Resume a stopped session */
-    post: operations["resumeSession"];
     delete?: never;
     options?: never;
     head?: never;
@@ -3587,6 +4170,23 @@ export interface paths {
     get: operations["getSessionStatus"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/workspaces/{workspace_id}/sessions/{session_id}/steer": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Stage steering input for the active session turn */
+    post: operations["steerSessionPrompt"];
     delete?: never;
     options?: never;
     head?: never;
@@ -3720,6 +4320,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -3731,6 +4345,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -3742,6 +4370,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -3753,6 +4395,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -3847,6 +4503,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -3858,6 +4528,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -3869,6 +4553,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -3880,6 +4578,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -3891,6 +4603,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -3902,6 +4628,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -3976,6 +4716,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -3987,6 +4741,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -3998,6 +4766,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -4009,6 +4791,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -4020,6 +4816,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -4031,6 +4841,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -4042,6 +4866,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -4138,6 +4976,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -4149,6 +5001,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -4160,6 +5026,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -4171,6 +5051,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -4182,6 +5076,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -4193,6 +5101,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -4412,12 +5334,14 @@ export interface operations {
                     /** Format: date-time */
                     ended_at: string;
                     error?: string;
+                    failure_kind?: string;
                     /** Format: date-time */
                     heartbeat_at: string;
                     id: string;
                     /** Format: date-time */
                     lease_until: string;
                     max_attempts: number;
+                    previous_run_id?: string;
                     /** Format: date-time */
                     queued_at: string;
                     session_id?: string;
@@ -4517,12 +5441,14 @@ export interface operations {
                     /** Format: date-time */
                     ended_at: string;
                     error?: string;
+                    failure_kind?: string;
                     /** Format: date-time */
                     heartbeat_at: string;
                     id: string;
                     /** Format: date-time */
                     lease_until: string;
                     max_attempts: number;
+                    previous_run_id?: string;
                     /** Format: date-time */
                     queued_at: string;
                     session_id?: string;
@@ -4588,12 +5514,14 @@ export interface operations {
                       /** Format: date-time */
                       ended_at: string;
                       error?: string;
+                      failure_kind?: string;
                       /** Format: date-time */
                       heartbeat_at: string;
                       id: string;
                       /** Format: date-time */
                       lease_until: string;
                       max_attempts: number;
+                      previous_run_id?: string;
                       /** Format: date-time */
                       queued_at: string;
                       session_id?: string;
@@ -4613,6 +5541,7 @@ export interface operations {
                     /** Format: int64 */
                     sequence: number;
                     task: {
+                      effective_paused?: boolean;
                       id: string;
                       identifier?: string;
                       /** Format: int64 */
@@ -4628,6 +5557,8 @@ export interface operations {
                           | "pool";
                         ref: string;
                       } | null;
+                      paused?: boolean;
+                      paused_by_task_id?: string;
                       /** @enum {string} */
                       priority?: "low" | "medium" | "high" | "urgent";
                       /** @enum {string} */
@@ -4669,6 +5600,7 @@ export interface operations {
                     status: string;
                   }[];
                   task: {
+                    effective_paused?: boolean;
                     id: string;
                     identifier?: string;
                     /** Format: int64 */
@@ -4684,6 +5616,8 @@ export interface operations {
                         | "pool";
                       ref: string;
                     } | null;
+                    paused?: boolean;
+                    paused_by_task_id?: string;
                     /** @enum {string} */
                     priority?: "low" | "medium" | "high" | "urgent";
                     /** @enum {string} */
@@ -4755,6 +5689,7 @@ export interface operations {
                   task_id: string;
                 } | null;
                 task?: {
+                  effective_paused?: boolean;
                   id: string;
                   identifier?: string;
                   /** Format: int64 */
@@ -4770,6 +5705,8 @@ export interface operations {
                       | "pool";
                     ref: string;
                   } | null;
+                  paused?: boolean;
+                  paused_by_task_id?: string;
                   /** @enum {string} */
                   priority?: "low" | "medium" | "high" | "urgent";
                   /** @enum {string} */
@@ -4804,6 +5741,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -4815,6 +5766,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -4826,6 +5791,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -4837,6 +5816,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -4848,6 +5841,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -4865,8 +5872,6 @@ export interface operations {
       query?: {
         /** @description Workspace id or path */
         workspace?: string;
-        /** @description Include metadata-only session health when available */
-        include_health?: boolean;
       };
       header?: never;
       path?: never;
@@ -4904,6 +5909,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -4915,6 +5934,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -4926,6 +5959,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -4937,6 +5984,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -4948,6 +6009,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -5133,6 +6208,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -5144,6 +6233,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -5155,6 +6258,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -5166,6 +6283,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -5177,6 +6308,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -5269,6 +6414,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -5280,6 +6439,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -5291,6 +6464,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -5302,6 +6489,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -5313,6 +6514,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -5414,6 +6629,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -5425,6 +6654,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -5436,6 +6679,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -5511,6 +6768,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -5640,6 +6911,11 @@ export interface operations {
                   turn_started_at?: string | null;
                 } | null;
                 agent_name: string;
+                /** Format: date-time */
+                attach_expires_at?: string | null;
+                attachable: boolean;
+                attached_to?: string;
+                badge: string;
                 channel?: string;
                 /** Format: date-time */
                 created_at: string;
@@ -5747,6 +7023,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -5758,6 +7048,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -5769,6 +7073,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -5780,6 +7098,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -5791,6 +7123,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -5802,6 +7148,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -5958,6 +7318,7 @@ export interface operations {
                 /** Format: date-time */
                 ended_at?: string | null;
                 error?: string;
+                failure_kind?: string;
                 /** Format: date-time */
                 heartbeat_at?: string | null;
                 id: string;
@@ -5980,6 +7341,7 @@ export interface operations {
                     | "daemon";
                   ref: string;
                 };
+                previous_run_id?: string;
                 /** Format: date-time */
                 queued_at: string;
                 result?: unknown;
@@ -5998,6 +7360,7 @@ export interface operations {
                 task_id: string;
               };
               task: {
+                effective_paused?: boolean;
                 id: string;
                 identifier?: string;
                 /** Format: int64 */
@@ -6013,6 +7376,8 @@ export interface operations {
                     | "pool";
                   ref: string;
                 } | null;
+                paused?: boolean;
+                paused_by_task_id?: string;
                 /** @enum {string} */
                 priority?: "low" | "medium" | "high" | "urgent";
                 /** @enum {string} */
@@ -6048,6 +7413,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6059,6 +7438,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6070,6 +7463,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6081,6 +7488,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6092,6 +7513,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6103,6 +7538,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6203,6 +7652,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6214,6 +7677,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6225,6 +7702,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6236,6 +7727,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6247,6 +7752,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6258,6 +7777,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6269,6 +7802,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6370,6 +7917,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6381,6 +7942,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6392,6 +7967,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6403,6 +7992,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6414,6 +8017,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6425,6 +8042,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6436,6 +8067,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6537,6 +8182,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6548,6 +8207,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6559,6 +8232,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6570,6 +8257,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6581,6 +8282,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6592,6 +8307,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6603,6 +8332,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6703,6 +8446,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6714,6 +8471,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6725,6 +8496,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6736,6 +8521,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6747,6 +8546,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6758,6 +8571,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6769,6 +8596,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6851,6 +8692,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6955,6 +8810,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6966,6 +8835,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6977,6 +8860,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6988,6 +8885,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -6999,6 +8910,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -7010,6 +8935,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -7190,6 +9129,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -7201,6 +9154,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -7358,6 +9325,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -7564,6 +9545,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -7575,6 +9570,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -7586,6 +9595,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -7743,6 +9766,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -7947,6 +9984,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -7958,6 +10009,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -7969,6 +10034,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -7980,6 +10059,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -7991,6 +10084,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -8057,6 +10164,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -8068,6 +10189,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -8079,6 +10214,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -8090,6 +10239,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -8297,6 +10460,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -8308,6 +10485,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -8319,6 +10510,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -8476,6 +10681,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -8660,6 +10879,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -8671,6 +10904,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -8682,6 +10929,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -8693,6 +10954,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -8878,6 +11153,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -8889,6 +11178,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -9046,6 +11349,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -9137,6 +11454,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -9148,6 +11479,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -9207,6 +11552,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -9218,6 +11577,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -9316,6 +11689,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -9327,6 +11714,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -9338,6 +11739,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -9349,6 +11764,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -9487,6 +11916,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -9498,6 +11941,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -9509,6 +11966,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -9584,6 +12055,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -9720,6 +12205,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -9731,6 +12230,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -9742,6 +12255,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -9753,6 +12280,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -9764,6 +12305,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -9844,6 +12399,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -9855,6 +12424,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -9866,6 +12449,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -9877,6 +12474,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -10015,6 +12626,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -10026,6 +12651,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -10037,6 +12676,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -10112,6 +12765,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -10215,6 +12882,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -10226,6 +12907,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -10301,6 +12996,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -10386,6 +13095,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -10397,6 +13120,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -10514,6 +13251,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -10525,6 +13276,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -10536,6 +13301,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -10690,6 +13469,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -10701,6 +13494,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -10712,6 +13519,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -10723,6 +13544,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -10834,6 +13669,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -10845,6 +13694,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -10856,6 +13719,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -10894,6 +13771,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -10905,6 +13796,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -10916,6 +13821,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -10927,6 +13846,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11082,6 +14015,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11093,6 +14040,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11104,6 +14065,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11115,6 +14090,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11126,6 +14115,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11198,6 +14201,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11209,6 +14226,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11220,6 +14251,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11231,6 +14276,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11294,6 +14353,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11305,6 +14378,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11316,6 +14403,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11327,6 +14428,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11400,6 +14515,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11411,6 +14540,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11422,6 +14565,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11485,6 +14642,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11496,6 +14667,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11507,6 +14692,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11590,6 +14789,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11601,6 +14814,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11612,6 +14839,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11714,6 +14955,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11725,6 +14980,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11736,6 +15005,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11747,6 +15030,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11822,6 +15119,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11833,6 +15144,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11844,6 +15169,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11882,6 +15221,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11893,6 +15246,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11904,6 +15271,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -11915,6 +15296,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12018,6 +15413,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12029,6 +15438,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12040,6 +15463,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12051,6 +15488,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12062,6 +15513,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12134,6 +15599,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12145,6 +15624,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12156,6 +15649,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12167,6 +15674,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12289,6 +15810,7 @@ export interface operations {
               enabled: boolean;
               extension_name: string;
               id: string;
+              notification_suppress: boolean;
               platform: string;
               provider_config?: {
                 [key: string]: unknown;
@@ -12318,6 +15840,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12329,6 +15865,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12340,6 +15890,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12375,6 +15939,7 @@ export interface operations {
           dm_policy?: "open" | "allowlist" | "pairing";
           enabled: boolean;
           extension_name: string;
+          notification_suppress?: boolean;
           platform: string;
           provider_config?: {
             [key: string]: unknown;
@@ -12424,6 +15989,7 @@ export interface operations {
               enabled: boolean;
               extension_name: string;
               id: string;
+              notification_suppress: boolean;
               platform: string;
               provider_config?: {
                 [key: string]: unknown;
@@ -12506,6 +16072,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12517,6 +16097,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12528,6 +16122,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12539,6 +16147,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12596,6 +16218,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12607,6 +16243,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12664,6 +16314,7 @@ export interface operations {
               enabled: boolean;
               extension_name: string;
               id: string;
+              notification_suppress: boolean;
               platform: string;
               provider_config?: {
                 [key: string]: unknown;
@@ -12746,6 +16397,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12757,6 +16422,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12768,6 +16447,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12815,6 +16508,7 @@ export interface operations {
           display_name?: string | null;
           /** @enum {string} */
           dm_policy?: "open" | "allowlist" | "pairing";
+          notification_suppress?: boolean | null;
           provider_config?: {
             [key: string]: unknown;
           } | null;
@@ -12860,6 +16554,7 @@ export interface operations {
               enabled: boolean;
               extension_name: string;
               id: string;
+              notification_suppress: boolean;
               platform: string;
               provider_config?: {
                 [key: string]: unknown;
@@ -12942,6 +16637,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12953,6 +16662,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12964,6 +16687,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -12975,6 +16712,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13032,6 +16783,7 @@ export interface operations {
               enabled: boolean;
               extension_name: string;
               id: string;
+              notification_suppress: boolean;
               platform: string;
               provider_config?: {
                 [key: string]: unknown;
@@ -13114,6 +16866,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13125,6 +16891,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13136,6 +16916,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13147,6 +16941,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13204,6 +17012,7 @@ export interface operations {
               enabled: boolean;
               extension_name: string;
               id: string;
+              notification_suppress: boolean;
               platform: string;
               provider_config?: {
                 [key: string]: unknown;
@@ -13286,6 +17095,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13297,6 +17120,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13308,6 +17145,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13319,6 +17170,284 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  resolveBridgeTarget: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Bridge instance id */
+        id: string;
+      };
+      cookie?: never;
+    };
+    /** @description JSON request body */
+    requestBody: {
+      content: {
+        "application/json": {
+          name: string;
+        };
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            result: {
+              ambiguous: boolean;
+              candidates?: {
+                bridge_id: string;
+                canonical_route: string;
+                capabilities: string[];
+                display_name: string;
+                /** Format: date-time */
+                last_seen_at: string;
+                normalized: string;
+                qualifier?: string;
+                target_type: string;
+                /** Format: date-time */
+                updated_at: string;
+              }[];
+              match?: {
+                bridge_id: string;
+                canonical_route: string;
+                capabilities: string[];
+                display_name: string;
+                /** Format: date-time */
+                last_seen_at: string;
+                normalized: string;
+                qualifier?: string;
+                target_type: string;
+                /** Format: date-time */
+                updated_at: string;
+              } | null;
+              step: number;
+            };
+          };
+        };
+      };
+      /** @description Invalid target resolve request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Bridge instance or target not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            result: {
+              ambiguous: boolean;
+              candidates?: {
+                bridge_id: string;
+                canonical_route: string;
+                capabilities: string[];
+                display_name: string;
+                /** Format: date-time */
+                last_seen_at: string;
+                normalized: string;
+                qualifier?: string;
+                target_type: string;
+                /** Format: date-time */
+                updated_at: string;
+              }[];
+              match?: {
+                bridge_id: string;
+                canonical_route: string;
+                capabilities: string[];
+                display_name: string;
+                /** Format: date-time */
+                last_seen_at: string;
+                normalized: string;
+                qualifier?: string;
+                target_type: string;
+                /** Format: date-time */
+                updated_at: string;
+              } | null;
+              step: number;
+            };
+          };
+        };
+      };
+      /** @description Bridge target lookup is ambiguous */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            result: {
+              ambiguous: boolean;
+              candidates?: {
+                bridge_id: string;
+                canonical_route: string;
+                capabilities: string[];
+                display_name: string;
+                /** Format: date-time */
+                last_seen_at: string;
+                normalized: string;
+                qualifier?: string;
+                target_type: string;
+                /** Format: date-time */
+                updated_at: string;
+              }[];
+              match?: {
+                bridge_id: string;
+                canonical_route: string;
+                capabilities: string[];
+                display_name: string;
+                /** Format: date-time */
+                last_seen_at: string;
+                normalized: string;
+                qualifier?: string;
+                target_type: string;
+                /** Format: date-time */
+                updated_at: string;
+              } | null;
+              step: number;
+            };
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Bridge service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13376,6 +17505,7 @@ export interface operations {
               enabled: boolean;
               extension_name: string;
               id: string;
+              notification_suppress: boolean;
               platform: string;
               provider_config?: {
                 [key: string]: unknown;
@@ -13458,6 +17588,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13469,6 +17613,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13480,6 +17638,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13491,6 +17663,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13550,6 +17736,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13561,6 +17761,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13572,6 +17786,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13623,6 +17851,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13634,6 +17876,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13645,6 +17901,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13707,6 +17977,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13718,6 +18002,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13729,6 +18027,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13740,6 +18052,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13751,6 +18077,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13791,6 +18131,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13802,6 +18156,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13813,6 +18181,150 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listBridgeTargets: {
+    parameters: {
+      query?: {
+        /** @description Filter targets by display name, qualifier, or route */
+        q?: string;
+        /** @description Maximum targets to return */
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Bridge instance id */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            bridge_id: string;
+            cache_stale: boolean;
+            /** Format: date-time */
+            generated_at: string;
+            /** Format: date-time */
+            last_successful_refresh_at?: string | null;
+            targets: {
+              bridge_id: string;
+              canonical_route: string;
+              capabilities: string[];
+              display_name: string;
+              /** Format: date-time */
+              last_seen_at: string;
+              normalized: string;
+              qualifier?: string;
+              target_type: string;
+              /** Format: date-time */
+              updated_at: string;
+            }[];
+            total: number;
+          };
+        };
+      };
+      /** @description Bridge instance not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Bridge service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13879,6 +18391,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13890,6 +18416,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13901,6 +18441,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13912,6 +18466,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -13923,6 +18491,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14020,6 +18602,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14031,6 +18627,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14140,6 +18750,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14151,6 +18775,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14162,6 +18800,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14173,6 +18825,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14184,6 +18850,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14195,6 +18875,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14295,6 +18989,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14306,6 +19014,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14317,6 +19039,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14355,6 +19091,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14366,6 +19116,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14377,6 +19141,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14484,6 +19262,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14495,6 +19287,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14506,6 +19312,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14517,6 +19337,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14528,6 +19362,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14585,6 +19433,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14596,6 +19458,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14649,6 +19525,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14660,6 +19550,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14769,6 +19673,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14780,6 +19698,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14791,6 +19723,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14802,6 +19748,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14813,6 +19773,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14824,6 +19798,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14836,9 +19824,16 @@ export interface operations {
       };
     };
   };
-  getDaemonStatus: {
+  getDoctor: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Comma-separated probe ids or categories to include */
+        only?: string;
+        /** @description Comma-separated probe ids or categories to exclude */
+        exclude?: string;
+        /** @description Omit OK diagnostics */
+        quiet?: boolean;
+      };
       header?: never;
       path?: never;
       cookie?: never;
@@ -14852,79 +19847,31 @@ export interface operations {
         };
         content: {
           "application/json": {
-            daemon: {
-              active_sessions: number;
-              http_host: string;
-              http_port: number;
-              network?: {
-                channels?: number;
-                configured_default_channel?: string;
-                /** Format: int64 */
-                conversation_messages?: number;
-                declared_channels?: {
-                  activation_id?: string;
-                  bundle_name?: string;
-                  description?: string;
-                  extension_name?: string;
-                  name: string;
-                  primary?: boolean;
-                  profile_name?: string;
-                  workspace_id?: string;
-                }[];
-                delivery_workers?: number;
-                /** Format: int64 */
-                direct_resolves?: number;
-                effective_default_channel?: string;
-                effective_default_source?: string;
-                enabled: boolean;
-                /** Format: int64 */
-                handoff_tagged_events?: number;
-                kind_metrics?: {
-                  /** Format: int64 */
-                  delivered?: number;
-                  kind: string;
-                  /** Format: int64 */
-                  received?: number;
-                  /** Format: int64 */
-                  rejected?: number;
-                  /** Format: int64 */
-                  sent?: number;
-                }[];
-                last_disconnect?: string;
-                listener_host?: string;
-                listener_port?: number;
-                local_peers?: number;
-                /** Format: int64 */
-                messages_delivered?: number;
-                /** Format: int64 */
-                messages_received?: number;
-                /** Format: int64 */
-                messages_rejected?: number;
-                /** Format: int64 */
-                messages_sent?: number;
-                /** Format: int64 */
-                open_direct_rooms?: number;
-                /** Format: int64 */
-                open_threads?: number;
-                /** Format: int64 */
-                open_work_items?: number;
-                queued_messages?: number;
-                queued_sessions?: number;
-                remote_peers?: number;
-                status: string;
-                /** Format: int64 */
-                work_transitions?: number;
-                /** Format: int64 */
-                workflow_tagged_events?: number;
-              } | null;
-              pid: number;
-              socket: string;
-              /** Format: date-time */
-              started_at: string;
-              status: string;
-              total_sessions: number;
-              user_home_dir: string;
-              version?: string;
+            /** Format: int64 */
+            duration_ms: number;
+            /** Format: date-time */
+            generated_at: string;
+            items: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            }[];
+            schema_version: string;
+            status: string;
+            summary: {
+              counts_by_severity: {
+                [key: string]: number;
+              };
+              total: number;
             };
           };
         };
@@ -14936,6 +19883,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -14973,6 +19934,20 @@ export interface operations {
               }[];
               capabilities?: string[];
               daemon_running: boolean;
+              diagnostics?: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              }[];
               enabled: boolean;
               health?: string;
               health_message?: string;
@@ -14980,9 +19955,76 @@ export interface operations {
               missing_env?: string[];
               name: string;
               pid?: number;
+              provenance?: {
+                allow_unverified: boolean;
+                checksum_sha256: string;
+                checksum_verified: boolean;
+                /** Format: date-time */
+                installed_at: string;
+                installed_by: string;
+                installed_from: string;
+                permissions?: string[];
+                registry_tier: string;
+                slug?: string;
+                source_url?: string;
+                trust?: {
+                  allow_unverified: boolean;
+                  checksum_verified: boolean;
+                  decision: string;
+                  registry_tier: string;
+                  warnings?: {
+                    category: string;
+                    code: string;
+                    data_freshness: string;
+                    doc_url?: string;
+                    evidence?: {
+                      [key: string]: unknown;
+                    };
+                    id: string;
+                    message: string;
+                    severity: string;
+                    suggested_command?: string;
+                    title: string;
+                  }[];
+                } | null;
+                warnings?: {
+                  category: string;
+                  code: string;
+                  data_freshness: string;
+                  doc_url?: string;
+                  evidence?: {
+                    [key: string]: unknown;
+                  };
+                  id: string;
+                  message: string;
+                  severity: string;
+                  suggested_command?: string;
+                  title: string;
+                }[];
+              } | null;
               requires_env?: string[];
               source: string;
               state: string;
+              trust?: {
+                allow_unverified: boolean;
+                checksum_verified: boolean;
+                decision: string;
+                registry_tier: string;
+                warnings?: {
+                  category: string;
+                  code: string;
+                  data_freshness: string;
+                  doc_url?: string;
+                  evidence?: {
+                    [key: string]: unknown;
+                  };
+                  id: string;
+                  message: string;
+                  severity: string;
+                  suggested_command?: string;
+                  title: string;
+                }[];
+              } | null;
               type: string;
               /** Format: int64 */
               uptime_seconds?: number;
@@ -14998,6 +20040,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -15009,6 +20065,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -15032,8 +20102,13 @@ export interface operations {
     requestBody: {
       content: {
         "application/json": {
-          checksum: string;
-          path: string;
+          allow_unverified?: boolean;
+          asset?: string;
+          checksum?: string;
+          path?: string;
+          slug?: string;
+          source?: string;
+          version?: string;
         };
       };
     };
@@ -15054,6 +20129,20 @@ export interface operations {
               }[];
               capabilities?: string[];
               daemon_running: boolean;
+              diagnostics?: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              }[];
               enabled: boolean;
               health?: string;
               health_message?: string;
@@ -15061,9 +20150,76 @@ export interface operations {
               missing_env?: string[];
               name: string;
               pid?: number;
+              provenance?: {
+                allow_unverified: boolean;
+                checksum_sha256: string;
+                checksum_verified: boolean;
+                /** Format: date-time */
+                installed_at: string;
+                installed_by: string;
+                installed_from: string;
+                permissions?: string[];
+                registry_tier: string;
+                slug?: string;
+                source_url?: string;
+                trust?: {
+                  allow_unverified: boolean;
+                  checksum_verified: boolean;
+                  decision: string;
+                  registry_tier: string;
+                  warnings?: {
+                    category: string;
+                    code: string;
+                    data_freshness: string;
+                    doc_url?: string;
+                    evidence?: {
+                      [key: string]: unknown;
+                    };
+                    id: string;
+                    message: string;
+                    severity: string;
+                    suggested_command?: string;
+                    title: string;
+                  }[];
+                } | null;
+                warnings?: {
+                  category: string;
+                  code: string;
+                  data_freshness: string;
+                  doc_url?: string;
+                  evidence?: {
+                    [key: string]: unknown;
+                  };
+                  id: string;
+                  message: string;
+                  severity: string;
+                  suggested_command?: string;
+                  title: string;
+                }[];
+              } | null;
               requires_env?: string[];
               source: string;
               state: string;
+              trust?: {
+                allow_unverified: boolean;
+                checksum_verified: boolean;
+                decision: string;
+                registry_tier: string;
+                warnings?: {
+                  category: string;
+                  code: string;
+                  data_freshness: string;
+                  doc_url?: string;
+                  evidence?: {
+                    [key: string]: unknown;
+                  };
+                  id: string;
+                  message: string;
+                  severity: string;
+                  suggested_command?: string;
+                  title: string;
+                }[];
+              } | null;
               type: string;
               /** Format: int64 */
               uptime_seconds?: number;
@@ -15079,6 +20235,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -15090,6 +20260,45 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Extension trust decision required */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -15101,6 +20310,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -15112,6 +20335,159 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  searchExtensionMarketplace: {
+    parameters: {
+      query?: {
+        /** @description Search query */
+        q?: string;
+        /** @description Marketplace source filter */
+        source?: string;
+        /** @description Maximum number of results */
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            extensions: {
+              author?: string;
+              description?: string;
+              downloads?: number;
+              name: string;
+              slug: string;
+              source: string;
+              trust?: {
+                allow_unverified: boolean;
+                checksum_verified: boolean;
+                decision: string;
+                registry_tier: string;
+                warnings?: {
+                  category: string;
+                  code: string;
+                  data_freshness: string;
+                  doc_url?: string;
+                  evidence?: {
+                    [key: string]: unknown;
+                  };
+                  id: string;
+                  message: string;
+                  severity: string;
+                  suggested_command?: string;
+                  title: string;
+                }[];
+              } | null;
+              type: string;
+              version?: string;
+            }[];
+          };
+        };
+      };
+      /** @description Invalid marketplace request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Extension service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -15152,6 +20528,20 @@ export interface operations {
               }[];
               capabilities?: string[];
               daemon_running: boolean;
+              diagnostics?: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              }[];
               enabled: boolean;
               health?: string;
               health_message?: string;
@@ -15159,9 +20549,76 @@ export interface operations {
               missing_env?: string[];
               name: string;
               pid?: number;
+              provenance?: {
+                allow_unverified: boolean;
+                checksum_sha256: string;
+                checksum_verified: boolean;
+                /** Format: date-time */
+                installed_at: string;
+                installed_by: string;
+                installed_from: string;
+                permissions?: string[];
+                registry_tier: string;
+                slug?: string;
+                source_url?: string;
+                trust?: {
+                  allow_unverified: boolean;
+                  checksum_verified: boolean;
+                  decision: string;
+                  registry_tier: string;
+                  warnings?: {
+                    category: string;
+                    code: string;
+                    data_freshness: string;
+                    doc_url?: string;
+                    evidence?: {
+                      [key: string]: unknown;
+                    };
+                    id: string;
+                    message: string;
+                    severity: string;
+                    suggested_command?: string;
+                    title: string;
+                  }[];
+                } | null;
+                warnings?: {
+                  category: string;
+                  code: string;
+                  data_freshness: string;
+                  doc_url?: string;
+                  evidence?: {
+                    [key: string]: unknown;
+                  };
+                  id: string;
+                  message: string;
+                  severity: string;
+                  suggested_command?: string;
+                  title: string;
+                }[];
+              } | null;
               requires_env?: string[];
               source: string;
               state: string;
+              trust?: {
+                allow_unverified: boolean;
+                checksum_verified: boolean;
+                decision: string;
+                registry_tier: string;
+                warnings?: {
+                  category: string;
+                  code: string;
+                  data_freshness: string;
+                  doc_url?: string;
+                  evidence?: {
+                    [key: string]: unknown;
+                  };
+                  id: string;
+                  message: string;
+                  severity: string;
+                  suggested_command?: string;
+                  title: string;
+                }[];
+              } | null;
               type: string;
               /** Format: int64 */
               uptime_seconds?: number;
@@ -15177,6 +20634,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -15188,6 +20659,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -15199,6 +20684,378 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  updateExtension: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Extension name */
+        name: string;
+      };
+      cookie?: never;
+    };
+    /** @description JSON request body */
+    requestBody: {
+      content: {
+        "application/json": {
+          allow_unverified?: boolean;
+          check_only?: boolean;
+          version?: string;
+        };
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            update: {
+              current_version?: string;
+              latest_version?: string;
+              name: string;
+              path: string;
+              registry: string;
+              slug: string;
+              status: string;
+            };
+          };
+        };
+      };
+      /** @description Invalid update request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Extension not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Extension trust decision required */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Extension service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  removeExtension: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Extension name */
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            extension: {
+              name: string;
+              path: string;
+              status: string;
+            };
+          };
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Extension not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Extension is in use */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Extension service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -15239,6 +21096,20 @@ export interface operations {
               }[];
               capabilities?: string[];
               daemon_running: boolean;
+              diagnostics?: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              }[];
               enabled: boolean;
               health?: string;
               health_message?: string;
@@ -15246,9 +21117,76 @@ export interface operations {
               missing_env?: string[];
               name: string;
               pid?: number;
+              provenance?: {
+                allow_unverified: boolean;
+                checksum_sha256: string;
+                checksum_verified: boolean;
+                /** Format: date-time */
+                installed_at: string;
+                installed_by: string;
+                installed_from: string;
+                permissions?: string[];
+                registry_tier: string;
+                slug?: string;
+                source_url?: string;
+                trust?: {
+                  allow_unverified: boolean;
+                  checksum_verified: boolean;
+                  decision: string;
+                  registry_tier: string;
+                  warnings?: {
+                    category: string;
+                    code: string;
+                    data_freshness: string;
+                    doc_url?: string;
+                    evidence?: {
+                      [key: string]: unknown;
+                    };
+                    id: string;
+                    message: string;
+                    severity: string;
+                    suggested_command?: string;
+                    title: string;
+                  }[];
+                } | null;
+                warnings?: {
+                  category: string;
+                  code: string;
+                  data_freshness: string;
+                  doc_url?: string;
+                  evidence?: {
+                    [key: string]: unknown;
+                  };
+                  id: string;
+                  message: string;
+                  severity: string;
+                  suggested_command?: string;
+                  title: string;
+                }[];
+              } | null;
               requires_env?: string[];
               source: string;
               state: string;
+              trust?: {
+                allow_unverified: boolean;
+                checksum_verified: boolean;
+                decision: string;
+                registry_tier: string;
+                warnings?: {
+                  category: string;
+                  code: string;
+                  data_freshness: string;
+                  doc_url?: string;
+                  evidence?: {
+                    [key: string]: unknown;
+                  };
+                  id: string;
+                  message: string;
+                  severity: string;
+                  suggested_command?: string;
+                  title: string;
+                }[];
+              } | null;
               type: string;
               /** Format: int64 */
               uptime_seconds?: number;
@@ -15264,6 +21202,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -15275,6 +21227,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -15286,6 +21252,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -15297,6 +21277,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -15337,6 +21331,20 @@ export interface operations {
               }[];
               capabilities?: string[];
               daemon_running: boolean;
+              diagnostics?: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              }[];
               enabled: boolean;
               health?: string;
               health_message?: string;
@@ -15344,9 +21352,76 @@ export interface operations {
               missing_env?: string[];
               name: string;
               pid?: number;
+              provenance?: {
+                allow_unverified: boolean;
+                checksum_sha256: string;
+                checksum_verified: boolean;
+                /** Format: date-time */
+                installed_at: string;
+                installed_by: string;
+                installed_from: string;
+                permissions?: string[];
+                registry_tier: string;
+                slug?: string;
+                source_url?: string;
+                trust?: {
+                  allow_unverified: boolean;
+                  checksum_verified: boolean;
+                  decision: string;
+                  registry_tier: string;
+                  warnings?: {
+                    category: string;
+                    code: string;
+                    data_freshness: string;
+                    doc_url?: string;
+                    evidence?: {
+                      [key: string]: unknown;
+                    };
+                    id: string;
+                    message: string;
+                    severity: string;
+                    suggested_command?: string;
+                    title: string;
+                  }[];
+                } | null;
+                warnings?: {
+                  category: string;
+                  code: string;
+                  data_freshness: string;
+                  doc_url?: string;
+                  evidence?: {
+                    [key: string]: unknown;
+                  };
+                  id: string;
+                  message: string;
+                  severity: string;
+                  suggested_command?: string;
+                  title: string;
+                }[];
+              } | null;
               requires_env?: string[];
               source: string;
               state: string;
+              trust?: {
+                allow_unverified: boolean;
+                checksum_verified: boolean;
+                decision: string;
+                registry_tier: string;
+                warnings?: {
+                  category: string;
+                  code: string;
+                  data_freshness: string;
+                  doc_url?: string;
+                  evidence?: {
+                    [key: string]: unknown;
+                  };
+                  id: string;
+                  message: string;
+                  severity: string;
+                  suggested_command?: string;
+                  title: string;
+                }[];
+              } | null;
               type: string;
               /** Format: int64 */
               uptime_seconds?: number;
@@ -15362,6 +21437,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -15373,6 +21462,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -15384,6 +21487,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -15395,6 +21512,172 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getExtensionProvenance: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Extension name */
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            provenance: {
+              allow_unverified: boolean;
+              checksum_sha256: string;
+              checksum_verified: boolean;
+              /** Format: date-time */
+              installed_at: string;
+              installed_by: string;
+              installed_from: string;
+              permissions?: string[];
+              registry_tier: string;
+              slug?: string;
+              source_url?: string;
+              trust?: {
+                allow_unverified: boolean;
+                checksum_verified: boolean;
+                decision: string;
+                registry_tier: string;
+                warnings?: {
+                  category: string;
+                  code: string;
+                  data_freshness: string;
+                  doc_url?: string;
+                  evidence?: {
+                    [key: string]: unknown;
+                  };
+                  id: string;
+                  message: string;
+                  severity: string;
+                  suggested_command?: string;
+                  title: string;
+                }[];
+              } | null;
+              warnings?: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              }[];
+            };
+          };
+        };
+      };
+      /** @description Extension not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Extension service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -15485,7 +21768,9 @@ export interface operations {
           | "network.message.persisted"
           | "network.work.opened"
           | "network.work.transitioned"
-          | "network.work.closed";
+          | "network.work.closed"
+          | "network.peer.joined"
+          | "network.peer.left";
         /** @description Hook source */
         source?: "native" | "config" | "agent_definition" | "skill";
         /** @description Hook mode */
@@ -15569,6 +21854,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -15580,6 +21879,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -15591,6 +21904,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -15651,6 +21978,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -15662,6 +22003,294 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listLogs: {
+    parameters: {
+      query?: {
+        /** @description Workspace id */
+        workspace_id?: string;
+        /** @description Session id */
+        session_id?: string;
+        /** @description Agent name */
+        agent_name?: string;
+        /** @description Event type */
+        type?: string;
+        /** @description Task run id */
+        run?: string;
+        /** @description Actor as kind:id */
+        actor?: string;
+        /** @description Actor kind */
+        actor_kind?: string;
+        /** @description Actor id */
+        actor_id?: string;
+        /** @description Provider id projected at event write time */
+        provider?: string;
+        /** @description Event registry outcome */
+        outcome?: string;
+        /** @description Event registry component */
+        component?: string;
+        /** @description Return warning and failure outcomes only */
+        error_only?: boolean;
+        /** @description Return rows after this event summary sequence */
+        after_seq?: number;
+        /** @description Only logs emitted since this timestamp */
+        since?: string;
+        /** @description Maximum number of records to return */
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            events: {
+              actor_id?: string;
+              actor_kind?: string;
+              agent_name: string;
+              claim_token_hash?: string;
+              component?: string;
+              content?: unknown;
+              coordinator_session_id?: string;
+              hook_event?: string;
+              hook_name?: string;
+              id: string;
+              /** Format: date-time */
+              lease_until?: string | null;
+              outcome?: string;
+              parent_session_id?: string;
+              provider?: string;
+              release_reason?: string;
+              root_session_id?: string;
+              run_id?: string;
+              scheduler_reason?: string;
+              session_id: string;
+              spawn_depth: number;
+              summary?: string;
+              task_id?: string;
+              /** Format: date-time */
+              timestamp: string;
+              type: string;
+              workflow_id?: string;
+              workspace_id?: string;
+            }[];
+          };
+        };
+      };
+      /** @description Invalid filter */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  streamLogs: {
+    parameters: {
+      query?: {
+        /** @description Workspace id */
+        workspace_id?: string;
+        /** @description Session id */
+        session_id?: string;
+        /** @description Agent name */
+        agent_name?: string;
+        /** @description Event type */
+        type?: string;
+        /** @description Task run id */
+        run?: string;
+        /** @description Actor as kind:id */
+        actor?: string;
+        /** @description Actor kind */
+        actor_kind?: string;
+        /** @description Actor id */
+        actor_id?: string;
+        /** @description Provider id projected at event write time */
+        provider?: string;
+        /** @description Event registry outcome */
+        outcome?: string;
+        /** @description Event registry component */
+        component?: string;
+        /** @description Return warning and failure outcomes only */
+        error_only?: boolean;
+        /** @description Return rows after this event summary sequence */
+        after_seq?: number;
+        /** @description Only logs emitted since this timestamp */
+        since?: string;
+        /** @description Maximum number of records to return */
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Log event stream */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/event-stream": {
+            actor_id?: string;
+            actor_kind?: string;
+            agent_name: string;
+            claim_token_hash?: string;
+            component?: string;
+            content?: unknown;
+            coordinator_session_id?: string;
+            hook_event?: string;
+            hook_name?: string;
+            id: string;
+            /** Format: date-time */
+            lease_until?: string | null;
+            outcome?: string;
+            parent_session_id?: string;
+            provider?: string;
+            release_reason?: string;
+            root_session_id?: string;
+            run_id?: string;
+            scheduler_reason?: string;
+            session_id: string;
+            spawn_depth: number;
+            summary?: string;
+            task_id?: string;
+            /** Format: date-time */
+            timestamp: string;
+            type: string;
+            workflow_id?: string;
+            workspace_id?: string;
+          };
+        };
+      };
+      /** @description Invalid filter */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -19439,6 +26068,931 @@ export interface operations {
       };
     };
   };
+  listProviderModels: {
+    parameters: {
+      query?: {
+        /** @description Filter by AGH provider id */
+        provider_id?: string;
+        /** @description Filter by catalog source id */
+        source_id?: string;
+        /** @description Refresh sources before listing models */
+        refresh?: boolean;
+        /** @description Include stale source rows in the merged projection */
+        include_stale?: boolean;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            models: {
+              availability_state: string;
+              available: boolean | null;
+              /** Format: int64 */
+              context_window?: number | null;
+              cost?: {
+                /** Format: double */
+                input_per_million?: number | null;
+                /** Format: double */
+                output_per_million?: number | null;
+              } | null;
+              default_reasoning_effort?: string | null;
+              display_name?: string;
+              last_error?: string;
+              /** Format: int64 */
+              max_input_tokens?: number | null;
+              /** Format: int64 */
+              max_output_tokens?: number | null;
+              model_id: string;
+              provider_id: string;
+              reasoning_efforts?: string[];
+              refreshed_at?: string;
+              sources: {
+                last_error?: string;
+                priority: number;
+                refreshed_at?: string;
+                source_id: string;
+                source_kind: string;
+                stale: boolean;
+              }[];
+              stale: boolean;
+              supports_reasoning?: boolean | null;
+              supports_tools?: boolean | null;
+            }[];
+          };
+        };
+      };
+      /** @description Invalid model catalog filter */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Model catalog unavailable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  refreshProviderModels: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description JSON request body */
+    requestBody?: {
+      content: {
+        "application/json": {
+          force?: boolean;
+          request_id?: string;
+          source_id?: string;
+        };
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error?: string;
+            sources: {
+              last_error?: string;
+              last_refresh?: string;
+              last_success?: string;
+              next_refresh?: string;
+              priority: number;
+              provider_id: string;
+              refresh_state: string;
+              row_count: number;
+              source_id: string;
+              source_kind: string;
+              stale: boolean;
+            }[];
+          };
+        };
+      };
+      /** @description Invalid model catalog refresh request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Model catalog refresh unavailable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error?: string;
+            sources: {
+              last_error?: string;
+              last_refresh?: string;
+              last_success?: string;
+              next_refresh?: string;
+              priority: number;
+              provider_id: string;
+              refresh_state: string;
+              row_count: number;
+              source_id: string;
+              source_kind: string;
+              stale: boolean;
+            }[];
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listProviderModelsByProvider: {
+    parameters: {
+      query?: {
+        /** @description Filter by catalog source id */
+        source_id?: string;
+        /** @description Refresh sources before listing models */
+        refresh?: boolean;
+        /** @description Include stale source rows in the merged projection */
+        include_stale?: boolean;
+      };
+      header?: never;
+      path: {
+        /** @description AGH provider id */
+        provider_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            models: {
+              availability_state: string;
+              available: boolean | null;
+              /** Format: int64 */
+              context_window?: number | null;
+              cost?: {
+                /** Format: double */
+                input_per_million?: number | null;
+                /** Format: double */
+                output_per_million?: number | null;
+              } | null;
+              default_reasoning_effort?: string | null;
+              display_name?: string;
+              last_error?: string;
+              /** Format: int64 */
+              max_input_tokens?: number | null;
+              /** Format: int64 */
+              max_output_tokens?: number | null;
+              model_id: string;
+              provider_id: string;
+              reasoning_efforts?: string[];
+              refreshed_at?: string;
+              sources: {
+                last_error?: string;
+                priority: number;
+                refreshed_at?: string;
+                source_id: string;
+                source_kind: string;
+                stale: boolean;
+              }[];
+              stale: boolean;
+              supports_reasoning?: boolean | null;
+              supports_tools?: boolean | null;
+            }[];
+          };
+        };
+      };
+      /** @description Invalid model catalog filter */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Model catalog unavailable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  refreshProviderModelsByProvider: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description AGH provider id */
+        provider_id: string;
+      };
+      cookie?: never;
+    };
+    /** @description JSON request body */
+    requestBody?: {
+      content: {
+        "application/json": {
+          force?: boolean;
+          request_id?: string;
+          source_id?: string;
+        };
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error?: string;
+            sources: {
+              last_error?: string;
+              last_refresh?: string;
+              last_success?: string;
+              next_refresh?: string;
+              priority: number;
+              provider_id: string;
+              refresh_state: string;
+              row_count: number;
+              source_id: string;
+              source_kind: string;
+              stale: boolean;
+            }[];
+          };
+        };
+      };
+      /** @description Invalid model catalog refresh request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Model catalog refresh unavailable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            error?: string;
+            sources: {
+              last_error?: string;
+              last_refresh?: string;
+              last_success?: string;
+              next_refresh?: string;
+              priority: number;
+              provider_id: string;
+              refresh_state: string;
+              row_count: number;
+              source_id: string;
+              source_kind: string;
+              stale: boolean;
+            }[];
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getProviderModelStatusByProvider: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description AGH provider id */
+        provider_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            sources: {
+              last_error?: string;
+              last_refresh?: string;
+              last_success?: string;
+              next_refresh?: string;
+              priority: number;
+              provider_id: string;
+              refresh_state: string;
+              row_count: number;
+              source_id: string;
+              source_kind: string;
+              stale: boolean;
+            }[];
+          };
+        };
+      };
+      /** @description Invalid model catalog filter */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Model catalog unavailable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getProviderModelStatus: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            sources: {
+              last_error?: string;
+              last_refresh?: string;
+              last_success?: string;
+              next_refresh?: string;
+              priority: number;
+              provider_id: string;
+              refresh_state: string;
+              row_count: number;
+              source_id: string;
+              source_kind: string;
+              stale: boolean;
+            }[];
+          };
+        };
+      };
+      /** @description Invalid model catalog filter */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Model catalog unavailable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   getNetworkStatus: {
     parameters: {
       query?: never;
@@ -19526,6 +27080,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -19538,9 +27106,18 @@ export interface operations {
       };
     };
   };
-  getObserveHealth: {
+  listNotificationPresets: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Filter by enabled state */
+        enabled?: boolean;
+        /** @description Filter by built-in state */
+        built_in?: boolean;
+        /** @description Filter by exact preset name */
+        name?: string;
+        /** @description Maximum number of presets to return */
+        limit?: number;
+      };
       header?: never;
       path?: never;
       cookie?: never;
@@ -19554,176 +27131,55 @@ export interface operations {
         };
         content: {
           "application/json": {
-            automation: {
+            /** Format: date-time */
+            generated_at: string;
+            presets: {
+              built_in: boolean;
+              /** Format: date-time */
+              created_at: string;
+              default_hash?: string;
+              default_update_available: boolean;
+              default_version?: string;
               enabled: boolean;
-              jobs: {
-                enabled: number;
-                total: number;
-              };
-              /** Format: date-time */
-              next_fire?: string | null;
-              scheduled_jobs?: {
-                catch_up_policy?: string;
-                consecutive_resume_failures?: number;
-                job_id: string;
-                last_fire_id?: string;
-                /** Format: date-time */
-                last_misfire_at?: string | null;
-                /** Format: date-time */
-                last_run_at?: string | null;
-                /** Format: date-time */
-                last_scheduled_at?: string | null;
-                misfire_count?: number;
-                misfire_grace_seconds?: number;
-                /** Format: date-time */
-                next_run_at?: string | null;
-                registered: boolean;
-                /** Format: date-time */
-                updated_at?: string | null;
+              events: string[];
+              filter?: string;
+              name: string;
+              targets: {
+                bridge_id: string;
+                canonical_route?: string;
+                delivery_mode?: string;
+                display_name?: string;
               }[];
-              scheduler_running: boolean;
-              triggers: {
-                enabled: number;
-                total: number;
-              };
-            };
-            health: {
-              active_agents: number;
-              active_sessions: number;
-              activities?: {
-                current_tool?: string;
-                /** Format: date-time */
-                deadline_at?: string | null;
-                /** Format: int64 */
-                elapsed_ms: number;
-                /** Format: int64 */
-                elapsed_seconds: number;
-                /** Format: int64 */
-                idle_seconds: number;
-                iteration_current: number;
-                iteration_max: number;
-                /** Format: date-time */
-                last_activity_at?: string | null;
-                last_activity_detail?: string;
-                last_activity_kind?: string;
-                /** Format: date-time */
-                last_progress_at?: string | null;
-                session_id: string;
-                stall_reason?: string;
-                stall_state?: string;
-                status: string;
-                tool_call_id?: string;
-                turn_id?: string;
-                turn_source?: string;
-                /** Format: date-time */
-                turn_started_at?: string | null;
-              }[];
-              agent_probes?: {
-                agent_name?: string;
-                /** Format: date-time */
-                checked_at: string;
-                command?: string;
-                /** Format: int64 */
-                duration_ms: number;
-                error?: string;
-                executable?: string;
-                provider?: string;
-                status: string;
-              }[];
-              bridges: {
-                auth_failures_total: number;
-                delivery_backlog: number;
-                delivery_dropped_total: number;
-                delivery_failures_total: number;
-                route_count: number;
-                status_counts: {
-                  auth_required: number;
-                  degraded: number;
-                  disabled: number;
-                  error: number;
-                  ready: number;
-                  starting: number;
-                };
-                total_instances: number;
-              };
-              failures: {
-                by_kind?: {
-                  [key: string]: number;
-                };
-                recent?: {
-                  agent_name?: string;
-                  crash_bundle_path?: string;
-                  failure_kind: string;
-                  provider?: string;
-                  session_id: string;
-                  state?: string;
-                  summary?: string;
-                  /** Format: date-time */
-                  updated_at: string;
-                  workspace_id?: string;
-                }[];
-                status: string;
-                total: number;
-              };
-              /** Format: int64 */
-              global_db_size_bytes: number;
-              persistence: {
-                /** Format: int64 */
-                global_db_size_bytes: number;
-                /** Format: int64 */
-                session_db_size_bytes: number;
-                status: string;
-              };
-              retention: {
-                /** Format: int64 */
-                deleted_event_summaries: number;
-                /** Format: int64 */
-                deleted_permission_log_rows: number;
-                /** Format: int64 */
-                deleted_token_stats: number;
-                enabled: boolean;
-                /** Format: date-time */
-                last_cutoff_at?: string | null;
-                /** Format: date-time */
-                last_sweep_at?: string | null;
-                last_sweep_error?: string;
-                last_sweep_status: string;
-                retention_days: number;
-                /** Format: int64 */
-                sweep_interval_seconds: number;
-              };
-              /** Format: int64 */
-              session_db_size_bytes: number;
-              status: string;
-              /** Format: int64 */
-              uptime_seconds: number;
-              version: string;
-            };
-            memory: {
-              configured: boolean;
-              dream_agent?: string;
-              dream_check_interval?: string;
-              dream_enabled: boolean;
-              /** Format: double */
-              dream_min_hours?: number;
-              dream_min_sessions?: number;
-              enabled: boolean;
-              global_dir?: string;
-              global_files: number;
-              indexed_files: number;
               /** Format: date-time */
-              last_consolidation: string | null;
-              /** Format: date-time */
-              last_operation_at: string | null;
-              /** Format: date-time */
-              last_reindex: string | null;
-              operation_count: number;
-              orphaned_files: number;
-              reason?: string;
-              status: string;
-              workspace_count: number;
-              workspace_files: number;
-            };
+              updated_at: string;
+              user_modified: boolean;
+            }[];
+            total: number;
+          };
+        };
+      };
+      /** @description Invalid notification preset filter */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
           };
         };
       };
@@ -19734,6 +27190,655 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Notification preset service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  createNotificationPreset: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description JSON request body */
+    requestBody: {
+      content: {
+        "application/json": {
+          enabled: boolean;
+          events: string[];
+          filter?: string;
+          name: string;
+          targets: {
+            bridge_id: string;
+            canonical_route?: string;
+            delivery_mode?: string;
+            display_name?: string;
+          }[];
+        };
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            preset: {
+              built_in: boolean;
+              /** Format: date-time */
+              created_at: string;
+              default_hash?: string;
+              default_update_available: boolean;
+              default_version?: string;
+              enabled: boolean;
+              events: string[];
+              filter?: string;
+              name: string;
+              targets: {
+                bridge_id: string;
+                canonical_route?: string;
+                delivery_mode?: string;
+                display_name?: string;
+              }[];
+              /** Format: date-time */
+              updated_at: string;
+              user_modified: boolean;
+            };
+          };
+        };
+      };
+      /** @description Invalid notification preset */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Notification preset already exists */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Notification preset service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getNotificationPreset: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Notification preset name */
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            preset: {
+              built_in: boolean;
+              /** Format: date-time */
+              created_at: string;
+              default_hash?: string;
+              default_update_available: boolean;
+              default_version?: string;
+              enabled: boolean;
+              events: string[];
+              filter?: string;
+              name: string;
+              targets: {
+                bridge_id: string;
+                canonical_route?: string;
+                delivery_mode?: string;
+                display_name?: string;
+              }[];
+              /** Format: date-time */
+              updated_at: string;
+              user_modified: boolean;
+            };
+          };
+        };
+      };
+      /** @description Notification preset not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Notification preset service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  updateNotificationPreset: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Notification preset name */
+        name: string;
+      };
+      cookie?: never;
+    };
+    /** @description JSON request body */
+    requestBody: {
+      content: {
+        "application/json": {
+          enabled?: boolean | null;
+          events?: string[] | null;
+          filter?: string | null;
+          targets?:
+            | {
+                bridge_id: string;
+                canonical_route?: string;
+                delivery_mode?: string;
+                display_name?: string;
+              }[]
+            | null;
+        };
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            preset: {
+              built_in: boolean;
+              /** Format: date-time */
+              created_at: string;
+              default_hash?: string;
+              default_update_available: boolean;
+              default_version?: string;
+              enabled: boolean;
+              events: string[];
+              filter?: string;
+              name: string;
+              targets: {
+                bridge_id: string;
+                canonical_route?: string;
+                delivery_mode?: string;
+                display_name?: string;
+              }[];
+              /** Format: date-time */
+              updated_at: string;
+              user_modified: boolean;
+            };
+          };
+        };
+      };
+      /** @description Invalid notification preset update */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Notification preset not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Bridge target lookup is ambiguous */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Notification preset service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  deleteNotificationPreset: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Notification preset name */
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No Content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Notification preset not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Built-in notification preset cannot be deleted */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Notification preset service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -19976,6 +28081,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -19987,6 +28106,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -19998,6 +28131,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -20009,6 +28156,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -20115,12 +28276,14 @@ export interface operations {
                     /** Format: date-time */
                     ended_at?: string | null;
                     error?: string;
+                    failure_kind?: string;
                     /** Format: date-time */
                     heartbeat_at?: string | null;
                     id: string;
                     /** Format: date-time */
                     lease_until?: string | null;
                     max_attempts: number;
+                    previous_run_id?: string;
                     /** Format: date-time */
                     queued_at: string;
                     session_id?: string;
@@ -20138,6 +28301,7 @@ export interface operations {
                     task_id: string;
                   } | null;
                   task: {
+                    effective_paused?: boolean;
                     id: string;
                     identifier?: string;
                     /** Format: int64 */
@@ -20153,6 +28317,8 @@ export interface operations {
                         | "pool";
                       ref: string;
                     } | null;
+                    paused?: boolean;
+                    paused_by_task_id?: string;
                     /** @enum {string} */
                     priority?: "low" | "medium" | "high" | "urgent";
                     /** @enum {string} */
@@ -20209,6 +28375,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -20220,6 +28400,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -20231,6 +28425,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -20242,6 +28450,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -20399,18 +28621,9 @@ export interface operations {
       };
     };
   };
-  listProviderModels: {
+  listProviders: {
     parameters: {
-      query?: {
-        /** @description Filter by AGH provider id */
-        provider_id?: string;
-        /** @description Filter by catalog source id */
-        source_id?: string;
-        /** @description Refresh sources before listing models */
-        refresh?: boolean;
-        /** @description Include stale source rows in the merged projection */
-        include_stale?: boolean;
-      };
+      query?: never;
       header?: never;
       path?: never;
       cookie?: never;
@@ -20424,62 +28637,23 @@ export interface operations {
         };
         content: {
           "application/json": {
-            models: {
-              availability_state: string;
-              available: boolean | null;
-              /** Format: int64 */
-              context_window?: number | null;
-              cost?: {
-                /** Format: double */
-                input_per_million?: number | null;
-                /** Format: double */
-                output_per_million?: number | null;
-              } | null;
-              default_reasoning_effort?: string | null;
+            providers: {
+              auth_status: {
+                code?: string;
+                env_policy: string;
+                home_policy: string;
+                /** Format: date-time */
+                last_probe_at?: string | null;
+                login_command?: string;
+                message?: string;
+                mode: string;
+                state: string;
+                status_command?: string;
+              };
+              default: boolean;
               display_name?: string;
-              last_error?: string;
-              /** Format: int64 */
-              max_input_tokens?: number | null;
-              /** Format: int64 */
-              max_output_tokens?: number | null;
-              model_id: string;
-              provider_id: string;
-              reasoning_efforts?: string[];
-              refreshed_at?: string;
-              sources: {
-                last_error?: string;
-                priority: number;
-                refreshed_at?: string;
-                source_id: string;
-                source_kind: string;
-                stale: boolean;
-              }[];
-              stale: boolean;
-              supports_reasoning?: boolean | null;
-              supports_tools?: boolean | null;
+              name: string;
             }[];
-          };
-        };
-      };
-      /** @description Invalid model catalog filter */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            error: string;
-          };
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            error: string;
           };
         };
       };
@@ -20490,17 +28664,20 @@ export interface operations {
         };
         content: {
           "application/json": {
-            error: string;
-          };
-        };
-      };
-      /** @description Model catalog unavailable */
-      503: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -20513,423 +28690,7 @@ export interface operations {
       };
     };
   };
-  refreshProviderModels: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** @description JSON request body */
-    requestBody?: {
-      content: {
-        "application/json": {
-          force?: boolean;
-          request_id?: string;
-          source_id?: string;
-        };
-      };
-    };
-    responses: {
-      /** @description OK */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            error?: string;
-            sources: {
-              last_error?: string;
-              last_refresh?: string;
-              last_success?: string;
-              next_refresh?: string;
-              priority: number;
-              provider_id: string;
-              refresh_state: string;
-              row_count: number;
-              source_id: string;
-              source_kind: string;
-              stale: boolean;
-            }[];
-          };
-        };
-      };
-      /** @description Invalid model catalog refresh request */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            error: string;
-          };
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            error: string;
-          };
-        };
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            error: string;
-          };
-        };
-      };
-      /** @description Model catalog refresh unavailable */
-      503: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            error?: string;
-            sources: {
-              last_error?: string;
-              last_refresh?: string;
-              last_success?: string;
-              next_refresh?: string;
-              priority: number;
-              provider_id: string;
-              refresh_state: string;
-              row_count: number;
-              source_id: string;
-              source_kind: string;
-              stale: boolean;
-            }[];
-          };
-        };
-      };
-      default: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  getProviderModelStatus: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description OK */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            sources: {
-              last_error?: string;
-              last_refresh?: string;
-              last_success?: string;
-              next_refresh?: string;
-              priority: number;
-              provider_id: string;
-              refresh_state: string;
-              row_count: number;
-              source_id: string;
-              source_kind: string;
-              stale: boolean;
-            }[];
-          };
-        };
-      };
-      /** @description Invalid model catalog filter */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            error: string;
-          };
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            error: string;
-          };
-        };
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            error: string;
-          };
-        };
-      };
-      /** @description Model catalog unavailable */
-      503: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            error: string;
-          };
-        };
-      };
-      default: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  listProviderModelsByProvider: {
-    parameters: {
-      query?: {
-        /** @description Filter by catalog source id */
-        source_id?: string;
-        /** @description Refresh sources before listing models */
-        refresh?: boolean;
-        /** @description Include stale source rows in the merged projection */
-        include_stale?: boolean;
-      };
-      header?: never;
-      path: {
-        /** @description AGH provider id */
-        provider_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description OK */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            models: {
-              availability_state: string;
-              available: boolean | null;
-              /** Format: int64 */
-              context_window?: number | null;
-              cost?: {
-                /** Format: double */
-                input_per_million?: number | null;
-                /** Format: double */
-                output_per_million?: number | null;
-              } | null;
-              default_reasoning_effort?: string | null;
-              display_name?: string;
-              last_error?: string;
-              /** Format: int64 */
-              max_input_tokens?: number | null;
-              /** Format: int64 */
-              max_output_tokens?: number | null;
-              model_id: string;
-              provider_id: string;
-              reasoning_efforts?: string[];
-              refreshed_at?: string;
-              sources: {
-                last_error?: string;
-                priority: number;
-                refreshed_at?: string;
-                source_id: string;
-                source_kind: string;
-                stale: boolean;
-              }[];
-              stale: boolean;
-              supports_reasoning?: boolean | null;
-              supports_tools?: boolean | null;
-            }[];
-          };
-        };
-      };
-      /** @description Invalid model catalog filter */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            error: string;
-          };
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            error: string;
-          };
-        };
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            error: string;
-          };
-        };
-      };
-      /** @description Model catalog unavailable */
-      503: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            error: string;
-          };
-        };
-      };
-      default: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  refreshProviderModelsByProvider: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description AGH provider id */
-        provider_id: string;
-      };
-      cookie?: never;
-    };
-    /** @description JSON request body */
-    requestBody?: {
-      content: {
-        "application/json": {
-          force?: boolean;
-          request_id?: string;
-          source_id?: string;
-        };
-      };
-    };
-    responses: {
-      /** @description OK */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            error?: string;
-            sources: {
-              last_error?: string;
-              last_refresh?: string;
-              last_success?: string;
-              next_refresh?: string;
-              priority: number;
-              provider_id: string;
-              refresh_state: string;
-              row_count: number;
-              source_id: string;
-              source_kind: string;
-              stale: boolean;
-            }[];
-          };
-        };
-      };
-      /** @description Invalid model catalog refresh request */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            error: string;
-          };
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            error: string;
-          };
-        };
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            error: string;
-          };
-        };
-      };
-      /** @description Model catalog refresh unavailable */
-      503: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            error?: string;
-            sources: {
-              last_error?: string;
-              last_refresh?: string;
-              last_success?: string;
-              next_refresh?: string;
-              priority: number;
-              provider_id: string;
-              refresh_state: string;
-              row_count: number;
-              source_id: string;
-              source_kind: string;
-              stale: boolean;
-            }[];
-          };
-        };
-      };
-      default: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  getProviderModelStatusByProvider: {
+  getProvider: {
     parameters: {
       query?: never;
       header?: never;
@@ -20948,40 +28709,45 @@ export interface operations {
         };
         content: {
           "application/json": {
-            sources: {
-              last_error?: string;
-              last_refresh?: string;
-              last_success?: string;
-              next_refresh?: string;
-              priority: number;
-              provider_id: string;
-              refresh_state: string;
-              row_count: number;
-              source_id: string;
-              source_kind: string;
-              stale: boolean;
-            }[];
+            auth_status: {
+              code?: string;
+              env_policy: string;
+              home_policy: string;
+              /** Format: date-time */
+              last_probe_at?: string | null;
+              login_command?: string;
+              message?: string;
+              mode: string;
+              state: string;
+              status_command?: string;
+            };
+            default: boolean;
+            display_name?: string;
+            name: string;
           };
         };
       };
-      /** @description Invalid model catalog filter */
-      400: {
+      /** @description Provider not found */
+      404: {
         headers: {
           [name: string]: unknown;
         };
         content: {
           "application/json": {
-            error: string;
-          };
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -20993,17 +28759,145 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
       };
-      /** @description Model catalog unavailable */
-      503: {
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  probeProviderAuth: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description AGH provider id */
+        provider_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
           "application/json": {
+            auth_status: {
+              code?: string;
+              env_policy: string;
+              home_policy: string;
+              /** Format: date-time */
+              last_probe_at?: string | null;
+              login_command?: string;
+              message?: string;
+              mode: string;
+              state: string;
+              status_command?: string;
+            };
+            probe?: {
+              /** Format: int64 */
+              duration_ms: number;
+              exit_code: number;
+              stderr?: string;
+              stdout?: string;
+            } | null;
+            provider: string;
+          };
+        };
+      };
+      /** @description Provider not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Provider auth probe unavailable */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21083,6 +28977,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21094,6 +29002,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21105,6 +29027,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21185,6 +29121,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21196,6 +29146,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21207,6 +29171,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21274,6 +29252,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21285,6 +29277,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21296,6 +29302,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21307,6 +29327,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21422,6 +29456,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21433,6 +29481,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21444,6 +29506,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21455,6 +29531,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21466,6 +29556,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21477,6 +29581,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21525,6 +29643,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21536,6 +29668,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21547,6 +29693,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21558,6 +29718,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21569,6 +29743,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21580,6 +29768,2940 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  bulkForceFailTaskRuns: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description JSON request body */
+    requestBody: {
+      content: {
+        "application/json": {
+          metadata?: unknown;
+          reason?: string;
+          run_ids: string[];
+        };
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            results: {
+              error?: {
+                diagnostic?: {
+                  category: string;
+                  code: string;
+                  data_freshness: string;
+                  doc_url?: string;
+                  evidence?: {
+                    [key: string]: unknown;
+                  };
+                  id: string;
+                  message: string;
+                  severity: string;
+                  suggested_command?: string;
+                  title: string;
+                } | null;
+                error: string;
+              } | null;
+              ok: boolean;
+              run?: {
+                attempt: number;
+                claim_token_hash?: string;
+                /** Format: date-time */
+                claimed_at?: string | null;
+                claimed_by?: {
+                  /** @enum {string} */
+                  kind:
+                    | "human"
+                    | "agent_session"
+                    | "automation"
+                    | "extension"
+                    | "network_peer"
+                    | "daemon";
+                  ref: string;
+                } | null;
+                coordination_channel?: {
+                  allowed_message_kinds: (
+                    | "status"
+                    | "request"
+                    | "reply"
+                    | "blocker"
+                    | "handoff"
+                    | "result"
+                    | "review_request"
+                  )[];
+                  channel?: string;
+                  display_name: string;
+                  id: string;
+                  /** Format: date-time */
+                  last_activity_at?: string | null;
+                  purpose?: string;
+                  run_id?: string;
+                  task_id?: string;
+                  workflow_id?: string;
+                  workspace_id?: string;
+                } | null;
+                coordination_channel_id?: string;
+                /** Format: date-time */
+                ended_at?: string | null;
+                error?: string;
+                failure_kind?: string;
+                /** Format: date-time */
+                heartbeat_at?: string | null;
+                id: string;
+                idempotency_key?: string;
+                /** Format: date-time */
+                lease_until?: string | null;
+                metadata?: unknown;
+                network_channel?: string;
+                origin: {
+                  /** @enum {string} */
+                  kind:
+                    | "cli"
+                    | "web"
+                    | "uds"
+                    | "http"
+                    | "automation"
+                    | "extension"
+                    | "network"
+                    | "agent_session"
+                    | "daemon";
+                  ref: string;
+                };
+                previous_run_id?: string;
+                /** Format: date-time */
+                queued_at: string;
+                result?: unknown;
+                session_id?: string;
+                /** Format: date-time */
+                started_at?: string | null;
+                /** @enum {string} */
+                status:
+                  | "queued"
+                  | "claimed"
+                  | "starting"
+                  | "running"
+                  | "completed"
+                  | "failed"
+                  | "canceled";
+                task_id: string;
+              } | null;
+              run_id: string;
+            }[];
+          };
+        };
+      };
+      /** @description Force operation forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Invalid bulk forced-failure request */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Force-operation rate limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  bulkForceReleaseTaskRuns: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description JSON request body */
+    requestBody: {
+      content: {
+        "application/json": {
+          metadata?: unknown;
+          reason?: string;
+          run_ids: string[];
+        };
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            results: {
+              error?: {
+                diagnostic?: {
+                  category: string;
+                  code: string;
+                  data_freshness: string;
+                  doc_url?: string;
+                  evidence?: {
+                    [key: string]: unknown;
+                  };
+                  id: string;
+                  message: string;
+                  severity: string;
+                  suggested_command?: string;
+                  title: string;
+                } | null;
+                error: string;
+              } | null;
+              ok: boolean;
+              run?: {
+                attempt: number;
+                claim_token_hash?: string;
+                /** Format: date-time */
+                claimed_at?: string | null;
+                claimed_by?: {
+                  /** @enum {string} */
+                  kind:
+                    | "human"
+                    | "agent_session"
+                    | "automation"
+                    | "extension"
+                    | "network_peer"
+                    | "daemon";
+                  ref: string;
+                } | null;
+                coordination_channel?: {
+                  allowed_message_kinds: (
+                    | "status"
+                    | "request"
+                    | "reply"
+                    | "blocker"
+                    | "handoff"
+                    | "result"
+                    | "review_request"
+                  )[];
+                  channel?: string;
+                  display_name: string;
+                  id: string;
+                  /** Format: date-time */
+                  last_activity_at?: string | null;
+                  purpose?: string;
+                  run_id?: string;
+                  task_id?: string;
+                  workflow_id?: string;
+                  workspace_id?: string;
+                } | null;
+                coordination_channel_id?: string;
+                /** Format: date-time */
+                ended_at?: string | null;
+                error?: string;
+                failure_kind?: string;
+                /** Format: date-time */
+                heartbeat_at?: string | null;
+                id: string;
+                idempotency_key?: string;
+                /** Format: date-time */
+                lease_until?: string | null;
+                metadata?: unknown;
+                network_channel?: string;
+                origin: {
+                  /** @enum {string} */
+                  kind:
+                    | "cli"
+                    | "web"
+                    | "uds"
+                    | "http"
+                    | "automation"
+                    | "extension"
+                    | "network"
+                    | "agent_session"
+                    | "daemon";
+                  ref: string;
+                };
+                previous_run_id?: string;
+                /** Format: date-time */
+                queued_at: string;
+                result?: unknown;
+                session_id?: string;
+                /** Format: date-time */
+                started_at?: string | null;
+                /** @enum {string} */
+                status:
+                  | "queued"
+                  | "claimed"
+                  | "starting"
+                  | "running"
+                  | "completed"
+                  | "failed"
+                  | "canceled";
+                task_id: string;
+              } | null;
+              run_id: string;
+            }[];
+          };
+        };
+      };
+      /** @description Force operation forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Invalid bulk force-release request */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Force-operation rate limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  forceFailTaskRun: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Task run id */
+        id: string;
+      };
+      cookie?: never;
+    };
+    /** @description JSON request body */
+    requestBody: {
+      content: {
+        "application/json": {
+          metadata?: unknown;
+          reason: string;
+        };
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            run: {
+              attempt: number;
+              claim_token_hash?: string;
+              /** Format: date-time */
+              claimed_at?: string | null;
+              claimed_by?: {
+                /** @enum {string} */
+                kind:
+                  | "human"
+                  | "agent_session"
+                  | "automation"
+                  | "extension"
+                  | "network_peer"
+                  | "daemon";
+                ref: string;
+              } | null;
+              coordination_channel?: {
+                allowed_message_kinds: (
+                  | "status"
+                  | "request"
+                  | "reply"
+                  | "blocker"
+                  | "handoff"
+                  | "result"
+                  | "review_request"
+                )[];
+                channel?: string;
+                display_name: string;
+                id: string;
+                /** Format: date-time */
+                last_activity_at?: string | null;
+                purpose?: string;
+                run_id?: string;
+                task_id?: string;
+                workflow_id?: string;
+                workspace_id?: string;
+              } | null;
+              coordination_channel_id?: string;
+              /** Format: date-time */
+              ended_at?: string | null;
+              error?: string;
+              failure_kind?: string;
+              /** Format: date-time */
+              heartbeat_at?: string | null;
+              id: string;
+              idempotency_key?: string;
+              /** Format: date-time */
+              lease_until?: string | null;
+              metadata?: unknown;
+              network_channel?: string;
+              origin: {
+                /** @enum {string} */
+                kind:
+                  | "cli"
+                  | "web"
+                  | "uds"
+                  | "http"
+                  | "automation"
+                  | "extension"
+                  | "network"
+                  | "agent_session"
+                  | "daemon";
+                ref: string;
+              };
+              previous_run_id?: string;
+              /** Format: date-time */
+              queued_at: string;
+              result?: unknown;
+              session_id?: string;
+              /** Format: date-time */
+              started_at?: string | null;
+              /** @enum {string} */
+              status:
+                | "queued"
+                | "claimed"
+                | "starting"
+                | "running"
+                | "completed"
+                | "failed"
+                | "canceled";
+              task_id: string;
+            };
+          };
+        };
+      };
+      /** @description Force operation forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task run not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task-run forced-failure conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Invalid forced-failure request */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Force-operation rate limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  inspectRun: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Task run id */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            inspect: {
+              /** Format: date-time */
+              as_of: string;
+              bound_session?: {
+                agent_name?: string;
+                failure_kind?: string;
+                /** Format: date-time */
+                last_activity_at?: string | null;
+                provider_name?: string;
+                session_id: string;
+                /** Format: date-time */
+                started_at?: string | null;
+                state?: string;
+                stop_reason?: string;
+                workspace_id?: string;
+              } | null;
+              current_run?: {
+                attempt: number;
+                bound_session_id?: string;
+                claim_token_hash_truncated?: string;
+                /** Format: date-time */
+                ended_at?: string | null;
+                failure_kind?: string;
+                /** Format: int64 */
+                heartbeat_age_seconds?: number | null;
+                /** Format: date-time */
+                heartbeat_at?: string | null;
+                last_error_summary?: string;
+                /** Format: date-time */
+                lease_until?: string | null;
+                previous_run_id?: string;
+                /** Format: date-time */
+                queued_at: string;
+                retries?: number;
+                run_id: string;
+                /** Format: date-time */
+                started_at?: string | null;
+                /** @enum {string} */
+                status:
+                  | "queued"
+                  | "claimed"
+                  | "starting"
+                  | "running"
+                  | "completed"
+                  | "failed"
+                  | "canceled";
+                task_id: string;
+              } | null;
+              diagnostics?: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              }[];
+              next_action: string;
+              recent_events?: {
+                id: string;
+                outcome?: string;
+                run_id?: string;
+                session_id?: string;
+                summary?: string;
+                task_id?: string;
+                /** Format: date-time */
+                timestamp: string;
+                type: string;
+              }[];
+              recent_runs?: {
+                attempt: number;
+                bound_session_id?: string;
+                claim_token_hash_truncated?: string;
+                /** Format: date-time */
+                ended_at?: string | null;
+                failure_kind?: string;
+                /** Format: int64 */
+                heartbeat_age_seconds?: number | null;
+                /** Format: date-time */
+                heartbeat_at?: string | null;
+                last_error_summary?: string;
+                /** Format: date-time */
+                lease_until?: string | null;
+                previous_run_id?: string;
+                /** Format: date-time */
+                queued_at: string;
+                retries?: number;
+                run_id: string;
+                /** Format: date-time */
+                started_at?: string | null;
+                /** @enum {string} */
+                status:
+                  | "queued"
+                  | "claimed"
+                  | "starting"
+                  | "running"
+                  | "completed"
+                  | "failed"
+                  | "canceled";
+                task_id: string;
+              }[];
+              scheduler: {
+                paused: boolean;
+                /** Format: date-time */
+                paused_at?: string | null;
+                paused_by?: string;
+                reason?: string;
+                /** Format: date-time */
+                updated_at?: string | null;
+              };
+              target: string;
+              task: {
+                active_run?: {
+                  attempt: number;
+                  claim_token_hash?: string;
+                  /** Format: date-time */
+                  claimed_at?: string | null;
+                  claimed_by?: {
+                    /** @enum {string} */
+                    kind:
+                      | "human"
+                      | "agent_session"
+                      | "automation"
+                      | "extension"
+                      | "network_peer"
+                      | "daemon";
+                    ref: string;
+                  } | null;
+                  coordination_channel?: {
+                    allowed_message_kinds: (
+                      | "status"
+                      | "request"
+                      | "reply"
+                      | "blocker"
+                      | "handoff"
+                      | "result"
+                      | "review_request"
+                    )[];
+                    channel?: string;
+                    display_name: string;
+                    id: string;
+                    /** Format: date-time */
+                    last_activity_at?: string | null;
+                    purpose?: string;
+                    run_id?: string;
+                    task_id?: string;
+                    workflow_id?: string;
+                    workspace_id?: string;
+                  } | null;
+                  coordination_channel_id?: string;
+                  /** Format: date-time */
+                  ended_at?: string | null;
+                  error?: string;
+                  failure_kind?: string;
+                  /** Format: date-time */
+                  heartbeat_at?: string | null;
+                  id: string;
+                  /** Format: date-time */
+                  lease_until?: string | null;
+                  max_attempts: number;
+                  previous_run_id?: string;
+                  /** Format: date-time */
+                  queued_at: string;
+                  session_id?: string;
+                  /** Format: date-time */
+                  started_at?: string | null;
+                  /** @enum {string} */
+                  status:
+                    | "queued"
+                    | "claimed"
+                    | "starting"
+                    | "running"
+                    | "completed"
+                    | "failed"
+                    | "canceled";
+                  task_id: string;
+                } | null;
+                /** @enum {string} */
+                approval_policy?: "none" | "manual";
+                /** @enum {string} */
+                approval_state?: "not_required" | "pending" | "approved" | "rejected";
+                child_count?: number;
+                /** Format: date-time */
+                closed_at?: string | null;
+                /** Format: date-time */
+                created_at: string;
+                created_by: {
+                  /** @enum {string} */
+                  kind:
+                    | "human"
+                    | "agent_session"
+                    | "automation"
+                    | "extension"
+                    | "network_peer"
+                    | "daemon";
+                  ref: string;
+                };
+                current_run_id?: string;
+                dependencies?: {
+                  /** Format: date-time */
+                  created_at: string;
+                  depends_on: {
+                    effective_paused?: boolean;
+                    id: string;
+                    identifier?: string;
+                    /** Format: int64 */
+                    latest_event_seq: number;
+                    owner?: {
+                      /** @enum {string} */
+                      kind:
+                        | "human"
+                        | "agent_session"
+                        | "automation"
+                        | "extension"
+                        | "network_peer"
+                        | "pool";
+                      ref: string;
+                    } | null;
+                    paused?: boolean;
+                    paused_by_task_id?: string;
+                    /** @enum {string} */
+                    priority?: "low" | "medium" | "high" | "urgent";
+                    /** @enum {string} */
+                    scope: "global" | "workspace";
+                    /** @enum {string} */
+                    status:
+                      | "draft"
+                      | "pending"
+                      | "blocked"
+                      | "ready"
+                      | "in_progress"
+                      | "completed"
+                      | "failed"
+                      | "canceled";
+                    title: string;
+                    workspace_id?: string;
+                  };
+                  depends_on_task_id: string;
+                  /** @enum {string} */
+                  kind: "blocks";
+                  task_id: string;
+                }[];
+                dependency_count?: number;
+                draft?: boolean;
+                effective_paused?: boolean;
+                id: string;
+                identifier?: string;
+                /** Format: date-time */
+                last_activity_at?: string | null;
+                /** Format: int64 */
+                latest_event_seq: number;
+                max_attempts?: number;
+                network_channel?: string;
+                origin: {
+                  /** @enum {string} */
+                  kind:
+                    | "cli"
+                    | "web"
+                    | "uds"
+                    | "http"
+                    | "automation"
+                    | "extension"
+                    | "network"
+                    | "agent_session"
+                    | "daemon";
+                  ref: string;
+                };
+                owner?: {
+                  /** @enum {string} */
+                  kind:
+                    | "human"
+                    | "agent_session"
+                    | "automation"
+                    | "extension"
+                    | "network_peer"
+                    | "pool";
+                  ref: string;
+                } | null;
+                parent_task_id?: string;
+                paused?: boolean;
+                /** Format: date-time */
+                paused_at?: string | null;
+                paused_by?: string;
+                paused_by_task_id?: string;
+                paused_reason?: string;
+                /** @enum {string} */
+                priority?: "low" | "medium" | "high" | "urgent";
+                /** @enum {string} */
+                scope: "global" | "workspace";
+                /** @enum {string} */
+                status:
+                  | "draft"
+                  | "pending"
+                  | "blocked"
+                  | "ready"
+                  | "in_progress"
+                  | "completed"
+                  | "failed"
+                  | "canceled";
+                title: string;
+                /** Format: date-time */
+                updated_at: string;
+                workspace_id?: string;
+              };
+            };
+          };
+        };
+      };
+      /** @description Task run not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Invalid task-run id */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  forceReleaseTaskRun: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Task run id */
+        id: string;
+      };
+      cookie?: never;
+    };
+    /** @description JSON request body */
+    requestBody: {
+      content: {
+        "application/json": {
+          metadata?: unknown;
+          reason?: string;
+        };
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            run: {
+              attempt: number;
+              claim_token_hash?: string;
+              /** Format: date-time */
+              claimed_at?: string | null;
+              claimed_by?: {
+                /** @enum {string} */
+                kind:
+                  | "human"
+                  | "agent_session"
+                  | "automation"
+                  | "extension"
+                  | "network_peer"
+                  | "daemon";
+                ref: string;
+              } | null;
+              coordination_channel?: {
+                allowed_message_kinds: (
+                  | "status"
+                  | "request"
+                  | "reply"
+                  | "blocker"
+                  | "handoff"
+                  | "result"
+                  | "review_request"
+                )[];
+                channel?: string;
+                display_name: string;
+                id: string;
+                /** Format: date-time */
+                last_activity_at?: string | null;
+                purpose?: string;
+                run_id?: string;
+                task_id?: string;
+                workflow_id?: string;
+                workspace_id?: string;
+              } | null;
+              coordination_channel_id?: string;
+              /** Format: date-time */
+              ended_at?: string | null;
+              error?: string;
+              failure_kind?: string;
+              /** Format: date-time */
+              heartbeat_at?: string | null;
+              id: string;
+              idempotency_key?: string;
+              /** Format: date-time */
+              lease_until?: string | null;
+              metadata?: unknown;
+              network_channel?: string;
+              origin: {
+                /** @enum {string} */
+                kind:
+                  | "cli"
+                  | "web"
+                  | "uds"
+                  | "http"
+                  | "automation"
+                  | "extension"
+                  | "network"
+                  | "agent_session"
+                  | "daemon";
+                ref: string;
+              };
+              previous_run_id?: string;
+              /** Format: date-time */
+              queued_at: string;
+              result?: unknown;
+              session_id?: string;
+              /** Format: date-time */
+              started_at?: string | null;
+              /** @enum {string} */
+              status:
+                | "queued"
+                | "claimed"
+                | "starting"
+                | "running"
+                | "completed"
+                | "failed"
+                | "canceled";
+              task_id: string;
+            };
+          };
+        };
+      };
+      /** @description Force operation forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task run not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task-run force-release conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Invalid force-release request */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Force-operation rate limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  retryTaskRun: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Task run id */
+        id: string;
+      };
+      cookie?: never;
+    };
+    /** @description JSON request body */
+    requestBody: {
+      content: {
+        "application/json": {
+          metadata?: unknown;
+        };
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            previous_run: {
+              attempt: number;
+              claim_token_hash?: string;
+              /** Format: date-time */
+              claimed_at?: string | null;
+              claimed_by?: {
+                /** @enum {string} */
+                kind:
+                  | "human"
+                  | "agent_session"
+                  | "automation"
+                  | "extension"
+                  | "network_peer"
+                  | "daemon";
+                ref: string;
+              } | null;
+              coordination_channel?: {
+                allowed_message_kinds: (
+                  | "status"
+                  | "request"
+                  | "reply"
+                  | "blocker"
+                  | "handoff"
+                  | "result"
+                  | "review_request"
+                )[];
+                channel?: string;
+                display_name: string;
+                id: string;
+                /** Format: date-time */
+                last_activity_at?: string | null;
+                purpose?: string;
+                run_id?: string;
+                task_id?: string;
+                workflow_id?: string;
+                workspace_id?: string;
+              } | null;
+              coordination_channel_id?: string;
+              /** Format: date-time */
+              ended_at?: string | null;
+              error?: string;
+              failure_kind?: string;
+              /** Format: date-time */
+              heartbeat_at?: string | null;
+              id: string;
+              idempotency_key?: string;
+              /** Format: date-time */
+              lease_until?: string | null;
+              metadata?: unknown;
+              network_channel?: string;
+              origin: {
+                /** @enum {string} */
+                kind:
+                  | "cli"
+                  | "web"
+                  | "uds"
+                  | "http"
+                  | "automation"
+                  | "extension"
+                  | "network"
+                  | "agent_session"
+                  | "daemon";
+                ref: string;
+              };
+              previous_run_id?: string;
+              /** Format: date-time */
+              queued_at: string;
+              result?: unknown;
+              session_id?: string;
+              /** Format: date-time */
+              started_at?: string | null;
+              /** @enum {string} */
+              status:
+                | "queued"
+                | "claimed"
+                | "starting"
+                | "running"
+                | "completed"
+                | "failed"
+                | "canceled";
+              task_id: string;
+            };
+            run: {
+              attempt: number;
+              claim_token_hash?: string;
+              /** Format: date-time */
+              claimed_at?: string | null;
+              claimed_by?: {
+                /** @enum {string} */
+                kind:
+                  | "human"
+                  | "agent_session"
+                  | "automation"
+                  | "extension"
+                  | "network_peer"
+                  | "daemon";
+                ref: string;
+              } | null;
+              coordination_channel?: {
+                allowed_message_kinds: (
+                  | "status"
+                  | "request"
+                  | "reply"
+                  | "blocker"
+                  | "handoff"
+                  | "result"
+                  | "review_request"
+                )[];
+                channel?: string;
+                display_name: string;
+                id: string;
+                /** Format: date-time */
+                last_activity_at?: string | null;
+                purpose?: string;
+                run_id?: string;
+                task_id?: string;
+                workflow_id?: string;
+                workspace_id?: string;
+              } | null;
+              coordination_channel_id?: string;
+              /** Format: date-time */
+              ended_at?: string | null;
+              error?: string;
+              failure_kind?: string;
+              /** Format: date-time */
+              heartbeat_at?: string | null;
+              id: string;
+              idempotency_key?: string;
+              /** Format: date-time */
+              lease_until?: string | null;
+              metadata?: unknown;
+              network_channel?: string;
+              origin: {
+                /** @enum {string} */
+                kind:
+                  | "cli"
+                  | "web"
+                  | "uds"
+                  | "http"
+                  | "automation"
+                  | "extension"
+                  | "network"
+                  | "agent_session"
+                  | "daemon";
+                ref: string;
+              };
+              previous_run_id?: string;
+              /** Format: date-time */
+              queued_at: string;
+              result?: unknown;
+              session_id?: string;
+              /** Format: date-time */
+              started_at?: string | null;
+              /** @enum {string} */
+              status:
+                | "queued"
+                | "claimed"
+                | "starting"
+                | "running"
+                | "completed"
+                | "failed"
+                | "canceled";
+              task_id: string;
+            };
+          };
+        };
+      };
+      /** @description Force operation forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task run not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task-run retry conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Invalid retry request */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Force-operation rate limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getScheduler: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            scheduler: {
+              active_claim_count: number;
+              /** Format: date-time */
+              as_of: string;
+              drain_in_progress: boolean;
+              /** Format: date-time */
+              drain_started_at?: string | null;
+              paused: boolean;
+              /** Format: date-time */
+              paused_at?: string | null;
+              paused_by?: string;
+              paused_reason?: string;
+              paused_task_count: number;
+              queued_run_count: number;
+            };
+          };
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getSchedulerBacklog: {
+    parameters: {
+      query?: {
+        /** @description Maximum number of queued runs to return */
+        limit?: number;
+        /** @description Filter by workspace path, name, or ID */
+        workspace?: string;
+        /** @description Include runs blocked by task pause state */
+        include_paused?: boolean;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            backlog: {
+              runs: {
+                run: {
+                  attempt: number;
+                  claim_token_hash?: string;
+                  /** Format: date-time */
+                  claimed_at?: string | null;
+                  claimed_by?: {
+                    /** @enum {string} */
+                    kind:
+                      | "human"
+                      | "agent_session"
+                      | "automation"
+                      | "extension"
+                      | "network_peer"
+                      | "daemon";
+                    ref: string;
+                  } | null;
+                  coordination_channel?: {
+                    allowed_message_kinds: (
+                      | "status"
+                      | "request"
+                      | "reply"
+                      | "blocker"
+                      | "handoff"
+                      | "result"
+                      | "review_request"
+                    )[];
+                    channel?: string;
+                    display_name: string;
+                    id: string;
+                    /** Format: date-time */
+                    last_activity_at?: string | null;
+                    purpose?: string;
+                    run_id?: string;
+                    task_id?: string;
+                    workflow_id?: string;
+                    workspace_id?: string;
+                  } | null;
+                  coordination_channel_id?: string;
+                  /** Format: date-time */
+                  ended_at?: string | null;
+                  error?: string;
+                  failure_kind?: string;
+                  /** Format: date-time */
+                  heartbeat_at?: string | null;
+                  id: string;
+                  idempotency_key?: string;
+                  /** Format: date-time */
+                  lease_until?: string | null;
+                  metadata?: unknown;
+                  network_channel?: string;
+                  origin: {
+                    /** @enum {string} */
+                    kind:
+                      | "cli"
+                      | "web"
+                      | "uds"
+                      | "http"
+                      | "automation"
+                      | "extension"
+                      | "network"
+                      | "agent_session"
+                      | "daemon";
+                    ref: string;
+                  };
+                  previous_run_id?: string;
+                  /** Format: date-time */
+                  queued_at: string;
+                  result?: unknown;
+                  session_id?: string;
+                  /** Format: date-time */
+                  started_at?: string | null;
+                  /** @enum {string} */
+                  status:
+                    | "queued"
+                    | "claimed"
+                    | "starting"
+                    | "running"
+                    | "completed"
+                    | "failed"
+                    | "canceled";
+                  task_id: string;
+                };
+                task: {
+                  active_run?: {
+                    attempt: number;
+                    claim_token_hash?: string;
+                    /** Format: date-time */
+                    claimed_at?: string | null;
+                    claimed_by?: {
+                      /** @enum {string} */
+                      kind:
+                        | "human"
+                        | "agent_session"
+                        | "automation"
+                        | "extension"
+                        | "network_peer"
+                        | "daemon";
+                      ref: string;
+                    } | null;
+                    coordination_channel?: {
+                      allowed_message_kinds: (
+                        | "status"
+                        | "request"
+                        | "reply"
+                        | "blocker"
+                        | "handoff"
+                        | "result"
+                        | "review_request"
+                      )[];
+                      channel?: string;
+                      display_name: string;
+                      id: string;
+                      /** Format: date-time */
+                      last_activity_at?: string | null;
+                      purpose?: string;
+                      run_id?: string;
+                      task_id?: string;
+                      workflow_id?: string;
+                      workspace_id?: string;
+                    } | null;
+                    coordination_channel_id?: string;
+                    /** Format: date-time */
+                    ended_at?: string | null;
+                    error?: string;
+                    failure_kind?: string;
+                    /** Format: date-time */
+                    heartbeat_at?: string | null;
+                    id: string;
+                    /** Format: date-time */
+                    lease_until?: string | null;
+                    max_attempts: number;
+                    previous_run_id?: string;
+                    /** Format: date-time */
+                    queued_at: string;
+                    session_id?: string;
+                    /** Format: date-time */
+                    started_at?: string | null;
+                    /** @enum {string} */
+                    status:
+                      | "queued"
+                      | "claimed"
+                      | "starting"
+                      | "running"
+                      | "completed"
+                      | "failed"
+                      | "canceled";
+                    task_id: string;
+                  } | null;
+                  /** @enum {string} */
+                  approval_policy?: "none" | "manual";
+                  /** @enum {string} */
+                  approval_state?: "not_required" | "pending" | "approved" | "rejected";
+                  child_count?: number;
+                  /** Format: date-time */
+                  closed_at?: string | null;
+                  /** Format: date-time */
+                  created_at: string;
+                  created_by: {
+                    /** @enum {string} */
+                    kind:
+                      | "human"
+                      | "agent_session"
+                      | "automation"
+                      | "extension"
+                      | "network_peer"
+                      | "daemon";
+                    ref: string;
+                  };
+                  current_run_id?: string;
+                  dependencies?: {
+                    /** Format: date-time */
+                    created_at: string;
+                    depends_on: {
+                      effective_paused?: boolean;
+                      id: string;
+                      identifier?: string;
+                      /** Format: int64 */
+                      latest_event_seq: number;
+                      owner?: {
+                        /** @enum {string} */
+                        kind:
+                          | "human"
+                          | "agent_session"
+                          | "automation"
+                          | "extension"
+                          | "network_peer"
+                          | "pool";
+                        ref: string;
+                      } | null;
+                      paused?: boolean;
+                      paused_by_task_id?: string;
+                      /** @enum {string} */
+                      priority?: "low" | "medium" | "high" | "urgent";
+                      /** @enum {string} */
+                      scope: "global" | "workspace";
+                      /** @enum {string} */
+                      status:
+                        | "draft"
+                        | "pending"
+                        | "blocked"
+                        | "ready"
+                        | "in_progress"
+                        | "completed"
+                        | "failed"
+                        | "canceled";
+                      title: string;
+                      workspace_id?: string;
+                    };
+                    depends_on_task_id: string;
+                    /** @enum {string} */
+                    kind: "blocks";
+                    task_id: string;
+                  }[];
+                  dependency_count?: number;
+                  draft?: boolean;
+                  effective_paused?: boolean;
+                  id: string;
+                  identifier?: string;
+                  /** Format: date-time */
+                  last_activity_at?: string | null;
+                  /** Format: int64 */
+                  latest_event_seq: number;
+                  max_attempts?: number;
+                  network_channel?: string;
+                  origin: {
+                    /** @enum {string} */
+                    kind:
+                      | "cli"
+                      | "web"
+                      | "uds"
+                      | "http"
+                      | "automation"
+                      | "extension"
+                      | "network"
+                      | "agent_session"
+                      | "daemon";
+                    ref: string;
+                  };
+                  owner?: {
+                    /** @enum {string} */
+                    kind:
+                      | "human"
+                      | "agent_session"
+                      | "automation"
+                      | "extension"
+                      | "network_peer"
+                      | "pool";
+                    ref: string;
+                  } | null;
+                  parent_task_id?: string;
+                  paused?: boolean;
+                  /** Format: date-time */
+                  paused_at?: string | null;
+                  paused_by?: string;
+                  paused_by_task_id?: string;
+                  paused_reason?: string;
+                  /** @enum {string} */
+                  priority?: "low" | "medium" | "high" | "urgent";
+                  /** @enum {string} */
+                  scope: "global" | "workspace";
+                  /** @enum {string} */
+                  status:
+                    | "draft"
+                    | "pending"
+                    | "blocked"
+                    | "ready"
+                    | "in_progress"
+                    | "completed"
+                    | "failed"
+                    | "canceled";
+                  title: string;
+                  /** Format: date-time */
+                  updated_at: string;
+                  workspace_id?: string;
+                };
+              }[];
+              total: number;
+            };
+          };
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Invalid scheduler backlog query */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  drainScheduler: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description JSON request body */
+    requestBody?: {
+      content: {
+        "application/json": {
+          reason?: string;
+          timeout_seconds?: number | null;
+        };
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            completed: boolean;
+            /** Format: date-time */
+            completed_at: string;
+            remaining_claims: number;
+            scheduler: {
+              active_claim_count: number;
+              /** Format: date-time */
+              as_of: string;
+              drain_in_progress: boolean;
+              /** Format: date-time */
+              drain_started_at?: string | null;
+              paused: boolean;
+              /** Format: date-time */
+              paused_at?: string | null;
+              paused_by?: string;
+              paused_reason?: string;
+              paused_task_count: number;
+              queued_run_count: number;
+            };
+            /** Format: date-time */
+            started_at: string;
+            timed_out?: boolean;
+          };
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Invalid scheduler drain request */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  pauseScheduler: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description JSON request body */
+    requestBody?: {
+      content: {
+        "application/json": {
+          reason?: string;
+        };
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            scheduler: {
+              active_claim_count: number;
+              /** Format: date-time */
+              as_of: string;
+              drain_in_progress: boolean;
+              /** Format: date-time */
+              drain_started_at?: string | null;
+              paused: boolean;
+              /** Format: date-time */
+              paused_at?: string | null;
+              paused_by?: string;
+              paused_reason?: string;
+              paused_task_count: number;
+              queued_run_count: number;
+            };
+          };
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Invalid scheduler pause request */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  resumeScheduler: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description JSON request body */
+    requestBody?: {
+      content: {
+        "application/json": {
+          reason?: string;
+        };
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            scheduler: {
+              active_claim_count: number;
+              /** Format: date-time */
+              as_of: string;
+              drain_in_progress: boolean;
+              /** Format: date-time */
+              drain_started_at?: string | null;
+              paused: boolean;
+              /** Format: date-time */
+              paused_at?: string | null;
+              paused_by?: string;
+              paused_reason?: string;
+              paused_task_count: number;
+              queued_run_count: number;
+            };
+          };
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Invalid scheduler resume request */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21599,6 +32721,12 @@ export interface operations {
         workspace?: string;
         /** @description Include metadata-only session health when available */
         include_health?: boolean;
+        /** @description Only list sessions eligible for explicit attach */
+        resumable?: boolean;
+        /** @description Optional sort key. Use last_activity with resumable=true. */
+        sort?: string;
+        /** @description Maximum sessions to return when filtering resumable sessions */
+        limit?: number;
       };
       header?: never;
       path?: never;
@@ -21657,6 +32785,11 @@ export interface operations {
                 turn_started_at?: string | null;
               } | null;
               agent_name: string;
+              /** Format: date-time */
+              attach_expires_at?: string | null;
+              attachable: boolean;
+              attached_to?: string;
+              badge: string;
               channel?: string;
               /** Format: date-time */
               created_at: string;
@@ -21763,6 +32896,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21774,6 +32921,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21860,6 +33021,11 @@ export interface operations {
                 turn_started_at?: string | null;
               } | null;
               agent_name: string;
+              /** Format: date-time */
+              attach_expires_at?: string | null;
+              attachable: boolean;
+              attached_to?: string;
+              badge: string;
               channel?: string;
               /** Format: date-time */
               created_at: string;
@@ -21966,6 +33132,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21977,6 +33157,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21988,6 +33182,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -21999,6 +33207,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -22042,6 +33264,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -22053,6 +33289,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -22110,6 +33360,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -22121,6 +33385,150 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listSettingsApplyRecords: {
+    parameters: {
+      query?: {
+        /** @description Filter by apply status */
+        status?: "pending_apply" | "applied" | "blocked" | "failed";
+        /** @description Filter by config apply actor */
+        actor?: string;
+        /** @description Maximum number of records to return */
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            entries: {
+              active_config_hash: string;
+              actor: string;
+              /** Format: date-time */
+              applied_at?: string | null;
+              /** Format: date-time */
+              created_at: string;
+              desired_config_hash: string;
+              diagnostics?: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              }[];
+              /** @enum {string} */
+              diff_class:
+                | "live"
+                | "live-add"
+                | "live-remove-if-unused"
+                | "restart-required"
+                | "session-rebind";
+              /** Format: int64 */
+              generation: number;
+              id: string;
+              /** @enum {string} */
+              lifecycle:
+                | "live"
+                | "live-add"
+                | "live-remove-if-unused"
+                | "restart-required"
+                | "session-rebind";
+              /** @enum {string} */
+              next_action: "none" | "restart-daemon" | "new-session" | "retry";
+              /** @enum {string} */
+              status: "pending_apply" | "applied" | "blocked" | "failed";
+              /** Format: date-time */
+              updated_at: string;
+            }[];
+          };
+        };
+      };
+      /** @description Invalid apply history filter */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -22197,6 +33605,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -22240,23 +33662,47 @@ export interface operations {
         };
         content: {
           "application/json": {
+            active_config_hash: string;
+            /** Format: int64 */
+            active_generation: number;
+            agent_name?: string;
             applied: boolean;
+            apply_record_id: string;
             /** @enum {string} */
-            behavior: "applied_now" | "restart_required" | "action_trigger";
-            restart_required: boolean;
+            lifecycle:
+              | "live"
+              | "live-add"
+              | "live-remove-if-unused"
+              | "restart-required"
+              | "session-rebind";
+            /** @enum {string} */
+            next_action: "none" | "restart-daemon" | "new-session" | "retry";
+            partial_failures?: {
+              diagnostic: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              };
+              subsystem: string;
+            }[];
+            restart_required?: boolean;
             restart_scope?: string;
             /** @enum {string} */
-            scope: "global";
-            /** @enum {string} */
-            section:
-              | "general"
-              | "memory"
-              | "skills"
-              | "automation"
-              | "network"
-              | "observability"
-              | "hooks-extensions";
+            scope?: "global" | "workspace" | "agent";
+            section?: string;
+            skipped?: boolean;
+            skipped_reason?: string;
             warnings?: string[];
+            workspace_id?: string;
             /** @enum {string} */
             write_target?:
               | "global-config"
@@ -22275,6 +33721,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -22286,6 +33746,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -22297,6 +33771,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -22308,6 +33796,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -22347,6 +33849,11 @@ export interface operations {
             available_scopes: "global"[];
             config: {
               daemon: {
+                reload_timeouts: {
+                  bridges: string;
+                  mcp: string;
+                  providers: string;
+                };
                 socket: string;
               };
               defaults: {
@@ -22411,6 +33918,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -22436,6 +33957,11 @@ export interface operations {
         "application/json": {
           config: {
             daemon: {
+              reload_timeouts: {
+                bridges: string;
+                mcp: string;
+                providers: string;
+              };
               socket: string;
             };
             defaults: {
@@ -22467,23 +33993,47 @@ export interface operations {
         };
         content: {
           "application/json": {
+            active_config_hash: string;
+            /** Format: int64 */
+            active_generation: number;
+            agent_name?: string;
             applied: boolean;
+            apply_record_id: string;
             /** @enum {string} */
-            behavior: "applied_now" | "restart_required" | "action_trigger";
-            restart_required: boolean;
+            lifecycle:
+              | "live"
+              | "live-add"
+              | "live-remove-if-unused"
+              | "restart-required"
+              | "session-rebind";
+            /** @enum {string} */
+            next_action: "none" | "restart-daemon" | "new-session" | "retry";
+            partial_failures?: {
+              diagnostic: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              };
+              subsystem: string;
+            }[];
+            restart_required?: boolean;
             restart_scope?: string;
             /** @enum {string} */
-            scope: "global";
-            /** @enum {string} */
-            section:
-              | "general"
-              | "memory"
-              | "skills"
-              | "automation"
-              | "network"
-              | "observability"
-              | "hooks-extensions";
+            scope?: "global" | "workspace" | "agent";
+            section?: string;
+            skipped?: boolean;
+            skipped_reason?: string;
             warnings?: string[];
+            workspace_id?: string;
             /** @enum {string} */
             write_target?:
               | "global-config"
@@ -22502,6 +34052,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -22513,6 +34077,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -22524,6 +34102,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -22535,6 +34127,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -22644,7 +34250,9 @@ export interface operations {
                   | "network.message.persisted"
                   | "network.work.opened"
                   | "network.work.transitioned"
-                  | "network.work.closed";
+                  | "network.work.closed"
+                  | "network.peer.joined"
+                  | "network.peer.left";
                 /** @enum {string} */
                 executor_kind?: "native" | "subprocess" | "wasm";
                 matcher: {
@@ -22753,6 +34361,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -22881,7 +34503,9 @@ export interface operations {
                   | "network.message.persisted"
                   | "network.work.opened"
                   | "network.work.transitioned"
-                  | "network.work.closed";
+                  | "network.work.closed"
+                  | "network.peer.joined"
+                  | "network.peer.left";
                 /** @enum {string} */
                 executor_kind?: "native" | "subprocess" | "wasm";
                 matcher: {
@@ -23017,6 +34641,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23072,23 +34710,47 @@ export interface operations {
         };
         content: {
           "application/json": {
+            active_config_hash: string;
+            /** Format: int64 */
+            active_generation: number;
+            agent_name?: string;
             applied: boolean;
+            apply_record_id: string;
             /** @enum {string} */
-            behavior: "applied_now" | "restart_required" | "action_trigger";
-            restart_required: boolean;
+            lifecycle:
+              | "live"
+              | "live-add"
+              | "live-remove-if-unused"
+              | "restart-required"
+              | "session-rebind";
+            /** @enum {string} */
+            next_action: "none" | "restart-daemon" | "new-session" | "retry";
+            partial_failures?: {
+              diagnostic: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              };
+              subsystem: string;
+            }[];
+            restart_required?: boolean;
             restart_scope?: string;
             /** @enum {string} */
-            scope: "global";
-            /** @enum {string} */
-            section:
-              | "general"
-              | "memory"
-              | "skills"
-              | "automation"
-              | "network"
-              | "observability"
-              | "hooks-extensions";
+            scope?: "global" | "workspace" | "agent";
+            section?: string;
+            skipped?: boolean;
+            skipped_reason?: string;
             warnings?: string[];
+            workspace_id?: string;
             /** @enum {string} */
             write_target?:
               | "global-config"
@@ -23107,6 +34769,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23118,6 +34794,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23129,6 +34819,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23140,6 +34844,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23243,7 +34961,9 @@ export interface operations {
               | "network.message.persisted"
               | "network.work.opened"
               | "network.work.transitioned"
-              | "network.work.closed";
+              | "network.work.closed"
+              | "network.peer.joined"
+              | "network.peer.left";
             /** @enum {string} */
             executor_kind?: "native" | "subprocess" | "wasm";
             matcher: {
@@ -23309,16 +35029,47 @@ export interface operations {
         };
         content: {
           "application/json": {
+            active_config_hash: string;
+            /** Format: int64 */
+            active_generation: number;
+            agent_name?: string;
             applied: boolean;
+            apply_record_id: string;
             /** @enum {string} */
-            behavior: "applied_now" | "restart_required" | "action_trigger";
-            restart_required: boolean;
+            lifecycle:
+              | "live"
+              | "live-add"
+              | "live-remove-if-unused"
+              | "restart-required"
+              | "session-rebind";
+            /** @enum {string} */
+            next_action: "none" | "restart-daemon" | "new-session" | "retry";
+            partial_failures?: {
+              diagnostic: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              };
+              subsystem: string;
+            }[];
+            restart_required?: boolean;
             restart_scope?: string;
             /** @enum {string} */
-            scope: "global";
-            /** @enum {string} */
-            section: "providers" | "mcp-servers" | "sandboxes" | "hooks";
+            scope?: "global" | "workspace" | "agent";
+            section?: string;
+            skipped?: boolean;
+            skipped_reason?: string;
             warnings?: string[];
+            workspace_id?: string;
             /** @enum {string} */
             write_target?:
               | "global-config"
@@ -23337,6 +35088,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23348,6 +35113,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23359,6 +35138,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23370,6 +35163,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23401,16 +35208,47 @@ export interface operations {
         };
         content: {
           "application/json": {
+            active_config_hash: string;
+            /** Format: int64 */
+            active_generation: number;
+            agent_name?: string;
             applied: boolean;
+            apply_record_id: string;
             /** @enum {string} */
-            behavior: "applied_now" | "restart_required" | "action_trigger";
-            restart_required: boolean;
+            lifecycle:
+              | "live"
+              | "live-add"
+              | "live-remove-if-unused"
+              | "restart-required"
+              | "session-rebind";
+            /** @enum {string} */
+            next_action: "none" | "restart-daemon" | "new-session" | "retry";
+            partial_failures?: {
+              diagnostic: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              };
+              subsystem: string;
+            }[];
+            restart_required?: boolean;
             restart_scope?: string;
             /** @enum {string} */
-            scope: "global";
-            /** @enum {string} */
-            section: "providers" | "mcp-servers" | "sandboxes" | "hooks";
+            scope?: "global" | "workspace" | "agent";
+            section?: string;
+            skipped?: boolean;
+            skipped_reason?: string;
             warnings?: string[];
+            workspace_id?: string;
             /** @enum {string} */
             write_target?:
               | "global-config"
@@ -23429,6 +35267,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23440,6 +35292,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23451,6 +35317,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23594,6 +35474,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23605,6 +35499,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23616,6 +35524,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23690,15 +35612,45 @@ export interface operations {
         };
         content: {
           "application/json": {
+            active_config_hash: string;
+            /** Format: int64 */
+            active_generation: number;
+            agent_name?: string;
             applied: boolean;
+            apply_record_id: string;
             /** @enum {string} */
-            behavior: "applied_now" | "restart_required" | "action_trigger";
-            restart_required: boolean;
+            lifecycle:
+              | "live"
+              | "live-add"
+              | "live-remove-if-unused"
+              | "restart-required"
+              | "session-rebind";
+            /** @enum {string} */
+            next_action: "none" | "restart-daemon" | "new-session" | "retry";
+            partial_failures?: {
+              diagnostic: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              };
+              subsystem: string;
+            }[];
+            restart_required?: boolean;
             restart_scope?: string;
             /** @enum {string} */
-            scope: "global" | "workspace";
-            /** @enum {string} */
-            section: "providers" | "mcp-servers" | "sandboxes" | "hooks";
+            scope?: "global" | "workspace" | "agent";
+            section?: string;
+            skipped?: boolean;
+            skipped_reason?: string;
             warnings?: string[];
             workspace_id?: string;
             /** @enum {string} */
@@ -23719,6 +35671,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23730,6 +35696,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23741,6 +35721,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23752,6 +35746,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23763,6 +35771,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23801,15 +35823,45 @@ export interface operations {
         };
         content: {
           "application/json": {
+            active_config_hash: string;
+            /** Format: int64 */
+            active_generation: number;
+            agent_name?: string;
             applied: boolean;
+            apply_record_id: string;
             /** @enum {string} */
-            behavior: "applied_now" | "restart_required" | "action_trigger";
-            restart_required: boolean;
+            lifecycle:
+              | "live"
+              | "live-add"
+              | "live-remove-if-unused"
+              | "restart-required"
+              | "session-rebind";
+            /** @enum {string} */
+            next_action: "none" | "restart-daemon" | "new-session" | "retry";
+            partial_failures?: {
+              diagnostic: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              };
+              subsystem: string;
+            }[];
+            restart_required?: boolean;
             restart_scope?: string;
             /** @enum {string} */
-            scope: "global" | "workspace";
-            /** @enum {string} */
-            section: "providers" | "mcp-servers" | "sandboxes" | "hooks";
+            scope?: "global" | "workspace" | "agent";
+            section?: string;
+            skipped?: boolean;
+            skipped_reason?: string;
             warnings?: string[];
             workspace_id?: string;
             /** @enum {string} */
@@ -23830,6 +35882,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23841,6 +35907,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23852,6 +35932,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23863,6 +35957,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -23874,6 +35982,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -24073,6 +36195,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -24241,23 +36377,47 @@ export interface operations {
         };
         content: {
           "application/json": {
+            active_config_hash: string;
+            /** Format: int64 */
+            active_generation: number;
+            agent_name?: string;
             applied: boolean;
+            apply_record_id: string;
             /** @enum {string} */
-            behavior: "applied_now" | "restart_required" | "action_trigger";
-            restart_required: boolean;
+            lifecycle:
+              | "live"
+              | "live-add"
+              | "live-remove-if-unused"
+              | "restart-required"
+              | "session-rebind";
+            /** @enum {string} */
+            next_action: "none" | "restart-daemon" | "new-session" | "retry";
+            partial_failures?: {
+              diagnostic: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              };
+              subsystem: string;
+            }[];
+            restart_required?: boolean;
             restart_scope?: string;
             /** @enum {string} */
-            scope: "global";
-            /** @enum {string} */
-            section:
-              | "general"
-              | "memory"
-              | "skills"
-              | "automation"
-              | "network"
-              | "observability"
-              | "hooks-extensions";
+            scope?: "global" | "workspace" | "agent";
+            section?: string;
+            skipped?: boolean;
+            skipped_reason?: string;
             warnings?: string[];
+            workspace_id?: string;
             /** @enum {string} */
             write_target?:
               | "global-config"
@@ -24276,6 +36436,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -24287,6 +36461,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -24298,6 +36486,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -24309,6 +36511,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -24385,6 +36601,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -24428,23 +36658,47 @@ export interface operations {
         };
         content: {
           "application/json": {
+            active_config_hash: string;
+            /** Format: int64 */
+            active_generation: number;
+            agent_name?: string;
             applied: boolean;
+            apply_record_id: string;
             /** @enum {string} */
-            behavior: "applied_now" | "restart_required" | "action_trigger";
-            restart_required: boolean;
+            lifecycle:
+              | "live"
+              | "live-add"
+              | "live-remove-if-unused"
+              | "restart-required"
+              | "session-rebind";
+            /** @enum {string} */
+            next_action: "none" | "restart-daemon" | "new-session" | "retry";
+            partial_failures?: {
+              diagnostic: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              };
+              subsystem: string;
+            }[];
+            restart_required?: boolean;
             restart_scope?: string;
             /** @enum {string} */
-            scope: "global";
-            /** @enum {string} */
-            section:
-              | "general"
-              | "memory"
-              | "skills"
-              | "automation"
-              | "network"
-              | "observability"
-              | "hooks-extensions";
+            scope?: "global" | "workspace" | "agent";
+            section?: string;
+            skipped?: boolean;
+            skipped_reason?: string;
             warnings?: string[];
+            workspace_id?: string;
             /** @enum {string} */
             write_target?:
               | "global-config"
@@ -24463,6 +36717,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -24474,6 +36742,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -24485,6 +36767,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -24496,6 +36792,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -24576,6 +36886,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -24622,23 +36946,47 @@ export interface operations {
         };
         content: {
           "application/json": {
+            active_config_hash: string;
+            /** Format: int64 */
+            active_generation: number;
+            agent_name?: string;
             applied: boolean;
+            apply_record_id: string;
             /** @enum {string} */
-            behavior: "applied_now" | "restart_required" | "action_trigger";
-            restart_required: boolean;
+            lifecycle:
+              | "live"
+              | "live-add"
+              | "live-remove-if-unused"
+              | "restart-required"
+              | "session-rebind";
+            /** @enum {string} */
+            next_action: "none" | "restart-daemon" | "new-session" | "retry";
+            partial_failures?: {
+              diagnostic: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              };
+              subsystem: string;
+            }[];
+            restart_required?: boolean;
             restart_scope?: string;
             /** @enum {string} */
-            scope: "global";
-            /** @enum {string} */
-            section:
-              | "general"
-              | "memory"
-              | "skills"
-              | "automation"
-              | "network"
-              | "observability"
-              | "hooks-extensions";
+            scope?: "global" | "workspace" | "agent";
+            section?: string;
+            skipped?: boolean;
+            skipped_reason?: string;
             warnings?: string[];
+            workspace_id?: string;
             /** @enum {string} */
             write_target?:
               | "global-config"
@@ -24657,6 +37005,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -24668,6 +37030,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -24679,6 +37055,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -24690,6 +37080,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -24725,6 +37129,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -24758,6 +37176,7 @@ export interface operations {
             collection: "providers" | "mcp-servers" | "sandboxes" | "hooks";
             providers: {
               auth_status?: {
+                code?: string;
                 env_policy: string;
                 home_policy: string;
                 login_command?: string;
@@ -24950,6 +37369,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -24983,6 +37416,7 @@ export interface operations {
           "application/json": {
             provider: {
               auth_status?: {
+                code?: string;
                 env_policy: string;
                 home_policy: string;
                 login_command?: string;
@@ -25173,6 +37607,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -25184,6 +37632,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -25274,16 +37736,47 @@ export interface operations {
         };
         content: {
           "application/json": {
+            active_config_hash: string;
+            /** Format: int64 */
+            active_generation: number;
+            agent_name?: string;
             applied: boolean;
+            apply_record_id: string;
             /** @enum {string} */
-            behavior: "applied_now" | "restart_required" | "action_trigger";
-            restart_required: boolean;
+            lifecycle:
+              | "live"
+              | "live-add"
+              | "live-remove-if-unused"
+              | "restart-required"
+              | "session-rebind";
+            /** @enum {string} */
+            next_action: "none" | "restart-daemon" | "new-session" | "retry";
+            partial_failures?: {
+              diagnostic: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              };
+              subsystem: string;
+            }[];
+            restart_required?: boolean;
             restart_scope?: string;
             /** @enum {string} */
-            scope: "global";
-            /** @enum {string} */
-            section: "providers" | "mcp-servers" | "sandboxes" | "hooks";
+            scope?: "global" | "workspace" | "agent";
+            section?: string;
+            skipped?: boolean;
+            skipped_reason?: string;
             warnings?: string[];
+            workspace_id?: string;
             /** @enum {string} */
             write_target?:
               | "global-config"
@@ -25302,6 +37795,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -25313,6 +37820,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -25324,6 +37845,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -25335,6 +37870,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -25366,16 +37915,47 @@ export interface operations {
         };
         content: {
           "application/json": {
+            active_config_hash: string;
+            /** Format: int64 */
+            active_generation: number;
+            agent_name?: string;
             applied: boolean;
+            apply_record_id: string;
             /** @enum {string} */
-            behavior: "applied_now" | "restart_required" | "action_trigger";
-            restart_required: boolean;
+            lifecycle:
+              | "live"
+              | "live-add"
+              | "live-remove-if-unused"
+              | "restart-required"
+              | "session-rebind";
+            /** @enum {string} */
+            next_action: "none" | "restart-daemon" | "new-session" | "retry";
+            partial_failures?: {
+              diagnostic: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              };
+              subsystem: string;
+            }[];
+            restart_required?: boolean;
             restart_scope?: string;
             /** @enum {string} */
-            scope: "global";
-            /** @enum {string} */
-            section: "providers" | "mcp-servers" | "sandboxes" | "hooks";
+            scope?: "global" | "workspace" | "agent";
+            section?: string;
+            skipped?: boolean;
+            skipped_reason?: string;
             warnings?: string[];
+            workspace_id?: string;
             /** @enum {string} */
             write_target?:
               | "global-config"
@@ -25394,6 +37974,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -25405,6 +37999,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -25416,6 +38024,171 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  reloadSettings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            active_config_hash: string;
+            /** Format: int64 */
+            active_generation: number;
+            agent_name?: string;
+            applied: boolean;
+            apply_record_id: string;
+            /** @enum {string} */
+            lifecycle:
+              | "live"
+              | "live-add"
+              | "live-remove-if-unused"
+              | "restart-required"
+              | "session-rebind";
+            /** @enum {string} */
+            next_action: "none" | "restart-daemon" | "new-session" | "retry";
+            partial_failures?: {
+              diagnostic: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              };
+              subsystem: string;
+            }[];
+            restart_required?: boolean;
+            restart_scope?: string;
+            /** @enum {string} */
+            scope?: "global" | "workspace" | "agent";
+            section?: string;
+            skipped?: boolean;
+            skipped_reason?: string;
+            warnings?: string[];
+            workspace_id?: string;
+            /** @enum {string} */
+            write_target?:
+              | "global-config"
+              | "workspace-config"
+              | "global-mcp-sidecar"
+              | "workspace-mcp-sidecar"
+              | "global-agent-file"
+              | "workspace-agent-file";
+          };
+        };
+      };
+      /** @description Invalid settings payload */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Conflicting settings change */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -25531,6 +38304,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -25644,6 +38431,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -25655,6 +38456,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -25720,16 +38535,47 @@ export interface operations {
         };
         content: {
           "application/json": {
+            active_config_hash: string;
+            /** Format: int64 */
+            active_generation: number;
+            agent_name?: string;
             applied: boolean;
+            apply_record_id: string;
             /** @enum {string} */
-            behavior: "applied_now" | "restart_required" | "action_trigger";
-            restart_required: boolean;
+            lifecycle:
+              | "live"
+              | "live-add"
+              | "live-remove-if-unused"
+              | "restart-required"
+              | "session-rebind";
+            /** @enum {string} */
+            next_action: "none" | "restart-daemon" | "new-session" | "retry";
+            partial_failures?: {
+              diagnostic: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              };
+              subsystem: string;
+            }[];
+            restart_required?: boolean;
             restart_scope?: string;
             /** @enum {string} */
-            scope: "global";
-            /** @enum {string} */
-            section: "providers" | "mcp-servers" | "sandboxes" | "hooks";
+            scope?: "global" | "workspace" | "agent";
+            section?: string;
+            skipped?: boolean;
+            skipped_reason?: string;
             warnings?: string[];
+            workspace_id?: string;
             /** @enum {string} */
             write_target?:
               | "global-config"
@@ -25748,6 +38594,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -25759,6 +38619,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -25770,6 +38644,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -25781,6 +38669,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -25812,16 +38714,47 @@ export interface operations {
         };
         content: {
           "application/json": {
+            active_config_hash: string;
+            /** Format: int64 */
+            active_generation: number;
+            agent_name?: string;
             applied: boolean;
+            apply_record_id: string;
             /** @enum {string} */
-            behavior: "applied_now" | "restart_required" | "action_trigger";
-            restart_required: boolean;
+            lifecycle:
+              | "live"
+              | "live-add"
+              | "live-remove-if-unused"
+              | "restart-required"
+              | "session-rebind";
+            /** @enum {string} */
+            next_action: "none" | "restart-daemon" | "new-session" | "retry";
+            partial_failures?: {
+              diagnostic: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              };
+              subsystem: string;
+            }[];
+            restart_required?: boolean;
             restart_scope?: string;
             /** @enum {string} */
-            scope: "global";
-            /** @enum {string} */
-            section: "providers" | "mcp-servers" | "sandboxes" | "hooks";
+            scope?: "global" | "workspace" | "agent";
+            section?: string;
+            skipped?: boolean;
+            skipped_reason?: string;
             warnings?: string[];
+            workspace_id?: string;
             /** @enum {string} */
             write_target?:
               | "global-config"
@@ -25840,6 +38773,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -25851,6 +38798,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -25862,6 +38823,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -25961,6 +38936,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -25972,6 +38961,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -25983,6 +38986,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -25994,6 +39011,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26046,23 +39077,45 @@ export interface operations {
         };
         content: {
           "application/json": {
+            active_config_hash: string;
+            /** Format: int64 */
+            active_generation: number;
             agent_name?: string;
             applied: boolean;
+            apply_record_id: string;
             /** @enum {string} */
-            behavior: "applied_now" | "restart_required" | "action_trigger";
-            restart_required: boolean;
+            lifecycle:
+              | "live"
+              | "live-add"
+              | "live-remove-if-unused"
+              | "restart-required"
+              | "session-rebind";
+            /** @enum {string} */
+            next_action: "none" | "restart-daemon" | "new-session" | "retry";
+            partial_failures?: {
+              diagnostic: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              };
+              subsystem: string;
+            }[];
+            restart_required?: boolean;
             restart_scope?: string;
             /** @enum {string} */
-            scope: "global" | "agent";
-            /** @enum {string} */
-            section:
-              | "general"
-              | "memory"
-              | "skills"
-              | "automation"
-              | "network"
-              | "observability"
-              | "hooks-extensions";
+            scope?: "global" | "workspace" | "agent";
+            section?: string;
+            skipped?: boolean;
+            skipped_reason?: string;
             warnings?: string[];
             workspace_id?: string;
             /** @enum {string} */
@@ -26083,6 +39136,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26094,6 +39161,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26105,6 +39186,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26116,6 +39211,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26127,6 +39236,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26138,6 +39261,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26189,6 +39326,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26200,6 +39351,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26265,10 +39430,20 @@ export interface operations {
               name: string;
               provenance?: {
                 /** Format: date-time */
-                installed_at: string;
-                registry: string;
-                slug: string;
-                version: string;
+                installed_at?: string | null;
+                installed_from_bundle?: string;
+                installed_from_extension?: string;
+                precedence_tier: string;
+                registry?: string;
+                shadowed_by?: {
+                  /** Format: date-time */
+                  detected_at: string;
+                  path: string;
+                  resolved_to_winner: boolean;
+                  tier: string;
+                }[];
+                slug?: string;
+                version?: string;
               } | null;
               source: string;
               version?: string;
@@ -26283,6 +39458,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26294,6 +39483,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26305,6 +39508,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26316,6 +39533,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26327,6 +39558,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26383,6 +39628,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26394,6 +39653,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26405,6 +39678,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26416,6 +39703,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26471,6 +39772,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26482,6 +39797,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26493,6 +39822,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26504,6 +39847,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26556,6 +39913,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26567,6 +39938,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26578,6 +39963,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26633,6 +40032,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26644,6 +40057,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26655,6 +40082,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26666,6 +40107,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26677,6 +40132,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26724,6 +40193,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26735,6 +40218,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26746,6 +40243,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26757,6 +40268,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26768,6 +40293,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26836,10 +40375,20 @@ export interface operations {
               name: string;
               provenance?: {
                 /** Format: date-time */
-                installed_at: string;
-                registry: string;
-                slug: string;
-                version: string;
+                installed_at?: string | null;
+                installed_from_bundle?: string;
+                installed_from_extension?: string;
+                precedence_tier: string;
+                registry?: string;
+                shadowed_by?: {
+                  /** Format: date-time */
+                  detected_at: string;
+                  path: string;
+                  resolved_to_winner: boolean;
+                  tier: string;
+                }[];
+                slug?: string;
+                version?: string;
               } | null;
               source: string;
               version?: string;
@@ -26854,6 +40403,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26865,6 +40428,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26876,6 +40453,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26887,6 +40478,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26898,6 +40503,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26945,6 +40564,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26956,6 +40589,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26967,6 +40614,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26978,6 +40639,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -26989,6 +40664,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27036,6 +40725,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27047,6 +40750,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27058,6 +40775,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27069,6 +40800,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27080,6 +40825,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27127,6 +40886,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27138,6 +40911,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27149,6 +40936,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27160,6 +40961,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27171,6 +40986,1066 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getSkillShadows: {
+    parameters: {
+      query?: {
+        /** @description Workspace id or path for resolution context */
+        workspace?: string;
+        /** @description Logical agent name for agent-local resolution */
+        for_agent?: string;
+      };
+      header?: never;
+      path: {
+        /** @description Skill name */
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            name: string;
+            shadows: {
+              /** Format: date-time */
+              detected_at: string;
+              path: string;
+              resolved_to_winner: boolean;
+              tier: string;
+            }[];
+            winner: {
+              /** Format: date-time */
+              detected_at: string;
+              path: string;
+              resolved_to_winner: boolean;
+              tier: string;
+            };
+          };
+        };
+      };
+      /** @description Invalid skill lookup */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Skill or scope not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Invalid agent-local layer */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Skills registry is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getStatus: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            automation: {
+              enabled: boolean;
+              jobs: {
+                enabled: number;
+                total: number;
+              };
+              /** Format: date-time */
+              next_fire?: string | null;
+              scheduled_jobs?: {
+                catch_up_policy?: string;
+                consecutive_resume_failures?: number;
+                job_id: string;
+                last_fire_id?: string;
+                /** Format: date-time */
+                last_misfire_at?: string | null;
+                /** Format: date-time */
+                last_run_at?: string | null;
+                /** Format: date-time */
+                last_scheduled_at?: string | null;
+                misfire_count?: number;
+                misfire_grace_seconds?: number;
+                /** Format: date-time */
+                next_run_at?: string | null;
+                registered: boolean;
+                /** Format: date-time */
+                updated_at?: string | null;
+              }[];
+              scheduler_running: boolean;
+              triggers: {
+                enabled: number;
+                total: number;
+              };
+            };
+            bridges: {
+              auth_failures_total: number;
+              delivery_backlog: number;
+              delivery_dropped_total: number;
+              delivery_failures_total: number;
+              route_count: number;
+              status_counts: {
+                auth_required: number;
+                degraded: number;
+                disabled: number;
+                error: number;
+                ready: number;
+                starting: number;
+              };
+              total_instances: number;
+            };
+            config: {
+              apply_state: string;
+              config_file?: string;
+              home_dir?: string;
+              restart_required: boolean;
+              status: string;
+              validated: boolean;
+              validation_error?: string;
+            };
+            daemon: {
+              active_sessions: number;
+              http_host: string;
+              http_port: number;
+              network?: {
+                channels?: number;
+                configured_default_channel?: string;
+                /** Format: int64 */
+                conversation_messages?: number;
+                declared_channels?: {
+                  activation_id?: string;
+                  bundle_name?: string;
+                  description?: string;
+                  extension_name?: string;
+                  name: string;
+                  primary?: boolean;
+                  profile_name?: string;
+                  workspace_id?: string;
+                }[];
+                delivery_workers?: number;
+                /** Format: int64 */
+                direct_resolves?: number;
+                effective_default_channel?: string;
+                effective_default_source?: string;
+                enabled: boolean;
+                /** Format: int64 */
+                handoff_tagged_events?: number;
+                kind_metrics?: {
+                  /** Format: int64 */
+                  delivered?: number;
+                  kind: string;
+                  /** Format: int64 */
+                  received?: number;
+                  /** Format: int64 */
+                  rejected?: number;
+                  /** Format: int64 */
+                  sent?: number;
+                }[];
+                last_disconnect?: string;
+                listener_host?: string;
+                listener_port?: number;
+                local_peers?: number;
+                /** Format: int64 */
+                messages_delivered?: number;
+                /** Format: int64 */
+                messages_received?: number;
+                /** Format: int64 */
+                messages_rejected?: number;
+                /** Format: int64 */
+                messages_sent?: number;
+                /** Format: int64 */
+                open_direct_rooms?: number;
+                /** Format: int64 */
+                open_threads?: number;
+                /** Format: int64 */
+                open_work_items?: number;
+                queued_messages?: number;
+                queued_sessions?: number;
+                remote_peers?: number;
+                status: string;
+                /** Format: int64 */
+                work_transitions?: number;
+                /** Format: int64 */
+                workflow_tagged_events?: number;
+              } | null;
+              pid: number;
+              socket: string;
+              /** Format: date-time */
+              started_at: string;
+              status: string;
+              total_sessions: number;
+              user_home_dir: string;
+              version?: string;
+            };
+            /** Format: date-time */
+            generated_at: string;
+            health: {
+              active_agents: number;
+              active_sessions: number;
+              activities?: {
+                current_tool?: string;
+                /** Format: date-time */
+                deadline_at?: string | null;
+                /** Format: int64 */
+                elapsed_ms: number;
+                /** Format: int64 */
+                elapsed_seconds: number;
+                /** Format: int64 */
+                idle_seconds: number;
+                iteration_current: number;
+                iteration_max: number;
+                /** Format: date-time */
+                last_activity_at?: string | null;
+                last_activity_detail?: string;
+                last_activity_kind?: string;
+                /** Format: date-time */
+                last_progress_at?: string | null;
+                session_id: string;
+                stall_reason?: string;
+                stall_state?: string;
+                status: string;
+                tool_call_id?: string;
+                turn_id?: string;
+                turn_source?: string;
+                /** Format: date-time */
+                turn_started_at?: string | null;
+              }[];
+              agent_probes?: {
+                agent_name?: string;
+                /** Format: date-time */
+                checked_at: string;
+                command?: string;
+                /** Format: int64 */
+                duration_ms: number;
+                error?: string;
+                executable?: string;
+                provider?: string;
+                status: string;
+              }[];
+              bridges: {
+                auth_failures_total: number;
+                delivery_backlog: number;
+                delivery_dropped_total: number;
+                delivery_failures_total: number;
+                route_count: number;
+                status_counts: {
+                  auth_required: number;
+                  degraded: number;
+                  disabled: number;
+                  error: number;
+                  ready: number;
+                  starting: number;
+                };
+                total_instances: number;
+              };
+              failures: {
+                by_kind?: {
+                  [key: string]: number;
+                };
+                recent?: {
+                  agent_name?: string;
+                  crash_bundle_path?: string;
+                  failure_kind: string;
+                  provider?: string;
+                  session_id: string;
+                  state?: string;
+                  summary?: string;
+                  /** Format: date-time */
+                  updated_at: string;
+                  workspace_id?: string;
+                }[];
+                status: string;
+                total: number;
+              };
+              /** Format: int64 */
+              global_db_size_bytes: number;
+              persistence: {
+                /** Format: int64 */
+                global_db_size_bytes: number;
+                /** Format: int64 */
+                session_db_size_bytes: number;
+                status: string;
+              };
+              retention: {
+                /** Format: int64 */
+                deleted_event_summaries: number;
+                /** Format: int64 */
+                deleted_permission_log_rows: number;
+                /** Format: int64 */
+                deleted_token_stats: number;
+                enabled: boolean;
+                /** Format: date-time */
+                last_cutoff_at?: string | null;
+                /** Format: date-time */
+                last_sweep_at?: string | null;
+                last_sweep_error?: string;
+                last_sweep_status: string;
+                retention_days: number;
+                /** Format: int64 */
+                sweep_interval_seconds: number;
+              };
+              /** Format: int64 */
+              session_db_size_bytes: number;
+              status: string;
+              /** Format: int64 */
+              uptime_seconds: number;
+              version: string;
+            };
+            log_tail: {
+              available: boolean;
+              status: string;
+            };
+            mcp_servers?: {
+              auth_status?: string;
+              configured: boolean;
+              diagnostic?: string;
+              initialized: boolean;
+              name: string;
+              probe?: string;
+              reason?: string;
+              runtime_status: string;
+              scope: string;
+              state: string;
+              tool_count?: number;
+              transport?: string;
+              workspace_id?: string;
+            }[];
+            memory: {
+              configured: boolean;
+              dream_agent?: string;
+              dream_check_interval?: string;
+              dream_enabled: boolean;
+              /** Format: double */
+              dream_min_hours?: number;
+              dream_min_sessions?: number;
+              enabled: boolean;
+              global_dir?: string;
+              global_files: number;
+              indexed_files: number;
+              /** Format: date-time */
+              last_consolidation: string | null;
+              /** Format: date-time */
+              last_operation_at: string | null;
+              /** Format: date-time */
+              last_reindex: string | null;
+              operation_count: number;
+              orphaned_files: number;
+              reason?: string;
+              status: string;
+              workspace_count: number;
+              workspace_files: number;
+            };
+            providers?: {
+              code?: string;
+              default: boolean;
+              display_name?: string;
+              env_policy?: string;
+              home_policy?: string;
+              /** Format: date-time */
+              last_probe_at?: string | null;
+              login_command?: string;
+              message?: string;
+              mode?: string;
+              name: string;
+              state: string;
+              status_command?: string;
+              suggested_command?: string;
+            }[];
+            schema_version: string;
+            sessions: {
+              active: number;
+              by_badge?: {
+                [key: string]: number;
+              };
+              by_status?: {
+                [key: string]: number;
+              };
+              total: number;
+            };
+            skills: {
+              diagnostics?: {
+                failure?: {
+                  actual_hash?: string;
+                  code: string;
+                  expected_hash?: string;
+                  message: string;
+                } | null;
+                name: string;
+                path?: string;
+                source?: string;
+                /** @enum {string} */
+                state: "valid" | "shadowed" | "verification_failed";
+                /** @enum {string} */
+                verification_status: "passed" | "warning" | "failed";
+                warnings?: {
+                  message: string;
+                  pattern?: string;
+                  severity: string;
+                }[];
+                winning_path?: string;
+                winning_source?: string;
+              }[];
+              disabled_count: number;
+              discovered_count: number;
+              runtime_available: boolean;
+            };
+            tasks: {
+              active_orphan_runs: number;
+              channel_mismatch_since_start: number;
+              duplicate_ingress_since_start: number;
+              forced_stops_since_start: number;
+              /** Format: int64 */
+              oldest_queue_age_ms: number;
+              /** Format: date-time */
+              oldest_queued_at?: string | null;
+              owner_totals?: {
+                count: number;
+                owner_kind: string;
+                owner_ref: string;
+              }[];
+              queue_depth?: {
+                count: number;
+                network_channel?: string;
+                /** Format: int64 */
+                oldest_queue_age_ms: number;
+                /** Format: date-time */
+                oldest_queued_at?: string | null;
+              }[];
+              queue_depth_total: number;
+              recovery_since_start: {
+                failed: number;
+                marked_running: number;
+                requeued: number;
+              };
+              run_totals?: {
+                count: number;
+                network_channel?: string;
+                origin_kind: string;
+                status: string;
+              }[];
+              status: string;
+              stuck_runs?: {
+                /** Format: int64 */
+                age_ms: number;
+                network_channel?: string;
+                origin_kind: string;
+                run_id: string;
+                session_id?: string;
+                status: string;
+                task_id: string;
+              }[];
+              task_totals?: {
+                count: number;
+                network_channel?: string;
+                scope: string;
+                status: string;
+              }[];
+            };
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  createSupportBundle: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description JSON request body */
+    requestBody?: {
+      content: {
+        "application/json": {
+          include_status?: boolean | null;
+        };
+      };
+    };
+    responses: {
+      /** @description Accepted */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            operation: {
+              /** Format: date-time */
+              completed_at?: string | null;
+              /** Format: date-time */
+              created_at: string;
+              download_url?: string;
+              failure_reason?: string;
+              file_name?: string;
+              manifest?: {
+                /** Format: int64 */
+                artifact_max_bytes: number;
+                artifacts: {
+                  /** Format: int64 */
+                  bytes: number;
+                  included: boolean;
+                  omitted_reason?: string;
+                  path: string;
+                  redaction_version?: string;
+                  truncated: boolean;
+                }[];
+                /** Format: int64 */
+                bundle_max_bytes: number;
+                /** Format: date-time */
+                created_at: string;
+                /** Format: int64 */
+                event_summary_max_bytes: number;
+                /** Format: int64 */
+                log_tail_max_bytes: number;
+                operation_id: string;
+                redaction_version: string;
+                schema_version: string;
+              } | null;
+              operation_id: string;
+              /** Format: int64 */
+              size_bytes?: number;
+              status: string;
+              status_url: string;
+              /** Format: date-time */
+              updated_at: string;
+            };
+          };
+        };
+      };
+      /** @description Invalid support bundle request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Support bundle service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getSupportBundle: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Support bundle operation id */
+        operation_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            operation: {
+              /** Format: date-time */
+              completed_at?: string | null;
+              /** Format: date-time */
+              created_at: string;
+              download_url?: string;
+              failure_reason?: string;
+              file_name?: string;
+              manifest?: {
+                /** Format: int64 */
+                artifact_max_bytes: number;
+                artifacts: {
+                  /** Format: int64 */
+                  bytes: number;
+                  included: boolean;
+                  omitted_reason?: string;
+                  path: string;
+                  redaction_version?: string;
+                  truncated: boolean;
+                }[];
+                /** Format: int64 */
+                bundle_max_bytes: number;
+                /** Format: date-time */
+                created_at: string;
+                /** Format: int64 */
+                event_summary_max_bytes: number;
+                /** Format: int64 */
+                log_tail_max_bytes: number;
+                operation_id: string;
+                redaction_version: string;
+                schema_version: string;
+              } | null;
+              operation_id: string;
+              /** Format: int64 */
+              size_bytes?: number;
+              status: string;
+              status_url: string;
+              /** Format: date-time */
+              updated_at: string;
+            };
+          };
+        };
+      };
+      /** @description Support bundle operation not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Support bundle service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  downloadSupportBundle: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Support bundle operation id */
+        operation_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Support bundle archive */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/gzip": string;
+        };
+      };
+      /** @description Support bundle operation not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Support bundle operation is not ready */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Support bundle service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27274,6 +42149,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27285,6 +42174,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27296,6 +42199,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27387,6 +42304,7 @@ export interface operations {
               /** Format: date-time */
               ended_at?: string | null;
               error?: string;
+              failure_kind?: string;
               /** Format: date-time */
               heartbeat_at?: string | null;
               id: string;
@@ -27409,6 +42327,7 @@ export interface operations {
                   | "daemon";
                 ref: string;
               };
+              previous_run_id?: string;
               /** Format: date-time */
               queued_at: string;
               result?: unknown;
@@ -27498,6 +42417,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27509,6 +42442,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27520,6 +42467,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27531,6 +42492,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27542,6 +42517,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27615,6 +42604,7 @@ export interface operations {
                 /** Format: date-time */
                 ended_at?: string | null;
                 error?: string;
+                failure_kind?: string;
                 /** Format: date-time */
                 heartbeat_at?: string | null;
                 id: string;
@@ -27637,6 +42627,7 @@ export interface operations {
                     | "daemon";
                   ref: string;
                 };
+                previous_run_id?: string;
                 /** Format: date-time */
                 queued_at: string;
                 result?: unknown;
@@ -27685,6 +42676,7 @@ export interface operations {
                 turn_count?: number | null;
               };
               task: {
+                effective_paused?: boolean;
                 id: string;
                 identifier?: string;
                 /** Format: int64 */
@@ -27700,6 +42692,8 @@ export interface operations {
                     | "pool";
                   ref: string;
                 } | null;
+                paused?: boolean;
+                paused_by_task_id?: string;
                 /** @enum {string} */
                 priority?: "low" | "medium" | "high" | "urgent";
                 /** @enum {string} */
@@ -27728,6 +42722,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27739,6 +42747,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27750,6 +42772,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27761,6 +42797,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27840,6 +42890,7 @@ export interface operations {
               /** Format: date-time */
               ended_at?: string | null;
               error?: string;
+              failure_kind?: string;
               /** Format: date-time */
               heartbeat_at?: string | null;
               id: string;
@@ -27862,6 +42913,7 @@ export interface operations {
                   | "daemon";
                 ref: string;
               };
+              previous_run_id?: string;
               /** Format: date-time */
               queued_at: string;
               result?: unknown;
@@ -27889,6 +42941,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27900,6 +42966,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27911,6 +42991,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27922,6 +43016,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -27933,6 +43041,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28013,6 +43135,7 @@ export interface operations {
               /** Format: date-time */
               ended_at?: string | null;
               error?: string;
+              failure_kind?: string;
               /** Format: date-time */
               heartbeat_at?: string | null;
               id: string;
@@ -28035,6 +43158,7 @@ export interface operations {
                   | "daemon";
                 ref: string;
               };
+              previous_run_id?: string;
               /** Format: date-time */
               queued_at: string;
               result?: unknown;
@@ -28062,6 +43186,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28073,6 +43211,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28084,6 +43236,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28095,6 +43261,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28106,6 +43286,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28185,6 +43379,7 @@ export interface operations {
               /** Format: date-time */
               ended_at?: string | null;
               error?: string;
+              failure_kind?: string;
               /** Format: date-time */
               heartbeat_at?: string | null;
               id: string;
@@ -28207,6 +43402,7 @@ export interface operations {
                   | "daemon";
                 ref: string;
               };
+              previous_run_id?: string;
               /** Format: date-time */
               queued_at: string;
               result?: unknown;
@@ -28234,6 +43430,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28245,6 +43455,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28256,6 +43480,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28267,6 +43505,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28278,6 +43530,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28357,6 +43623,7 @@ export interface operations {
               /** Format: date-time */
               ended_at?: string | null;
               error?: string;
+              failure_kind?: string;
               /** Format: date-time */
               heartbeat_at?: string | null;
               id: string;
@@ -28379,6 +43646,7 @@ export interface operations {
                   | "daemon";
                 ref: string;
               };
+              previous_run_id?: string;
               /** Format: date-time */
               queued_at: string;
               result?: unknown;
@@ -28406,6 +43674,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28417,6 +43699,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28428,6 +43724,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28439,6 +43749,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28450,6 +43774,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28530,6 +43868,7 @@ export interface operations {
               /** Format: date-time */
               ended_at?: string | null;
               error?: string;
+              failure_kind?: string;
               /** Format: date-time */
               heartbeat_at?: string | null;
               id: string;
@@ -28552,6 +43891,7 @@ export interface operations {
                   | "daemon";
                 ref: string;
               };
+              previous_run_id?: string;
               /** Format: date-time */
               queued_at: string;
               result?: unknown;
@@ -28579,6 +43919,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28590,6 +43944,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28601,6 +43969,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28612,6 +43994,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28623,6 +44019,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28733,6 +44143,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28744,6 +44168,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28755,6 +44193,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28766,6 +44218,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28959,6 +44425,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28970,6 +44450,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28981,6 +44475,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -28992,6 +44500,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -29003,6 +44525,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -29082,6 +44618,7 @@ export interface operations {
               /** Format: date-time */
               ended_at?: string | null;
               error?: string;
+              failure_kind?: string;
               /** Format: date-time */
               heartbeat_at?: string | null;
               id: string;
@@ -29104,6 +44641,7 @@ export interface operations {
                   | "daemon";
                 ref: string;
               };
+              previous_run_id?: string;
               /** Format: date-time */
               queued_at: string;
               result?: unknown;
@@ -29131,6 +44669,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -29142,6 +44694,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -29153,6 +44719,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -29164,6 +44744,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -29175,6 +44769,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -29284,12 +44892,14 @@ export interface operations {
                 /** Format: date-time */
                 ended_at?: string | null;
                 error?: string;
+                failure_kind?: string;
                 /** Format: date-time */
                 heartbeat_at?: string | null;
                 id: string;
                 /** Format: date-time */
                 lease_until?: string | null;
                 max_attempts: number;
+                previous_run_id?: string;
                 /** Format: date-time */
                 queued_at: string;
                 session_id?: string;
@@ -29326,10 +44936,12 @@ export interface operations {
                   | "daemon";
                 ref: string;
               };
+              current_run_id?: string;
               dependencies?: {
                 /** Format: date-time */
                 created_at: string;
                 depends_on: {
+                  effective_paused?: boolean;
                   id: string;
                   identifier?: string;
                   /** Format: int64 */
@@ -29345,6 +44957,8 @@ export interface operations {
                       | "pool";
                     ref: string;
                   } | null;
+                  paused?: boolean;
+                  paused_by_task_id?: string;
                   /** @enum {string} */
                   priority?: "low" | "medium" | "high" | "urgent";
                   /** @enum {string} */
@@ -29369,6 +44983,7 @@ export interface operations {
               }[];
               dependency_count?: number;
               draft?: boolean;
+              effective_paused?: boolean;
               id: string;
               identifier?: string;
               /** Format: date-time */
@@ -29403,6 +45018,12 @@ export interface operations {
                 ref: string;
               } | null;
               parent_task_id?: string;
+              paused?: boolean;
+              /** Format: date-time */
+              paused_at?: string | null;
+              paused_by?: string;
+              paused_by_task_id?: string;
+              paused_reason?: string;
               /** @enum {string} */
               priority?: "low" | "medium" | "high" | "urgent";
               /** @enum {string} */
@@ -29432,6 +45053,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -29443,6 +45078,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -29454,6 +45103,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -29465,6 +45128,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -29539,8 +45216,10 @@ export interface operations {
                   | "daemon";
                 ref: string;
               };
+              current_run_id?: string;
               description?: string;
               draft?: boolean;
+              effective_paused?: boolean;
               id: string;
               identifier?: string;
               /** Format: int64 */
@@ -29574,6 +45253,12 @@ export interface operations {
                 ref: string;
               } | null;
               parent_task_id?: string;
+              paused?: boolean;
+              /** Format: date-time */
+              paused_at?: string | null;
+              paused_by?: string;
+              paused_by_task_id?: string;
+              paused_reason?: string;
               /** @enum {string} */
               priority?: "low" | "medium" | "high" | "urgent";
               /** @enum {string} */
@@ -29603,6 +45288,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -29614,6 +45313,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -29625,6 +45338,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -29636,6 +45363,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -29647,6 +45388,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -29658,6 +45413,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -29732,12 +45501,14 @@ export interface operations {
                   /** Format: date-time */
                   ended_at?: string | null;
                   error?: string;
+                  failure_kind?: string;
                   /** Format: date-time */
                   heartbeat_at?: string | null;
                   id: string;
                   /** Format: date-time */
                   lease_until?: string | null;
                   max_attempts: number;
+                  previous_run_id?: string;
                   /** Format: date-time */
                   queued_at: string;
                   session_id?: string;
@@ -29774,10 +45545,12 @@ export interface operations {
                     | "daemon";
                   ref: string;
                 };
+                current_run_id?: string;
                 dependencies?: {
                   /** Format: date-time */
                   created_at: string;
                   depends_on: {
+                    effective_paused?: boolean;
                     id: string;
                     identifier?: string;
                     /** Format: int64 */
@@ -29793,6 +45566,8 @@ export interface operations {
                         | "pool";
                       ref: string;
                     } | null;
+                    paused?: boolean;
+                    paused_by_task_id?: string;
                     /** @enum {string} */
                     priority?: "low" | "medium" | "high" | "urgent";
                     /** @enum {string} */
@@ -29817,6 +45592,7 @@ export interface operations {
                 }[];
                 dependency_count?: number;
                 draft?: boolean;
+                effective_paused?: boolean;
                 id: string;
                 identifier?: string;
                 /** Format: date-time */
@@ -29851,6 +45627,12 @@ export interface operations {
                   ref: string;
                 } | null;
                 parent_task_id?: string;
+                paused?: boolean;
+                /** Format: date-time */
+                paused_at?: string | null;
+                paused_by?: string;
+                paused_by_task_id?: string;
+                paused_reason?: string;
                 /** @enum {string} */
                 priority?: "low" | "medium" | "high" | "urgent";
                 /** @enum {string} */
@@ -29882,6 +45664,7 @@ export interface operations {
                 /** Format: date-time */
                 created_at: string;
                 depends_on: {
+                  effective_paused?: boolean;
                   id: string;
                   identifier?: string;
                   /** Format: int64 */
@@ -29897,6 +45680,8 @@ export interface operations {
                       | "pool";
                     ref: string;
                   } | null;
+                  paused?: boolean;
+                  paused_by_task_id?: string;
                   /** @enum {string} */
                   priority?: "low" | "medium" | "high" | "urgent";
                   /** @enum {string} */
@@ -29994,6 +45779,7 @@ export interface operations {
                 /** Format: date-time */
                 ended_at?: string | null;
                 error?: string;
+                failure_kind?: string;
                 /** Format: date-time */
                 heartbeat_at?: string | null;
                 id: string;
@@ -30016,6 +45802,7 @@ export interface operations {
                     | "daemon";
                   ref: string;
                 };
+                previous_run_id?: string;
                 /** Format: date-time */
                 queued_at: string;
                 result?: unknown;
@@ -30075,12 +45862,14 @@ export interface operations {
                   /** Format: date-time */
                   ended_at?: string | null;
                   error?: string;
+                  failure_kind?: string;
                   /** Format: date-time */
                   heartbeat_at?: string | null;
                   id: string;
                   /** Format: date-time */
                   lease_until?: string | null;
                   max_attempts: number;
+                  previous_run_id?: string;
                   /** Format: date-time */
                   queued_at: string;
                   session_id?: string;
@@ -30117,10 +45906,12 @@ export interface operations {
                     | "daemon";
                   ref: string;
                 };
+                current_run_id?: string;
                 dependencies?: {
                   /** Format: date-time */
                   created_at: string;
                   depends_on: {
+                    effective_paused?: boolean;
                     id: string;
                     identifier?: string;
                     /** Format: int64 */
@@ -30136,6 +45927,8 @@ export interface operations {
                         | "pool";
                       ref: string;
                     } | null;
+                    paused?: boolean;
+                    paused_by_task_id?: string;
                     /** @enum {string} */
                     priority?: "low" | "medium" | "high" | "urgent";
                     /** @enum {string} */
@@ -30160,6 +45953,7 @@ export interface operations {
                 }[];
                 dependency_count?: number;
                 draft?: boolean;
+                effective_paused?: boolean;
                 id: string;
                 identifier?: string;
                 /** Format: date-time */
@@ -30194,6 +45988,12 @@ export interface operations {
                   ref: string;
                 } | null;
                 parent_task_id?: string;
+                paused?: boolean;
+                /** Format: date-time */
+                paused_at?: string | null;
+                paused_by?: string;
+                paused_by_task_id?: string;
+                paused_reason?: string;
                 /** @enum {string} */
                 priority?: "low" | "medium" | "high" | "urgent";
                 /** @enum {string} */
@@ -30233,8 +46033,10 @@ export interface operations {
                     | "daemon";
                   ref: string;
                 };
+                current_run_id?: string;
                 description?: string;
                 draft?: boolean;
+                effective_paused?: boolean;
                 id: string;
                 identifier?: string;
                 /** Format: int64 */
@@ -30268,6 +46070,12 @@ export interface operations {
                   ref: string;
                 } | null;
                 parent_task_id?: string;
+                paused?: boolean;
+                /** Format: date-time */
+                paused_at?: string | null;
+                paused_by?: string;
+                paused_by_task_id?: string;
+                paused_reason?: string;
                 /** @enum {string} */
                 priority?: "low" | "medium" | "high" | "urgent";
                 /** @enum {string} */
@@ -30298,6 +46106,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -30309,6 +46131,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -30320,6 +46156,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -30331,6 +46181,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -30369,6 +46233,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -30380,6 +46258,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -30391,6 +46283,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -30402,6 +46308,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -30474,8 +46394,10 @@ export interface operations {
                   | "daemon";
                 ref: string;
               };
+              current_run_id?: string;
               description?: string;
               draft?: boolean;
+              effective_paused?: boolean;
               id: string;
               identifier?: string;
               /** Format: int64 */
@@ -30509,6 +46431,12 @@ export interface operations {
                 ref: string;
               } | null;
               parent_task_id?: string;
+              paused?: boolean;
+              /** Format: date-time */
+              paused_at?: string | null;
+              paused_by?: string;
+              paused_by_task_id?: string;
+              paused_reason?: string;
               /** @enum {string} */
               priority?: "low" | "medium" | "high" | "urgent";
               /** @enum {string} */
@@ -30538,6 +46466,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -30549,6 +46491,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -30560,6 +46516,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -30571,6 +46541,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -30582,6 +46566,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -30663,6 +46661,7 @@ export interface operations {
               /** Format: date-time */
               ended_at?: string | null;
               error?: string;
+              failure_kind?: string;
               /** Format: date-time */
               heartbeat_at?: string | null;
               id: string;
@@ -30685,6 +46684,7 @@ export interface operations {
                   | "daemon";
                 ref: string;
               };
+              previous_run_id?: string;
               /** Format: date-time */
               queued_at: string;
               result?: unknown;
@@ -30722,8 +46722,10 @@ export interface operations {
                   | "daemon";
                 ref: string;
               };
+              current_run_id?: string;
               description?: string;
               draft?: boolean;
+              effective_paused?: boolean;
               id: string;
               identifier?: string;
               /** Format: int64 */
@@ -30757,6 +46759,12 @@ export interface operations {
                 ref: string;
               } | null;
               parent_task_id?: string;
+              paused?: boolean;
+              /** Format: date-time */
+              paused_at?: string | null;
+              paused_by?: string;
+              paused_by_task_id?: string;
+              paused_reason?: string;
               /** @enum {string} */
               priority?: "low" | "medium" | "high" | "urgent";
               /** @enum {string} */
@@ -30786,6 +46794,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -30797,6 +46819,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -30808,6 +46844,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -30819,6 +46869,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -30830,6 +46894,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -30889,8 +46967,10 @@ export interface operations {
                   | "daemon";
                 ref: string;
               };
+              current_run_id?: string;
               description?: string;
               draft?: boolean;
+              effective_paused?: boolean;
               id: string;
               identifier?: string;
               /** Format: int64 */
@@ -30924,6 +47004,12 @@ export interface operations {
                 ref: string;
               } | null;
               parent_task_id?: string;
+              paused?: boolean;
+              /** Format: date-time */
+              paused_at?: string | null;
+              paused_by?: string;
+              paused_by_task_id?: string;
+              paused_reason?: string;
               /** @enum {string} */
               priority?: "low" | "medium" | "high" | "urgent";
               /** @enum {string} */
@@ -30953,6 +47039,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -30964,6 +47064,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -30975,6 +47089,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -30986,6 +47114,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -30997,6 +47139,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -31074,8 +47230,10 @@ export interface operations {
                   | "daemon";
                 ref: string;
               };
+              current_run_id?: string;
               description?: string;
               draft?: boolean;
+              effective_paused?: boolean;
               id: string;
               identifier?: string;
               /** Format: int64 */
@@ -31109,6 +47267,12 @@ export interface operations {
                 ref: string;
               } | null;
               parent_task_id?: string;
+              paused?: boolean;
+              /** Format: date-time */
+              paused_at?: string | null;
+              paused_by?: string;
+              paused_by_task_id?: string;
+              paused_reason?: string;
               /** @enum {string} */
               priority?: "low" | "medium" | "high" | "urgent";
               /** @enum {string} */
@@ -31138,6 +47302,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -31149,6 +47327,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -31160,6 +47352,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -31171,6 +47377,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -31182,6 +47402,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -31193,6 +47427,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -31276,12 +47524,14 @@ export interface operations {
                   /** Format: date-time */
                   ended_at?: string | null;
                   error?: string;
+                  failure_kind?: string;
                   /** Format: date-time */
                   heartbeat_at?: string | null;
                   id: string;
                   /** Format: date-time */
                   lease_until?: string | null;
                   max_attempts: number;
+                  previous_run_id?: string;
                   /** Format: date-time */
                   queued_at: string;
                   session_id?: string;
@@ -31318,10 +47568,12 @@ export interface operations {
                     | "daemon";
                   ref: string;
                 };
+                current_run_id?: string;
                 dependencies?: {
                   /** Format: date-time */
                   created_at: string;
                   depends_on: {
+                    effective_paused?: boolean;
                     id: string;
                     identifier?: string;
                     /** Format: int64 */
@@ -31337,6 +47589,8 @@ export interface operations {
                         | "pool";
                       ref: string;
                     } | null;
+                    paused?: boolean;
+                    paused_by_task_id?: string;
                     /** @enum {string} */
                     priority?: "low" | "medium" | "high" | "urgent";
                     /** @enum {string} */
@@ -31361,6 +47615,7 @@ export interface operations {
                 }[];
                 dependency_count?: number;
                 draft?: boolean;
+                effective_paused?: boolean;
                 id: string;
                 identifier?: string;
                 /** Format: date-time */
@@ -31395,6 +47650,12 @@ export interface operations {
                   ref: string;
                 } | null;
                 parent_task_id?: string;
+                paused?: boolean;
+                /** Format: date-time */
+                paused_at?: string | null;
+                paused_by?: string;
+                paused_by_task_id?: string;
+                paused_reason?: string;
                 /** @enum {string} */
                 priority?: "low" | "medium" | "high" | "urgent";
                 /** @enum {string} */
@@ -31426,6 +47687,7 @@ export interface operations {
                 /** Format: date-time */
                 created_at: string;
                 depends_on: {
+                  effective_paused?: boolean;
                   id: string;
                   identifier?: string;
                   /** Format: int64 */
@@ -31441,6 +47703,8 @@ export interface operations {
                       | "pool";
                     ref: string;
                   } | null;
+                  paused?: boolean;
+                  paused_by_task_id?: string;
                   /** @enum {string} */
                   priority?: "low" | "medium" | "high" | "urgent";
                   /** @enum {string} */
@@ -31538,6 +47802,7 @@ export interface operations {
                 /** Format: date-time */
                 ended_at?: string | null;
                 error?: string;
+                failure_kind?: string;
                 /** Format: date-time */
                 heartbeat_at?: string | null;
                 id: string;
@@ -31560,6 +47825,7 @@ export interface operations {
                     | "daemon";
                   ref: string;
                 };
+                previous_run_id?: string;
                 /** Format: date-time */
                 queued_at: string;
                 result?: unknown;
@@ -31619,12 +47885,14 @@ export interface operations {
                   /** Format: date-time */
                   ended_at?: string | null;
                   error?: string;
+                  failure_kind?: string;
                   /** Format: date-time */
                   heartbeat_at?: string | null;
                   id: string;
                   /** Format: date-time */
                   lease_until?: string | null;
                   max_attempts: number;
+                  previous_run_id?: string;
                   /** Format: date-time */
                   queued_at: string;
                   session_id?: string;
@@ -31661,10 +47929,12 @@ export interface operations {
                     | "daemon";
                   ref: string;
                 };
+                current_run_id?: string;
                 dependencies?: {
                   /** Format: date-time */
                   created_at: string;
                   depends_on: {
+                    effective_paused?: boolean;
                     id: string;
                     identifier?: string;
                     /** Format: int64 */
@@ -31680,6 +47950,8 @@ export interface operations {
                         | "pool";
                       ref: string;
                     } | null;
+                    paused?: boolean;
+                    paused_by_task_id?: string;
                     /** @enum {string} */
                     priority?: "low" | "medium" | "high" | "urgent";
                     /** @enum {string} */
@@ -31704,6 +47976,7 @@ export interface operations {
                 }[];
                 dependency_count?: number;
                 draft?: boolean;
+                effective_paused?: boolean;
                 id: string;
                 identifier?: string;
                 /** Format: date-time */
@@ -31738,6 +48011,12 @@ export interface operations {
                   ref: string;
                 } | null;
                 parent_task_id?: string;
+                paused?: boolean;
+                /** Format: date-time */
+                paused_at?: string | null;
+                paused_by?: string;
+                paused_by_task_id?: string;
+                paused_reason?: string;
                 /** @enum {string} */
                 priority?: "low" | "medium" | "high" | "urgent";
                 /** @enum {string} */
@@ -31777,8 +48056,10 @@ export interface operations {
                     | "daemon";
                   ref: string;
                 };
+                current_run_id?: string;
                 description?: string;
                 draft?: boolean;
+                effective_paused?: boolean;
                 id: string;
                 identifier?: string;
                 /** Format: int64 */
@@ -31812,6 +48093,12 @@ export interface operations {
                   ref: string;
                 } | null;
                 parent_task_id?: string;
+                paused?: boolean;
+                /** Format: date-time */
+                paused_at?: string | null;
+                paused_by?: string;
+                paused_by_task_id?: string;
+                paused_reason?: string;
                 /** @enum {string} */
                 priority?: "low" | "medium" | "high" | "urgent";
                 /** @enum {string} */
@@ -31842,6 +48129,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -31853,6 +48154,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -31864,6 +48179,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -31875,6 +48204,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -31886,6 +48229,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -31962,12 +48319,14 @@ export interface operations {
                   /** Format: date-time */
                   ended_at?: string | null;
                   error?: string;
+                  failure_kind?: string;
                   /** Format: date-time */
                   heartbeat_at?: string | null;
                   id: string;
                   /** Format: date-time */
                   lease_until?: string | null;
                   max_attempts: number;
+                  previous_run_id?: string;
                   /** Format: date-time */
                   queued_at: string;
                   session_id?: string;
@@ -32004,10 +48363,12 @@ export interface operations {
                     | "daemon";
                   ref: string;
                 };
+                current_run_id?: string;
                 dependencies?: {
                   /** Format: date-time */
                   created_at: string;
                   depends_on: {
+                    effective_paused?: boolean;
                     id: string;
                     identifier?: string;
                     /** Format: int64 */
@@ -32023,6 +48384,8 @@ export interface operations {
                         | "pool";
                       ref: string;
                     } | null;
+                    paused?: boolean;
+                    paused_by_task_id?: string;
                     /** @enum {string} */
                     priority?: "low" | "medium" | "high" | "urgent";
                     /** @enum {string} */
@@ -32047,6 +48410,7 @@ export interface operations {
                 }[];
                 dependency_count?: number;
                 draft?: boolean;
+                effective_paused?: boolean;
                 id: string;
                 identifier?: string;
                 /** Format: date-time */
@@ -32081,6 +48445,12 @@ export interface operations {
                   ref: string;
                 } | null;
                 parent_task_id?: string;
+                paused?: boolean;
+                /** Format: date-time */
+                paused_at?: string | null;
+                paused_by?: string;
+                paused_by_task_id?: string;
+                paused_reason?: string;
                 /** @enum {string} */
                 priority?: "low" | "medium" | "high" | "urgent";
                 /** @enum {string} */
@@ -32112,6 +48482,7 @@ export interface operations {
                 /** Format: date-time */
                 created_at: string;
                 depends_on: {
+                  effective_paused?: boolean;
                   id: string;
                   identifier?: string;
                   /** Format: int64 */
@@ -32127,6 +48498,8 @@ export interface operations {
                       | "pool";
                     ref: string;
                   } | null;
+                  paused?: boolean;
+                  paused_by_task_id?: string;
                   /** @enum {string} */
                   priority?: "low" | "medium" | "high" | "urgent";
                   /** @enum {string} */
@@ -32224,6 +48597,7 @@ export interface operations {
                 /** Format: date-time */
                 ended_at?: string | null;
                 error?: string;
+                failure_kind?: string;
                 /** Format: date-time */
                 heartbeat_at?: string | null;
                 id: string;
@@ -32246,6 +48620,7 @@ export interface operations {
                     | "daemon";
                   ref: string;
                 };
+                previous_run_id?: string;
                 /** Format: date-time */
                 queued_at: string;
                 result?: unknown;
@@ -32305,12 +48680,14 @@ export interface operations {
                   /** Format: date-time */
                   ended_at?: string | null;
                   error?: string;
+                  failure_kind?: string;
                   /** Format: date-time */
                   heartbeat_at?: string | null;
                   id: string;
                   /** Format: date-time */
                   lease_until?: string | null;
                   max_attempts: number;
+                  previous_run_id?: string;
                   /** Format: date-time */
                   queued_at: string;
                   session_id?: string;
@@ -32347,10 +48724,12 @@ export interface operations {
                     | "daemon";
                   ref: string;
                 };
+                current_run_id?: string;
                 dependencies?: {
                   /** Format: date-time */
                   created_at: string;
                   depends_on: {
+                    effective_paused?: boolean;
                     id: string;
                     identifier?: string;
                     /** Format: int64 */
@@ -32366,6 +48745,8 @@ export interface operations {
                         | "pool";
                       ref: string;
                     } | null;
+                    paused?: boolean;
+                    paused_by_task_id?: string;
                     /** @enum {string} */
                     priority?: "low" | "medium" | "high" | "urgent";
                     /** @enum {string} */
@@ -32390,6 +48771,7 @@ export interface operations {
                 }[];
                 dependency_count?: number;
                 draft?: boolean;
+                effective_paused?: boolean;
                 id: string;
                 identifier?: string;
                 /** Format: date-time */
@@ -32424,6 +48806,12 @@ export interface operations {
                   ref: string;
                 } | null;
                 parent_task_id?: string;
+                paused?: boolean;
+                /** Format: date-time */
+                paused_at?: string | null;
+                paused_by?: string;
+                paused_by_task_id?: string;
+                paused_reason?: string;
                 /** @enum {string} */
                 priority?: "low" | "medium" | "high" | "urgent";
                 /** @enum {string} */
@@ -32463,8 +48851,10 @@ export interface operations {
                     | "daemon";
                   ref: string;
                 };
+                current_run_id?: string;
                 description?: string;
                 draft?: boolean;
+                effective_paused?: boolean;
                 id: string;
                 identifier?: string;
                 /** Format: int64 */
@@ -32498,6 +48888,12 @@ export interface operations {
                   ref: string;
                 } | null;
                 parent_task_id?: string;
+                paused?: boolean;
+                /** Format: date-time */
+                paused_at?: string | null;
+                paused_by?: string;
+                paused_by_task_id?: string;
+                paused_reason?: string;
                 /** @enum {string} */
                 priority?: "low" | "medium" | "high" | "urgent";
                 /** @enum {string} */
@@ -32528,6 +48924,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -32539,6 +48949,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -32550,6 +48974,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -32561,6 +48999,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -32656,6 +49108,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -32667,6 +49133,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -32678,6 +49158,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -32689,6 +49183,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -32842,6 +49350,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -32853,6 +49375,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -32864,6 +49400,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -32875,6 +49425,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -32886,6 +49450,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -32924,6 +49502,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -32935,6 +49527,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -32946,6 +49552,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -32957,6 +49577,460 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  inspectTask: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Task id */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            inspect: {
+              /** Format: date-time */
+              as_of: string;
+              bound_session?: {
+                agent_name?: string;
+                failure_kind?: string;
+                /** Format: date-time */
+                last_activity_at?: string | null;
+                provider_name?: string;
+                session_id: string;
+                /** Format: date-time */
+                started_at?: string | null;
+                state?: string;
+                stop_reason?: string;
+                workspace_id?: string;
+              } | null;
+              current_run?: {
+                attempt: number;
+                bound_session_id?: string;
+                claim_token_hash_truncated?: string;
+                /** Format: date-time */
+                ended_at?: string | null;
+                failure_kind?: string;
+                /** Format: int64 */
+                heartbeat_age_seconds?: number | null;
+                /** Format: date-time */
+                heartbeat_at?: string | null;
+                last_error_summary?: string;
+                /** Format: date-time */
+                lease_until?: string | null;
+                previous_run_id?: string;
+                /** Format: date-time */
+                queued_at: string;
+                retries?: number;
+                run_id: string;
+                /** Format: date-time */
+                started_at?: string | null;
+                /** @enum {string} */
+                status:
+                  | "queued"
+                  | "claimed"
+                  | "starting"
+                  | "running"
+                  | "completed"
+                  | "failed"
+                  | "canceled";
+                task_id: string;
+              } | null;
+              diagnostics?: {
+                category: string;
+                code: string;
+                data_freshness: string;
+                doc_url?: string;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                id: string;
+                message: string;
+                severity: string;
+                suggested_command?: string;
+                title: string;
+              }[];
+              next_action: string;
+              recent_events?: {
+                id: string;
+                outcome?: string;
+                run_id?: string;
+                session_id?: string;
+                summary?: string;
+                task_id?: string;
+                /** Format: date-time */
+                timestamp: string;
+                type: string;
+              }[];
+              recent_runs?: {
+                attempt: number;
+                bound_session_id?: string;
+                claim_token_hash_truncated?: string;
+                /** Format: date-time */
+                ended_at?: string | null;
+                failure_kind?: string;
+                /** Format: int64 */
+                heartbeat_age_seconds?: number | null;
+                /** Format: date-time */
+                heartbeat_at?: string | null;
+                last_error_summary?: string;
+                /** Format: date-time */
+                lease_until?: string | null;
+                previous_run_id?: string;
+                /** Format: date-time */
+                queued_at: string;
+                retries?: number;
+                run_id: string;
+                /** Format: date-time */
+                started_at?: string | null;
+                /** @enum {string} */
+                status:
+                  | "queued"
+                  | "claimed"
+                  | "starting"
+                  | "running"
+                  | "completed"
+                  | "failed"
+                  | "canceled";
+                task_id: string;
+              }[];
+              scheduler: {
+                paused: boolean;
+                /** Format: date-time */
+                paused_at?: string | null;
+                paused_by?: string;
+                reason?: string;
+                /** Format: date-time */
+                updated_at?: string | null;
+              };
+              target: string;
+              task: {
+                active_run?: {
+                  attempt: number;
+                  claim_token_hash?: string;
+                  /** Format: date-time */
+                  claimed_at?: string | null;
+                  claimed_by?: {
+                    /** @enum {string} */
+                    kind:
+                      | "human"
+                      | "agent_session"
+                      | "automation"
+                      | "extension"
+                      | "network_peer"
+                      | "daemon";
+                    ref: string;
+                  } | null;
+                  coordination_channel?: {
+                    allowed_message_kinds: (
+                      | "status"
+                      | "request"
+                      | "reply"
+                      | "blocker"
+                      | "handoff"
+                      | "result"
+                      | "review_request"
+                    )[];
+                    channel?: string;
+                    display_name: string;
+                    id: string;
+                    /** Format: date-time */
+                    last_activity_at?: string | null;
+                    purpose?: string;
+                    run_id?: string;
+                    task_id?: string;
+                    workflow_id?: string;
+                    workspace_id?: string;
+                  } | null;
+                  coordination_channel_id?: string;
+                  /** Format: date-time */
+                  ended_at?: string | null;
+                  error?: string;
+                  failure_kind?: string;
+                  /** Format: date-time */
+                  heartbeat_at?: string | null;
+                  id: string;
+                  /** Format: date-time */
+                  lease_until?: string | null;
+                  max_attempts: number;
+                  previous_run_id?: string;
+                  /** Format: date-time */
+                  queued_at: string;
+                  session_id?: string;
+                  /** Format: date-time */
+                  started_at?: string | null;
+                  /** @enum {string} */
+                  status:
+                    | "queued"
+                    | "claimed"
+                    | "starting"
+                    | "running"
+                    | "completed"
+                    | "failed"
+                    | "canceled";
+                  task_id: string;
+                } | null;
+                /** @enum {string} */
+                approval_policy?: "none" | "manual";
+                /** @enum {string} */
+                approval_state?: "not_required" | "pending" | "approved" | "rejected";
+                child_count?: number;
+                /** Format: date-time */
+                closed_at?: string | null;
+                /** Format: date-time */
+                created_at: string;
+                created_by: {
+                  /** @enum {string} */
+                  kind:
+                    | "human"
+                    | "agent_session"
+                    | "automation"
+                    | "extension"
+                    | "network_peer"
+                    | "daemon";
+                  ref: string;
+                };
+                current_run_id?: string;
+                dependencies?: {
+                  /** Format: date-time */
+                  created_at: string;
+                  depends_on: {
+                    effective_paused?: boolean;
+                    id: string;
+                    identifier?: string;
+                    /** Format: int64 */
+                    latest_event_seq: number;
+                    owner?: {
+                      /** @enum {string} */
+                      kind:
+                        | "human"
+                        | "agent_session"
+                        | "automation"
+                        | "extension"
+                        | "network_peer"
+                        | "pool";
+                      ref: string;
+                    } | null;
+                    paused?: boolean;
+                    paused_by_task_id?: string;
+                    /** @enum {string} */
+                    priority?: "low" | "medium" | "high" | "urgent";
+                    /** @enum {string} */
+                    scope: "global" | "workspace";
+                    /** @enum {string} */
+                    status:
+                      | "draft"
+                      | "pending"
+                      | "blocked"
+                      | "ready"
+                      | "in_progress"
+                      | "completed"
+                      | "failed"
+                      | "canceled";
+                    title: string;
+                    workspace_id?: string;
+                  };
+                  depends_on_task_id: string;
+                  /** @enum {string} */
+                  kind: "blocks";
+                  task_id: string;
+                }[];
+                dependency_count?: number;
+                draft?: boolean;
+                effective_paused?: boolean;
+                id: string;
+                identifier?: string;
+                /** Format: date-time */
+                last_activity_at?: string | null;
+                /** Format: int64 */
+                latest_event_seq: number;
+                max_attempts?: number;
+                network_channel?: string;
+                origin: {
+                  /** @enum {string} */
+                  kind:
+                    | "cli"
+                    | "web"
+                    | "uds"
+                    | "http"
+                    | "automation"
+                    | "extension"
+                    | "network"
+                    | "agent_session"
+                    | "daemon";
+                  ref: string;
+                };
+                owner?: {
+                  /** @enum {string} */
+                  kind:
+                    | "human"
+                    | "agent_session"
+                    | "automation"
+                    | "extension"
+                    | "network_peer"
+                    | "pool";
+                  ref: string;
+                } | null;
+                parent_task_id?: string;
+                paused?: boolean;
+                /** Format: date-time */
+                paused_at?: string | null;
+                paused_by?: string;
+                paused_by_task_id?: string;
+                paused_reason?: string;
+                /** @enum {string} */
+                priority?: "low" | "medium" | "high" | "urgent";
+                /** @enum {string} */
+                scope: "global" | "workspace";
+                /** @enum {string} */
+                status:
+                  | "draft"
+                  | "pending"
+                  | "blocked"
+                  | "ready"
+                  | "in_progress"
+                  | "completed"
+                  | "failed"
+                  | "canceled";
+                title: string;
+                /** Format: date-time */
+                updated_at: string;
+                workspace_id?: string;
+              };
+            };
+          };
+        };
+      };
+      /** @description Task not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Invalid task id */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33048,6 +50122,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33059,6 +50147,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33070,6 +50172,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33081,6 +50197,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33179,6 +50309,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33190,6 +50334,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33201,6 +50359,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33212,6 +50384,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33296,6 +50482,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33307,6 +50507,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33318,6 +50532,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33358,6 +50586,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33369,6 +50611,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33380,6 +50636,315 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  pauseTask: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Task id */
+        id: string;
+      };
+      cookie?: never;
+    };
+    /** @description JSON request body */
+    requestBody: {
+      content: {
+        "application/json": {
+          metadata?: unknown;
+          reason: string;
+        };
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            task: {
+              /** @enum {string} */
+              approval_policy?: "none" | "manual";
+              /** @enum {string} */
+              approval_state?: "not_required" | "pending" | "approved" | "rejected";
+              /** Format: date-time */
+              closed_at?: string | null;
+              /** Format: date-time */
+              created_at: string;
+              created_by: {
+                /** @enum {string} */
+                kind:
+                  | "human"
+                  | "agent_session"
+                  | "automation"
+                  | "extension"
+                  | "network_peer"
+                  | "daemon";
+                ref: string;
+              };
+              current_run_id?: string;
+              description?: string;
+              draft?: boolean;
+              effective_paused?: boolean;
+              id: string;
+              identifier?: string;
+              /** Format: int64 */
+              latest_event_seq: number;
+              max_attempts?: number;
+              metadata?: unknown;
+              network_channel?: string;
+              origin: {
+                /** @enum {string} */
+                kind:
+                  | "cli"
+                  | "web"
+                  | "uds"
+                  | "http"
+                  | "automation"
+                  | "extension"
+                  | "network"
+                  | "agent_session"
+                  | "daemon";
+                ref: string;
+              };
+              owner?: {
+                /** @enum {string} */
+                kind:
+                  | "human"
+                  | "agent_session"
+                  | "automation"
+                  | "extension"
+                  | "network_peer"
+                  | "pool";
+                ref: string;
+              } | null;
+              parent_task_id?: string;
+              paused?: boolean;
+              /** Format: date-time */
+              paused_at?: string | null;
+              paused_by?: string;
+              paused_by_task_id?: string;
+              paused_reason?: string;
+              /** @enum {string} */
+              priority?: "low" | "medium" | "high" | "urgent";
+              /** @enum {string} */
+              scope: "global" | "workspace";
+              /** @enum {string} */
+              status:
+                | "draft"
+                | "pending"
+                | "blocked"
+                | "ready"
+                | "in_progress"
+                | "completed"
+                | "failed"
+                | "canceled";
+              title: string;
+              /** Format: date-time */
+              updated_at: string;
+              workspace_id?: string;
+            };
+          };
+        };
+      };
+      /** @description Force operation forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task pause conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Invalid task pause request */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Force-operation rate limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33461,6 +51026,7 @@ export interface operations {
               /** Format: date-time */
               ended_at?: string | null;
               error?: string;
+              failure_kind?: string;
               /** Format: date-time */
               heartbeat_at?: string | null;
               id: string;
@@ -33483,6 +51049,7 @@ export interface operations {
                   | "daemon";
                 ref: string;
               };
+              previous_run_id?: string;
               /** Format: date-time */
               queued_at: string;
               result?: unknown;
@@ -33520,8 +51087,10 @@ export interface operations {
                   | "daemon";
                 ref: string;
               };
+              current_run_id?: string;
               description?: string;
               draft?: boolean;
+              effective_paused?: boolean;
               id: string;
               identifier?: string;
               /** Format: int64 */
@@ -33555,6 +51124,12 @@ export interface operations {
                 ref: string;
               } | null;
               parent_task_id?: string;
+              paused?: boolean;
+              /** Format: date-time */
+              paused_at?: string | null;
+              paused_by?: string;
+              paused_by_task_id?: string;
+              paused_reason?: string;
               /** @enum {string} */
               priority?: "low" | "medium" | "high" | "urgent";
               /** @enum {string} */
@@ -33584,6 +51159,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33595,6 +51184,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33606,6 +51209,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33617,6 +51234,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33628,6 +51259,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33679,8 +51324,10 @@ export interface operations {
                   | "daemon";
                 ref: string;
               };
+              current_run_id?: string;
               description?: string;
               draft?: boolean;
+              effective_paused?: boolean;
               id: string;
               identifier?: string;
               /** Format: int64 */
@@ -33714,6 +51361,12 @@ export interface operations {
                 ref: string;
               } | null;
               parent_task_id?: string;
+              paused?: boolean;
+              /** Format: date-time */
+              paused_at?: string | null;
+              paused_by?: string;
+              paused_by_task_id?: string;
+              paused_reason?: string;
               /** @enum {string} */
               priority?: "low" | "medium" | "high" | "urgent";
               /** @enum {string} */
@@ -33743,6 +51396,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33754,6 +51421,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33765,6 +51446,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33776,6 +51471,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33787,6 +51496,314 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  resumeTask: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Task id */
+        id: string;
+      };
+      cookie?: never;
+    };
+    /** @description JSON request body */
+    requestBody?: {
+      content: {
+        "application/json": {
+          metadata?: unknown;
+        };
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            task: {
+              /** @enum {string} */
+              approval_policy?: "none" | "manual";
+              /** @enum {string} */
+              approval_state?: "not_required" | "pending" | "approved" | "rejected";
+              /** Format: date-time */
+              closed_at?: string | null;
+              /** Format: date-time */
+              created_at: string;
+              created_by: {
+                /** @enum {string} */
+                kind:
+                  | "human"
+                  | "agent_session"
+                  | "automation"
+                  | "extension"
+                  | "network_peer"
+                  | "daemon";
+                ref: string;
+              };
+              current_run_id?: string;
+              description?: string;
+              draft?: boolean;
+              effective_paused?: boolean;
+              id: string;
+              identifier?: string;
+              /** Format: int64 */
+              latest_event_seq: number;
+              max_attempts?: number;
+              metadata?: unknown;
+              network_channel?: string;
+              origin: {
+                /** @enum {string} */
+                kind:
+                  | "cli"
+                  | "web"
+                  | "uds"
+                  | "http"
+                  | "automation"
+                  | "extension"
+                  | "network"
+                  | "agent_session"
+                  | "daemon";
+                ref: string;
+              };
+              owner?: {
+                /** @enum {string} */
+                kind:
+                  | "human"
+                  | "agent_session"
+                  | "automation"
+                  | "extension"
+                  | "network_peer"
+                  | "pool";
+                ref: string;
+              } | null;
+              parent_task_id?: string;
+              paused?: boolean;
+              /** Format: date-time */
+              paused_at?: string | null;
+              paused_by?: string;
+              paused_by_task_id?: string;
+              paused_reason?: string;
+              /** @enum {string} */
+              priority?: "low" | "medium" | "high" | "urgent";
+              /** @enum {string} */
+              scope: "global" | "workspace";
+              /** @enum {string} */
+              status:
+                | "draft"
+                | "pending"
+                | "blocked"
+                | "ready"
+                | "in_progress"
+                | "completed"
+                | "failed"
+                | "canceled";
+              title: string;
+              /** Format: date-time */
+              updated_at: string;
+              workspace_id?: string;
+            };
+          };
+        };
+      };
+      /** @description Force operation forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task resume conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Invalid task resume request */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Force-operation rate limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Task service is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33897,6 +51914,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33908,6 +51939,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33919,6 +51964,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -33930,6 +51989,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -34016,6 +52089,7 @@ export interface operations {
               /** Format: date-time */
               ended_at?: string | null;
               error?: string;
+              failure_kind?: string;
               /** Format: date-time */
               heartbeat_at?: string | null;
               id: string;
@@ -34038,6 +52112,7 @@ export interface operations {
                   | "daemon";
                 ref: string;
               };
+              previous_run_id?: string;
               /** Format: date-time */
               queued_at: string;
               result?: unknown;
@@ -34065,6 +52140,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -34076,6 +52165,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -34087,6 +52190,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -34098,6 +52215,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -34179,6 +52310,7 @@ export interface operations {
               /** Format: date-time */
               ended_at?: string | null;
               error?: string;
+              failure_kind?: string;
               /** Format: date-time */
               heartbeat_at?: string | null;
               id: string;
@@ -34201,6 +52333,7 @@ export interface operations {
                   | "daemon";
                 ref: string;
               };
+              previous_run_id?: string;
               /** Format: date-time */
               queued_at: string;
               result?: unknown;
@@ -34228,6 +52361,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -34239,6 +52386,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -34250,6 +52411,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -34261,6 +52436,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -34272,6 +52461,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -34353,6 +52556,7 @@ export interface operations {
               /** Format: date-time */
               ended_at?: string | null;
               error?: string;
+              failure_kind?: string;
               /** Format: date-time */
               heartbeat_at?: string | null;
               id: string;
@@ -34375,6 +52579,7 @@ export interface operations {
                   | "daemon";
                 ref: string;
               };
+              previous_run_id?: string;
               /** Format: date-time */
               queued_at: string;
               result?: unknown;
@@ -34412,8 +52617,10 @@ export interface operations {
                   | "daemon";
                 ref: string;
               };
+              current_run_id?: string;
               description?: string;
               draft?: boolean;
+              effective_paused?: boolean;
               id: string;
               identifier?: string;
               /** Format: int64 */
@@ -34447,6 +52654,12 @@ export interface operations {
                 ref: string;
               } | null;
               parent_task_id?: string;
+              paused?: boolean;
+              /** Format: date-time */
+              paused_at?: string | null;
+              paused_by?: string;
+              paused_by_task_id?: string;
+              paused_reason?: string;
               /** @enum {string} */
               priority?: "low" | "medium" | "high" | "urgent";
               /** @enum {string} */
@@ -34476,6 +52689,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -34487,6 +52714,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -34498,6 +52739,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -34509,6 +52764,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -34520,6 +52789,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -34626,12 +52909,14 @@ export interface operations {
                 /** Format: date-time */
                 ended_at?: string | null;
                 error?: string;
+                failure_kind?: string;
                 /** Format: date-time */
                 heartbeat_at?: string | null;
                 id: string;
                 /** Format: date-time */
                 lease_until?: string | null;
                 max_attempts: number;
+                previous_run_id?: string;
                 /** Format: date-time */
                 queued_at: string;
                 session_id?: string;
@@ -34651,6 +52936,7 @@ export interface operations {
               /** Format: int64 */
               sequence: number;
               task: {
+                effective_paused?: boolean;
                 id: string;
                 identifier?: string;
                 /** Format: int64 */
@@ -34666,6 +52952,8 @@ export interface operations {
                     | "pool";
                   ref: string;
                 } | null;
+                paused?: boolean;
+                paused_by_task_id?: string;
                 /** @enum {string} */
                 priority?: "low" | "medium" | "high" | "urgent";
                 /** @enum {string} */
@@ -34697,6 +52985,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -34708,6 +53010,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -34719,6 +53035,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -34730,6 +53060,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -34836,12 +53180,14 @@ export interface operations {
                 /** Format: date-time */
                 ended_at?: string | null;
                 error?: string;
+                failure_kind?: string;
                 /** Format: date-time */
                 heartbeat_at?: string | null;
                 id: string;
                 /** Format: date-time */
                 lease_until?: string | null;
                 max_attempts: number;
+                previous_run_id?: string;
                 /** Format: date-time */
                 queued_at: string;
                 session_id?: string;
@@ -34861,6 +53207,7 @@ export interface operations {
               /** Format: int64 */
               sequence: number;
               task: {
+                effective_paused?: boolean;
                 id: string;
                 identifier?: string;
                 /** Format: int64 */
@@ -34876,6 +53223,8 @@ export interface operations {
                     | "pool";
                   ref: string;
                 } | null;
+                paused?: boolean;
+                paused_by_task_id?: string;
                 /** @enum {string} */
                 priority?: "low" | "medium" | "high" | "urgent";
                 /** @enum {string} */
@@ -34906,6 +53255,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -34917,6 +53280,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -34928,6 +53305,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -34939,6 +53330,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -35013,12 +53418,14 @@ export interface operations {
                   /** Format: date-time */
                   ended_at?: string | null;
                   error?: string;
+                  failure_kind?: string;
                   /** Format: date-time */
                   heartbeat_at?: string | null;
                   id: string;
                   /** Format: date-time */
                   lease_until?: string | null;
                   max_attempts: number;
+                  previous_run_id?: string;
                   /** Format: date-time */
                   queued_at: string;
                   session_id?: string;
@@ -35041,6 +53448,7 @@ export interface operations {
                 last_activity_at: string;
                 parent_task_id?: string;
                 task: {
+                  effective_paused?: boolean;
                   id: string;
                   identifier?: string;
                   /** Format: int64 */
@@ -35056,6 +53464,8 @@ export interface operations {
                       | "pool";
                     ref: string;
                   } | null;
+                  paused?: boolean;
+                  paused_by_task_id?: string;
                   /** @enum {string} */
                   priority?: "low" | "medium" | "high" | "urgent";
                   /** @enum {string} */
@@ -35116,12 +53526,14 @@ export interface operations {
                   /** Format: date-time */
                   ended_at?: string | null;
                   error?: string;
+                  failure_kind?: string;
                   /** Format: date-time */
                   heartbeat_at?: string | null;
                   id: string;
                   /** Format: date-time */
                   lease_until?: string | null;
                   max_attempts: number;
+                  previous_run_id?: string;
                   /** Format: date-time */
                   queued_at: string;
                   session_id?: string;
@@ -35144,6 +53556,7 @@ export interface operations {
                 last_activity_at: string;
                 parent_task_id?: string;
                 task: {
+                  effective_paused?: boolean;
                   id: string;
                   identifier?: string;
                   /** Format: int64 */
@@ -35159,6 +53572,8 @@ export interface operations {
                       | "pool";
                     ref: string;
                   } | null;
+                  paused?: boolean;
+                  paused_by_task_id?: string;
                   /** @enum {string} */
                   priority?: "low" | "medium" | "high" | "urgent";
                   /** @enum {string} */
@@ -35188,6 +53603,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -35199,6 +53628,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -35210,6 +53653,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -35221,6 +53678,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -35283,6 +53754,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -35294,6 +53779,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -35305,6 +53804,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -35316,6 +53829,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -35378,6 +53905,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -35389,6 +53930,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -35400,6 +53955,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -35411,6 +53980,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -35473,6 +54056,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -35484,6 +54081,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -35495,6 +54106,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -35506,6 +54131,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -35673,10 +54312,12 @@ export interface operations {
                 destructive: boolean;
                 display_title?: string;
                 input_schema: unknown;
+                input_schema_digest: string;
                 /** Format: int64 */
                 max_result_bytes?: number;
                 open_world: boolean;
                 output_schema?: unknown;
+                output_schema_digest?: string;
                 read_only: boolean;
                 requires_interaction: boolean;
                 /** @enum {string} */
@@ -35786,6 +54427,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -35955,10 +54610,12 @@ export interface operations {
                 destructive: boolean;
                 display_title?: string;
                 input_schema: unknown;
+                input_schema_digest: string;
                 /** Format: int64 */
                 max_result_bytes?: number;
                 open_world: boolean;
                 output_schema?: unknown;
+                output_schema_digest?: string;
                 read_only: boolean;
                 requires_interaction: boolean;
                 /** @enum {string} */
@@ -36144,6 +54801,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -36314,10 +54985,12 @@ export interface operations {
                 destructive: boolean;
                 display_title?: string;
                 input_schema: unknown;
+                input_schema_digest: string;
                 /** Format: int64 */
                 max_result_bytes?: number;
                 open_world: boolean;
                 output_schema?: unknown;
+                output_schema_digest?: string;
                 read_only: boolean;
                 requires_interaction: boolean;
                 /** @enum {string} */
@@ -36579,6 +55252,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -36942,6 +55629,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -37782,6 +56483,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -37958,6 +56673,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38289,6 +57018,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38342,6 +57085,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38353,6 +57110,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38364,6 +57135,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38375,6 +57160,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38432,6 +57231,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38443,6 +57256,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38454,6 +57281,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38465,6 +57306,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38503,6 +57358,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38514,6 +57383,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38525,6 +57408,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38536,6 +57433,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38547,6 +57458,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38598,6 +57523,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38609,6 +57548,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38620,6 +57573,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38631,6 +57598,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38642,6 +57623,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38720,6 +57715,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38731,6 +57740,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38742,6 +57765,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38753,6 +57790,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38764,6 +57815,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38844,6 +57909,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38855,6 +57934,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38866,6 +57959,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38877,6 +57984,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38888,6 +58009,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38938,6 +58073,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -38999,6 +58148,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -39010,6 +58173,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -39021,6 +58198,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -39078,6 +58269,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -39089,6 +58294,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -39100,6 +58319,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -39225,6 +58458,11 @@ export interface operations {
                 turn_started_at?: string | null;
               } | null;
               agent_name: string;
+              /** Format: date-time */
+              attach_expires_at?: string | null;
+              attachable: boolean;
+              attached_to?: string;
+              badge: string;
               channel?: string;
               /** Format: date-time */
               created_at: string;
@@ -39348,6 +58586,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -39359,6 +58611,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -39397,6 +58663,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -39408,6 +58688,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -39471,6 +58765,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -39482,6 +58790,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -39493,6 +58815,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -39581,7 +58917,9 @@ export interface operations {
           | "network.message.persisted"
           | "network.work.opened"
           | "network.work.transitioned"
-          | "network.work.closed";
+          | "network.work.closed"
+          | "network.peer.joined"
+          | "network.peer.left";
         /** @description Hook execution outcome */
         outcome?: "applied" | "denied" | "failed" | "skipped" | "dropped" | "rejected";
         /** @description Only runs recorded since this timestamp */
@@ -39630,6 +58968,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -39641,6 +58993,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -39652,6 +59018,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -39895,6 +59275,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -39906,6 +59300,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -39974,6 +59382,8 @@ export interface operations {
                 joined_at?: string | null;
                 /** Format: date-time */
                 last_seen?: string | null;
+                /** Format: int64 */
+                last_seen_age_seconds?: number | null;
                 local: boolean;
                 peer_card: {
                   artifacts_supported: string[];
@@ -39990,6 +59400,7 @@ export interface operations {
                   trust_modes_supported: string[];
                 };
                 peer_id: string;
+                presence_state: string;
                 session_id?: string | null;
                 workspace_id?: string;
               }[];
@@ -40041,6 +59452,11 @@ export interface operations {
                   turn_started_at?: string | null;
                 } | null;
                 agent_name: string;
+                /** Format: date-time */
+                attach_expires_at?: string | null;
+                attachable: boolean;
+                attached_to?: string;
+                badge: string;
                 channel?: string;
                 /** Format: date-time */
                 created_at: string;
@@ -40149,6 +59565,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40160,6 +59590,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40171,6 +59615,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40182,6 +59640,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40242,6 +59714,8 @@ export interface operations {
                 joined_at?: string | null;
                 /** Format: date-time */
                 last_seen?: string | null;
+                /** Format: int64 */
+                last_seen_age_seconds?: number | null;
                 local: boolean;
                 peer_card: {
                   artifacts_supported: string[];
@@ -40258,6 +59732,7 @@ export interface operations {
                   trust_modes_supported: string[];
                 };
                 peer_id: string;
+                presence_state: string;
                 session_id?: string | null;
                 workspace_id?: string;
               }[];
@@ -40309,6 +59784,11 @@ export interface operations {
                   turn_started_at?: string | null;
                 } | null;
                 agent_name: string;
+                /** Format: date-time */
+                attach_expires_at?: string | null;
+                attachable: boolean;
+                attached_to?: string;
+                badge: string;
                 channel?: string;
                 /** Format: date-time */
                 created_at: string;
@@ -40417,6 +59897,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40428,6 +59922,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40439,6 +59947,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40450,6 +59972,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40514,6 +60050,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40525,6 +60075,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40536,6 +60100,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40601,6 +60179,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40612,6 +60204,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40623,6 +60229,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40634,6 +60254,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40645,6 +60279,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40704,6 +60352,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40715,6 +60377,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40726,6 +60402,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40737,6 +60427,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40823,6 +60527,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40834,6 +60552,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40845,6 +60577,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40856,6 +60602,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40921,6 +60681,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40932,6 +60706,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -40943,6 +60731,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41005,6 +60807,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41016,6 +60832,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41027,6 +60857,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41038,6 +60882,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41124,6 +60982,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41135,6 +61007,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41146,6 +61032,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41157,6 +61057,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41228,6 +61142,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41239,6 +61167,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41250,6 +61192,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41261,6 +61217,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41304,6 +61274,8 @@ export interface operations {
               joined_at?: string | null;
               /** Format: date-time */
               last_seen?: string | null;
+              /** Format: int64 */
+              last_seen_age_seconds?: number | null;
               local: boolean;
               peer_card: {
                 artifacts_supported: string[];
@@ -41320,6 +61292,7 @@ export interface operations {
                 trust_modes_supported: string[];
               };
               peer_id: string;
+              presence_state: string;
               session_id?: string | null;
               workspace_id?: string;
             }[];
@@ -41333,6 +61306,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41344,6 +61331,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41355,6 +61356,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41412,6 +61427,8 @@ export interface operations {
               joined_at?: string | null;
               /** Format: date-time */
               last_seen?: string | null;
+              /** Format: int64 */
+              last_seen_age_seconds?: number | null;
               local?: boolean;
               metrics: {
                 /** Format: int64 */
@@ -41438,6 +61455,7 @@ export interface operations {
                 trust_modes_supported: string[];
               };
               peer_id: string;
+              presence_state: string;
               session_id?: string | null;
             };
           };
@@ -41450,6 +61468,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41461,6 +61493,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41472,6 +61518,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41558,6 +61618,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41569,6 +61643,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41580,6 +61668,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41591,6 +61693,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41652,6 +61768,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41663,6 +61793,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41674,6 +61818,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41685,96 +61843,20 @@ export interface operations {
         };
         content: {
           "application/json": {
-            error: string;
-          };
-        };
-      };
-      default: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  listObserveEvents: {
-    parameters: {
-      query?: {
-        /** @description Session id */
-        session_id?: string;
-        /** @description Agent name */
-        agent_name?: string;
-        /** @description Event type */
-        type?: string;
-        /** @description Only events emitted since this timestamp */
-        since?: string;
-        /** @description Maximum number of records to return */
-        limit?: number;
-      };
-      header?: never;
-      path: {
-        /** @description Workspace id */
-        workspace_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description OK */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            events: {
-              actor_id?: string;
-              actor_kind?: string;
-              agent_name: string;
-              claim_token_hash?: string;
-              content?: unknown;
-              coordinator_session_id?: string;
-              hook_event?: string;
-              hook_name?: string;
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
               id: string;
-              /** Format: date-time */
-              lease_until?: string | null;
-              parent_session_id?: string;
-              release_reason?: string;
-              root_session_id?: string;
-              run_id?: string;
-              scheduler_reason?: string;
-              session_id: string;
-              spawn_depth: number;
-              summary?: string;
-              task_id?: string;
-              /** Format: date-time */
-              timestamp: string;
-              type: string;
-              workflow_id?: string;
-              workspace_id?: string;
-            }[];
-          };
-        };
-      };
-      /** @description Invalid filter */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            error: string;
-          };
-        };
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41855,6 +61937,11 @@ export interface operations {
                 turn_started_at?: string | null;
               } | null;
               agent_name: string;
+              /** Format: date-time */
+              attach_expires_at?: string | null;
+              attachable: boolean;
+              attached_to?: string;
+              badge: string;
               channel?: string;
               /** Format: date-time */
               created_at: string;
@@ -41961,6 +62048,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -41972,6 +62073,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -42012,6 +62127,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -42023,6 +62152,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -42076,6 +62219,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -42087,6 +62244,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -42098,6 +62269,288 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  attachSession: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Workspace id */
+        workspace_id: string;
+        /** @description Session id */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    /** @description JSON request body */
+    requestBody?: {
+      content: {
+        "application/json": {
+          attached_to?: string;
+          ttl_seconds?: number;
+        };
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            attach: {
+              /** Format: date-time */
+              attach_expires_at: string;
+              /** Format: date-time */
+              attached_at: string;
+              attached_to: string;
+              session_id: string;
+            };
+            session: {
+              acp_caps?: {
+                config_options?: {
+                  current?: string;
+                  description?: string;
+                  id: string;
+                  kind: string;
+                  label?: string;
+                  values?: {
+                    description?: string;
+                    label?: string;
+                    value: string;
+                  }[];
+                }[];
+                supported_models?: string[];
+                supported_modes?: string[];
+                supports_load_session: boolean;
+              } | null;
+              acp_session_id?: string;
+              activity?: {
+                current_tool?: string;
+                /** Format: date-time */
+                deadline_at?: string | null;
+                /** Format: int64 */
+                elapsed_ms: number;
+                /** Format: int64 */
+                elapsed_seconds: number;
+                /** Format: int64 */
+                idle_seconds: number;
+                iteration_current: number;
+                iteration_max: number;
+                /** Format: date-time */
+                last_activity_at?: string | null;
+                last_activity_detail?: string;
+                last_activity_kind?: string;
+                /** Format: date-time */
+                last_progress_at?: string | null;
+                tool_call_id?: string;
+                turn_id?: string;
+                turn_source?: string;
+                /** Format: date-time */
+                turn_started_at?: string | null;
+              } | null;
+              agent_name: string;
+              /** Format: date-time */
+              attach_expires_at?: string | null;
+              attachable: boolean;
+              attached_to?: string;
+              badge: string;
+              channel?: string;
+              /** Format: date-time */
+              created_at: string;
+              failure?: {
+                crash_bundle_path?: string;
+                kind: string;
+                summary?: string;
+              } | null;
+              health?: {
+                active_prompt: boolean;
+                agent_name: string;
+                attachable: boolean;
+                eligible_for_wake: boolean;
+                /** @enum {string} */
+                health: "healthy" | "degraded" | "stale" | "dead" | "unknown";
+                /** @enum {string} */
+                ineligibility_reason?:
+                  | "session_prompt_active"
+                  | "session_not_attachable"
+                  | "session_unhealthy"
+                  | "session_health_stale"
+                  | "session_health_hung"
+                  | "session_health_dead"
+                  | "session_health_unknown";
+                /** Format: date-time */
+                last_activity_at?: string | null;
+                last_error?: string;
+                /** Format: date-time */
+                last_presence_at?: string | null;
+                session_id: string;
+                /** @enum {string} */
+                state: "idle" | "prompting" | "stopped" | "detached";
+                /** Format: date-time */
+                updated_at: string;
+                workspace_id: string;
+              } | null;
+              id: string;
+              lineage?: {
+                auto_stop_on_parent: boolean;
+                parent_session_id?: string;
+                permission_policy: {
+                  mcp_servers: string[];
+                  network_channels: string[];
+                  sandbox_profiles: string[];
+                  skills: string[];
+                  tools: string[];
+                  workspace_paths: string[];
+                };
+                root_session_id?: string;
+                spawn_budget: {
+                  max_active_per_workspace?: number;
+                  max_children: number;
+                  max_depth: number;
+                  /** Format: int64 */
+                  ttl_seconds: number;
+                };
+                spawn_depth: number;
+                spawn_role?: string;
+                /** Format: date-time */
+                ttl_expires_at?: string | null;
+              } | null;
+              model?: string;
+              name?: string;
+              provider: string;
+              reasoning_effort?: string;
+              sandbox?: {
+                backend?: string;
+                instance_id?: string;
+                last_sync_error?: string;
+                profile?: string;
+                provider_state_json?: unknown;
+                sandbox_id?: string;
+                state?: string;
+              } | null;
+              /** @enum {string} */
+              state: "starting" | "active" | "stopping" | "stopped";
+              stop_detail?: string;
+              /** @enum {string} */
+              stop_reason?:
+                | "completed"
+                | "user_canceled"
+                | "max_iterations"
+                | "loop_detected"
+                | "timeout"
+                | "budget_exceeded"
+                | "error"
+                | "agent_crashed"
+                | "hook_stopped"
+                | "shutdown";
+              /** @enum {string} */
+              type?: "user" | "dream" | "system" | "coordinator" | "spawned";
+              /** Format: date-time */
+              updated_at: string;
+              workspace_id?: string;
+              workspace_path?: string;
+            };
+          };
+        };
+      };
+      /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Session cannot be attached */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -42202,6 +62655,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -42213,6 +62680,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -42224,6 +62705,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -42295,6 +62790,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -42306,6 +62815,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -42317,6 +62840,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -42424,6 +62961,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -42435,6 +62986,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -42446,6 +63011,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -42600,6 +63179,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -42611,6 +63204,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -42622,6 +63229,844 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  interruptSessionPrompt: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Workspace id */
+        workspace_id: string;
+        /** @description Session id */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Prompt interrupted */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            prompt: {
+              canceled_queued_entries?: number;
+              /** Format: date-time */
+              estimated_send_at?: string | null;
+              fallback_mode_if_no_tool_result?: string;
+              interrupted?: boolean;
+              mode?: string;
+              new_turn_id?: string;
+              previous_turn_id?: string;
+              queue_entry_id?: string;
+              /** Format: int64 */
+              queue_generation?: number;
+              queue_position?: number;
+              queued?: boolean;
+              staged?: boolean;
+              status: string;
+            };
+          };
+        };
+      };
+      /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Session prompt conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  sendSessionPrompt: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Workspace id */
+        workspace_id: string;
+        /** @description Session id */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    /** @description JSON request body */
+    requestBody: {
+      content: {
+        "application/json": {
+          message?: string;
+          messages?: {
+            content?: string;
+            parts?: {
+              text?: string;
+              type?: string;
+            }[];
+            role: string;
+          }[];
+          mode?: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Prompt accepted */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            prompt: {
+              canceled_queued_entries?: number;
+              /** Format: date-time */
+              estimated_send_at?: string | null;
+              fallback_mode_if_no_tool_result?: string;
+              interrupted?: boolean;
+              mode?: string;
+              new_turn_id?: string;
+              previous_turn_id?: string;
+              queue_entry_id?: string;
+              /** Format: int64 */
+              queue_generation?: number;
+              queue_position?: number;
+              queued?: boolean;
+              staged?: boolean;
+              status: string;
+            };
+          };
+        };
+      };
+      /** @description Prompt queued or staged */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            prompt: {
+              canceled_queued_entries?: number;
+              /** Format: date-time */
+              estimated_send_at?: string | null;
+              fallback_mode_if_no_tool_result?: string;
+              interrupted?: boolean;
+              mode?: string;
+              new_turn_id?: string;
+              previous_turn_id?: string;
+              queue_entry_id?: string;
+              /** Format: int64 */
+              queue_generation?: number;
+              queue_position?: number;
+              queued?: boolean;
+              staged?: boolean;
+              status: string;
+            };
+          };
+        };
+      };
+      /** @description Invalid prompt request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Session prompt conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Session input queue is full */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  cancelQueuedSessionPrompt: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Workspace id */
+        workspace_id: string;
+        /** @description Session id */
+        session_id: string;
+        /** @description Queue entry id */
+        queue_entry_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Queued prompt canceled */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            prompt: {
+              canceled_queued_entries?: number;
+              /** Format: date-time */
+              estimated_send_at?: string | null;
+              fallback_mode_if_no_tool_result?: string;
+              interrupted?: boolean;
+              mode?: string;
+              new_turn_id?: string;
+              previous_turn_id?: string;
+              queue_entry_id?: string;
+              /** Format: int64 */
+              queue_generation?: number;
+              queue_position?: number;
+              queued?: boolean;
+              staged?: boolean;
+              status: string;
+            };
+          };
+        };
+      };
+      /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getSessionRecap: {
+    parameters: {
+      query?: {
+        /** @description Maximum recent messages to include */
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Workspace id */
+        workspace_id: string;
+        /** @description Session id */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            recap: {
+              active_run?: {
+                attempt: number;
+                claim_token_hash?: string;
+                /** Format: date-time */
+                claimed_at?: string | null;
+                claimed_by?: {
+                  /** @enum {string} */
+                  kind:
+                    | "human"
+                    | "agent_session"
+                    | "automation"
+                    | "extension"
+                    | "network_peer"
+                    | "daemon";
+                  ref: string;
+                } | null;
+                coordination_channel?: {
+                  allowed_message_kinds: (
+                    | "status"
+                    | "request"
+                    | "reply"
+                    | "blocker"
+                    | "handoff"
+                    | "result"
+                    | "review_request"
+                  )[];
+                  channel?: string;
+                  display_name: string;
+                  id: string;
+                  /** Format: date-time */
+                  last_activity_at?: string | null;
+                  purpose?: string;
+                  run_id?: string;
+                  task_id?: string;
+                  workflow_id?: string;
+                  workspace_id?: string;
+                } | null;
+                coordination_channel_id?: string;
+                /** Format: date-time */
+                ended_at?: string | null;
+                error?: string;
+                failure_kind?: string;
+                /** Format: date-time */
+                heartbeat_at?: string | null;
+                id: string;
+                idempotency_key?: string;
+                /** Format: date-time */
+                lease_until?: string | null;
+                metadata?: unknown;
+                network_channel?: string;
+                origin: {
+                  /** @enum {string} */
+                  kind:
+                    | "cli"
+                    | "web"
+                    | "uds"
+                    | "http"
+                    | "automation"
+                    | "extension"
+                    | "network"
+                    | "agent_session"
+                    | "daemon";
+                  ref: string;
+                };
+                previous_run_id?: string;
+                /** Format: date-time */
+                queued_at: string;
+                result?: unknown;
+                session_id?: string;
+                /** Format: date-time */
+                started_at?: string | null;
+                /** @enum {string} */
+                status:
+                  | "queued"
+                  | "claimed"
+                  | "starting"
+                  | "running"
+                  | "completed"
+                  | "failed"
+                  | "canceled";
+                task_id: string;
+              } | null;
+              pending_inputs: number;
+              pending_markers: number;
+              recent_markers: {
+                diagnostic?: unknown;
+                evidence?: {
+                  [key: string]: unknown;
+                };
+                kind: string;
+                /** Format: date-time */
+                occurred_at: string;
+                summary: string;
+              }[];
+              recent_messages: {
+                id: string;
+                metadata?: unknown;
+                parts: {
+                  data?: unknown;
+                  errorText?: string;
+                  id?: string;
+                  input?: unknown;
+                  output?: unknown;
+                  preliminary?: boolean;
+                  rawInput?: unknown;
+                  state?: string;
+                  text?: string;
+                  title?: string;
+                  toolCallId?: string;
+                  toolName?: string;
+                  type: string;
+                }[];
+                role: string;
+              }[];
+              session: {
+                acp_caps?: {
+                  config_options?: {
+                    current?: string;
+                    description?: string;
+                    id: string;
+                    kind: string;
+                    label?: string;
+                    values?: {
+                      description?: string;
+                      label?: string;
+                      value: string;
+                    }[];
+                  }[];
+                  supported_models?: string[];
+                  supported_modes?: string[];
+                  supports_load_session: boolean;
+                } | null;
+                acp_session_id?: string;
+                activity?: {
+                  current_tool?: string;
+                  /** Format: date-time */
+                  deadline_at?: string | null;
+                  /** Format: int64 */
+                  elapsed_ms: number;
+                  /** Format: int64 */
+                  elapsed_seconds: number;
+                  /** Format: int64 */
+                  idle_seconds: number;
+                  iteration_current: number;
+                  iteration_max: number;
+                  /** Format: date-time */
+                  last_activity_at?: string | null;
+                  last_activity_detail?: string;
+                  last_activity_kind?: string;
+                  /** Format: date-time */
+                  last_progress_at?: string | null;
+                  tool_call_id?: string;
+                  turn_id?: string;
+                  turn_source?: string;
+                  /** Format: date-time */
+                  turn_started_at?: string | null;
+                } | null;
+                agent_name: string;
+                /** Format: date-time */
+                attach_expires_at?: string | null;
+                attachable: boolean;
+                attached_to?: string;
+                badge: string;
+                channel?: string;
+                /** Format: date-time */
+                created_at: string;
+                failure?: {
+                  crash_bundle_path?: string;
+                  kind: string;
+                  summary?: string;
+                } | null;
+                health?: {
+                  active_prompt: boolean;
+                  agent_name: string;
+                  attachable: boolean;
+                  eligible_for_wake: boolean;
+                  /** @enum {string} */
+                  health: "healthy" | "degraded" | "stale" | "dead" | "unknown";
+                  /** @enum {string} */
+                  ineligibility_reason?:
+                    | "session_prompt_active"
+                    | "session_not_attachable"
+                    | "session_unhealthy"
+                    | "session_health_stale"
+                    | "session_health_hung"
+                    | "session_health_dead"
+                    | "session_health_unknown";
+                  /** Format: date-time */
+                  last_activity_at?: string | null;
+                  last_error?: string;
+                  /** Format: date-time */
+                  last_presence_at?: string | null;
+                  session_id: string;
+                  /** @enum {string} */
+                  state: "idle" | "prompting" | "stopped" | "detached";
+                  /** Format: date-time */
+                  updated_at: string;
+                  workspace_id: string;
+                } | null;
+                id: string;
+                lineage?: {
+                  auto_stop_on_parent: boolean;
+                  parent_session_id?: string;
+                  permission_policy: {
+                    mcp_servers: string[];
+                    network_channels: string[];
+                    sandbox_profiles: string[];
+                    skills: string[];
+                    tools: string[];
+                    workspace_paths: string[];
+                  };
+                  root_session_id?: string;
+                  spawn_budget: {
+                    max_active_per_workspace?: number;
+                    max_children: number;
+                    max_depth: number;
+                    /** Format: int64 */
+                    ttl_seconds: number;
+                  };
+                  spawn_depth: number;
+                  spawn_role?: string;
+                  /** Format: date-time */
+                  ttl_expires_at?: string | null;
+                } | null;
+                model?: string;
+                name?: string;
+                provider: string;
+                reasoning_effort?: string;
+                sandbox?: {
+                  backend?: string;
+                  instance_id?: string;
+                  last_sync_error?: string;
+                  profile?: string;
+                  provider_state_json?: unknown;
+                  sandbox_id?: string;
+                  state?: string;
+                } | null;
+                /** @enum {string} */
+                state: "starting" | "active" | "stopping" | "stopped";
+                stop_detail?: string;
+                /** @enum {string} */
+                stop_reason?:
+                  | "completed"
+                  | "user_canceled"
+                  | "max_iterations"
+                  | "loop_detected"
+                  | "timeout"
+                  | "budget_exceeded"
+                  | "error"
+                  | "agent_crashed"
+                  | "hook_stopped"
+                  | "shutdown";
+                /** @enum {string} */
+                type?: "user" | "dream" | "system" | "coordinator" | "spawned";
+                /** Format: date-time */
+                updated_at: string;
+                workspace_id?: string;
+                workspace_path?: string;
+              };
+              snapshot: {
+                consistency: string;
+                /** Format: int64 */
+                event_cursor: number;
+                /** Format: date-time */
+                generated_at: string;
+                /** Format: int64 */
+                queue_generation: number;
+                /** Format: int64 */
+                transcript_cursor: number;
+              };
+            };
+          };
+        };
+      };
+      /** @description Invalid recap query */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -42689,201 +64134,21 @@ export interface operations {
         };
         content: {
           "application/json": {
-            error: string;
-          };
-        };
-      };
-      /** @description Session not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            error: string;
-          };
-        };
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            error: string;
-          };
-        };
-      };
-      default: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  resumeSession: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Workspace id */
-        workspace_id: string;
-        /** @description Session id */
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description OK */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            session: {
-              acp_caps?: {
-                config_options?: {
-                  current?: string;
-                  description?: string;
-                  id: string;
-                  kind: string;
-                  label?: string;
-                  values?: {
-                    description?: string;
-                    label?: string;
-                    value: string;
-                  }[];
-                }[];
-                supported_models?: string[];
-                supported_modes?: string[];
-                supports_load_session: boolean;
-              } | null;
-              acp_session_id?: string;
-              activity?: {
-                current_tool?: string;
-                /** Format: date-time */
-                deadline_at?: string | null;
-                /** Format: int64 */
-                elapsed_ms: number;
-                /** Format: int64 */
-                elapsed_seconds: number;
-                /** Format: int64 */
-                idle_seconds: number;
-                iteration_current: number;
-                iteration_max: number;
-                /** Format: date-time */
-                last_activity_at?: string | null;
-                last_activity_detail?: string;
-                last_activity_kind?: string;
-                /** Format: date-time */
-                last_progress_at?: string | null;
-                tool_call_id?: string;
-                turn_id?: string;
-                turn_source?: string;
-                /** Format: date-time */
-                turn_started_at?: string | null;
-              } | null;
-              agent_name: string;
-              channel?: string;
-              /** Format: date-time */
-              created_at: string;
-              failure?: {
-                crash_bundle_path?: string;
-                kind: string;
-                summary?: string;
-              } | null;
-              health?: {
-                active_prompt: boolean;
-                agent_name: string;
-                attachable: boolean;
-                eligible_for_wake: boolean;
-                /** @enum {string} */
-                health: "healthy" | "degraded" | "stale" | "dead" | "unknown";
-                /** @enum {string} */
-                ineligibility_reason?:
-                  | "session_prompt_active"
-                  | "session_not_attachable"
-                  | "session_unhealthy"
-                  | "session_health_stale"
-                  | "session_health_hung"
-                  | "session_health_dead"
-                  | "session_health_unknown";
-                /** Format: date-time */
-                last_activity_at?: string | null;
-                last_error?: string;
-                /** Format: date-time */
-                last_presence_at?: string | null;
-                session_id: string;
-                /** @enum {string} */
-                state: "idle" | "prompting" | "stopped" | "detached";
-                /** Format: date-time */
-                updated_at: string;
-                workspace_id: string;
-              } | null;
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
               id: string;
-              lineage?: {
-                auto_stop_on_parent: boolean;
-                parent_session_id?: string;
-                permission_policy: {
-                  mcp_servers: string[];
-                  network_channels: string[];
-                  sandbox_profiles: string[];
-                  skills: string[];
-                  tools: string[];
-                  workspace_paths: string[];
-                };
-                root_session_id?: string;
-                spawn_budget: {
-                  max_active_per_workspace?: number;
-                  max_children: number;
-                  max_depth: number;
-                  /** Format: int64 */
-                  ttl_seconds: number;
-                };
-                spawn_depth: number;
-                spawn_role?: string;
-                /** Format: date-time */
-                ttl_expires_at?: string | null;
-              } | null;
-              model?: string;
-              name?: string;
-              provider: string;
-              reasoning_effort?: string;
-              sandbox?: {
-                backend?: string;
-                instance_id?: string;
-                last_sync_error?: string;
-                profile?: string;
-                provider_state_json?: unknown;
-                sandbox_id?: string;
-                state?: string;
-              } | null;
-              /** @enum {string} */
-              state: "starting" | "active" | "stopping" | "stopped";
-              stop_detail?: string;
-              /** @enum {string} */
-              stop_reason?:
-                | "completed"
-                | "user_canceled"
-                | "max_iterations"
-                | "loop_detected"
-                | "timeout"
-                | "budget_exceeded"
-                | "error"
-                | "agent_crashed"
-                | "hook_stopped"
-                | "shutdown";
-              /** @enum {string} */
-              type?: "user" | "dream" | "system" | "coordinator" | "spawned";
-              /** Format: date-time */
-              updated_at: string;
-              workspace_id?: string;
-              workspace_path?: string;
-            };
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
           };
         };
       };
@@ -42894,6 +64159,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -42905,6 +64184,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -43010,6 +64303,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -43021,6 +64328,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -43032,6 +64353,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -43107,6 +64442,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -43203,6 +64552,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -43214,6 +64577,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -43225,6 +64602,176 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  steerSessionPrompt: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Workspace id */
+        workspace_id: string;
+        /** @description Session id */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    /** @description JSON request body */
+    requestBody: {
+      content: {
+        "application/json": {
+          text: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Prompt steering staged */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            prompt: {
+              canceled_queued_entries?: number;
+              /** Format: date-time */
+              estimated_send_at?: string | null;
+              fallback_mode_if_no_tool_result?: string;
+              interrupted?: boolean;
+              mode?: string;
+              new_turn_id?: string;
+              previous_turn_id?: string;
+              queue_entry_id?: string;
+              /** Format: int64 */
+              queue_generation?: number;
+              queue_position?: number;
+              queued?: boolean;
+              staged?: boolean;
+              status: string;
+            };
+          };
+        };
+      };
+      /** @description Invalid steer request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Session prompt conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
+            error: string;
+          };
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -43265,6 +64812,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -43276,6 +64837,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -43442,10 +65017,12 @@ export interface operations {
                 destructive: boolean;
                 display_title?: string;
                 input_schema: unknown;
+                input_schema_digest: string;
                 /** Format: int64 */
                 max_result_bytes?: number;
                 open_world: boolean;
                 output_schema?: unknown;
+                output_schema_digest?: string;
                 read_only: boolean;
                 requires_interaction: boolean;
                 /** @enum {string} */
@@ -43555,6 +65132,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -43729,10 +65320,12 @@ export interface operations {
                 destructive: boolean;
                 display_title?: string;
                 input_schema: unknown;
+                input_schema_digest: string;
                 /** Format: int64 */
                 max_result_bytes?: number;
                 open_world: boolean;
                 output_schema?: unknown;
+                output_schema_digest?: string;
                 read_only: boolean;
                 requires_interaction: boolean;
                 /** @enum {string} */
@@ -43918,6 +65511,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -43981,6 +65588,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };
@@ -43992,6 +65613,20 @@ export interface operations {
         };
         content: {
           "application/json": {
+            diagnostic?: {
+              category: string;
+              code: string;
+              data_freshness: string;
+              doc_url?: string;
+              evidence?: {
+                [key: string]: unknown;
+              };
+              id: string;
+              message: string;
+              severity: string;
+              suggested_command?: string;
+              title: string;
+            } | null;
             error: string;
           };
         };

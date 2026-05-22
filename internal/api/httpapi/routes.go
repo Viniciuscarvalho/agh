@@ -15,10 +15,14 @@ func RegisterRoutes(router gin.IRouter, handlers *Handlers) {
 		api = api.Group("", loopbackAPIGuard(handlers.boundHost))
 	}
 
+	registerStatusRoutes(api, handlers)
 	registerBridgeRoutes(api, handlers)
+	registerNotificationRoutes(api, handlers)
 	registerWorkspaceRoutes(api, handlers)
 	registerSessionRoutes(api, handlers)
 	registerAgentRoutes(api, handlers)
+	registerLogsRoutes(api, handlers)
+	registerSupportRoutes(api, handlers)
 	registerObserveRoutes(api, handlers)
 	registerHookRoutes(api, handlers)
 	registerResourceRoutes(api, handlers)
@@ -27,18 +31,23 @@ func RegisterRoutes(router gin.IRouter, handlers *Handlers) {
 	registerTaskRoutes(api, handlers)
 	registerSkillRoutes(api, handlers)
 	registerMemoryRoutes(api, handlers)
-	registerDaemonRoutes(api, handlers)
 	registerNetworkRoutes(api, handlers)
 	registerBundleRoutes(api, handlers)
 	registerExtensionRoutes(api, handlers)
 	registerSettingsRoutes(api, handlers)
 	registerVaultRoutes(api, handlers)
-	registerProviderModelRoutes(api, handlers)
+	registerProviderRoutes(api, handlers)
+	registerModelCatalogRoutes(api, handlers)
 	registerOpenAIModelRoutes(api, handlers)
 
 	if engine, ok := router.(*gin.Engine); ok {
 		engine.NoRoute(handlers.serveStaticRoute)
 	}
+}
+
+func registerStatusRoutes(api gin.IRouter, handlers *Handlers) {
+	api.GET("/status", handlers.GetStatus)
+	api.GET("/doctor", handlers.GetDoctor)
 }
 
 func registerBridgeRoutes(api gin.IRouter, handlers *Handlers) {
@@ -53,10 +62,22 @@ func registerBridgeRoutes(api gin.IRouter, handlers *Handlers) {
 	bridges.POST("/:id/disable", handlers.DisableBridge)
 	bridges.POST("/:id/restart", handlers.RestartBridge)
 	bridges.GET("/:id/routes", handlers.ListBridgeRoutes)
+	bridges.GET("/:id/targets", handlers.ListBridgeTargets)
+	bridges.POST("/:id/resolve", handlers.ResolveBridgeTarget)
 	bridges.GET("/:id/secret-bindings", handlers.ListBridgeSecretBindings)
 	bridges.PUT("/:id/secret-bindings/:binding_name", handlers.PutBridgeSecretBinding)
 	bridges.DELETE("/:id/secret-bindings/:binding_name", handlers.DeleteBridgeSecretBinding)
 	bridges.POST("/:id/test-delivery", handlers.TestBridgeDelivery)
+}
+
+func registerNotificationRoutes(api gin.IRouter, handlers *Handlers) {
+	notifications := api.Group("/notifications")
+	presets := notifications.Group("/presets")
+	presets.GET("", handlers.ListNotificationPresets)
+	presets.POST("", handlers.CreateNotificationPreset)
+	presets.GET("/:name", handlers.GetNotificationPreset)
+	presets.PUT("/:name", handlers.UpdateNotificationPreset)
+	presets.DELETE("/:name", handlers.DeleteNotificationPreset)
 }
 
 func registerWorkspaceRoutes(api gin.IRouter, handlers *Handlers) {
@@ -82,14 +103,18 @@ func registerSessionRoutes(api gin.IRouter, handlers *Handlers) {
 	workspaceSessions.GET("/:session_id/inspect", handlers.InspectSession)
 	workspaceSessions.DELETE("/:session_id", handlers.DeleteSession)
 	workspaceSessions.POST("/:session_id/stop", handlers.StopSession)
-	workspaceSessions.POST("/:session_id/resume", handlers.ResumeSession)
+	workspaceSessions.POST("/:session_id/attach", handlers.AttachSession)
 	workspaceSessions.POST("/:session_id/repair", handlers.RepairSession)
 	workspaceSessions.POST("/:session_id/clear", handlers.ClearSessionConversation)
 	workspaceSessions.POST("/:session_id/prompt", handlers.promptSession)
 	workspaceSessions.POST("/:session_id/prompt/cancel", handlers.cancelSessionPrompt)
+	workspaceSessions.POST("/:session_id/interrupt", handlers.interruptSessionPrompt)
+	workspaceSessions.POST("/:session_id/steer", handlers.steerSessionPrompt)
+	workspaceSessions.DELETE("/:session_id/prompt/queue/:queue_entry_id", handlers.cancelQueuedSessionPrompt)
 	workspaceSessions.GET("/:session_id/events", handlers.SessionEvents)
 	workspaceSessions.GET("/:session_id/history", handlers.SessionHistory)
 	workspaceSessions.GET("/:session_id/transcript", handlers.SessionTranscript)
+	workspaceSessions.GET("/:session_id/recap", handlers.SessionRecap)
 	workspaceSessions.GET("/:session_id/stream", handlers.StreamSession)
 	workspaceSessions.POST("/:session_id/approve", handlers.approveSession)
 }
@@ -134,13 +159,20 @@ func registerAgentRoutes(api gin.IRouter, handlers *Handlers) {
 	agents.GET("/:name", handlers.GetAgent)
 }
 
+func registerLogsRoutes(api gin.IRouter, handlers *Handlers) {
+	api.GET("/logs", handlers.ListLogs)
+	api.GET("/logs/stream", handlers.StreamLogs)
+}
+
+func registerSupportRoutes(api gin.IRouter, handlers *Handlers) {
+	support := api.Group("/support")
+	support.POST("/bundles", handlers.CreateSupportBundle)
+	support.GET("/bundles/:operation_id", handlers.GetSupportBundle)
+	support.GET("/bundles/:operation_id/download", handlers.DownloadSupportBundle)
+}
+
 func registerObserveRoutes(api gin.IRouter, handlers *Handlers) {
 	observeGroup := api.Group("/observe")
-	observeGroup.GET("/health", handlers.Health)
-
-	workspaceObserveGroup := api.Group("/workspaces/:workspace_id/observe")
-	workspaceObserveGroup.GET("/events", handlers.ObserveEvents)
-	workspaceObserveGroup.GET("/events/stream", handlers.StreamObserveEvents)
 
 	taskObserveGroup := observeGroup.Group("/tasks")
 	taskObserveGroup.GET("/dashboard", handlers.TaskDashboard)
@@ -222,6 +254,7 @@ func registerTaskRoutes(api gin.IRouter, handlers *Handlers) {
 	tasks.POST("", handlers.CreateTask)
 	tasks.GET("", handlers.ListTasks)
 	tasks.GET("/:id", handlers.GetTask)
+	tasks.GET("/:id/inspect", handlers.InspectTask)
 	tasks.DELETE("/:id", handlers.DeleteTask)
 	tasks.PATCH("/:id", handlers.UpdateTask)
 	tasks.GET("/:id/execution-profile", handlers.GetTaskExecutionProfile)
@@ -236,6 +269,8 @@ func registerTaskRoutes(api gin.IRouter, handlers *Handlers) {
 	tasks.POST("/:id/publish", handlers.PublishTask)
 	tasks.POST("/:id/start", handlers.StartTask)
 	tasks.POST("/:id/cancel", handlers.CancelTask)
+	tasks.POST("/:id/pause", handlers.PauseTask)
+	tasks.POST("/:id/resume", handlers.ResumeTask)
 	tasks.POST("/:id/children", handlers.CreateChildTask)
 	tasks.POST("/:id/dependencies", handlers.AddTaskDependency)
 	tasks.DELETE("/:id/dependencies/:depends_on_id", handlers.RemoveTaskDependency)
@@ -261,6 +296,21 @@ func registerTaskRoutes(api gin.IRouter, handlers *Handlers) {
 	taskRuns.POST("/:id/fail", handlers.FailTaskRun)
 	taskRuns.POST("/:id/cancel", handlers.CancelTaskRun)
 
+	runs := api.Group("/runs")
+	runs.POST("/bulk/release", handlers.BulkForceReleaseTaskRuns)
+	runs.POST("/bulk/fail", handlers.BulkForceFailTaskRuns)
+	runs.GET("/:id/inspect", handlers.InspectRun)
+	runs.POST("/:id/release", handlers.ForceReleaseTaskRun)
+	runs.POST("/:id/fail", handlers.ForceFailTaskRun)
+	runs.POST("/:id/retry", handlers.RetryTaskRun)
+
+	scheduler := api.Group("/scheduler")
+	scheduler.GET("", handlers.GetScheduler)
+	scheduler.GET("/backlog", handlers.GetSchedulerBacklog)
+	scheduler.POST("/pause", handlers.PauseScheduler)
+	scheduler.POST("/resume", handlers.ResumeScheduler)
+	scheduler.POST("/drain", handlers.DrainScheduler)
+
 	taskReviews := api.Group("/task-reviews")
 	taskReviews.GET("/:id", handlers.GetTaskRunReview)
 	taskReviews.POST("/:id/verdict", handlers.SubmitTaskRunReviewVerdict)
@@ -277,6 +327,7 @@ func registerSkillRoutes(api gin.IRouter, handlers *Handlers) {
 	skillsGroup.DELETE("/marketplace/:name", privileged, handlers.RemoveSkillMarketplace)
 	skillsGroup.GET("/:name", handlers.GetSkill)
 	skillsGroup.GET("/:name/content", handlers.GetSkillContent)
+	skillsGroup.GET("/:name/shadows", handlers.GetSkillShadows)
 	skillsGroup.POST("/:name/enable", handlers.EnableSkill)
 	skillsGroup.POST("/:name/disable", handlers.DisableSkill)
 }
@@ -325,11 +376,6 @@ func registerMemoryRoutes(api gin.IRouter, handlers *Handlers) {
 	workspaceMemorySessions.POST("/:session_id/replay", handlers.ReplayMemorySession)
 }
 
-func registerDaemonRoutes(api gin.IRouter, handlers *Handlers) {
-	daemonGroup := api.Group("/daemon")
-	daemonGroup.GET("/status", handlers.DaemonStatus)
-}
-
 func registerNetworkRoutes(api gin.IRouter, handlers *Handlers) {
 	networkGroup := api.Group("/network")
 	networkGroup.GET("/status", handlers.NetworkStatus)
@@ -368,7 +414,11 @@ func registerExtensionRoutes(api gin.IRouter, handlers *Handlers) {
 	privileged := handlers.privilegedMutationGuard()
 	extensions := api.Group("/extensions")
 	extensions.GET("", handlers.ListExtensions)
+	extensions.GET("/marketplace", handlers.SearchExtensionMarketplace)
 	extensions.POST("", privileged, handlers.InstallExtension)
+	extensions.PUT("/:name", privileged, handlers.UpdateExtension)
+	extensions.DELETE("/:name", privileged, handlers.RemoveExtension)
+	extensions.GET("/:name/provenance", handlers.ExtensionProvenance)
 	extensions.GET("/:name", handlers.ExtensionStatus)
 	extensions.POST("/:name/enable", privileged, handlers.EnableExtension)
 	extensions.POST("/:name/disable", privileged, handlers.DisableExtension)
@@ -378,6 +428,8 @@ func registerSettingsRoutes(api gin.IRouter, handlers *Handlers) {
 	privileged := handlers.privilegedMutationGuard()
 	settings := api.Group("/settings")
 
+	settings.GET("/apply", handlers.ListSettingsApplyRecords)
+	settings.POST("/reload", privileged, handlers.ReloadSettings)
 	settings.GET("/general", handlers.GetSettingsGeneral)
 	settings.GET("/update", handlers.GetSettingsUpdate)
 	settings.PATCH("/general", privileged, handlers.UpdateSettingsGeneral)
@@ -430,9 +482,17 @@ func registerVaultRoutes(api gin.IRouter, handlers *Handlers) {
 	vaultGroup.DELETE("/secrets", privileged, handlers.DeleteVaultSecret)
 }
 
-func registerProviderModelRoutes(api gin.IRouter, handlers *Handlers) {
-	api.GET("/providers/*catalog_path", handlers.ProviderModelCatalog)
-	api.POST("/providers/*catalog_path", handlers.ProviderModelCatalog)
+func registerProviderRoutes(api gin.IRouter, handlers *Handlers) {
+	providers := api.Group("/providers")
+	providers.GET("", handlers.ListProviders)
+	providers.GET("/:provider_id", handlers.GetProvider)
+	providers.POST("/:provider_id/auth/probe", handlers.ProbeProviderAuth)
+}
+
+func registerModelCatalogRoutes(api gin.IRouter, handlers *Handlers) {
+	modelCatalog := api.Group("/model-catalog")
+	modelCatalog.GET("/*catalog_path", handlers.ModelCatalogRoute)
+	modelCatalog.POST("/*catalog_path", handlers.ModelCatalogRoute)
 }
 
 func registerOpenAIModelRoutes(api gin.IRouter, handlers *Handlers) {

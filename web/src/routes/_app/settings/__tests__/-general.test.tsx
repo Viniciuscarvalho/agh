@@ -41,6 +41,28 @@ type UpdateStatus = {
   last_error?: string;
 };
 
+type ApplyRecordsQuery = {
+  data: {
+    entries: {
+      id: string;
+      desired_config_hash: string;
+      active_config_hash: string;
+      generation: number;
+      actor: string;
+      diff_class: "live" | "restart-required";
+      status: "applied" | "blocked";
+      lifecycle: "live" | "restart-required";
+      next_action: "none" | "restart-daemon";
+      created_at: string;
+      updated_at: string;
+    }[];
+  };
+  isLoading: boolean;
+  isFetching: boolean;
+  error: Error | null;
+  refetch: ReturnType<typeof vi.fn>;
+};
+
 const envelope = {
   section: "general" as const,
   scope: "global" as const,
@@ -49,7 +71,10 @@ const envelope = {
     restart: { available: true, behavior: "action_trigger" as const, name: "restart" },
   },
   config: {
-    daemon: { socket: "/tmp/agh.sock" },
+    daemon: {
+      reload_timeouts: { bridges: "30s", mcp: "10s", providers: "5s" },
+      socket: "/tmp/agh.sock",
+    },
     defaults: { agent: "general", provider: "claude", sandbox: "local" },
     http: { host: "127.0.0.1", port: 2123 },
     limits: { max_concurrent_agents: 20 },
@@ -96,6 +121,11 @@ let pageState: {
     error: Error | null;
     refetch: ReturnType<typeof vi.fn>;
   };
+  applyRecords: ApplyRecordsQuery;
+  handleReload: ReturnType<typeof vi.fn>;
+  isReloading: boolean;
+  reloadError: string | null;
+  reloadResult: null;
 };
 
 const restartBanner: RestartBanner = {
@@ -170,6 +200,33 @@ beforeEach(() => {
       error: null,
       refetch: vi.fn(),
     },
+    applyRecords: {
+      data: {
+        entries: [
+          {
+            id: "cfg_apply_001",
+            desired_config_hash: "sha256:desired",
+            active_config_hash: "sha256:active",
+            generation: 7,
+            actor: "http",
+            diff_class: "restart-required",
+            status: "blocked",
+            lifecycle: "restart-required",
+            next_action: "restart-daemon",
+            created_at: "2026-05-20T13:00:00Z",
+            updated_at: "2026-05-20T13:00:01Z",
+          },
+        ],
+      },
+      isLoading: false,
+      isFetching: false,
+      error: null,
+      refetch: vi.fn(),
+    },
+    handleReload: vi.fn(),
+    isReloading: false,
+    reloadError: null,
+    reloadResult: null,
   };
 });
 

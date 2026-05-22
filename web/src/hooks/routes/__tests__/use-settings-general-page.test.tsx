@@ -19,7 +19,9 @@ vi.mock("@/systems/workspace", () => ({
 
 vi.mock("@/systems/settings/adapters/settings-api", () => ({
   getSettingsGeneral: vi.fn(),
+  listSettingsApplyRecords: vi.fn(),
   getSettingsUpdate: vi.fn(),
+  reloadSettings: vi.fn(),
   updateSettingsGeneral: vi.fn(),
   getSettingsRestartStatus: vi.fn(),
   triggerSettingsRestart: vi.fn(),
@@ -30,7 +32,9 @@ vi.mock("@/systems/settings/adapters/settings-api", () => ({
 
 import {
   getSettingsGeneral,
+  listSettingsApplyRecords,
   getSettingsUpdate,
+  reloadSettings,
   updateSettingsGeneral,
 } from "@/systems/settings/adapters/settings-api";
 import { initialSettingsRestartState } from "@/systems/settings/stores/settings-restart-store";
@@ -46,7 +50,10 @@ const envelope: SettingsGeneralSection = {
     restart: { available: true, behavior: "action_trigger", name: "restart" },
   },
   config: {
-    daemon: { socket: "/tmp/agh.sock" },
+    daemon: {
+      reload_timeouts: { bridges: "30s", mcp: "10s", providers: "5s" },
+      socket: "/tmp/agh.sock",
+    },
     defaults: { agent: "general", provider: "claude" },
     http: { host: "127.0.0.1", port: 2123 },
     limits: { max_concurrent_agents: 20 },
@@ -89,6 +96,16 @@ beforeEach(() => {
     recordMutation: useSettingsRestartStore.getState().recordMutation,
   });
   vi.mocked(getSettingsGeneral).mockResolvedValue(envelope);
+  vi.mocked(listSettingsApplyRecords).mockResolvedValue({ entries: [] });
+  vi.mocked(reloadSettings).mockResolvedValue({
+    active_config_hash: "sha256:test-active",
+    active_generation: 1,
+    applied: true,
+    apply_record_id: "cfg_apply_reload",
+    lifecycle: "live",
+    next_action: "none",
+    restart_required: false,
+  });
   vi.mocked(getSettingsUpdate).mockResolvedValue({
     supported: true,
     managed: false,
@@ -122,8 +139,12 @@ describe("useSettingsGeneralPage", () => {
     vi.mocked(updateSettingsGeneral).mockResolvedValue({
       section: "general",
       scope: "global",
-      behavior: "restart_required",
       applied: true,
+      active_config_hash: "sha256:test-active",
+      active_generation: 1,
+      apply_record_id: "cfg_apply_test",
+      lifecycle: "live",
+      next_action: "none",
       restart_required: true,
       write_target: "global-config",
     });

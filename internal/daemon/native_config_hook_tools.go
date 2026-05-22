@@ -9,6 +9,7 @@ import (
 
 	core "github.com/pedronauck/agh/internal/api/core"
 	aghconfig "github.com/pedronauck/agh/internal/config"
+	"github.com/pedronauck/agh/internal/config/lifecycle"
 	hookspkg "github.com/pedronauck/agh/internal/hooks"
 	"github.com/pedronauck/agh/internal/store"
 	toolspkg "github.com/pedronauck/agh/internal/tools"
@@ -19,9 +20,12 @@ const (
 	nativeConfigHookToolsDeletedKey       = "deleted"
 	nativeConfigHookToolsDiffKey          = "diff"
 	nativeConfigHookToolsEventsKey        = "events"
+	nativeConfigHookToolsAppliedKey       = "applied"
 	nativeConfigHookToolsHookKey          = "hook"
+	nativeConfigHookToolsLifecycleKey     = "lifecycle"
 	nativeConfigHookToolsHooksKey         = "hooks"
 	nativeConfigHookToolsNameKey          = "name"
+	nativeConfigHookToolsNextActionKey    = "next_action"
 	nativeConfigHookToolsPathKey          = "path"
 	nativeConfigHookToolsRedactedKey      = "redacted"
 	nativeConfigHookToolsRunsKey          = "runs"
@@ -151,13 +155,17 @@ func (n *daemonNativeTools) configSet(
 		outputValue = aghconfig.RedactedValue()
 	}
 	path := strings.Join(policy.Segments, ".")
-	return structuredResult(map[string]any{
+	payload := map[string]any{
 		nativeConfigHookToolsPathKey:     path,
 		nativeConfigHookToolsValueKey:    outputValue,
 		nativeConfigHookToolsScopeKey:    string(target.Scope()),
 		nativeConfigHookToolsTargetKey:   target.Path(),
 		nativeConfigHookToolsRedactedKey: policy.Redacted,
-	}, path)
+	}
+	if err := addNativeConfigLifecycleFields(payload, path); err != nil {
+		return toolspkg.ToolResult{}, nativeConfigValidationError(req.ToolID, err)
+	}
+	return structuredResult(payload, path)
 }
 
 func (n *daemonNativeTools) configUnset(
@@ -190,12 +198,16 @@ func (n *daemonNativeTools) configUnset(
 		return toolspkg.ToolResult{}, nativeConfigValidationError(req.ToolID, err)
 	}
 	path := strings.Join(policy.Segments, ".")
-	return structuredResult(map[string]any{
+	payload := map[string]any{
 		nativeConfigHookToolsPathKey:    path,
 		nativeConfigHookToolsDeletedKey: deleted,
 		nativeConfigHookToolsScopeKey:   string(target.Scope()),
 		nativeConfigHookToolsTargetKey:  target.Path(),
-	}, path)
+	}
+	if err := addNativeConfigLifecycleFields(payload, path); err != nil {
+		return toolspkg.ToolResult{}, nativeConfigValidationError(req.ToolID, err)
+	}
+	return structuredResult(payload, path)
 }
 
 func (n *daemonNativeTools) configDiff(
@@ -309,9 +321,9 @@ func (n *daemonNativeTools) hooksList(
 	if err := decodeNativeInput(req, &input); err != nil {
 		return toolspkg.ToolResult{}, err
 	}
-	filter, err := hookCatalogFilter(input, scope)
+	filter, err := hookCatalogFilter(req.ToolID, input, scope)
 	if err != nil {
-		return toolspkg.ToolResult{}, nativeHookValidationError(req.ToolID, err)
+		return toolspkg.ToolResult{}, nativeHookCatalogFilterError(req.ToolID, err)
 	}
 	entries, err := n.deps.Observer.QueryHookCatalog(ctx, filter)
 	if err != nil {
@@ -333,9 +345,9 @@ func (n *daemonNativeTools) hooksInfo(
 	if err := decodeNativeInput(req, &input); err != nil {
 		return toolspkg.ToolResult{}, err
 	}
-	filter, err := hookCatalogFilter(input.hooksListInput, scope)
+	filter, err := hookCatalogFilter(req.ToolID, input.hooksListInput, scope)
 	if err != nil {
-		return toolspkg.ToolResult{}, nativeHookValidationError(req.ToolID, err)
+		return toolspkg.ToolResult{}, nativeHookCatalogFilterError(req.ToolID, err)
 	}
 	entries, err := n.deps.Observer.QueryHookCatalog(ctx, filter)
 	if err != nil {
@@ -473,9 +485,6 @@ func (n *daemonNativeTools) hooksCreate(
 	); err != nil {
 		return toolspkg.ToolResult{}, nativeHookValidationError(req.ToolID, err)
 	}
-	if err := n.syncHookBindings(ctx, req.ToolID); err != nil {
-		return toolspkg.ToolResult{}, err
-	}
 	return nativeHookMutationResult(decl, "created", target)
 }
 
@@ -534,9 +543,6 @@ func (n *daemonNativeTools) hooksUpdate(
 	); err != nil {
 		return toolspkg.ToolResult{}, nativeHookValidationError(req.ToolID, err)
 	}
-	if err := n.syncHookBindings(ctx, req.ToolID); err != nil {
-		return toolspkg.ToolResult{}, err
-	}
 	return nativeHookMutationResult(decl, "updated", target)
 }
 
@@ -558,12 +564,16 @@ func (n *daemonNativeTools) hooksDelete(
 	} else if !deleted {
 		return toolspkg.ToolResult{}, nativeHookNotFoundError(req.ToolID, input.Name)
 	}
-	return structuredResult(map[string]any{
+	payload := map[string]any{
 		nativeConfigHookToolsNameKey:   strings.TrimSpace(input.Name),
 		"action":                       nativeConfigHookToolsDeletedKey,
 		nativeConfigHookToolsScopeKey:  string(target.Scope()),
 		nativeConfigHookToolsTargetKey: target.Path(),
-	}, strings.TrimSpace(input.Name))
+	}
+	if err := addNativeConfigLifecycleFields(payload, "hooks.declarations"); err != nil {
+		return toolspkg.ToolResult{}, nativeHookValidationError(req.ToolID, err)
+	}
+	return structuredResult(payload, strings.TrimSpace(input.Name))
 }
 
 func (n *daemonNativeTools) hooksEnable(
@@ -717,9 +727,17 @@ func nativeScopeForWorkspace(workspaceRoot string) string {
 	return string(aghconfig.WriteScopeWorkspace)
 }
 
-func hookCatalogFilter(input hooksListInput, scope toolspkg.Scope) (hookspkg.CatalogFilter, error) {
+func hookCatalogFilter(
+	id toolspkg.ToolID,
+	input hooksListInput,
+	scope toolspkg.Scope,
+) (hookspkg.CatalogFilter, error) {
+	workspaceID, err := nativeCallerWorkspaceInput(id, "workspace_id", input.WorkspaceID, scope)
+	if err != nil {
+		return hookspkg.CatalogFilter{}, err
+	}
 	filter := hookspkg.CatalogFilter{
-		WorkspaceID:   firstNonEmpty(input.WorkspaceID, scope.WorkspaceID),
+		WorkspaceID:   workspaceID,
 		WorkspaceRoot: strings.TrimSpace(input.WorkspaceRoot),
 		AgentName:     strings.TrimSpace(input.Agent),
 	}
@@ -808,9 +826,6 @@ func (n *daemonNativeTools) deleteHookDeclaration(
 		}
 		return false, nil
 	}
-	if err := n.syncHookBindings(ctx, id); err != nil {
-		return false, err
-	}
 	return true, nil
 }
 
@@ -860,30 +875,11 @@ func (n *daemonNativeTools) setHookEnabled(
 	); err != nil {
 		return toolspkg.ToolResult{}, nativeHookValidationError(req.ToolID, err)
 	}
-	if err := n.syncHookBindings(ctx, req.ToolID); err != nil {
-		return toolspkg.ToolResult{}, err
-	}
 	action := hookActionDisabled
 	if enabled {
 		action = "enabled"
 	}
 	return nativeHookMutationResult(decl, action, target)
-}
-
-func (n *daemonNativeTools) syncHookBindings(ctx context.Context, id toolspkg.ToolID) error {
-	if n.deps.HookBindings == nil {
-		return toolspkg.NewToolError(
-			toolspkg.ErrorCodeUnavailable,
-			id,
-			"hook binding publisher is unavailable",
-			toolspkg.ErrToolUnavailable,
-			toolspkg.ReasonDependencyMissing,
-		)
-	}
-	if err := n.deps.HookBindings.Sync(ctx); err != nil {
-		return nativeHookValidationError(id, err)
-	}
-	return nil
 }
 
 func nativeHookMutableSource(id toolspkg.ToolID, source *string) error {
@@ -923,6 +919,13 @@ func nativeHookValidationError(id toolspkg.ToolID, err error) error {
 	)
 }
 
+func nativeHookCatalogFilterError(id toolspkg.ToolID, err error) error {
+	if toolErr, ok := errors.AsType[*toolspkg.ToolError](err); ok && toolErr != nil {
+		return err
+	}
+	return nativeHookValidationError(id, err)
+}
+
 func nativeHookNotFoundError(id toolspkg.ToolID, name string) error {
 	trimmed := strings.TrimSpace(name)
 	return toolspkg.NewToolError(
@@ -939,13 +942,33 @@ func nativeHookMutationResult(
 	action string,
 	target aghconfig.WriteTarget,
 ) (toolspkg.ToolResult, error) {
-	return structuredResult(map[string]any{
+	payload := map[string]any{
 		nativeConfigHookToolsNameKey:   decl.Name,
 		"action":                       action,
 		nativeConfigHookToolsScopeKey:  string(target.Scope()),
 		nativeConfigHookToolsTargetKey: target.Path(),
 		nativeConfigHookToolsHookKey:   nativeHookDeclPayload(decl),
-	}, decl.Name)
+	}
+	if err := addNativeConfigLifecycleFields(payload, "hooks.declarations"); err != nil {
+		return toolspkg.ToolResult{}, err
+	}
+	return structuredResult(payload, decl.Name)
+}
+
+func addNativeConfigLifecycleFields(payload map[string]any, path string) error {
+	rule, err := lifecycle.ClassifyPath(path)
+	if err != nil {
+		return err
+	}
+	applied := rule.Lifecycle != lifecycle.RestartRequired
+	status := lifecycle.StatusApplied
+	if !applied {
+		status = lifecycle.StatusBlocked
+	}
+	payload[nativeConfigHookToolsAppliedKey] = applied
+	payload[nativeConfigHookToolsLifecycleKey] = string(rule.Lifecycle)
+	payload[nativeConfigHookToolsNextActionKey] = string(lifecycle.NextActionForLifecycle(rule.Lifecycle, status))
+	return nil
 }
 
 func nativeHookDeclPayload(decl hookspkg.HookDecl) map[string]any {

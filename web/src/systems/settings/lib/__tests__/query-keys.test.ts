@@ -64,8 +64,29 @@ describe("settingsKeys", () => {
     expect(settingsKeys.restartStatus("op_001")).toEqual(["settings", "restart", "op_001"]);
   });
 
+  it("builds apply record keys from normalized filters", () => {
+    expect(settingsKeys.applyRoot()).toEqual(["settings", "apply"]);
+    expect(settingsKeys.applyRecords({ status: "blocked", actor: " http ", limit: 8 })).toEqual([
+      "settings",
+      "apply",
+      "records",
+      "blocked",
+      "http",
+      8,
+    ]);
+  });
+
   it("isolates extensions keys from collections and sections", () => {
     expect(settingsKeys.extensionsRoot()).toEqual(["settings", "extensions"]);
     expect(settingsKeys.extensionsList()).toEqual(["settings", "extensions", "list"]);
+    expect(
+      settingsKeys.extensionsMarketplace({ q: "daytona", source: "github", limit: 12 })
+    ).toEqual(["settings", "extensions", "marketplace", "daytona", "github", "12"]);
+    expect(settingsKeys.extensionProvenance("daytona")).toEqual([
+      "settings",
+      "extensions",
+      "provenance",
+      "daytona",
+    ]);
   });
 });

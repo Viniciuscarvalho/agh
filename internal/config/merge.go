@@ -60,7 +60,14 @@ func (e FileError) Unwrap() error {
 }
 
 type daemonOverlay struct {
-	Socket *string `toml:"socket"`
+	Socket         *string                     `toml:"socket"`
+	ReloadTimeouts daemonReloadTimeoutsOverlay `toml:"reload_timeouts"`
+}
+
+type daemonReloadTimeoutsOverlay struct {
+	Providers *time.Duration `toml:"providers"`
+	MCP       *time.Duration `toml:"mcp"`
+	Bridges   *time.Duration `toml:"bridges"`
 }
 
 type httpOverlay struct {
@@ -107,6 +114,7 @@ type limitsOverlay struct {
 type sessionOverlay struct {
 	Limits      sessionLimitsOverlay      `toml:"limits"`
 	Supervision sessionSupervisionOverlay `toml:"supervision"`
+	BusyInput   sessionBusyInputOverlay   `toml:"busy_input"`
 }
 
 type sessionLimitsOverlay struct {
@@ -120,6 +128,12 @@ type sessionSupervisionOverlay struct {
 	InactivityWarningAfter    *time.Duration `toml:"inactivity_warning_after"`
 	InactivityTimeout         *time.Duration `toml:"inactivity_timeout"`
 	TimeoutCancelGrace        *time.Duration `toml:"timeout_cancel_grace"`
+}
+
+type sessionBusyInputOverlay struct {
+	DefaultMode  *string `toml:"default_mode"`
+	QueueCap     *int    `toml:"queue_cap"`
+	MaxTextBytes *int    `toml:"max_text_bytes"`
 }
 
 type permissionsOverlay struct {
@@ -137,10 +151,10 @@ type providerOverlay struct {
 	AuthMode        *ProviderAuthMode           `toml:"auth_mode"`
 	EnvPolicy       *ProviderEnvPolicy          `toml:"env_policy"`
 	HomePolicy      *ProviderHomePolicy         `toml:"home_policy"`
+	NoneSecurity    *ProviderNoneSecurity       `toml:"none_security"`
 	AuthStatusCmd   *string                     `toml:"auth_status_command"`
 	AuthLoginCmd    *string                     `toml:"auth_login_command"`
 	SessionMCP      *bool                       `toml:"session_mcp"`
-	Aliases         *[]string                   `toml:"aliases"`
 	CredentialSlots []providerCredentialOverlay `toml:"credential_slots"`
 	MCPServers      []mcpServerOverlay          `toml:"mcp_servers"`
 }
@@ -225,7 +239,11 @@ type observabilityTranscriptsOverlay struct {
 }
 
 type logOverlay struct {
-	Level *string `toml:"level"`
+	Level           *string `toml:"level"`
+	MaxSizeMB       *int    `toml:"max_size_mb"`
+	MaxBackups      *int    `toml:"max_backups"`
+	MaxAgeDays      *int    `toml:"max_age_days"`
+	CompressBackups *bool   `toml:"compress_backups"`
 }
 
 type memoryOverlay struct {
@@ -433,6 +451,11 @@ type toolsPolicyOverlay struct {
 
 type taskOverlay struct {
 	Orchestration taskOrchestrationOverlay `toml:"orchestration"`
+	Recovery      taskRecoveryOverlay      `toml:"recovery"`
+}
+
+type taskRecoveryOverlay struct {
+	AllowAgentForce *bool `toml:"allow_agent_force"`
 }
 
 type taskOrchestrationOverlay struct {
@@ -582,6 +605,13 @@ func rejectRemovedProviderModelKeys(source string, keys []burnttoml.Key) error {
 		if len(key) != 3 || key[0] != providersConfigKey {
 			continue
 		}
+		if key[2] == "aliases" {
+			return fmt.Errorf(
+				"removed config key %q in %q: aliases was removed; reference providers by canonical name",
+				key.String(),
+				source,
+			)
+		}
 		replacement := ""
 		switch key[2] {
 		case "default_model":
@@ -635,6 +665,19 @@ func (o *configOverlay) Apply(dst *Config) error {
 func (o daemonOverlay) Apply(dst *DaemonConfig) {
 	if o.Socket != nil {
 		dst.Socket = *o.Socket
+	}
+	o.ReloadTimeouts.Apply(&dst.ReloadTimeouts)
+}
+
+func (o daemonReloadTimeoutsOverlay) Apply(dst *DaemonReloadTimeoutsConfig) {
+	if o.Providers != nil {
+		dst.Providers = *o.Providers
+	}
+	if o.MCP != nil {
+		dst.MCP = *o.MCP
+	}
+	if o.Bridges != nil {
+		dst.Bridges = *o.Bridges
 	}
 }
 
@@ -724,6 +767,7 @@ func (o limitsOverlay) Apply(dst *LimitsConfig) {
 func (o sessionOverlay) Apply(dst *SessionConfig) {
 	o.Limits.Apply(&dst.Limits)
 	o.Supervision.Apply(&dst.Supervision)
+	o.BusyInput.Apply(&dst.BusyInput)
 }
 
 func (o sessionLimitsOverlay) Apply(dst *SessionLimitsConfig) {
@@ -750,6 +794,18 @@ func (o sessionSupervisionOverlay) Apply(dst *SessionSupervisionConfig) {
 	}
 	if o.TimeoutCancelGrace != nil {
 		dst.TimeoutCancelGrace = *o.TimeoutCancelGrace
+	}
+}
+
+func (o sessionBusyInputOverlay) Apply(dst *SessionBusyInputConfig) {
+	if o.DefaultMode != nil {
+		dst.DefaultMode = *o.DefaultMode
+	}
+	if o.QueueCap != nil {
+		dst.QueueCap = *o.QueueCap
+	}
+	if o.MaxTextBytes != nil {
+		dst.MaxTextBytes = *o.MaxTextBytes
 	}
 }
 
@@ -790,6 +846,9 @@ func (o providerOverlay) Apply(dst *ProviderConfig) {
 	if o.HomePolicy != nil {
 		dst.HomePolicy = *o.HomePolicy
 	}
+	if o.NoneSecurity != nil {
+		dst.NoneSecurity = *o.NoneSecurity
+	}
 	if o.AuthStatusCmd != nil {
 		dst.AuthStatusCmd = *o.AuthStatusCmd
 	}
@@ -798,9 +857,6 @@ func (o providerOverlay) Apply(dst *ProviderConfig) {
 	}
 	if o.SessionMCP != nil {
 		dst.SessionMCP = new(*o.SessionMCP)
-	}
-	if o.Aliases != nil {
-		dst.Aliases = append([]string(nil), (*o.Aliases)...)
 	}
 	if len(o.CredentialSlots) > 0 {
 		dst.CredentialSlots = applyProviderCredentialOverlays(o.CredentialSlots)
@@ -978,6 +1034,18 @@ func (o observabilityTranscriptsOverlay) Apply(dst *ObservabilityTranscriptConfi
 func (o logOverlay) Apply(dst *LogConfig) {
 	if o.Level != nil {
 		dst.Level = *o.Level
+	}
+	if o.MaxSizeMB != nil {
+		dst.MaxSizeMB = *o.MaxSizeMB
+	}
+	if o.MaxBackups != nil {
+		dst.MaxBackups = *o.MaxBackups
+	}
+	if o.MaxAgeDays != nil {
+		dst.MaxAgeDays = *o.MaxAgeDays
+	}
+	if o.CompressBackups != nil {
+		dst.CompressBackups = *o.CompressBackups
 	}
 }
 
@@ -1378,6 +1446,13 @@ func (o toolsPolicyOverlay) Apply(dst *ToolsPolicyConfig) {
 
 func (o taskOverlay) Apply(dst *TaskConfig) {
 	o.Orchestration.Apply(&dst.Orchestration)
+	o.Recovery.Apply(&dst.Recovery)
+}
+
+func (o taskRecoveryOverlay) Apply(dst *TaskRecoveryConfig) {
+	if o.AllowAgentForce != nil {
+		dst.AllowAgentForce = *o.AllowAgentForce
+	}
 }
 
 func (o taskOrchestrationOverlay) Apply(dst *TaskOrchestrationConfig) {

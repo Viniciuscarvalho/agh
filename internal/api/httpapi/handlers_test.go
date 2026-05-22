@@ -24,6 +24,7 @@ import (
 	"github.com/pedronauck/agh/internal/session"
 	settingspkg "github.com/pedronauck/agh/internal/settings"
 	"github.com/pedronauck/agh/internal/store"
+	taskpkg "github.com/pedronauck/agh/internal/task"
 	"github.com/pedronauck/agh/internal/transcript"
 	workspacepkg "github.com/pedronauck/agh/internal/workspace"
 )
@@ -47,7 +48,9 @@ func TestRegisterRoutesCoversTechSpecEndpoints(t *testing.T) {
 		"DELETE /api/automation/triggers/:id",
 		"DELETE /api/bridges/:id/secret-bindings/:binding_name",
 		"DELETE /api/bundles/activations/:id",
+		"DELETE /api/extensions/:name",
 		"DELETE /api/memory/:filename",
+		"DELETE /api/notifications/presets/:name",
 		"DELETE /api/settings/sandboxes/:name",
 		"DELETE /api/settings/hooks/:name",
 		"DELETE /api/settings/mcp-servers/:name",
@@ -86,17 +89,24 @@ func TestRegisterRoutesCoversTechSpecEndpoints(t *testing.T) {
 		"GET /api/bridges/health/stream",
 		"GET /api/bridges/:id/routes",
 		"GET /api/bridges/:id/secret-bindings",
+		"GET /api/bridges/:id/targets",
 		"GET /api/bridges/providers",
 		"GET /api/bundles/activations",
 		"GET /api/bundles/activations/:id",
 		"GET /api/bundles/catalog",
 		"GET /api/bundles/network/settings",
-		"GET /api/daemon/status",
+		"GET /api/doctor",
 		"GET /api/extensions",
 		"GET /api/extensions/:name",
+		"GET /api/extensions/:name/provenance",
+		"GET /api/extensions/marketplace",
 		"GET /api/hooks/catalog",
 		"GET /api/hooks/events",
+		"GET /api/notifications/presets",
+		"GET /api/notifications/presets/:name",
 		"GET /api/workspaces/:workspace_id/hooks/runs",
+		"GET /api/logs",
+		"GET /api/logs/stream",
 		"GET /api/memory",
 		"GET /api/memory/:filename",
 		"GET /api/memory/config",
@@ -128,24 +138,26 @@ func TestRegisterRoutesCoversTechSpecEndpoints(t *testing.T) {
 		"GET /api/workspaces/:workspace_id/network/channels/:channel/threads/:thread_id/messages",
 		"GET /api/network/status",
 		"GET /api/workspaces/:workspace_id/network/work/:work_id",
-		"GET /api/workspaces/:workspace_id/observe/events",
-		"GET /api/workspaces/:workspace_id/observe/events/stream",
-		"GET /api/observe/health",
+		"GET /api/status",
 		"GET /api/observe/tasks/dashboard",
 		"GET /api/observe/tasks/inbox",
 		"GET /api/openai/v1/models",
-		"GET /api/providers/*catalog_path",
+		"GET /api/model-catalog/*catalog_path",
+		"GET /api/providers",
+		"GET /api/providers/:provider_id",
 		"GET /api/sessions",
 		"GET /api/workspaces/:workspace_id/sessions/:session_id",
 		"GET /api/workspaces/:workspace_id/sessions/:session_id/events",
 		"GET /api/workspaces/:workspace_id/sessions/:session_id/health",
 		"GET /api/workspaces/:workspace_id/sessions/:session_id/history",
 		"GET /api/workspaces/:workspace_id/sessions/:session_id/inspect",
+		"GET /api/workspaces/:workspace_id/sessions/:session_id/recap",
 		"GET /api/workspaces/:workspace_id/sessions/:session_id/status",
 		"GET /api/workspaces/:workspace_id/sessions/:session_id/transcript",
 		"GET /api/workspaces/:workspace_id/sessions/:session_id/stream",
 		"GET /api/workspaces/:workspace_id/sessions/:session_id/tools",
 		"GET /api/settings/actions/restart/:operation_id",
+		"GET /api/settings/apply",
 		"GET /api/settings/automation",
 		"GET /api/settings/sandboxes",
 		"GET /api/settings/sandboxes/:name",
@@ -161,13 +173,19 @@ func TestRegisterRoutesCoversTechSpecEndpoints(t *testing.T) {
 		"GET /api/settings/providers",
 		"GET /api/settings/providers/:name",
 		"GET /api/settings/skills",
+		"GET /api/support/bundles/:operation_id",
+		"GET /api/support/bundles/:operation_id/download",
 		"GET /api/skills",
 		"GET /api/skills/:name",
 		"GET /api/skills/:name/content",
+		"GET /api/skills/:name/shadows",
 		"GET /api/skills/marketplace/info",
 		"GET /api/skills/marketplace/search",
+		"GET /api/scheduler",
+		"GET /api/scheduler/backlog",
 		"GET /api/tasks",
 		"GET /api/tasks/:id",
+		"GET /api/tasks/:id/inspect",
 		"GET /api/tasks/:id/notifications/bridges",
 		"GET /api/tasks/:id/notifications/bridges/:subscription_id",
 		"GET /api/tasks/:id/execution-profile",
@@ -176,6 +194,7 @@ func TestRegisterRoutesCoversTechSpecEndpoints(t *testing.T) {
 		"GET /api/tasks/:id/timeline",
 		"GET /api/tasks/:id/tree",
 		"GET /api/tasks/:id/runs",
+		"GET /api/runs/:id/inspect",
 		"GET /api/task-runs/:id",
 		"GET /api/task-runs/:id/reviews",
 		"GET /api/task-reviews/:id",
@@ -237,12 +256,22 @@ func TestRegisterRoutesCoversTechSpecEndpoints(t *testing.T) {
 		"POST /api/memory/sessions/prune",
 		"POST /api/memory/sessions/repair",
 		"POST /api/workspaces/:workspace_id/memory/sessions/:session_id/replay",
-		"POST /api/providers/*catalog_path",
+		"POST /api/model-catalog/*catalog_path",
+		"POST /api/providers/:provider_id/auth/probe",
+		"POST /api/runs/:id/fail",
+		"POST /api/runs/:id/release",
+		"POST /api/runs/:id/retry",
+		"POST /api/runs/bulk/fail",
+		"POST /api/runs/bulk/release",
+		"POST /api/scheduler/drain",
+		"POST /api/scheduler/pause",
+		"POST /api/scheduler/resume",
 		"POST /api/workspaces/:workspace_id/network/channels",
 		"POST /api/workspaces/:workspace_id/network/channels/:channel/directs/resolve",
 		"POST /api/bridges",
 		"POST /api/bridges/:id/disable",
 		"POST /api/bridges/:id/enable",
+		"POST /api/bridges/:id/resolve",
 		"POST /api/bridges/:id/restart",
 		"POST /api/bridges/:id/test-delivery",
 		"POST /api/bundles/activations",
@@ -250,18 +279,24 @@ func TestRegisterRoutesCoversTechSpecEndpoints(t *testing.T) {
 		"POST /api/extensions",
 		"POST /api/extensions/:name/disable",
 		"POST /api/extensions/:name/enable",
+		"POST /api/notifications/presets",
 		"POST /api/workspaces/:workspace_id/network/send",
 		"POST /api/sessions",
 		"POST /api/workspaces/:workspace_id/sessions/:session_id/approve",
 		"POST /api/workspaces/:workspace_id/sessions/:session_id/clear",
 		"POST /api/workspaces/:workspace_id/sessions/:session_id/prompt",
 		"POST /api/workspaces/:workspace_id/sessions/:session_id/prompt/cancel",
+		"POST /api/workspaces/:workspace_id/sessions/:session_id/interrupt",
+		"POST /api/workspaces/:workspace_id/sessions/:session_id/steer",
+		"DELETE /api/workspaces/:workspace_id/sessions/:session_id/prompt/queue/:queue_entry_id",
 		"POST /api/workspaces/:workspace_id/sessions/:session_id/repair",
-		"POST /api/workspaces/:workspace_id/sessions/:session_id/resume",
+		"POST /api/workspaces/:workspace_id/sessions/:session_id/attach",
 		"POST /api/workspaces/:workspace_id/sessions/:session_id/soul/refresh",
 		"POST /api/workspaces/:workspace_id/sessions/:session_id/stop",
 		"POST /api/workspaces/:workspace_id/sessions/:session_id/tools/search",
 		"POST /api/settings/actions/restart",
+		"POST /api/settings/reload",
+		"POST /api/support/bundles",
 		"POST /api/skills/:name/disable",
 		"POST /api/skills/:name/enable",
 		"POST /api/skills/marketplace/install",
@@ -280,8 +315,10 @@ func TestRegisterRoutesCoversTechSpecEndpoints(t *testing.T) {
 		"POST /api/tasks/:id/cancel",
 		"POST /api/tasks/:id/children",
 		"POST /api/tasks/:id/dependencies",
+		"POST /api/tasks/:id/pause",
 		"POST /api/tasks/:id/publish",
 		"POST /api/tasks/:id/reject",
+		"POST /api/tasks/:id/resume",
 		"POST /api/tasks/:id/runs",
 		"POST /api/tasks/:id/start",
 		"POST /api/tasks/:id/triage/archive",
@@ -297,6 +334,8 @@ func TestRegisterRoutesCoversTechSpecEndpoints(t *testing.T) {
 		"PUT /api/agents/:name/heartbeat",
 		"PUT /api/agents/:name/soul",
 		"PUT /api/bridges/:id/secret-bindings/:binding_name",
+		"PUT /api/extensions/:name",
+		"PUT /api/notifications/presets/:name",
 		"PUT /api/settings/sandboxes/:name",
 		"PUT /api/settings/hooks/:name",
 		"PUT /api/settings/mcp-servers/:name",
@@ -316,6 +355,44 @@ func TestRegisterRoutesCoversTechSpecEndpoints(t *testing.T) {
 	}
 }
 
+func TestRegisterRoutesRejectsLegacyStatusSurfaces(t *testing.T) {
+	t.Parallel()
+
+	homePaths := newTestHomePaths(t)
+	handlers := newTestHandlers(t, stubSessionManager{}, stubObserver{}, homePaths)
+	engine := newTestRouter(t, handlers)
+
+	for _, path := range []string{"/api/daemon/status", "/api/observe/health"} {
+		resp := performRequest(t, engine, http.MethodGet, path, nil)
+		if resp.Code != http.StatusNotFound {
+			t.Fatalf("GET %s status = %d, want %d", path, resp.Code, http.StatusNotFound)
+		}
+	}
+}
+
+func TestRegisterRoutesRejectsLegacyProviderModelCatalogSurfaces(t *testing.T) {
+	t.Parallel()
+
+	homePaths := newTestHomePaths(t)
+	handlers := newTestHandlers(t, stubSessionManager{}, stubObserver{}, homePaths)
+	engine := newTestRouter(t, handlers)
+
+	for _, tc := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/api/providers/models"},
+		{method: http.MethodGet, path: "/api/providers/codex/models"},
+		{method: http.MethodPost, path: "/api/providers/codex/models/refresh"},
+		{method: http.MethodGet, path: "/api/providers/codex/models/status"},
+	} {
+		resp := performRequest(t, engine, tc.method, tc.path, nil)
+		if resp.Code != http.StatusNotFound {
+			t.Fatalf("%s %s status = %d, want %d", tc.method, tc.path, resp.Code, http.StatusNotFound)
+		}
+	}
+}
+
 func TestRegisterTaskRoutesUseSharedHandlerBindings(t *testing.T) {
 	t.Parallel()
 
@@ -325,10 +402,22 @@ func TestRegisterTaskRoutesUseSharedHandlerBindings(t *testing.T) {
 	expectedHandlers := map[string]string{
 		"GET /api/observe/tasks/dashboard":                             "TaskDashboard",
 		"GET /api/observe/tasks/inbox":                                 "TaskInbox",
+		"GET /api/runs/:id/inspect":                                    "InspectRun",
+		"GET /api/scheduler":                                           "GetScheduler",
+		"GET /api/scheduler/backlog":                                   "GetSchedulerBacklog",
+		"POST /api/runs/:id/fail":                                      "ForceFailTaskRun",
+		"POST /api/runs/:id/release":                                   "ForceReleaseTaskRun",
+		"POST /api/runs/:id/retry":                                     "RetryTaskRun",
+		"POST /api/runs/bulk/fail":                                     "BulkForceFailTaskRuns",
+		"POST /api/runs/bulk/release":                                  "BulkForceReleaseTaskRuns",
+		"POST /api/scheduler/drain":                                    "DrainScheduler",
+		"POST /api/scheduler/pause":                                    "PauseScheduler",
+		"POST /api/scheduler/resume":                                   "ResumeScheduler",
 		"GET /api/task-runs/:id":                                       "GetTaskRun",
 		"GET /api/task-runs/:id/reviews":                               "ListTaskRunReviews",
 		"GET /api/task-reviews/:id":                                    "GetTaskRunReview",
 		"GET /api/tasks/:id/execution-profile":                         "GetTaskExecutionProfile",
+		"GET /api/tasks/:id/inspect":                                   "InspectTask",
 		"GET /api/tasks/:id/notifications/bridges":                     "ListTaskBridgeNotificationSubscriptions",
 		"GET /api/tasks/:id/notifications/bridges/:subscription_id":    "GetTaskBridgeNotificationSubscription",
 		"GET /api/tasks/:id/reviews":                                   "ListTaskReviews",
@@ -341,8 +430,10 @@ func TestRegisterTaskRoutesUseSharedHandlerBindings(t *testing.T) {
 		"POST /api/workspaces/:workspace_id/sessions/:session_id/stop": "StopSession",
 		"POST /api/tasks/:id/approve":                                  "ApproveTask",
 		"POST /api/tasks/:id/notifications/bridges":                    "CreateTaskBridgeNotificationSubscription",
+		"POST /api/tasks/:id/pause":                                    "PauseTask",
 		"POST /api/tasks/:id/publish":                                  "PublishTask",
 		"POST /api/tasks/:id/reject":                                   "RejectTask",
+		"POST /api/tasks/:id/resume":                                   "ResumeTask",
 		"POST /api/tasks/:id/start":                                    "StartTask",
 		"POST /api/tasks/:id/triage/archive":                           "ArchiveTask",
 		"POST /api/tasks/:id/triage/dismiss":                           "DismissTask",
@@ -508,15 +599,15 @@ func TestSettingsAndExtensionMutationsReturnForbiddenOnNonLoopbackHost(t *testin
 			},
 		},
 		stubExtensionService{
-			InstallFn: func(context.Context, contract.InstallExtensionRequest) (contract.ExtensionPayload, error) {
+			InstallFn: func(context.Context, contract.InstallExtensionRequest, taskpkg.ActorContext) (contract.ExtensionPayload, error) {
 				t.Fatal("Install should not be called when HTTP mutations are blocked")
 				return contract.ExtensionPayload{}, nil
 			},
-			EnableFn: func(context.Context, string) (contract.ExtensionPayload, error) {
+			EnableFn: func(context.Context, string, taskpkg.ActorContext) (contract.ExtensionPayload, error) {
 				t.Fatal("Enable should not be called when HTTP mutations are blocked")
 				return contract.ExtensionPayload{}, nil
 			},
-			DisableFn: func(context.Context, string) (contract.ExtensionPayload, error) {
+			DisableFn: func(context.Context, string, taskpkg.ActorContext) (contract.ExtensionPayload, error) {
 				t.Fatal("Disable should not be called when HTTP mutations are blocked")
 				return contract.ExtensionPayload{}, nil
 			},
@@ -591,15 +682,15 @@ func TestSettingsAndExtensionMutationsReachHandlersOnLoopbackHost(t *testing.T) 
 		settingsService,
 		restartController,
 		stubExtensionService{
-			InstallFn: func(_ context.Context, req contract.InstallExtensionRequest) (contract.ExtensionPayload, error) {
+			InstallFn: func(_ context.Context, req contract.InstallExtensionRequest, _ taskpkg.ActorContext) (contract.ExtensionPayload, error) {
 				installedReq = req
 				return contract.ExtensionPayload{Name: "demo", State: "registered"}, nil
 			},
-			EnableFn: func(_ context.Context, name string) (contract.ExtensionPayload, error) {
+			EnableFn: func(_ context.Context, name string, _ taskpkg.ActorContext) (contract.ExtensionPayload, error) {
 				enabledName = name
 				return contract.ExtensionPayload{Name: name, Enabled: true, State: "active"}, nil
 			},
-			DisableFn: func(_ context.Context, name string) (contract.ExtensionPayload, error) {
+			DisableFn: func(_ context.Context, name string, _ taskpkg.ActorContext) (contract.ExtensionPayload, error) {
 				disabledName = name
 				return contract.ExtensionPayload{Name: name, Enabled: false, State: "inactive"}, nil
 			},
@@ -992,12 +1083,12 @@ func TestDaemonStatusHandlerReturnsUserHomeDir(t *testing.T) {
 		}
 		engine := newTestRouter(t, newTestHandlers(t, manager, observer, homePaths))
 
-		recorder := performRequest(t, engine, http.MethodGet, "/api/daemon/status", nil)
+		recorder := performRequest(t, engine, http.MethodGet, "/api/status", nil)
 		if recorder.Code != http.StatusOK {
 			t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
 		}
 
-		var response contract.DaemonStatusResponse
+		var response contract.StatusPayload
 		decodeJSONResponse(t, recorder, &response)
 
 		userHomeDir, err := os.UserHomeDir()
@@ -1527,6 +1618,54 @@ func TestPromptSessionHandlerPreservesToolInputAfterOutOfOrderToolResult(t *test
 	})
 }
 
+func TestPromptSessionHandlerReturnsBusyInputDecision(t *testing.T) {
+	t.Run("ShouldReturnAcceptedQueuePayloadWhenPromptIsQueued", func(t *testing.T) {
+		t.Parallel()
+
+		homePaths := newTestHomePaths(t)
+		var gotOpts session.SendPromptOpts
+		manager := stubSessionManager{
+			SendPromptFn: func(_ context.Context, id string, opts session.SendPromptOpts) (session.SendPromptResult, error) {
+				if id != "sess-123" {
+					t.Fatalf("SendPrompt() id = %q, want sess-123", id)
+				}
+				gotOpts = opts
+				return session.SendPromptResult{
+					Status:          "queued",
+					Mode:            session.BusyInputModeQueue,
+					Queued:          true,
+					QueueEntryID:    "inq-1",
+					QueuePosition:   2,
+					QueueGeneration: 4,
+				}, nil
+			},
+		}
+		handlers := newTestHandlers(t, manager, stubObserver{}, homePaths)
+		engine := newTestRouter(t, handlers)
+
+		recorder := performRequest(
+			t,
+			engine,
+			http.MethodPost,
+			"/api/workspaces/ws-workspace/sessions/sess-123/prompt",
+			[]byte("{\"message\":\"queue me\",\"mode\":\"queue\"}"),
+		)
+		if recorder.Code != http.StatusAccepted {
+			t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusAccepted, recorder.Body.String())
+		}
+		if gotOpts.Message != "queue me" || gotOpts.Mode != session.BusyInputModeQueue {
+			t.Fatalf("SendPrompt() opts = %#v, want queue me queue", gotOpts)
+		}
+		var decoded contract.SendPromptResultResponse
+		if err := json.Unmarshal(recorder.Body.Bytes(), &decoded); err != nil {
+			t.Fatalf("json.Unmarshal(prompt result) error = %v; body=%s", err, recorder.Body.String())
+		}
+		if decoded.Prompt.Status != "queued" || decoded.Prompt.QueueEntryID != "inq-1" || !decoded.Prompt.Queued {
+			t.Fatalf("decoded prompt = %#v, want queued inq-1", decoded.Prompt)
+		}
+	})
+}
+
 func TestPromptSessionHandlerDrainsPromptAfterRequestCancellation(t *testing.T) {
 	t.Run("ShouldKeepPromptAliveUntilDetachedDrainFinishes", func(t *testing.T) {
 		homePaths := newTestHomePaths(t)
@@ -1788,20 +1927,18 @@ func TestListAgentsAndHealthHandlers(t *testing.T) {
 		t.Fatalf("agents = %#v", agents.Agents)
 	}
 
-	healthResp := performRequest(t, engine, http.MethodGet, "/api/observe/health", nil)
+	healthResp := performRequest(t, engine, http.MethodGet, "/api/status", nil)
 	if healthResp.Code != http.StatusOK {
 		t.Fatalf("health status = %d, want %d; body=%s", healthResp.Code, http.StatusOK, healthResp.Body.String())
 	}
-	var health struct {
-		Health observe.Health `json:"health"`
-	}
+	var health contract.StatusPayload
 	decodeJSONResponse(t, healthResp, &health)
 	if health.Health.Status != "ok" || health.Health.ActiveSessions != 1 {
 		t.Fatalf("health = %#v", health.Health)
 	}
 }
 
-func TestObserveEventsAndApproveHandlers(t *testing.T) {
+func TestListLogsAndApproveHandlers(t *testing.T) {
 	homePaths := newTestHomePaths(t)
 	handlers := newTestHandlers(t, stubSessionManager{}, stubObserver{
 		QueryEventsFn: func(context.Context, store.EventSummaryQuery) ([]store.EventSummary, error) {
@@ -1821,14 +1958,14 @@ func TestObserveEventsAndApproveHandlers(t *testing.T) {
 		t,
 		engine,
 		http.MethodGet,
-		"/api/workspaces/ws-workspace/observe/events?session_id=sess-1",
+		"/api/logs?workspace_id=ws-workspace&session_id=sess-1",
 		nil,
 	)
 	if observeResp.Code != http.StatusOK {
 		t.Fatalf("observe status = %d, want %d; body=%s", observeResp.Code, http.StatusOK, observeResp.Body.String())
 	}
 	var observed struct {
-		Events []observeEventPayload `json:"events"`
+		Events []logEventPayload `json:"events"`
 	}
 	decodeJSONResponse(t, observeResp, &observed)
 	if len(observed.Events) != 1 || observed.Events[0].ID != "sum-1" {

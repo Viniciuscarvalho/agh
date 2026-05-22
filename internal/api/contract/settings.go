@@ -57,6 +57,22 @@ const (
 	SettingsCollectionHooks      SettingsCollectionName = "hooks"
 )
 
+type SettingsApplyTargetName string
+
+const (
+	SettingsApplyTargetGeneral         SettingsApplyTargetName = SettingsApplyTargetName(SettingsSectionGeneral)
+	SettingsApplyTargetMemory          SettingsApplyTargetName = SettingsApplyTargetName(SettingsSectionMemory)
+	SettingsApplyTargetSkills          SettingsApplyTargetName = SettingsApplyTargetName(SettingsSectionSkills)
+	SettingsApplyTargetAutomation      SettingsApplyTargetName = SettingsApplyTargetName(SettingsSectionAutomation)
+	SettingsApplyTargetNetwork         SettingsApplyTargetName = SettingsApplyTargetName(SettingsSectionNetwork)
+	SettingsApplyTargetObservability   SettingsApplyTargetName = SettingsApplyTargetName(SettingsSectionObservability)
+	SettingsApplyTargetHooksExtensions SettingsApplyTargetName = SettingsApplyTargetName(SettingsSectionHooksExtensions)
+	SettingsApplyTargetProviders       SettingsApplyTargetName = SettingsApplyTargetName(SettingsCollectionProviders)
+	SettingsApplyTargetMCPServers      SettingsApplyTargetName = SettingsApplyTargetName(SettingsCollectionMCPServers)
+	SettingsApplyTargetSandboxes       SettingsApplyTargetName = SettingsApplyTargetName(SettingsCollectionSandboxes)
+	SettingsApplyTargetHooks           SettingsApplyTargetName = SettingsApplyTargetName(SettingsCollectionHooks)
+)
+
 type SettingsWriteTargetKind string
 
 const (
@@ -82,6 +98,34 @@ const (
 	SettingsMutationBehaviorAppliedNow      SettingsMutationBehavior = "applied_now"
 	SettingsMutationBehaviorRestartRequired SettingsMutationBehavior = "restart_required"
 	SettingsMutationBehaviorActionTrigger   SettingsMutationBehavior = "action_trigger"
+)
+
+type SettingsApplyLifecycle string
+
+const (
+	SettingsApplyLifecycleLive               SettingsApplyLifecycle = "live"
+	SettingsApplyLifecycleLiveAdd            SettingsApplyLifecycle = "live-add"
+	SettingsApplyLifecycleLiveRemoveIfUnused SettingsApplyLifecycle = "live-remove-if-unused"
+	SettingsApplyLifecycleRestartRequired    SettingsApplyLifecycle = "restart-required"
+	SettingsApplyLifecycleSessionRebind      SettingsApplyLifecycle = "session-rebind"
+)
+
+type ConfigApplyStatus string
+
+const (
+	ConfigApplyStatusPendingApply ConfigApplyStatus = "pending_apply"
+	ConfigApplyStatusApplied      ConfigApplyStatus = "applied"
+	ConfigApplyStatusBlocked      ConfigApplyStatus = "blocked"
+	ConfigApplyStatusFailed       ConfigApplyStatus = "failed"
+)
+
+type SettingsApplyNextAction string
+
+const (
+	SettingsApplyNextActionNone          SettingsApplyNextAction = "none"
+	SettingsApplyNextActionRestartDaemon SettingsApplyNextAction = "restart-daemon"
+	SettingsApplyNextActionNewSession    SettingsApplyNextAction = "new-session"
+	SettingsApplyNextActionRetry         SettingsApplyNextAction = "retry"
 )
 
 type SettingsPermissionMode string
@@ -188,7 +232,14 @@ type SettingsHTTPPayload struct {
 }
 
 type SettingsDaemonPayload struct {
-	Socket string `json:"socket"`
+	Socket         string                              `json:"socket"`
+	ReloadTimeouts SettingsDaemonReloadTimeoutsPayload `json:"reload_timeouts"`
+}
+
+type SettingsDaemonReloadTimeoutsPayload struct {
+	Providers string `json:"providers"`
+	MCP       string `json:"mcp"`
+	Bridges   string `json:"bridges"`
 }
 
 type SettingsMemoryConfigPayload struct {
@@ -609,6 +660,7 @@ type SettingsProviderAuthStatusPayload struct {
 	EnvPolicy  string                                  `json:"env_policy"`
 	HomePolicy string                                  `json:"home_policy"`
 	State      string                                  `json:"state"`
+	Code       string                                  `json:"code,omitempty"`
 	Message    string                                  `json:"message,omitempty"`
 	StatusCmd  string                                  `json:"status_command,omitempty"`
 	LoginCmd   string                                  `json:"login_command,omitempty"`
@@ -945,6 +997,51 @@ type SettingsGlobalWorkspaceCollectionMutationResult struct {
 	RestartRequired bool                       `json:"restart_required"`
 	RestartScope    string                     `json:"restart_scope,omitempty"`
 	Warnings        []string                   `json:"warnings,omitempty"`
+}
+
+type SettingsApplyFailurePayload struct {
+	Subsystem  string         `json:"subsystem"`
+	Diagnostic DiagnosticItem `json:"diagnostic"`
+}
+
+type SettingsApplyResponse struct {
+	Section          SettingsApplyTargetName       `json:"section,omitempty"`
+	Scope            SettingsScopeKind             `json:"scope,omitempty"`
+	WriteTarget      SettingsWriteTargetKind       `json:"write_target,omitempty"`
+	WorkspaceID      string                        `json:"workspace_id,omitempty"`
+	AgentName        string                        `json:"agent_name,omitempty"`
+	Applied          bool                          `json:"applied"`
+	Lifecycle        SettingsApplyLifecycle        `json:"lifecycle"`
+	ApplyRecordID    string                        `json:"apply_record_id"`
+	ActiveGeneration int64                         `json:"active_generation"`
+	ActiveConfigHash string                        `json:"active_config_hash"`
+	NextAction       SettingsApplyNextAction       `json:"next_action"`
+	RestartRequired  bool                          `json:"restart_required,omitempty"`
+	RestartScope     string                        `json:"restart_scope,omitempty"`
+	Warnings         []string                      `json:"warnings,omitempty"`
+	PartialFailures  []SettingsApplyFailurePayload `json:"partial_failures,omitempty"`
+	Skipped          bool                          `json:"skipped,omitempty"`
+	SkippedReason    string                        `json:"skipped_reason,omitempty"`
+}
+
+type ConfigApplyRecordPayload struct {
+	ID                string                  `json:"id"`
+	DesiredConfigHash string                  `json:"desired_config_hash"`
+	ActiveConfigHash  string                  `json:"active_config_hash"`
+	Generation        int64                   `json:"generation"`
+	Actor             string                  `json:"actor"`
+	DiffClass         SettingsApplyLifecycle  `json:"diff_class"`
+	Status            ConfigApplyStatus       `json:"status"`
+	Lifecycle         SettingsApplyLifecycle  `json:"lifecycle"`
+	NextAction        SettingsApplyNextAction `json:"next_action"`
+	Diagnostics       []DiagnosticItem        `json:"diagnostics,omitempty"`
+	CreatedAt         time.Time               `json:"created_at"`
+	AppliedAt         *time.Time              `json:"applied_at,omitempty"`
+	UpdatedAt         time.Time               `json:"updated_at"`
+}
+
+type ConfigApplyRecordsResponse struct {
+	Entries []ConfigApplyRecordPayload `json:"entries"`
 }
 
 type RestartActionResponse struct {

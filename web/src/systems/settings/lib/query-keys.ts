@@ -1,5 +1,8 @@
 import type {
+  SettingsApplyRecordsFilter,
+  SettingsExtensionMarketplaceFilter,
   SettingsMCPServerListFilter,
+  SettingsNotificationPresetFilter,
   SettingsSectionName,
   SettingsSectionSlug,
   SettingsSkillsFilter,
@@ -12,6 +15,13 @@ function normalizeText(value?: string | null): string {
 
   const trimmed = value.trim();
   return trimmed;
+}
+
+function normalizeKeyValue(value?: string | number | null): string {
+  if (typeof value === "number") {
+    return String(value);
+  }
+  return normalizeText(value);
 }
 
 export type SettingsSectionKey = SettingsSectionName | SettingsSectionSlug;
@@ -49,9 +59,40 @@ export const settingsKeys = {
 
   extensionsRoot: () => [...settingsKeys.all, "extensions"] as const,
   extensionsList: () => [...settingsKeys.extensionsRoot(), "list"] as const,
+  extensionsMarketplace: (filter: SettingsExtensionMarketplaceFilter = {}) =>
+    [
+      ...settingsKeys.extensionsRoot(),
+      "marketplace",
+      normalizeText(filter.q),
+      normalizeText(filter.source),
+      normalizeKeyValue(filter.limit),
+    ] as const,
+  extensionProvenance: (name: string) =>
+    [...settingsKeys.extensionsRoot(), "provenance", name] as const,
+
+  notificationsRoot: () => [...settingsKeys.all, "notifications"] as const,
+  notificationPresetsList: (filter: SettingsNotificationPresetFilter = {}) =>
+    [
+      ...settingsKeys.notificationsRoot(),
+      "presets",
+      filter.enabled ?? "",
+      filter.built_in ?? "",
+      normalizeText(filter.name),
+      filter.limit ?? "",
+    ] as const,
 
   restartRoot: () => [...settingsKeys.all, "restart"] as const,
   restartStatus: (operationId: string) => [...settingsKeys.restartRoot(), operationId] as const,
+
+  applyRoot: () => [...settingsKeys.all, "apply"] as const,
+  applyRecords: (filter: SettingsApplyRecordsFilter = {}) =>
+    [
+      ...settingsKeys.applyRoot(),
+      "records",
+      filter.status ?? "",
+      normalizeText(filter.actor),
+      filter.limit ?? "",
+    ] as const,
 
   updateStatus: () => [...settingsKeys.all, "update"] as const,
 };

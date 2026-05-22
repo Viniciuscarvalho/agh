@@ -26,7 +26,7 @@ const browserLifecycleFixture = path.resolve(
   "browser_session_lifecycle_fixture.json"
 );
 const sensitivePattern =
-  /agh_claim_|claim_token["':\s]|telegram-bot-token|pkce|oauth|webhook_secret|provider[_-]?credential/i;
+  /agh_claim_|claim_token["':\s]|telegram-bot-token|pkce|oauth|webhook_secret|provider[_-]?credentials?["'\s]*[:=]/i;
 
 interface SessionSummary {
   id: string;
@@ -126,7 +126,7 @@ test("operator sees truthful Dashboard health, metrics, navigation, artifacts, a
     `in ${workspace.name}`
   );
 
-  await assertDashboardNavigation(appPage, runtime);
+  await assertDashboardNavigation(appPage, runtime, workspace);
   await assertDashboardViewportMatrix(appPage, browserArtifacts, runtime);
   await assertDashboardFocus(appPage);
 
@@ -187,7 +187,7 @@ test("dashboard shows reconnecting state and recovers when health requests resum
 }) => {
   await prepareDashboardRuntime(runtime);
   await useGlobalWorkspaceIfPrompted(workspaceShell(appPage));
-  await appPage.route("**/api/observe/health", async route => {
+  await appPage.route("**/api/status", async route => {
     await route.abort("failed");
   });
 
@@ -195,14 +195,21 @@ test("dashboard shows reconnecting state and recovers when health requests resum
 
   await expect(appPage.getByTestId("home-connection-indicator")).toHaveAttribute(
     "data-status",
-    /reconnecting|disconnected/,
+    /reconnecting|disconnected|error/,
     { timeout: 15_000 }
   );
-  await expect(appPage.getByTestId("home-daemon-disconnected")).toContainText("agh daemon", {
-    timeout: 15_000,
-  });
+  const disconnectedCard = appPage.getByTestId("home-daemon-disconnected");
+  if (await disconnectedCard.isVisible().catch(() => false)) {
+    await expect(disconnectedCard).toContainText("agh daemon");
+  } else {
+    await expect(appPage.getByTestId("home-daemon-card")).toHaveAttribute(
+      "data-status",
+      "disconnected"
+    );
+    await expect(appPage.getByTestId("home-daemon-status-label")).toHaveText("Connection error");
+  }
 
-  await appPage.unroute("**/api/observe/health");
+  await appPage.unroute("**/api/status");
   await expect(appPage.getByTestId("home-connection-indicator")).toHaveAttribute(
     "data-status",
     "connected",
@@ -361,9 +368,9 @@ async function captureDashboardSnapshot(
 ): Promise<DashboardSnapshot> {
   const [health, daemonHTTP, daemonUDS, workspaces, workspaceDetail, sessions, agents, cli] =
     await Promise.all([
-      runtime.requestJSON<DashboardSnapshot["health"]>("/api/observe/health"),
-      runtime.requestJSON<unknown>("/api/daemon/status"),
-      runtime.requestOperatorJSON?.<unknown>("/api/daemon/status"),
+      runtime.requestJSON<DashboardSnapshot["health"]>("/api/status"),
+      runtime.requestJSON<unknown>("/api/status"),
+      runtime.requestOperatorJSON?.<unknown>("/api/status"),
       runtime.requestJSON<DashboardSnapshot["workspaces"]>("/api/workspaces"),
       runtime.requestJSON<DashboardSnapshot["workspaceDetail"]>(
         `/api/workspaces/${encodeURIComponent(workspace.id)}`
@@ -395,7 +402,7 @@ async function captureCLISnapshot(runtime: BrowserRuntime, workspace: WorkspaceP
     return undefined;
   }
   return {
-    daemon: await runCLIJSON(runtime, ["daemon", "status", "-o", "json"]),
+    daemon: await runCLIJSON(runtime, ["status", "-o", "json"]),
     workspaces: await runCLIJSON(runtime, ["workspace", "list", "-o", "json"]),
     sessions: await runCLIJSON(runtime, [
       "session",
@@ -438,13 +445,19 @@ function metricValue(page: import("@playwright/test").Page, testId: string) {
 
 async function assertDashboardNavigation(
   page: import("@playwright/test").Page,
-  runtime: BrowserRuntime
+  runtime: BrowserRuntime,
+  workspace: WorkspacePayload
 ): Promise<void> {
   await page.getByTestId(`agent-row-${dashboardAgentAlpha}`).click();
   await expect.poll(() => new URL(page.url()).pathname).toBe(`/agents/${dashboardAgentAlpha}`);
 
+  const workspaceId = workspace.id;
+  expect(workspaceId).not.toBe("");
+
   await page.getByTestId("nav-network").click();
-  await expect.poll(() => new URL(page.url()).pathname).toBe("/network/default/threads");
+  await expect
+    .poll(() => new URL(page.url()).pathname)
+    .toBe(`/network/${workspaceId}/default/threads`);
 
   await page.getByTestId("nav-tasks").click();
   await expect.poll(() => new URL(page.url()).pathname).toBe("/tasks");

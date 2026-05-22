@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	eventspkg "github.com/pedronauck/agh/internal/events"
 	hookspkg "github.com/pedronauck/agh/internal/hooks"
 )
 
@@ -58,6 +59,13 @@ const (
 )
 
 var (
+	// ErrSessionNotFound reports that a persisted session row does not exist.
+	ErrSessionNotFound = errors.New("store: session not found")
+	// ErrSessionAttachLocked reports that another holder owns a live attach lease.
+	ErrSessionAttachLocked = errors.New("store: session attach locked")
+	// ErrSessionNotAttachable reports that a session is not eligible for attach/resume.
+	ErrSessionNotAttachable = errors.New("store: session not attachable")
+
 	networkThreadIDPattern = regexp.MustCompile(`^thread_[a-z0-9][a-z0-9_-]{2,95}$`)
 	networkDirectIDPattern = regexp.MustCompile(`^direct_[a-f0-9]{32}$`)
 	networkPeerIDPattern   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
@@ -277,6 +285,8 @@ type SessionInfo struct {
 	SoulSnapshotID   string
 	SoulDigest       string
 	ParentSoulDigest string
+	AttachedTo       string
+	AttachExpiresAt  *time.Time
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
@@ -317,18 +327,63 @@ func (s SessionInfo) Validate() error {
 
 // SessionListQuery filters global session index queries.
 type SessionListQuery struct {
+	ID              string
 	State           string
 	AgentName       string
+	WorkspaceID     string
 	SessionType     string
 	ParentSessionID string
 	RootSessionID   string
 	SpawnRole       string
+	Resumable       bool
+	Sort            string
 	Limit           int
 }
 
 // Validate ensures the query uses sane bounds.
 func (q SessionListQuery) Validate() error {
 	return requirePositiveLimit(q.Limit, "session limit")
+}
+
+// SessionAttachRequest identifies one explicit attach lock acquisition.
+type SessionAttachRequest struct {
+	SessionID  string
+	AttachedTo string
+	Now        time.Time
+	TTL        time.Duration
+}
+
+// Normalize trims the attach request and applies UTC timestamps.
+func (r SessionAttachRequest) Normalize() SessionAttachRequest {
+	r.SessionID = strings.TrimSpace(r.SessionID)
+	r.AttachedTo = strings.TrimSpace(r.AttachedTo)
+	if !r.Now.IsZero() {
+		r.Now = r.Now.UTC()
+	}
+	return r
+}
+
+// Validate ensures the attach request carries the fields needed for a CAS lock.
+func (r SessionAttachRequest) Validate() error {
+	normalized := r.Normalize()
+	if err := requireField(normalized.SessionID, "session attach session id"); err != nil {
+		return err
+	}
+	if err := requireField(normalized.AttachedTo, "session attach holder"); err != nil {
+		return err
+	}
+	if normalized.TTL <= 0 {
+		return fmt.Errorf("store: session attach ttl must be positive")
+	}
+	return nil
+}
+
+// SessionAttach records one acquired attach lock.
+type SessionAttach struct {
+	SessionID       string
+	AttachedTo      string
+	AttachExpiresAt time.Time
+	AttachedAt      time.Time
 }
 
 // SessionStateUpdate updates only the stateful fields of an indexed session.
@@ -414,6 +469,8 @@ type EventSummary struct {
 	Sequence    int64
 	Type        string
 	AgentName   string
+	Provider    string
+	Outcome     string
 	Content     json.RawMessage
 	EventCorrelation
 	ParentSessionID string
@@ -428,6 +485,12 @@ func (s EventSummary) Validate() error {
 	eventType := strings.TrimSpace(s.Type)
 	if err := requireField(eventType, "event summary type"); err != nil {
 		return err
+	}
+	if err := eventspkg.ValidatePublicName(eventType); err != nil {
+		return fmt.Errorf("store: invalid event summary type: %w", err)
+	}
+	if !eventspkg.ValidOutcome(s.Outcome) {
+		return fmt.Errorf("store: invalid event summary outcome %q", s.Outcome)
 	}
 	if eventSummaryAllowsGlobalScope(eventType) {
 		return nil
@@ -453,32 +516,43 @@ func cloneNormalizedTimestamp(value *time.Time) *time.Time {
 }
 
 func eventSummaryAllowsGlobalScope(eventType string) bool {
-	switch strings.TrimSpace(eventType) {
-	case "settings.changed",
-		"skills.shadow",
-		"skills.load_failed",
-		"hook.dispatch.start",
-		"hook.dispatch.complete",
-		"memory.provider.collision":
-		return true
-	default:
-		return false
-	}
+	return eventspkg.AllowsGlobalScope(eventType)
 }
 
 // EventSummaryQuery filters global event summary queries.
 type EventSummaryQuery struct {
-	SessionID   string
-	WorkspaceID string
-	AgentName   string
-	Type        string
-	Since       time.Time
-	Limit       int
+	SessionID     string
+	WorkspaceID   string
+	AgentName     string
+	Type          string
+	TaskID        string
+	RunID         string
+	ActorKind     string
+	ActorID       string
+	Provider      string
+	Outcome       string
+	Component     string
+	ErrorOnly     bool
+	AfterSequence int64
+	Since         time.Time
+	Limit         int
 }
 
 // Validate ensures the query uses sane bounds.
 func (q EventSummaryQuery) Validate() error {
-	return requirePositiveLimit(q.Limit, "event summary limit")
+	if err := requirePositiveLimit(q.Limit, "event summary limit"); err != nil {
+		return err
+	}
+	if q.AfterSequence < 0 {
+		return fmt.Errorf("store: invalid event summary after sequence %d", q.AfterSequence)
+	}
+	if !eventspkg.ValidOutcome(q.Outcome) {
+		return fmt.Errorf("store: invalid event summary outcome %q", q.Outcome)
+	}
+	if !eventspkg.ValidComponent(q.Component) {
+		return fmt.Errorf("store: invalid event summary component %q", q.Component)
+	}
+	return nil
 }
 
 // ObservabilityRetentionSweepResult reports how many global observability rows

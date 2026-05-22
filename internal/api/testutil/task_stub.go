@@ -7,6 +7,47 @@ import (
 	taskpkg "github.com/pedronauck/agh/internal/task"
 )
 
+type forceReleaseRunFunc func(
+	context.Context,
+	string,
+	taskpkg.ForceReleaseRun,
+	taskpkg.ActorContext,
+) (*taskpkg.Run, error)
+
+type forceFailRunFunc func(
+	context.Context,
+	string,
+	taskpkg.ForceFailRun,
+	taskpkg.ActorContext,
+) (*taskpkg.Run, error)
+
+type retryRunFunc func(
+	context.Context,
+	string,
+	taskpkg.RetryRunRequest,
+	taskpkg.ActorContext,
+) (*taskpkg.RetryRunResult, error)
+
+type bulkForceRunFunc func(
+	context.Context,
+	taskpkg.BulkForceRunRequest,
+	taskpkg.ActorContext,
+) (taskpkg.BulkForceRunResult, error)
+
+type pauseTaskFunc func(
+	context.Context,
+	string,
+	taskpkg.PauseTaskRequest,
+	taskpkg.ActorContext,
+) (*taskpkg.Task, error)
+
+type resumeTaskFunc func(
+	context.Context,
+	string,
+	taskpkg.ResumeTaskRequest,
+	taskpkg.ActorContext,
+) (*taskpkg.Task, error)
+
 type StubTaskManager struct {
 	CreateTaskFn      func(context.Context, taskpkg.CreateTask, taskpkg.ActorContext) (*taskpkg.Task, error)
 	CreateChildTaskFn func(
@@ -87,11 +128,39 @@ type StubTaskManager struct {
 		taskpkg.ClaimCriteria,
 		taskpkg.ActorContext,
 	) (*taskpkg.ClaimResult, error)
-	ClaimRunFn                  func(context.Context, string, taskpkg.ClaimRun, taskpkg.ActorContext) (*taskpkg.Run, error)
-	StartRunFn                  func(context.Context, string, taskpkg.StartRun, taskpkg.ActorContext) (*taskpkg.Run, error)
-	AttachRunSessionFn          func(context.Context, string, string, taskpkg.ActorContext) (*taskpkg.Run, error)
-	HeartbeatRunLeaseFn         func(context.Context, taskpkg.LeaseHeartbeat, taskpkg.ActorContext) (*taskpkg.Run, error)
-	ReleaseRunLeaseFn           func(context.Context, taskpkg.LeaseRelease, taskpkg.ActorContext) (*taskpkg.Run, error)
+	ClaimRunFn             func(context.Context, string, taskpkg.ClaimRun, taskpkg.ActorContext) (*taskpkg.Run, error)
+	StartRunFn             func(context.Context, string, taskpkg.StartRun, taskpkg.ActorContext) (*taskpkg.Run, error)
+	AttachRunSessionFn     func(context.Context, string, string, taskpkg.ActorContext) (*taskpkg.Run, error)
+	HeartbeatRunLeaseFn    func(context.Context, taskpkg.LeaseHeartbeat, taskpkg.ActorContext) (*taskpkg.Run, error)
+	ReleaseRunLeaseFn      func(context.Context, taskpkg.LeaseRelease, taskpkg.ActorContext) (*taskpkg.Run, error)
+	ForceReleaseRunFn      forceReleaseRunFunc
+	ForceFailRunFn         forceFailRunFunc
+	RetryRunFn             retryRunFunc
+	BulkForceReleaseRunsFn bulkForceRunFunc
+	BulkForceFailRunsFn    bulkForceRunFunc
+	PauseTaskFn            pauseTaskFunc
+	ResumeTaskFn           resumeTaskFunc
+	SchedulerStatusFn      func(context.Context, taskpkg.ActorContext) (taskpkg.SchedulerStatus, error)
+	PauseSchedulerFn       func(
+		context.Context,
+		taskpkg.SchedulerPauseRequest,
+		taskpkg.ActorContext,
+	) (taskpkg.SchedulerStatus, error)
+	ResumeSchedulerFn func(
+		context.Context,
+		taskpkg.SchedulerResumeRequest,
+		taskpkg.ActorContext,
+	) (taskpkg.SchedulerStatus, error)
+	DrainSchedulerFn func(
+		context.Context,
+		taskpkg.SchedulerDrainRequest,
+		taskpkg.ActorContext,
+	) (taskpkg.SchedulerDrainResult, error)
+	SchedulerBacklogFn func(
+		context.Context,
+		taskpkg.SchedulerBacklogQuery,
+		taskpkg.ActorContext,
+	) (taskpkg.SchedulerBacklog, error)
 	CompleteRunLeaseFn          func(context.Context, taskpkg.LeaseCompletion, taskpkg.ActorContext) (*taskpkg.Run, error)
 	FailRunLeaseFn              func(context.Context, taskpkg.LeaseFailure, taskpkg.ActorContext) (*taskpkg.Run, error)
 	LookupActiveRunForSessionFn func(
@@ -108,6 +177,8 @@ type StubTaskManager struct {
 		taskpkg.ActorContext,
 	) ([]taskpkg.ExpiredLeaseRecoveryResult, error)
 	GetTaskFn      func(context.Context, string, taskpkg.ActorContext) (*taskpkg.View, error)
+	InspectTaskFn  func(context.Context, string, taskpkg.ActorContext) (*taskpkg.InspectView, error)
+	InspectRunFn   func(context.Context, string, taskpkg.ActorContext) (*taskpkg.InspectView, error)
 	ListTaskRunsFn func(context.Context, string, taskpkg.RunQuery, taskpkg.ActorContext) ([]taskpkg.Run, error)
 	ListTasksFn    func(context.Context, taskpkg.Query, taskpkg.ActorContext) ([]taskpkg.Summary, error)
 	TimelineFn     func(
@@ -467,6 +538,142 @@ func (s StubTaskManager) ReleaseRunLease(
 	return nil, taskpkg.ErrTaskRunNotFound
 }
 
+func (s StubTaskManager) ForceReleaseRun(
+	ctx context.Context,
+	runID string,
+	release taskpkg.ForceReleaseRun,
+	actor taskpkg.ActorContext,
+) (*taskpkg.Run, error) {
+	if s.ForceReleaseRunFn != nil {
+		return s.ForceReleaseRunFn(ctx, runID, release, actor)
+	}
+	return nil, taskpkg.ErrTaskRunNotFound
+}
+
+func (s StubTaskManager) ForceFailRun(
+	ctx context.Context,
+	runID string,
+	failure taskpkg.ForceFailRun,
+	actor taskpkg.ActorContext,
+) (*taskpkg.Run, error) {
+	if s.ForceFailRunFn != nil {
+		return s.ForceFailRunFn(ctx, runID, failure, actor)
+	}
+	return nil, taskpkg.ErrTaskRunNotFound
+}
+
+func (s StubTaskManager) RetryRun(
+	ctx context.Context,
+	runID string,
+	retry taskpkg.RetryRunRequest,
+	actor taskpkg.ActorContext,
+) (*taskpkg.RetryRunResult, error) {
+	if s.RetryRunFn != nil {
+		return s.RetryRunFn(ctx, runID, retry, actor)
+	}
+	return nil, taskpkg.ErrTaskRunNotFound
+}
+
+func (s StubTaskManager) BulkForceReleaseRuns(
+	ctx context.Context,
+	req taskpkg.BulkForceRunRequest,
+	actor taskpkg.ActorContext,
+) (taskpkg.BulkForceRunResult, error) {
+	if s.BulkForceReleaseRunsFn != nil {
+		return s.BulkForceReleaseRunsFn(ctx, req, actor)
+	}
+	return taskpkg.BulkForceRunResult{}, taskpkg.ErrTaskRunNotFound
+}
+
+func (s StubTaskManager) BulkForceFailRuns(
+	ctx context.Context,
+	req taskpkg.BulkForceRunRequest,
+	actor taskpkg.ActorContext,
+) (taskpkg.BulkForceRunResult, error) {
+	if s.BulkForceFailRunsFn != nil {
+		return s.BulkForceFailRunsFn(ctx, req, actor)
+	}
+	return taskpkg.BulkForceRunResult{}, taskpkg.ErrTaskRunNotFound
+}
+
+func (s StubTaskManager) PauseTask(
+	ctx context.Context,
+	taskID string,
+	req taskpkg.PauseTaskRequest,
+	actor taskpkg.ActorContext,
+) (*taskpkg.Task, error) {
+	if s.PauseTaskFn != nil {
+		return s.PauseTaskFn(ctx, taskID, req, actor)
+	}
+	return nil, taskpkg.ErrTaskNotFound
+}
+
+func (s StubTaskManager) ResumeTask(
+	ctx context.Context,
+	taskID string,
+	req taskpkg.ResumeTaskRequest,
+	actor taskpkg.ActorContext,
+) (*taskpkg.Task, error) {
+	if s.ResumeTaskFn != nil {
+		return s.ResumeTaskFn(ctx, taskID, req, actor)
+	}
+	return nil, taskpkg.ErrTaskNotFound
+}
+
+func (s StubTaskManager) SchedulerStatus(
+	ctx context.Context,
+	actor taskpkg.ActorContext,
+) (taskpkg.SchedulerStatus, error) {
+	if s.SchedulerStatusFn != nil {
+		return s.SchedulerStatusFn(ctx, actor)
+	}
+	return taskpkg.SchedulerStatus{}, taskpkg.ErrTaskNotFound
+}
+
+func (s StubTaskManager) PauseScheduler(
+	ctx context.Context,
+	req taskpkg.SchedulerPauseRequest,
+	actor taskpkg.ActorContext,
+) (taskpkg.SchedulerStatus, error) {
+	if s.PauseSchedulerFn != nil {
+		return s.PauseSchedulerFn(ctx, req, actor)
+	}
+	return taskpkg.SchedulerStatus{}, taskpkg.ErrTaskNotFound
+}
+
+func (s StubTaskManager) ResumeScheduler(
+	ctx context.Context,
+	req taskpkg.SchedulerResumeRequest,
+	actor taskpkg.ActorContext,
+) (taskpkg.SchedulerStatus, error) {
+	if s.ResumeSchedulerFn != nil {
+		return s.ResumeSchedulerFn(ctx, req, actor)
+	}
+	return taskpkg.SchedulerStatus{}, taskpkg.ErrTaskNotFound
+}
+
+func (s StubTaskManager) DrainScheduler(
+	ctx context.Context,
+	req taskpkg.SchedulerDrainRequest,
+	actor taskpkg.ActorContext,
+) (taskpkg.SchedulerDrainResult, error) {
+	if s.DrainSchedulerFn != nil {
+		return s.DrainSchedulerFn(ctx, req, actor)
+	}
+	return taskpkg.SchedulerDrainResult{}, taskpkg.ErrTaskNotFound
+}
+
+func (s StubTaskManager) SchedulerBacklog(
+	ctx context.Context,
+	query taskpkg.SchedulerBacklogQuery,
+	actor taskpkg.ActorContext,
+) (taskpkg.SchedulerBacklog, error) {
+	if s.SchedulerBacklogFn != nil {
+		return s.SchedulerBacklogFn(ctx, query, actor)
+	}
+	return taskpkg.SchedulerBacklog{}, taskpkg.ErrTaskNotFound
+}
+
 func (s StubTaskManager) CompleteRunLease(
 	ctx context.Context,
 	completion taskpkg.LeaseCompletion,
@@ -556,6 +763,28 @@ func (s StubTaskManager) GetTask(
 		return s.GetTaskFn(ctx, id, actor)
 	}
 	return nil, taskpkg.ErrTaskNotFound
+}
+
+func (s StubTaskManager) InspectTask(
+	ctx context.Context,
+	taskID string,
+	actor taskpkg.ActorContext,
+) (*taskpkg.InspectView, error) {
+	if s.InspectTaskFn != nil {
+		return s.InspectTaskFn(ctx, taskID, actor)
+	}
+	return nil, taskpkg.ErrTaskNotFound
+}
+
+func (s StubTaskManager) InspectRun(
+	ctx context.Context,
+	runID string,
+	actor taskpkg.ActorContext,
+) (*taskpkg.InspectView, error) {
+	if s.InspectRunFn != nil {
+		return s.InspectRunFn(ctx, runID, actor)
+	}
+	return nil, taskpkg.ErrTaskRunNotFound
 }
 
 func (s StubTaskManager) ListTaskRuns(

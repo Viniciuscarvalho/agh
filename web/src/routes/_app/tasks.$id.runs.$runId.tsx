@@ -6,6 +6,7 @@ import type { TopbarRouteContext } from "@/types/topbar";
 import { useTaskRunPage } from "@/hooks/routes/use-task-run-page";
 import {
   TaskRunDetailHeader,
+  TaskInspectDiagnosticsCard,
   TaskRunTimelinePanel,
   TasksReviewsCard,
   useTaskTimeline,
@@ -65,8 +66,14 @@ function TaskRunDetailRoute() {
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="tasks-run-detail-content">
       <TaskRunDetailHeader
+        isForceFailPending={page.isForceFailPending}
+        isForceReleasePending={page.isForceReleasePending}
+        isRetryPending={page.isRetryPending}
         isCancelPending={page.isCancelPending}
         onCancelRun={page.handleCancelRun}
+        onForceFailRun={page.handleForceFailRun}
+        onForceReleaseRun={page.handleForceReleaseRun}
+        onRetryRun={page.handleRetryRun}
         run={run}
       />
 
@@ -79,6 +86,13 @@ function TaskRunDetailRoute() {
           isLoading={timelineQuery.isLoading && timelineItems.length === 0}
           items={timelineItems}
           run={run}
+        />
+        <TaskInspectDiagnosticsCard
+          errorMessage={page.inspectError?.message ?? null}
+          inspect={page.inspect}
+          isLoading={page.inspectLoading}
+          label="Run inspect diagnostics"
+          testId="tasks-run-inspect-diagnostics-card"
         />
         <TasksReviewsCard
           errorMessage={page.reviewsError?.message ?? null}

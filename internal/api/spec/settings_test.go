@@ -117,14 +117,22 @@ func TestSettingsRoutesAndSchemas(t *testing.T) {
 			},
 			{path: "/api/extensions", method: "GET", transports: []Transport{TransportHTTP, TransportUDS}},
 			{path: "/api/extensions", method: "POST", transports: []Transport{TransportHTTP, TransportUDS}},
-			{path: "/api/extensions/{name}", method: "GET", transports: []Transport{TransportHTTP, TransportUDS}},
+			{path: "/api/extensions/marketplace", method: "GET", transports: []Transport{TransportHTTP, TransportUDS}},
+			{path: specAPIExtensionsNamePath, method: "GET", transports: []Transport{TransportHTTP, TransportUDS}},
+			{path: specAPIExtensionsNamePath, method: "PUT", transports: []Transport{TransportHTTP, TransportUDS}},
+			{path: specAPIExtensionsNamePath, method: "DELETE", transports: []Transport{TransportHTTP, TransportUDS}},
 			{
-				path:       "/api/extensions/{name}/enable",
+				path:       specAPIExtensionsNameProvenancePath,
+				method:     "GET",
+				transports: []Transport{TransportHTTP, TransportUDS},
+			},
+			{
+				path:       specAPIExtensionsNameEnablePath,
 				method:     "POST",
 				transports: []Transport{TransportHTTP, TransportUDS},
 			},
 			{
-				path:       "/api/extensions/{name}/disable",
+				path:       specAPIExtensionsNameDisablePath,
 				method:     "POST",
 				transports: []Transport{TransportHTTP, TransportUDS},
 			},
@@ -156,30 +164,43 @@ func TestSettingsRoutesAndSchemas(t *testing.T) {
 		)
 
 		mutationSchema := jsonResponseSchema(t, updateGeneral, 200)
-		assertRequired(t, mutationSchema, "section", "scope", "behavior", "applied", "restart_required")
+		assertRequired(
+			t,
+			mutationSchema,
+			"active_config_hash",
+			"active_generation",
+			"applied",
+			"apply_record_id",
+			"lifecycle",
+			"next_action",
+		)
 		assertNotRequired(
 			t,
 			mutationSchema,
+			"section",
+			"scope",
 			"write_target",
 			"workspace_id",
 			"agent_name",
+			"restart_required",
 			"restart_scope",
 			"warnings",
+			"partial_failures",
+			"skipped",
+			"skipped_reason",
 		)
-		assertEnumValues(t, propertySchema(t, mutationSchema, "section"),
-			"automation",
-			"general",
-			"hooks-extensions",
-			"memory",
-			"network",
-			"observability",
-			"skills",
+		assertEnumValues(t, propertySchema(t, mutationSchema, "lifecycle"),
+			"live",
+			"live-add",
+			"live-remove-if-unused",
+			"restart-required",
+			"session-rebind",
 		)
-		assertEnumValues(t, propertySchema(t, mutationSchema, "scope"), "global")
-		assertEnumValues(t, propertySchema(t, mutationSchema, "behavior"),
-			"action_trigger",
-			"applied_now",
-			"restart_required",
+		assertEnumValues(t, propertySchema(t, mutationSchema, "next_action"),
+			"new-session",
+			"none",
+			"restart-daemon",
+			"retry",
 		)
 		assertEnumValues(t, propertySchema(t, mutationSchema, "write_target"),
 			"global-agent-file",
@@ -193,17 +214,77 @@ func TestSettingsRoutesAndSchemas(t *testing.T) {
 		updateSkills := operationFor(t, doc, "/api/settings/skills", "PATCH")
 		assertParameterEnumValues(t, updateSkills, "scope", "agent", "global")
 		skillsMutationSchema := jsonResponseSchema(t, updateSkills, 200)
-		assertRequired(t, skillsMutationSchema, "section", "scope", "behavior", "applied", "restart_required")
+		assertRequired(
+			t,
+			skillsMutationSchema,
+			"active_config_hash",
+			"active_generation",
+			"applied",
+			"apply_record_id",
+			"lifecycle",
+			"next_action",
+		)
 		assertNotRequired(
 			t,
 			skillsMutationSchema,
+			"section",
+			"scope",
 			"write_target",
 			"workspace_id",
 			"agent_name",
+			"restart_required",
 			"restart_scope",
 			"warnings",
 		)
-		assertEnumValues(t, propertySchema(t, skillsMutationSchema, "scope"), "agent", "global")
+		assertEnumValues(t, propertySchema(t, skillsMutationSchema, "lifecycle"),
+			"live",
+			"live-add",
+			"live-remove-if-unused",
+			"restart-required",
+			"session-rebind",
+		)
+
+		reloadSettings := operationFor(t, doc, "/api/settings/reload", "POST")
+		assertOperationTransports(t, reloadSettings, TransportHTTP, TransportUDS)
+		reloadSchema := jsonResponseSchema(t, reloadSettings, 200)
+		assertRequired(
+			t,
+			reloadSchema,
+			"active_config_hash",
+			"active_generation",
+			"applied",
+			"apply_record_id",
+			"lifecycle",
+			"next_action",
+		)
+
+		applyRecords := operationFor(t, doc, "/api/settings/apply", "GET")
+		assertOperationTransports(t, applyRecords, TransportHTTP, TransportUDS)
+		assertParameterEnumValues(t, applyRecords, "status", "applied", "blocked", "failed", "pending_apply")
+		applyRecordsSchema := jsonResponseSchema(t, applyRecords, 200)
+		assertRequired(t, applyRecordsSchema, "entries")
+		applyRecordSchema := propertySchema(t, applyRecordsSchema, "entries").Items.Value
+		assertRequired(
+			t,
+			applyRecordSchema,
+			"id",
+			"desired_config_hash",
+			"active_config_hash",
+			"generation",
+			"actor",
+			"diff_class",
+			"status",
+			"lifecycle",
+			"next_action",
+			"created_at",
+			"updated_at",
+		)
+		assertEnumValues(t, propertySchema(t, applyRecordSchema, "status"),
+			"applied",
+			"blocked",
+			"failed",
+			"pending_apply",
+		)
 
 		readSkills := operationFor(t, doc, "/api/settings/skills", "GET")
 		skillsResponseSchema := jsonResponseSchema(t, readSkills, 200)

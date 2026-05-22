@@ -9,7 +9,10 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
+	"github.com/pedronauck/agh/internal/api/contract"
+	bridgepkg "github.com/pedronauck/agh/internal/bridges"
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	aghdaemon "github.com/pedronauck/agh/internal/daemon"
 	"github.com/pedronauck/agh/internal/procutil"
@@ -69,6 +72,37 @@ func TestCommandPathsAndHelpers(t *testing.T) {
 	rollbackAgentHeartbeatCalled := false
 	getAgentHeartbeatStatusCalled := false
 	client := &stubClient{
+		statusFn: func(context.Context) (StatusRecord, error) {
+			return StatusRecord{
+				SchemaVersion: "2026-05-20",
+				GeneratedAt:   fixedTestNow,
+				Daemon: DaemonStatus{
+					Status:    "running",
+					PID:       10,
+					StartedAt: fixedTestNow.Add(-time.Minute),
+					Socket:    "/tmp/agh.sock",
+					HTTPHost:  "localhost",
+					HTTPPort:  2123,
+				},
+				Health: contract.ObserveHealthPayload{Status: "ok"},
+				Sessions: contract.SessionAggregatePayload{
+					Active:   1,
+					Total:    1,
+					ByStatus: map[string]int{"active": 1},
+				},
+				Config:  contract.ConfigRuntimeStatusPayload{Status: "current"},
+				LogTail: contract.LogTailStatusPayload{Status: "available"},
+			}, nil
+		},
+		doctorFn: func(context.Context, DoctorQuery) (DoctorRecord, error) {
+			return DoctorRecord{
+				SchemaVersion: "2026-05-20",
+				GeneratedAt:   fixedTestNow,
+				Status:        "ok",
+				Summary:       contract.DoctorSummaryPayload{Total: 0, CountsBySeverity: map[string]int{}},
+				Items:         []contract.DiagnosticItem{},
+			}, nil
+		},
 		getAgentFn: func(context.Context, string, AgentQuery) (AgentRecord, error) {
 			return AgentRecord{Name: "coder", Provider: "fake", Prompt: "hi"}, nil
 		},
@@ -213,24 +247,24 @@ func TestCommandPathsAndHelpers(t *testing.T) {
 				{ID: "msg-1", Kind: "say", Channel: "builders", From: "reviewer.sess-1"},
 			}, nil
 		},
-		observeEventsFn: func(_ context.Context, query ObserveEventQuery) ([]ObserveEventRecord, error) {
+		listLogsFn: func(_ context.Context, query LogsListQuery) ([]LogEventRecord, error) {
 			if query.WorkspaceRef != "ws-1" {
-				t.Fatalf("ObserveEvents() workspaceRef = %q, want ws-1", query.WorkspaceRef)
+				t.Fatalf("ListLogs() workspaceRef = %q, want ws-1", query.WorkspaceRef)
 			}
-			return []ObserveEventRecord{
+			return []LogEventRecord{
 				{ID: "sum-1", SessionID: "sess-1", Type: "done", AgentName: "coder", Timestamp: fixedTestNow},
 			}, nil
 		},
-		streamObserveEventsFn: func(_ context.Context, query ObserveEventQuery, _ string, handler SSEHandler) error {
+		streamLogsFn: func(_ context.Context, query LogsListQuery, _ string, handler SSEHandler) error {
 			if query.WorkspaceRef != "ws-1" {
-				t.Fatalf("StreamObserveEvents() workspaceRef = %q, want ws-1", query.WorkspaceRef)
+				t.Fatalf("StreamLogs() workspaceRef = %q, want ws-1", query.WorkspaceRef)
 			}
 			return handler(
 				SSEEvent{
 					Event: "done",
 					Data: mustJSON(
 						t,
-						ObserveEventRecord{
+						LogEventRecord{
 							ID:        "sum-1",
 							SessionID: "sess-1",
 							Type:      "done",
@@ -240,9 +274,6 @@ func TestCommandPathsAndHelpers(t *testing.T) {
 					),
 				},
 			)
-		},
-		observeHealthFn: func(context.Context) (HealthStatus, error) {
-			return HealthStatus{Status: "ok", UptimeSeconds: 10}, nil
 		},
 		getSessionFn: func(context.Context, string) (SessionRecord, error) {
 			getCalls++
@@ -304,6 +335,44 @@ func TestCommandPathsAndHelpers(t *testing.T) {
 					SessionID:        "sess-1",
 					AgentName:        "coder",
 					LastActivityAt:   fixedTestNow,
+				},
+			}, nil
+		},
+		bridgeTargetsFn: func(context.Context, string, string, int) (BridgeTargetsRecord, error) {
+			return BridgeTargetsRecord{
+				BridgeID: "brg-1",
+				Targets: []BridgeTargetRecord{
+					{
+						BridgeID:       "brg-1",
+						CanonicalRoute: "telegram:channel:support",
+						DisplayName:    "Support room",
+						Normalized:     "support room",
+						TargetType:     bridgepkg.BridgeTargetTypeChannel,
+						Qualifier:      "telegram",
+						Capabilities:   []string{"reply"},
+						UpdatedAt:      fixedTestNow,
+						LastSeenAt:     fixedTestNow,
+					},
+				},
+				Total:       1,
+				GeneratedAt: fixedTestNow,
+			}, nil
+		},
+		resolveBridgeTargetFn: func(context.Context, string, string) (BridgeResolveTargetRecord, error) {
+			return BridgeResolveTargetRecord{
+				Result: bridgepkg.ResolveBridgeTargetResult{
+					Step: 2,
+					Match: &bridgepkg.BridgeTarget{
+						BridgeID:       "brg-1",
+						CanonicalRoute: "telegram:channel:support",
+						DisplayName:    "Support room",
+						Normalized:     "support room",
+						TargetType:     bridgepkg.BridgeTargetTypeChannel,
+						Qualifier:      "telegram",
+						Capabilities:   []string{"reply"},
+						UpdatedAt:      fixedTestNow,
+						LastSeenAt:     fixedTestNow,
+					},
 				},
 			}, nil
 		},
@@ -397,11 +466,14 @@ func TestCommandPathsAndHelpers(t *testing.T) {
 			"json",
 		},
 		{"network", "--workspace", "ws-1", "inbox", "--session", "sess-1", "-o", "json"},
-		{"observe", "events", "--workspace", "ws-1", "-o", "json"},
-		{"observe", "events", "--workspace", "ws-1", "--follow", "-o", "json"},
-		{"observe", "health", "-o", "json"},
+		{"logs", "--workspace", "ws-1", "-o", "json"},
+		{"logs", "--workspace", "ws-1", "--follow", "-o", "json"},
+		{"status", "-o", "json"},
+		{"doctor", "-o", "json"},
 		{"bridge", "get", "brg-1", "-o", "json"},
 		{"bridge", "routes", "brg-1", "-o", "json"},
+		{"bridge", "targets", "brg-1", "-o", "json"},
+		{"bridge", "resolve", "brg-1", "support", "-o", "json"},
 		{"bridge", "test-delivery", "brg-1", "--peer-id", "peer-1", "--mode", "reply", "-o", "json"},
 		{"session", "soul", "refresh", "sess-1", "--expected-digest", "sha256:old", "-o", "json"},
 		{"session", "health", "sess-1", "-o", "json"},
@@ -410,7 +482,6 @@ func TestCommandPathsAndHelpers(t *testing.T) {
 		{"session", "resume", "sess-1", "-o", "json"},
 		{"session", "wait", "sess-1", "-o", "json"},
 		{"session", "history", "sess-1", "-o", "json"},
-		{"daemon", "status", "-o", "json"},
 	}
 
 	for _, args := range tests {

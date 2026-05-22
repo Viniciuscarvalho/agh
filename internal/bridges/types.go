@@ -14,6 +14,14 @@ import (
 var (
 	// ErrBridgeInstanceNotFound reports that no persisted bridge instance matched the lookup.
 	ErrBridgeInstanceNotFound = errors.New("bridges: bridge instance not found")
+	// ErrBridgeTargetDirectoryUnavailable reports that the daemon has no target-directory persistence surface.
+	ErrBridgeTargetDirectoryUnavailable = errors.New("bridges: bridge target directory unavailable")
+	// ErrBridgeTargetUnknown reports that no persisted bridge target matched the lookup.
+	ErrBridgeTargetUnknown = errors.New("bridges: bridge target unknown")
+	// ErrBridgeTargetAmbiguous reports that a friendly bridge target lookup matched multiple candidates.
+	ErrBridgeTargetAmbiguous = errors.New("bridges: bridge target ambiguous")
+	// ErrInvalidBridgeTarget reports malformed target-directory input.
+	ErrInvalidBridgeTarget = errors.New("bridges: invalid bridge target")
 	// ErrBridgeInstanceUnavailable reports that the instance exists but cannot currently accept routing work.
 	ErrBridgeInstanceUnavailable = errors.New("bridges: bridge instance unavailable")
 	// ErrInvalidBridgeSecretBinding reports that a bridge secret binding payload
@@ -30,6 +38,9 @@ var (
 	// ErrBridgeInstanceReadOnly reports that a managed bridge instance does not
 	// allow direct spec mutation through the generic CRUD surface.
 	ErrBridgeInstanceReadOnly = errors.New("bridges: bridge instance is managed and read-only")
+	// ErrBridgeNotificationSuppressed reports an intentional per-instance
+	// notification drop that should still advance notification cursors.
+	ErrBridgeNotificationSuppressed = errors.New("bridges: bridge notification suppressed")
 )
 
 // Scope identifies whether a bridge resource is daemon-global or workspace-owned.
@@ -313,22 +324,23 @@ type BridgeProvider struct {
 
 // BridgeInstance is the authoritative persisted configuration for one bridge adapter instance.
 type BridgeInstance struct {
-	ID               string               `json:"id"`
-	Scope            Scope                `json:"scope"`
-	WorkspaceID      string               `json:"workspace_id,omitempty"`
-	Platform         string               `json:"platform"`
-	ExtensionName    string               `json:"extension_name"`
-	DisplayName      string               `json:"display_name"`
-	Source           BridgeInstanceSource `json:"source,omitempty"`
-	Enabled          bool                 `json:"enabled"`
-	Status           BridgeStatus         `json:"status"`
-	DMPolicy         BridgeDMPolicy       `json:"dm_policy,omitempty"`
-	RoutingPolicy    RoutingPolicy        `json:"routing_policy"`
-	ProviderConfig   json.RawMessage      `json:"provider_config,omitempty"`
-	DeliveryDefaults json.RawMessage      `json:"delivery_defaults,omitempty"`
-	Degradation      *BridgeDegradation   `json:"degradation,omitempty"`
-	CreatedAt        time.Time            `json:"created_at"`
-	UpdatedAt        time.Time            `json:"updated_at"`
+	ID                   string               `json:"id"`
+	Scope                Scope                `json:"scope"`
+	WorkspaceID          string               `json:"workspace_id,omitempty"`
+	Platform             string               `json:"platform"`
+	ExtensionName        string               `json:"extension_name"`
+	DisplayName          string               `json:"display_name"`
+	Source               BridgeInstanceSource `json:"source,omitempty"`
+	Enabled              bool                 `json:"enabled"`
+	Status               BridgeStatus         `json:"status"`
+	DMPolicy             BridgeDMPolicy       `json:"dm_policy,omitempty"`
+	RoutingPolicy        RoutingPolicy        `json:"routing_policy"`
+	ProviderConfig       json.RawMessage      `json:"provider_config,omitempty"`
+	DeliveryDefaults     json.RawMessage      `json:"delivery_defaults,omitempty"`
+	NotificationSuppress bool                 `json:"notification_suppress"`
+	Degradation          *BridgeDegradation   `json:"degradation,omitempty"`
+	CreatedAt            time.Time            `json:"created_at"`
+	UpdatedAt            time.Time            `json:"updated_at"`
 }
 
 // Normalized returns the canonical representation of the bridge instance.

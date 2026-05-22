@@ -4,8 +4,11 @@ import { toast } from "sonner";
 import {
   useCancelTask,
   useEnqueueTaskRun,
+  usePauseTask,
   usePublishTask,
+  useResumeTask,
   useTask,
+  useTaskInspect,
   useTaskRuns,
   useTaskTimeline,
   useTaskTree,
@@ -53,6 +56,7 @@ interface UseTaskDetailPageOptions {
   enableTimeline?: boolean;
   enableTree?: boolean;
   enableRuns?: boolean;
+  enableInspect?: boolean;
 }
 
 const DEFAULT_TIMELINE_LIMIT = 50;
@@ -68,6 +72,7 @@ function useTaskDetailPage(taskId: string, options: UseTaskDetailPageOptions = {
   const enableTimeline = options.enableTimeline ?? true;
   const enableTree = options.enableTree ?? true;
   const enableRuns = options.enableRuns ?? true;
+  const enableInspect = options.enableInspect ?? true;
 
   const timelineFilters: TaskTimelineFilter = useMemo(
     () => ({
@@ -85,15 +90,19 @@ function useTaskDetailPage(taskId: string, options: UseTaskDetailPageOptions = {
   const runsQuery = useTaskRuns(taskId, options.runFilters ?? {}, {
     enabled: hasTaskId && enableRuns,
   });
+  const inspectQuery = useTaskInspect(taskId, { enabled: hasTaskId && enableInspect });
 
   const publishMutation = usePublishTask();
   const cancelMutation = useCancelTask();
   const enqueueMutation = useEnqueueTaskRun();
+  const pauseMutation = usePauseTask();
+  const resumeMutation = useResumeTask();
 
   const detail = detailQuery.data ?? null;
   const runs = runsQuery.data ?? [];
   const timeline = timelineQuery.data ?? [];
   const tree = treeQuery.data ?? null;
+  const inspect = inspectQuery.data ?? null;
 
   const activeRun = useMemo(() => detail?.summary?.active_run ?? null, [detail]);
   const isLive = useMemo(() => isRunActive(activeRun?.status ?? null), [activeRun]);
@@ -162,6 +171,39 @@ function useTaskDetailPage(taskId: string, options: UseTaskDetailPageOptions = {
     }
   }, [enqueueMutation, hasTaskId, taskId]);
 
+  const handlePauseTask = useCallback(
+    async (reason: string) => {
+      if (!hasTaskId) {
+        return;
+      }
+
+      try {
+        await pauseMutation.mutateAsync({ id: taskId, data: { reason } });
+        toast.success("Task paused.");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to pause task";
+        toast.error(message);
+        throw error;
+      }
+    },
+    [hasTaskId, pauseMutation, taskId]
+  );
+
+  const handleResumeTask = useCallback(async () => {
+    if (!hasTaskId) {
+      return;
+    }
+
+    try {
+      await resumeMutation.mutateAsync({ id: taskId });
+      toast.success("Task resumed.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to resume task";
+      toast.error(message);
+      throw error;
+    }
+  }, [hasTaskId, resumeMutation, taskId]);
+
   const isTimelineSaturated =
     typeof timelineFilters.limit === "number" && timeline.length >= timelineFilters.limit;
 
@@ -174,14 +216,21 @@ function useTaskDetailPage(taskId: string, options: UseTaskDetailPageOptions = {
     handleCancelTask,
     handleEnqueueRun,
     handlePanelChange,
+    handlePauseTask,
     handlePublishTask,
+    handleResumeTask,
     handleTimelineLoadMore,
     handleTimelineReset,
     isCancelPending: cancelMutation.isPending,
     isEnqueuePending: enqueueMutation.isPending,
     isLive,
+    isPausePending: pauseMutation.isPending,
     isPublishPending: publishMutation.isPending,
+    isResumePending: resumeMutation.isPending,
     isTimelineSaturated,
+    inspect,
+    inspectError: inspectQuery.error ?? null,
+    inspectLoading: inspectQuery.isLoading && !inspect,
     multiAgent,
     notFound: detailQuery.isError && detailQuery.error?.message?.includes("not found"),
     panel,

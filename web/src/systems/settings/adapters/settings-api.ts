@@ -6,15 +6,22 @@ import {
 } from "@/lib/api-client";
 
 import type {
+  ConfigApplyRecordsResponse,
   SettingsAutomationSection,
   SettingsSandboxCollection,
   SettingsSandboxDetail,
   SettingsSandboxRequest,
   SettingsExtensionEntry,
+  SettingsExtensionMarketplaceEntry,
+  SettingsExtensionMarketplaceFilter,
+  SettingsExtensionProvenance,
+  SettingsExtensionRemove,
+  SettingsExtensionUpdate,
   SettingsGeneralSection,
   SettingsHookCollection,
   SettingsHookRequest,
   SettingsHooksExtensionsSection,
+  SettingsCreateNotificationPresetRequest,
   SettingsMCPServerCollection,
   SettingsMCPServerDeleteFilter,
   SettingsMCPServerListFilter,
@@ -23,10 +30,15 @@ import type {
   SettingsMemorySection,
   SettingsMutationResult,
   SettingsNetworkSection,
+  SettingsNotificationPresetCollection,
+  SettingsNotificationPresetFilter,
+  SettingsNotificationPresetEntry,
   SettingsObservabilitySection,
   SettingsProviderCollection,
   SettingsProviderDetail,
   SettingsProviderRequest,
+  SettingsApplyRecordsFilter,
+  SettingsApplyResponse,
   SettingsRestartResponse,
   SettingsRestartStatus,
   SettingsSkillsFilter,
@@ -34,7 +46,10 @@ import type {
   SettingsUpdateStatus,
   SettingsUpdateAutomationRequest,
   SettingsUpdateGeneralRequest,
+  SettingsInstallExtensionRequest,
   SettingsUpdateHooksExtensionsRequest,
+  SettingsUpdateNotificationPresetRequest,
+  SettingsUpdateExtensionRequest,
   SettingsUpdateMemoryRequest,
   SettingsUpdateNetworkRequest,
   SettingsUpdateObservabilityRequest,
@@ -78,6 +93,23 @@ function normalizeMCPMutationFilter(
   };
 }
 
+function normalizeExtensionMarketplaceFilter(filter: SettingsExtensionMarketplaceFilter = {}) {
+  return {
+    q: normalizeOptionalText(filter.q),
+    source: normalizeOptionalText(filter.source),
+    limit: filter.limit,
+  };
+}
+
+function normalizeNotificationPresetFilter(filter: SettingsNotificationPresetFilter = {}) {
+  return {
+    enabled: filter.enabled,
+    built_in: filter.built_in,
+    name: normalizeOptionalText(filter.name),
+    limit: filter.limit,
+  };
+}
+
 function normalizeSettingsSkillsFilter(
   filter: SettingsSkillsFilter | SettingsUpdateSkillsFilter = {}
 ) {
@@ -85,6 +117,14 @@ function normalizeSettingsSkillsFilter(
     scope: filter.scope,
     workspace_id: normalizeOptionalText(filter.workspace_id),
     agent_name: normalizeOptionalText(filter.agent_name),
+  };
+}
+
+function normalizeApplyRecordsFilter(filter: SettingsApplyRecordsFilter = {}) {
+  return {
+    status: filter.status,
+    actor: normalizeOptionalText(filter.actor),
+    limit: filter.limit,
   };
 }
 
@@ -182,6 +222,82 @@ export async function getSettingsSkills(
   }
 
   return requireResponseData(data, response, "Failed to load skills settings");
+}
+
+export async function listSettingsNotificationPresets(
+  filter: SettingsNotificationPresetFilter = {},
+  signal?: AbortSignal
+): Promise<SettingsNotificationPresetCollection> {
+  const { data, error, response } = await apiClient.GET("/api/notifications/presets", {
+    params: { query: normalizeNotificationPresetFilter(filter) },
+    signal,
+  });
+
+  if (apiRequestFailed(response, error)) {
+    throw new SettingsApiError(
+      defaultApiErrorMessage("Failed to load notification presets", response, error),
+      response.status
+    );
+  }
+
+  return requireResponseData(data, response, "Failed to load notification presets");
+}
+
+export async function createSettingsNotificationPreset(
+  body: SettingsCreateNotificationPresetRequest,
+  signal?: AbortSignal
+): Promise<SettingsNotificationPresetEntry> {
+  const { data, error, response } = await apiClient.POST("/api/notifications/presets", {
+    body,
+    signal,
+  });
+
+  if (apiRequestFailed(response, error)) {
+    throw new SettingsApiError(
+      defaultApiErrorMessage("Failed to create notification preset", response, error),
+      response.status
+    );
+  }
+
+  return requireResponseData(data, response, "Failed to create notification preset").preset;
+}
+
+export async function updateSettingsNotificationPreset(
+  name: string,
+  body: SettingsUpdateNotificationPresetRequest,
+  signal?: AbortSignal
+): Promise<SettingsNotificationPresetEntry> {
+  const { data, error, response } = await apiClient.PUT("/api/notifications/presets/{name}", {
+    params: { path: { name } },
+    body,
+    signal,
+  });
+
+  if (apiRequestFailed(response, error)) {
+    throw new SettingsApiError(
+      defaultApiErrorMessage("Failed to update notification preset", response, error),
+      response.status
+    );
+  }
+
+  return requireResponseData(data, response, "Failed to update notification preset").preset;
+}
+
+export async function deleteSettingsNotificationPreset(
+  name: string,
+  signal?: AbortSignal
+): Promise<void> {
+  const { error, response } = await apiClient.DELETE("/api/notifications/presets/{name}", {
+    params: { path: { name } },
+    signal,
+  });
+
+  if (apiRequestFailed(response, error)) {
+    throw new SettingsApiError(
+      defaultApiErrorMessage("Failed to delete notification preset", response, error),
+      response.status
+    );
+  }
 }
 
 export async function updateSettingsSkills(
@@ -646,6 +762,40 @@ export async function triggerSettingsRestart(
   return requireResponseData(data, response, "Failed to trigger daemon restart");
 }
 
+export async function reloadSettings(signal?: AbortSignal): Promise<SettingsApplyResponse> {
+  const { data, error, response } = await apiClient.POST("/api/settings/reload", {
+    signal,
+  });
+
+  if (apiRequestFailed(response, error)) {
+    throw new SettingsApiError(
+      defaultApiErrorMessage("Failed to reload settings", response, error),
+      response.status
+    );
+  }
+
+  return requireResponseData(data, response, "Failed to reload settings");
+}
+
+export async function listSettingsApplyRecords(
+  filter: SettingsApplyRecordsFilter = {},
+  signal?: AbortSignal
+): Promise<ConfigApplyRecordsResponse> {
+  const { data, error, response } = await apiClient.GET("/api/settings/apply", {
+    params: { query: normalizeApplyRecordsFilter(filter) },
+    signal,
+  });
+
+  if (apiRequestFailed(response, error)) {
+    throw new SettingsApiError(
+      defaultApiErrorMessage("Failed to load config apply records", response, error),
+      response.status
+    );
+  }
+
+  return requireResponseData(data, response, "Failed to load config apply records");
+}
+
 export async function getSettingsRestartStatus(
   operationId: string,
   signal?: AbortSignal
@@ -691,6 +841,116 @@ export async function listSettingsExtensions(
   }
 
   return requireResponseData(data, response, "Failed to list extensions").extensions;
+}
+
+export async function searchSettingsExtensionMarketplace(
+  filter: SettingsExtensionMarketplaceFilter = {},
+  signal?: AbortSignal
+): Promise<SettingsExtensionMarketplaceEntry[]> {
+  const { data, error, response } = await apiClient.GET("/api/extensions/marketplace", {
+    params: { query: normalizeExtensionMarketplaceFilter(filter) },
+    signal,
+  });
+
+  if (apiRequestFailed(response, error)) {
+    throw new SettingsApiError(
+      defaultApiErrorMessage("Failed to search extension marketplace", response, error),
+      response.status
+    );
+  }
+
+  return requireResponseData(data, response, "Failed to search extension marketplace").extensions;
+}
+
+export async function installSettingsExtension(
+  body: SettingsInstallExtensionRequest,
+  signal?: AbortSignal
+): Promise<SettingsExtensionEntry> {
+  const { data, error, response } = await apiClient.POST("/api/extensions", {
+    body,
+    signal,
+  });
+
+  if (apiRequestFailed(response, error)) {
+    throw new SettingsApiError(
+      defaultApiErrorMessage("Failed to install extension", response, error),
+      response.status
+    );
+  }
+
+  return requireResponseData(data, response, "Failed to install extension").extension;
+}
+
+export async function updateSettingsExtension(
+  name: string,
+  body: SettingsUpdateExtensionRequest,
+  signal?: AbortSignal
+): Promise<SettingsExtensionUpdate> {
+  const { data, error, response } = await apiClient.PUT("/api/extensions/{name}", {
+    params: { path: { name } },
+    body,
+    signal,
+  });
+
+  if (apiRequestFailed(response, error)) {
+    if (response.status === 404) {
+      throw new SettingsApiError(`Extension not found: ${name}`, 404);
+    }
+
+    throw new SettingsApiError(
+      defaultApiErrorMessage(`Failed to update extension "${name}"`, response, error),
+      response.status
+    );
+  }
+
+  return requireResponseData(data, response, `Failed to update extension "${name}"`).update;
+}
+
+export async function removeSettingsExtension(
+  name: string,
+  signal?: AbortSignal
+): Promise<SettingsExtensionRemove> {
+  const { data, error, response } = await apiClient.DELETE("/api/extensions/{name}", {
+    params: { path: { name } },
+    signal,
+  });
+
+  if (apiRequestFailed(response, error)) {
+    if (response.status === 404) {
+      throw new SettingsApiError(`Extension not found: ${name}`, 404);
+    }
+
+    throw new SettingsApiError(
+      defaultApiErrorMessage(`Failed to remove extension "${name}"`, response, error),
+      response.status
+    );
+  }
+
+  return requireResponseData(data, response, `Failed to remove extension "${name}"`).extension;
+}
+
+export async function getSettingsExtensionProvenance(
+  name: string,
+  signal?: AbortSignal
+): Promise<SettingsExtensionProvenance> {
+  const { data, error, response } = await apiClient.GET("/api/extensions/{name}/provenance", {
+    params: { path: { name } },
+    signal,
+  });
+
+  if (apiRequestFailed(response, error)) {
+    if (response.status === 404) {
+      throw new SettingsApiError(`Extension not found: ${name}`, 404);
+    }
+
+    throw new SettingsApiError(
+      defaultApiErrorMessage(`Failed to load extension provenance for "${name}"`, response, error),
+      response.status
+    );
+  }
+
+  return requireResponseData(data, response, `Failed to load extension provenance for "${name}"`)
+    .provenance;
 }
 
 export async function enableSettingsExtension(

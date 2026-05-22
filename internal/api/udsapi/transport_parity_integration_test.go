@@ -82,7 +82,7 @@ func TestUDSTransportApprovalFlowMatchesHTTP(t *testing.T) {
 				t,
 				clients.UDSClient,
 				http.MethodPost,
-				clients.UDSBaseURL+"/api/workspaces/ws-workspace/sessions/"+url.PathEscape(session.ID)+"/approve",
+				clients.UDSBaseURL+transportHarnessSessionPath(t, runtimeHarness, session.ID, "/approve"),
 				[]byte(fmt.Sprintf(`{"request_id":"%s","decision":"allow-always"}`, payload.RequestID)),
 				nil,
 			)
@@ -167,7 +167,7 @@ func TestUDSTransportSessionProviderCreateReadMatchesHTTP(t *testing.T) {
 	if err := runtimeHarness.UDSJSON(
 		ctx,
 		http.MethodGet,
-		"/api/workspaces/ws-workspace/sessions/"+url.PathEscape(created.Session.ID),
+		transportHarnessSessionPath(t, runtimeHarness, created.Session.ID, ""),
 		nil,
 		&udsDetail,
 	); err != nil {
@@ -185,7 +185,7 @@ func TestUDSTransportSessionProviderCreateReadMatchesHTTP(t *testing.T) {
 	if err := runtimeHarness.HTTPJSON(
 		ctx,
 		http.MethodGet,
-		"/api/workspaces/ws-workspace/sessions/"+url.PathEscape(created.Session.ID),
+		transportHarnessSessionPath(t, runtimeHarness, created.Session.ID, ""),
 		nil,
 		&httpDetail,
 	); err != nil {
@@ -240,7 +240,7 @@ func TestUDSTransportResumeMissingProviderReturnsExplicitBadRequest(t *testing.T
 		t,
 		runtimeHarness.UDSClient,
 		http.MethodPost,
-		runtimeHarness.UDSURL("/api/workspaces/ws-workspace/sessions/"+url.PathEscape(created.Session.ID)+"/stop"),
+		runtimeHarness.UDSURL(transportHarnessSessionPath(t, runtimeHarness, created.Session.ID, "/stop")),
 		nil,
 		nil,
 	)
@@ -268,7 +268,7 @@ func TestUDSTransportResumeMissingProviderReturnsExplicitBadRequest(t *testing.T
 		t,
 		runtimeHarness.UDSClient,
 		http.MethodPost,
-		runtimeHarness.UDSURL("/api/workspaces/ws-workspace/sessions/"+url.PathEscape(created.Session.ID)+"/resume"),
+		runtimeHarness.UDSURL(transportHarnessSessionPath(t, runtimeHarness, created.Session.ID, "/attach")),
 		nil,
 		nil,
 	)
@@ -280,14 +280,14 @@ func TestUDSTransportResumeMissingProviderReturnsExplicitBadRequest(t *testing.T
 	if closeErr != nil {
 		t.Fatalf("close UDS resume body error = %v", closeErr)
 	}
-	if resumeResp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("UDS resume status = %d, want %d; body=%s", resumeResp.StatusCode, http.StatusBadRequest, string(body))
+	if resumeResp.StatusCode != http.StatusConflict {
+		t.Fatalf("UDS attach status = %d, want %d; body=%s", resumeResp.StatusCode, http.StatusConflict, string(body))
 	}
 	if !strings.Contains(string(body), created.Session.ID) {
-		t.Fatalf("UDS resume body = %s, want session id %q", string(body), created.Session.ID)
+		t.Fatalf("UDS attach body = %s, want session id %q", string(body), created.Session.ID)
 	}
-	if !strings.Contains(string(body), transportUDSOverrideProvider) {
-		t.Fatalf("UDS resume body = %s, want provider %q", string(body), transportUDSOverrideProvider)
+	if !strings.Contains(string(body), "not attachable") {
+		t.Fatalf("UDS attach body = %s, want attachability context", string(body))
 	}
 }
 
@@ -430,34 +430,34 @@ func TestUDSTransportObserveHarnessLifecycleParityMatchesHTTP(t *testing.T) {
 		t.Fatalf("transcript = %#v, want assistant reply", transcriptResp.Messages)
 	}
 
-	httpHarnessEvents := waitForTransportObserveEvents(
+	httpHarnessEvents := waitForTransportListLogs(
 		t,
 		ctx,
-		"waitForHTTPObserveEvents",
+		"waitForHTTPListLogs",
 		wantTransportObserveHarnessTypes(),
-		func(fetchCtx context.Context) ([]aghcontract.ObserveEventPayload, error) {
-			var response aghcontract.ObserveEventsResponse
+		func(fetchCtx context.Context) ([]aghcontract.LogEventPayload, error) {
+			var response aghcontract.LogsListResponse
 			err := runtimeHarness.HTTPJSON(
 				fetchCtx,
 				http.MethodGet,
-				"/api/workspaces/ws-workspace/observe/events?session_id="+url.QueryEscape(session.ID)+"&limit=20",
+				transportHarnessLogsPath(t, runtimeHarness, session.ID),
 				nil,
 				&response,
 			)
 			return response.Events, err
 		},
 	)
-	udsHarnessEvents := waitForTransportObserveEvents(
+	udsHarnessEvents := waitForTransportListLogs(
 		t,
 		ctx,
-		"waitForUDSObserveEvents",
+		"waitForUDSListLogs",
 		wantTransportObserveHarnessTypes(),
-		func(fetchCtx context.Context) ([]aghcontract.ObserveEventPayload, error) {
-			var response aghcontract.ObserveEventsResponse
+		func(fetchCtx context.Context) ([]aghcontract.LogEventPayload, error) {
+			var response aghcontract.LogsListResponse
 			err := runtimeHarness.UDSJSON(
 				fetchCtx,
 				http.MethodGet,
-				"/api/workspaces/ws-workspace/observe/events?session_id="+url.QueryEscape(session.ID)+"&limit=20",
+				transportHarnessLogsPath(t, runtimeHarness, session.ID),
 				nil,
 				&response,
 			)
@@ -468,7 +468,7 @@ func TestUDSTransportObserveHarnessLifecycleParityMatchesHTTP(t *testing.T) {
 	if !reflect.DeepEqual(httpHarnessEvents, udsHarnessEvents) {
 		t.Fatalf("HTTP harness events = %#v, want UDS parity %#v", httpHarnessEvents, udsHarnessEvents)
 	}
-	if got, want := observeEventTypes(httpHarnessEvents), wantTransportObserveHarnessTypes(); !slices.Equal(got, want) {
+	if got, want := logEventTypes(httpHarnessEvents), wantTransportObserveHarnessTypes(); !slices.Equal(got, want) {
 		t.Fatalf("harness event types = %#v, want %#v", got, want)
 	}
 	if !strings.Contains(httpHarnessEvents[0].Summary, "surface=startup") {
@@ -489,6 +489,40 @@ func TestUDSTransportObserveHarnessLifecycleParityMatchesHTTP(t *testing.T) {
 	if !strings.Contains(httpHarnessEvents[5].Summary, "augmenter=situation") {
 		t.Fatalf("augmenter summary = %q, want situation metadata", httpHarnessEvents[5].Summary)
 	}
+}
+
+func transportHarnessSessionPath(
+	t testing.TB,
+	harness *e2etest.RuntimeHarness,
+	sessionID string,
+	suffix string,
+) string {
+	t.Helper()
+
+	workspaceID := strings.TrimSpace(harness.WorkspaceID)
+	if workspaceID == "" {
+		t.Fatal("runtime harness WorkspaceID = empty")
+	}
+	return "/api/workspaces/" + url.PathEscape(workspaceID) +
+		"/sessions/" + url.PathEscape(sessionID) + suffix
+}
+
+func transportHarnessLogsPath(
+	t testing.TB,
+	harness *e2etest.RuntimeHarness,
+	sessionID string,
+) string {
+	t.Helper()
+
+	workspaceID := strings.TrimSpace(harness.WorkspaceID)
+	if workspaceID == "" {
+		t.Fatal("runtime harness WorkspaceID = empty")
+	}
+	query := url.Values{}
+	query.Set("workspace_id", workspaceID)
+	query.Set("session_id", strings.TrimSpace(sessionID))
+	query.Set("limit", "20")
+	return "/api/logs?" + query.Encode()
 }
 
 func TestUDSTransportSettingsReadParityMatchesHTTP(t *testing.T) {
@@ -985,13 +1019,13 @@ func waitForTransportAutomationRun(
 	}
 }
 
-func waitForTransportObserveEvents(
+func waitForTransportListLogs(
 	t testing.TB,
 	ctx context.Context,
 	label string,
 	wantTypes []string,
-	fetch func(context.Context) ([]aghcontract.ObserveEventPayload, error),
-) []aghcontract.ObserveEventPayload {
+	fetch func(context.Context) ([]aghcontract.LogEventPayload, error),
+) []aghcontract.LogEventPayload {
 	t.Helper()
 
 	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -1001,13 +1035,13 @@ func waitForTransportObserveEvents(
 
 	var (
 		lastErr    error
-		lastEvents []aghcontract.ObserveEventPayload
+		lastEvents []aghcontract.LogEventPayload
 	)
 	for {
 		events, err := fetch(waitCtx)
 		if err == nil {
-			harnessEvents := filterHarnessObserveEvents(events)
-			if slices.Equal(observeEventTypes(harnessEvents), wantTypes) {
+			harnessEvents := filterHarnessListLogs(events)
+			if slices.Equal(logEventTypes(harnessEvents), wantTypes) {
 				return harnessEvents
 			}
 			lastEvents = harnessEvents
@@ -1061,8 +1095,8 @@ func udsSessionEventsContainType(events []aghcontract.SessionEventPayload, want 
 	return false
 }
 
-func filterHarnessObserveEvents(events []aghcontract.ObserveEventPayload) []aghcontract.ObserveEventPayload {
-	filtered := make([]aghcontract.ObserveEventPayload, 0, len(events))
+func filterHarnessListLogs(events []aghcontract.LogEventPayload) []aghcontract.LogEventPayload {
+	filtered := make([]aghcontract.LogEventPayload, 0, len(events))
 	for _, event := range events {
 		if strings.HasPrefix(event.Type, "harness.") {
 			filtered = append(filtered, event)
@@ -1071,7 +1105,7 @@ func filterHarnessObserveEvents(events []aghcontract.ObserveEventPayload) []aghc
 	return filtered
 }
 
-func observeEventTypes(events []aghcontract.ObserveEventPayload) []string {
+func logEventTypes(events []aghcontract.LogEventPayload) []string {
 	types := make([]string, 0, len(events))
 	for _, event := range events {
 		types = append(types, event.Type)

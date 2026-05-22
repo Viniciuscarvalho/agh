@@ -19,6 +19,7 @@ const (
 
 type handlerConfig struct {
 	sessions          core.SessionManager
+	sessionCatalog    core.SessionCatalog
 	tasks             core.TaskService
 	network           core.NetworkService
 	networkStore      core.NetworkStore
@@ -26,7 +27,9 @@ type handlerConfig struct {
 	resources         core.ResourceService
 	automation        core.AutomationManager
 	bridges           core.BridgeService
+	notifications     core.NotificationPresetService
 	bundles           core.BundleService
+	supportBundles    core.SupportBundleService
 	tools             core.ToolRegistry
 	toolsets          core.ToolsetRegistry
 	toolApprovals     core.ToolApprovalIssuer
@@ -101,14 +104,18 @@ func newHandlers(cfg *handlerConfig) *Handlers {
 			MaskInternalErrors:           true,
 			IncludeSessionWorkspaceInSSE: true,
 			Sessions:                     cfg.sessions,
+			SessionCatalog:               cfg.sessionCatalog,
 			Tasks:                        cfg.tasks,
 			Network:                      cfg.network,
 			NetworkStore:                 cfg.networkStore,
 			Observer:                     cfg.observer,
 			Resources:                    cfg.resources,
+			Extensions:                   cfg.extensions,
 			Automation:                   cfg.automation,
 			Bridges:                      cfg.bridges,
+			Notifications:                cfg.notifications,
 			Bundles:                      cfg.bundles,
+			SupportBundles:               cfg.supportBundles,
 			Tools:                        cfg.tools,
 			Toolsets:                     cfg.toolsets,
 			ToolApprovals:                cfg.toolApprovals,

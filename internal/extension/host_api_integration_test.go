@@ -134,7 +134,7 @@ func TestHostAPIIntegrationResourcesSnapshotPublishesAndReadsBack(t *testing.T) 
 		t,
 		"ext-resources",
 		[]string{"resources/list", "resources/get", "resources/snapshot"},
-		[]string{"resource.read", "resource.write"},
+		[]string{"resources.read", "resources.write"},
 		[]string{"tools"},
 		resources.ResourceScopeKindWorkspace,
 	)
@@ -193,7 +193,7 @@ func TestHostAPIIntegrationBridgeProviderKeepsOperationalMethodsAlongsideGeneric
 		t,
 		"telegram-adapter",
 		[]string{"resources/list", "resources/get", "bridges/instances/list", "bridges/instances/get"},
-		[]string{"resource.read", "bridge.read"},
+		[]string{"resources.read", "bridge.read"},
 		[]string{"tools"},
 		resources.ResourceScopeKindWorkspace,
 	)
@@ -265,7 +265,7 @@ func TestHostAPIIntegrationSecondResourceSessionInvalidatesOlderNonce(t *testing
 		t,
 		"ext-resources",
 		[]string{"resources/snapshot"},
-		[]string{"resource.write"},
+		[]string{"resources.write"},
 		[]string{"tools"},
 		resources.ResourceScopeKindWorkspace,
 	)
@@ -323,7 +323,7 @@ func TestHostAPIIntegrationResourceSnapshotReplacesToolSetAndRemovesStaleTools(t
 		t,
 		"ext-resources",
 		[]string{"resources/list", "resources/snapshot"},
-		[]string{"resource.read", "resource.write"},
+		[]string{"resources.read", "resources.write"},
 		[]string{"tools"},
 		resources.ResourceScopeKindWorkspace,
 	)
@@ -1143,7 +1143,7 @@ func TestHostAPIIntegrationUnauthorizedExtensionIsDeniedForEveryMethod(t *testin
 		{method: "memory/store", params: map[string]any{"key": "note", "content": "body"}},
 		{method: "memory/forget", params: map[string]any{"key": "note"}},
 		{method: "observe/health", params: nil},
-		{method: "observe/events", params: map[string]any{"session_id": session.ID, "limit": 1}},
+		{method: "logs/list", params: map[string]any{"session_id": session.ID, "limit": 1}},
 		{method: "skills/list", params: map[string]any{"workspace": env.workspaceID}},
 		{method: "automation/jobs", params: map[string]any{"scope": "workspace", "workspace_id": env.workspaceID}},
 		{method: "automation/jobs/create", params: map[string]any{

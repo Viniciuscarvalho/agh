@@ -1002,6 +1002,296 @@ func TestBaseHandlersTaskRunReviewEndpoints(t *testing.T) {
 	}
 }
 
+func TestBaseHandlersTaskSchedulerControlEndpoints(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Should map task pause and resume requests", func(t *testing.T) {
+		t.Parallel()
+
+		var pauseRequest taskpkg.PauseTaskRequest
+		var resumeRequest taskpkg.ResumeTaskRequest
+		tasks := testutil.StubTaskManager{
+			PauseTaskFn: func(
+				_ context.Context,
+				id string,
+				req taskpkg.PauseTaskRequest,
+				_ taskpkg.ActorContext,
+			) (*taskpkg.Task, error) {
+				if id != "task-1" {
+					t.Fatalf("PauseTask id = %q, want task-1", id)
+				}
+				pauseRequest = req
+				return &taskpkg.Task{
+					ID:           id,
+					Scope:        taskpkg.ScopeGlobal,
+					Title:        "Paused task",
+					Status:       taskpkg.TaskStatusReady,
+					Paused:       true,
+					PausedBy:     "human:operator",
+					PausedReason: req.Reason,
+					CreatedBy:    taskpkg.ActorIdentity{Kind: taskpkg.ActorKindHuman, Ref: "operator"},
+					Origin:       taskpkg.Origin{Kind: taskpkg.OriginKindHTTP, Ref: "tasks.pause"},
+					CreatedAt:    time.Date(2026, 5, 21, 10, 0, 0, 0, time.UTC),
+					UpdatedAt:    time.Date(2026, 5, 21, 10, 0, 0, 0, time.UTC),
+				}, nil
+			},
+			ResumeTaskFn: func(
+				_ context.Context,
+				id string,
+				req taskpkg.ResumeTaskRequest,
+				_ taskpkg.ActorContext,
+			) (*taskpkg.Task, error) {
+				if id != "task-1" {
+					t.Fatalf("ResumeTask id = %q, want task-1", id)
+				}
+				resumeRequest = req
+				return &taskpkg.Task{
+					ID:        id,
+					Scope:     taskpkg.ScopeGlobal,
+					Title:     "Resumed task",
+					Status:    taskpkg.TaskStatusReady,
+					CreatedBy: taskpkg.ActorIdentity{Kind: taskpkg.ActorKindHuman, Ref: "operator"},
+					Origin:    taskpkg.Origin{Kind: taskpkg.OriginKindHTTP, Ref: "tasks.resume"},
+					CreatedAt: time.Date(2026, 5, 21, 10, 1, 0, 0, time.UTC),
+					UpdatedAt: time.Date(2026, 5, 21, 10, 1, 0, 0, time.UTC),
+				}, nil
+			},
+		}
+		fixture := newHandlerFixtureWithTasks(
+			t,
+			testutil.StubSessionManager{},
+			testutil.StubObserver{},
+			tasks,
+			testutil.StubWorkspaceService{},
+			nil,
+			nil,
+		)
+
+		pauseResp := performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPost,
+			"/tasks/task-1/pause",
+			[]byte("{\"reason\":\"provider incident\",\"metadata\":{\"source\":\"api\"}}"),
+		)
+		if pauseResp.Code != http.StatusOK {
+			t.Fatalf("pause response status = %d body = %s", pauseResp.Code, pauseResp.Body.String())
+		}
+		if pauseRequest.Reason != "provider incident" || string(pauseRequest.Metadata) != "{\"source\":\"api\"}" {
+			t.Fatalf("PauseTask request = %#v, want reason and metadata", pauseRequest)
+		}
+		var paused contract.TaskResponse
+		if err := json.Unmarshal(pauseResp.Body.Bytes(), &paused); err != nil {
+			t.Fatalf("decode pause response: %v", err)
+		}
+		if !paused.Task.Paused || paused.Task.PausedReason != "provider incident" {
+			t.Fatalf("pause response task = %#v, want paused reason", paused.Task)
+		}
+
+		resumeResp := performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPost,
+			"/tasks/task-1/resume",
+			[]byte("{\"metadata\":{\"source\":\"api\"}}"),
+		)
+		if resumeResp.Code != http.StatusOK {
+			t.Fatalf("resume response status = %d body = %s", resumeResp.Code, resumeResp.Body.String())
+		}
+		if string(resumeRequest.Metadata) != "{\"source\":\"api\"}" {
+			t.Fatalf("ResumeTask request = %#v, want metadata", resumeRequest)
+		}
+	})
+
+	t.Run("Should map scheduler status pause drain and backlog requests", func(t *testing.T) {
+		t.Parallel()
+
+		var pauseReason string
+		var resumeReason string
+		var drainRequest taskpkg.SchedulerDrainRequest
+		var backlogQuery taskpkg.SchedulerBacklogQuery
+		now := time.Date(2026, 5, 21, 10, 15, 0, 0, time.UTC)
+		tasks := testutil.StubTaskManager{
+			SchedulerStatusFn: func(_ context.Context, _ taskpkg.ActorContext) (taskpkg.SchedulerStatus, error) {
+				return taskpkg.SchedulerStatus{Paused: false, ActiveClaimCount: 2, QueuedRunCount: 3, AsOf: now}, nil
+			},
+			PauseSchedulerFn: func(
+				_ context.Context,
+				req taskpkg.SchedulerPauseRequest,
+				_ taskpkg.ActorContext,
+			) (taskpkg.SchedulerStatus, error) {
+				pauseReason = req.Reason
+				return taskpkg.SchedulerStatus{
+					Paused:           true,
+					PausedBy:         "human:operator",
+					PausedReason:     req.Reason,
+					ActiveClaimCount: 2,
+					QueuedRunCount:   3,
+					PausedTaskCount:  1,
+					AsOf:             now,
+				}, nil
+			},
+			ResumeSchedulerFn: func(
+				_ context.Context,
+				req taskpkg.SchedulerResumeRequest,
+				_ taskpkg.ActorContext,
+			) (taskpkg.SchedulerStatus, error) {
+				resumeReason = req.Reason
+				return taskpkg.SchedulerStatus{Paused: false, QueuedRunCount: 3, AsOf: now.Add(time.Minute)}, nil
+			},
+			DrainSchedulerFn: func(
+				_ context.Context,
+				req taskpkg.SchedulerDrainRequest,
+				_ taskpkg.ActorContext,
+			) (taskpkg.SchedulerDrainResult, error) {
+				drainRequest = req
+				return taskpkg.SchedulerDrainResult{
+					Status: taskpkg.SchedulerStatus{
+						Paused:           true,
+						ActiveClaimCount: 0,
+						AsOf:             now.Add(2 * time.Minute),
+					},
+					Completed:   true,
+					StartedAt:   now,
+					CompletedAt: now.Add(time.Second),
+				}, nil
+			},
+			SchedulerBacklogFn: func(
+				_ context.Context,
+				query taskpkg.SchedulerBacklogQuery,
+				_ taskpkg.ActorContext,
+			) (taskpkg.SchedulerBacklog, error) {
+				backlogQuery = query
+				return taskpkg.SchedulerBacklog{
+					Total: 1,
+					Runs: []taskpkg.SchedulerBacklogRun{{
+						Task: taskpkg.Task{
+							ID:        "task-paused",
+							Scope:     taskpkg.ScopeWorkspace,
+							Title:     "Paused task",
+							Status:    taskpkg.TaskStatusReady,
+							CreatedBy: taskpkg.ActorIdentity{Kind: taskpkg.ActorKindHuman, Ref: "operator"},
+							Origin:    taskpkg.Origin{Kind: taskpkg.OriginKindHTTP, Ref: "tasks.create"},
+							CreatedAt: now,
+							UpdatedAt: now,
+						},
+						Run: taskpkg.Run{
+							ID:       "run-paused",
+							TaskID:   "task-paused",
+							Status:   taskpkg.TaskRunStatusQueued,
+							Attempt:  1,
+							Origin:   taskpkg.Origin{Kind: taskpkg.OriginKindHTTP, Ref: "tasks.start"},
+							QueuedAt: now,
+						},
+						EffectivePaused: true,
+						PausedByTaskID:  "task-root",
+					}},
+				}, nil
+			},
+		}
+		fixture := newHandlerFixtureWithTasks(
+			t,
+			testutil.StubSessionManager{},
+			testutil.StubObserver{},
+			tasks,
+			testutil.StubWorkspaceService{},
+			nil,
+			nil,
+		)
+
+		statusResp := performRequest(t, fixture.Engine, http.MethodGet, "/scheduler", nil)
+		if statusResp.Code != http.StatusOK {
+			t.Fatalf("scheduler status response status = %d body = %s", statusResp.Code, statusResp.Body.String())
+		}
+		var status contract.SchedulerStatusResponse
+		if err := json.Unmarshal(statusResp.Body.Bytes(), &status); err != nil {
+			t.Fatalf("decode scheduler status response: %v", err)
+		}
+		if status.Scheduler.QueuedRunCount != 3 || status.Scheduler.ActiveClaimCount != 2 {
+			t.Fatalf("scheduler status = %#v, want queue pressure", status.Scheduler)
+		}
+
+		pauseResp := performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPost,
+			"/scheduler/pause",
+			[]byte("{\"reason\":\"deploy freeze\"}"),
+		)
+		if pauseResp.Code != http.StatusOK {
+			t.Fatalf("scheduler pause response status = %d body = %s", pauseResp.Code, pauseResp.Body.String())
+		}
+		if pauseReason != "deploy freeze" {
+			t.Fatalf("PauseScheduler reason = %q, want deploy freeze", pauseReason)
+		}
+		var pausedScheduler contract.SchedulerStatusResponse
+		if err := json.Unmarshal(pauseResp.Body.Bytes(), &pausedScheduler); err != nil {
+			t.Fatalf("decode scheduler pause response: %v", err)
+		}
+		if !pausedScheduler.Scheduler.Paused || pausedScheduler.Scheduler.PausedTaskCount != 1 {
+			t.Fatalf("pause response = %#v, want paused with task count", pausedScheduler.Scheduler)
+		}
+
+		resumeResp := performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPost,
+			"/scheduler/resume",
+			[]byte("{\"reason\":\"deploy complete\"}"),
+		)
+		if resumeResp.Code != http.StatusOK {
+			t.Fatalf("scheduler resume response status = %d body = %s", resumeResp.Code, resumeResp.Body.String())
+		}
+		if resumeReason != "deploy complete" {
+			t.Fatalf("ResumeScheduler reason = %q, want deploy complete", resumeReason)
+		}
+		var resumedScheduler contract.SchedulerStatusResponse
+		if err := json.Unmarshal(resumeResp.Body.Bytes(), &resumedScheduler); err != nil {
+			t.Fatalf("decode scheduler resume response: %v", err)
+		}
+		if resumedScheduler.Scheduler.Paused || resumedScheduler.Scheduler.QueuedRunCount != 3 {
+			t.Fatalf("resume response = %#v, want unpaused with queued count", resumedScheduler.Scheduler)
+		}
+
+		drainResp := performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPost,
+			"/scheduler/drain",
+			[]byte("{\"reason\":\"deploy freeze\",\"timeout_seconds\":2}"),
+		)
+		if drainResp.Code != http.StatusOK {
+			t.Fatalf("scheduler drain response status = %d body = %s", drainResp.Code, drainResp.Body.String())
+		}
+		if drainRequest.Reason != "deploy freeze" || drainRequest.Timeout != 2*time.Second {
+			t.Fatalf("DrainScheduler request = %#v, want reason and 2s timeout", drainRequest)
+		}
+
+		backlogResp := performRequest(
+			t,
+			fixture.Engine,
+			http.MethodGet,
+			"/scheduler/backlog?limit=7&workspace=ws-alpha&include_paused=true",
+			nil,
+		)
+		if backlogResp.Code != http.StatusOK {
+			t.Fatalf("scheduler backlog response status = %d body = %s", backlogResp.Code, backlogResp.Body.String())
+		}
+		if backlogQuery.Limit != 7 || backlogQuery.WorkspaceID != "ws-alpha" || !backlogQuery.IncludePaused {
+			t.Fatalf("SchedulerBacklog query = %#v, want parsed filters", backlogQuery)
+		}
+		var backlog contract.SchedulerBacklogResponse
+		if err := json.Unmarshal(backlogResp.Body.Bytes(), &backlog); err != nil {
+			t.Fatalf("decode scheduler backlog response: %v", err)
+		}
+		if backlog.Backlog.Total != 1 || len(backlog.Backlog.Runs) != 1 ||
+			!backlog.Backlog.Runs[0].Task.EffectivePaused ||
+			backlog.Backlog.Runs[0].Task.PausedByTaskID != "task-root" {
+			t.Fatalf("backlog response = %#v, want inherited pause metadata", backlog.Backlog)
+		}
+	})
+}
+
 func TestBaseHandlersTaskValidationAndErrorMapping(t *testing.T) {
 	t.Parallel()
 
@@ -1264,6 +1554,11 @@ func TestBaseHandlersTaskHappyPathEndpoints(t *testing.T) {
 	var completedRun taskpkg.RunResult
 	var failedRun taskpkg.RunFailure
 	var cancelledRun taskpkg.CancelRun
+	var forceReleasedRun taskpkg.ForceReleaseRun
+	var forceFailedRun taskpkg.ForceFailRun
+	var retryRunRequest taskpkg.RetryRunRequest
+	var bulkForceRelease taskpkg.BulkForceRunRequest
+	var bulkForceFail taskpkg.BulkForceRunRequest
 
 	taskView := &taskpkg.View{
 		Task: taskpkg.Task{
@@ -1501,6 +1796,102 @@ func TestBaseHandlersTaskHappyPathEndpoints(t *testing.T) {
 				CoordinationChannelID: "builders",
 			}, nil
 		},
+		ForceReleaseRunFn: func(
+			_ context.Context,
+			runID string,
+			req taskpkg.ForceReleaseRun,
+			actor taskpkg.ActorContext,
+		) (*taskpkg.Run, error) {
+			forceReleasedRun = req
+			return &taskpkg.Run{
+				ID:       runID,
+				TaskID:   "task-1",
+				Status:   taskpkg.TaskRunStatusQueued,
+				Attempt:  1,
+				Origin:   actor.Origin,
+				QueuedAt: now,
+			}, nil
+		},
+		ForceFailRunFn: func(
+			_ context.Context,
+			runID string,
+			req taskpkg.ForceFailRun,
+			actor taskpkg.ActorContext,
+		) (*taskpkg.Run, error) {
+			forceFailedRun = req
+			return &taskpkg.Run{
+				ID:          runID,
+				TaskID:      "task-1",
+				Status:      taskpkg.TaskRunStatusFailed,
+				Attempt:     2,
+				Origin:      actor.Origin,
+				QueuedAt:    now,
+				EndedAt:     now,
+				Error:       req.Reason,
+				FailureKind: taskpkg.FailureKindOperatorForced,
+			}, nil
+		},
+		RetryRunFn: func(
+			_ context.Context,
+			runID string,
+			req taskpkg.RetryRunRequest,
+			actor taskpkg.ActorContext,
+		) (*taskpkg.RetryRunResult, error) {
+			retryRunRequest = req
+			return &taskpkg.RetryRunResult{
+				PreviousRun: taskpkg.Run{
+					ID:       runID,
+					TaskID:   "task-1",
+					Status:   taskpkg.TaskRunStatusFailed,
+					Attempt:  2,
+					Origin:   actor.Origin,
+					QueuedAt: now,
+					EndedAt:  now,
+				},
+				Run: taskpkg.Run{
+					ID:            "run-retry",
+					TaskID:        "task-1",
+					Status:        taskpkg.TaskRunStatusQueued,
+					Attempt:       3,
+					PreviousRunID: runID,
+					Origin:        actor.Origin,
+					QueuedAt:      now,
+				},
+			}, nil
+		},
+		BulkForceReleaseRunsFn: func(
+			_ context.Context,
+			req taskpkg.BulkForceRunRequest,
+			_ taskpkg.ActorContext,
+		) (taskpkg.BulkForceRunResult, error) {
+			bulkForceRelease = req
+			return taskpkg.BulkForceRunResult{Items: []taskpkg.BulkForceRunItem{
+				{
+					RunID: "run-1",
+					OK:    true,
+					Run:   &taskpkg.Run{ID: "run-1", TaskID: "task-1", Status: taskpkg.TaskRunStatusQueued},
+				},
+				{
+					RunID: "run-2",
+					OK:    true,
+					Run:   &taskpkg.Run{ID: "run-2", TaskID: "task-1", Status: taskpkg.TaskRunStatusQueued},
+				},
+			}}, nil
+		},
+		BulkForceFailRunsFn: func(
+			_ context.Context,
+			req taskpkg.BulkForceRunRequest,
+			_ taskpkg.ActorContext,
+		) (taskpkg.BulkForceRunResult, error) {
+			bulkForceFail = req
+			return taskpkg.BulkForceRunResult{Items: []taskpkg.BulkForceRunItem{
+				{
+					RunID: "run-2",
+					OK:    false,
+					Err:   errors.New("database internal detail exploded"),
+				},
+			}}, nil
+		},
 	}
 	workspaces := testutil.StubWorkspaceService{
 		GetFn: func(_ context.Context, ref string) (workspacepkg.Workspace, error) {
@@ -1708,6 +2099,128 @@ func TestBaseHandlersTaskHappyPathEndpoints(t *testing.T) {
 	if cancelledResp.Run.NetworkChannel != "builders" || cancelledResp.Run.CoordinationChannelID != "builders" {
 		t.Fatalf("canceled response = %#v, want preserved network/coordination channel", cancelledResp.Run)
 	}
+
+	// not parallel: these cases share one fixture and captured request variables for the end-of-flow assertions.
+	t.Run("Should force release run", func(t *testing.T) {
+		resp := performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPost,
+			"/runs/run-1/release",
+			[]byte("{\"reason\":\"handoff\",\"metadata\":{\"source\":\"operator\"}}"),
+		)
+		if resp.Code != http.StatusOK {
+			t.Fatalf("force release status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+		}
+		if forceReleasedRun.Reason != "handoff" || string(forceReleasedRun.Metadata) != "{\"source\":\"operator\"}" {
+			t.Fatalf("force release run = %#v", forceReleasedRun)
+		}
+	})
+
+	t.Run("Should force fail run", func(t *testing.T) {
+		resp := performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPost,
+			"/runs/run-2/fail",
+			[]byte("{\"reason\":\"operator recovery\",\"metadata\":{\"incident\":\"INC-42\"}}"),
+		)
+		if resp.Code != http.StatusOK {
+			t.Fatalf("force fail status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+		}
+		if forceFailedRun.Reason != "operator recovery" ||
+			string(forceFailedRun.Metadata) != "{\"incident\":\"INC-42\"}" {
+			t.Fatalf("force fail run = %#v", forceFailedRun)
+		}
+	})
+
+	t.Run("Should retry run", func(t *testing.T) {
+		resp := performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPost,
+			"/runs/run-2/retry",
+			[]byte("{\"metadata\":{\"source\":\"operator\"}}"),
+		)
+		if resp.Code != http.StatusCreated {
+			t.Fatalf("retry status = %d, want %d; body=%s", resp.Code, http.StatusCreated, resp.Body.String())
+		}
+		if string(retryRunRequest.Metadata) != "{\"source\":\"operator\"}" {
+			t.Fatalf("retry run request = %#v", retryRunRequest)
+		}
+	})
+
+	t.Run("Should bulk release runs", func(t *testing.T) {
+		resp := performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPost,
+			"/runs/bulk/release",
+			[]byte("{\"run_ids\":[\"run-1\",\"run-2\"],\"reason\":\"handoff\"}"),
+		)
+		if resp.Code != http.StatusOK {
+			t.Fatalf("bulk release status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+		}
+		if strings.Join(bulkForceRelease.RunIDs, ",") != "run-1,run-2" || bulkForceRelease.Reason != "handoff" {
+			t.Fatalf("bulk force release = %#v", bulkForceRelease)
+		}
+	})
+
+	t.Run("Should bulk fail runs with unmasked handler errors", func(t *testing.T) {
+		fixture.Handlers.MaskInternalErrors = false
+		resp := performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPost,
+			"/runs/bulk/fail",
+			[]byte("{\"run_ids\":[\"run-2\"],\"reason\":\"operator recovery\"}"),
+		)
+		if resp.Code != http.StatusOK {
+			t.Fatalf("bulk fail status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+		}
+		var bulkFailPayload contract.BulkForceTaskRunResponse
+		if err := json.Unmarshal(resp.Body.Bytes(), &bulkFailPayload); err != nil {
+			t.Fatalf("decode bulk fail response: %v", err)
+		}
+		if len(bulkFailPayload.Results) != 1 || bulkFailPayload.Results[0].Error == nil {
+			t.Fatalf("bulk fail payload = %#v, want item error", bulkFailPayload.Results)
+		}
+		if got, want := bulkFailPayload.Results[0].Error.Error,
+			"database internal detail exploded"; got != want {
+			t.Fatalf("bulk fail item error = %q, want %q", got, want)
+		}
+		if strings.Join(bulkForceFail.RunIDs, ",") != "run-2" || bulkForceFail.Reason != "operator recovery" {
+			t.Fatalf("bulk force fail = %#v", bulkForceFail)
+		}
+	})
+
+	t.Run("Should bulk fail runs with masked handler errors", func(t *testing.T) {
+		fixture.Handlers.MaskInternalErrors = true
+		resp := performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPost,
+			"/runs/bulk/fail",
+			[]byte("{\"run_ids\":[\"run-2\"],\"reason\":\"operator recovery\"}"),
+		)
+		if resp.Code != http.StatusOK {
+			t.Fatalf("bulk fail status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+		}
+		var bulkFailPayload contract.BulkForceTaskRunResponse
+		if err := json.Unmarshal(resp.Body.Bytes(), &bulkFailPayload); err != nil {
+			t.Fatalf("decode bulk fail response: %v", err)
+		}
+		if len(bulkFailPayload.Results) != 1 || bulkFailPayload.Results[0].Error == nil {
+			t.Fatalf("bulk fail payload = %#v, want item error", bulkFailPayload.Results)
+		}
+		if got, want := bulkFailPayload.Results[0].Error.Error,
+			http.StatusText(http.StatusInternalServerError); got != want {
+			t.Fatalf("bulk fail item error = %q, want %q", got, want)
+		}
+		if strings.Contains(bulkFailPayload.Results[0].Error.Error, "internal detail") {
+			t.Fatalf("bulk fail item error leaked internal detail: %#v", bulkFailPayload.Results[0].Error)
+		}
+	})
 
 	if listedQuery.WorkspaceID != "ws-alpha" || listedQuery.Scope != taskpkg.ScopeWorkspace ||
 		listedQuery.NetworkChannel != "builders" {

@@ -28,16 +28,21 @@ import (
 	"github.com/pedronauck/agh/internal/session"
 	settingspkg "github.com/pedronauck/agh/internal/settings"
 	"github.com/pedronauck/agh/internal/store"
+	taskpkg "github.com/pedronauck/agh/internal/task"
 	"github.com/pedronauck/agh/internal/transcript"
 	workspacepkg "github.com/pedronauck/agh/internal/workspace"
 )
 
 type stubExtensionService struct {
-	ListFn    func(context.Context) ([]contract.ExtensionPayload, error)
-	InstallFn func(context.Context, contract.InstallExtensionRequest) (contract.ExtensionPayload, error)
-	EnableFn  func(context.Context, string) (contract.ExtensionPayload, error)
-	DisableFn func(context.Context, string) (contract.ExtensionPayload, error)
-	StatusFn  func(context.Context, string) (contract.ExtensionPayload, error)
+	ListFn              func(context.Context) ([]contract.ExtensionPayload, error)
+	SearchMarketplaceFn func(context.Context, string, string, int) ([]contract.ExtensionMarketplaceEntry, error)
+	InstallFn           func(context.Context, contract.InstallExtensionRequest, taskpkg.ActorContext) (contract.ExtensionPayload, error)
+	UpdateFn            func(context.Context, string, contract.UpdateExtensionRequest, taskpkg.ActorContext) (contract.ManagedExtensionUpdatePayload, error)
+	RemoveFn            func(context.Context, string, taskpkg.ActorContext) (contract.ManagedExtensionRemovePayload, error)
+	EnableFn            func(context.Context, string, taskpkg.ActorContext) (contract.ExtensionPayload, error)
+	DisableFn           func(context.Context, string, taskpkg.ActorContext) (contract.ExtensionPayload, error)
+	StatusFn            func(context.Context, string) (contract.ExtensionPayload, error)
+	ProvenanceFn        func(context.Context, string) (contract.ExtensionProvenancePayload, error)
 }
 
 func (s stubExtensionService) List(ctx context.Context) ([]contract.ExtensionPayload, error) {
@@ -47,28 +52,72 @@ func (s stubExtensionService) List(ctx context.Context) ([]contract.ExtensionPay
 	return s.ListFn(ctx)
 }
 
+func (s stubExtensionService) SearchMarketplace(
+	ctx context.Context,
+	query string,
+	source string,
+	limit int,
+) ([]contract.ExtensionMarketplaceEntry, error) {
+	if s.SearchMarketplaceFn == nil {
+		return nil, nil
+	}
+	return s.SearchMarketplaceFn(ctx, query, source, limit)
+}
+
 func (s stubExtensionService) Install(
 	ctx context.Context,
 	req contract.InstallExtensionRequest,
+	actor taskpkg.ActorContext,
 ) (contract.ExtensionPayload, error) {
 	if s.InstallFn == nil {
 		return contract.ExtensionPayload{}, nil
 	}
-	return s.InstallFn(ctx, req)
+	return s.InstallFn(ctx, req, actor)
 }
 
-func (s stubExtensionService) Enable(ctx context.Context, name string) (contract.ExtensionPayload, error) {
+func (s stubExtensionService) Update(
+	ctx context.Context,
+	name string,
+	req contract.UpdateExtensionRequest,
+	actor taskpkg.ActorContext,
+) (contract.ManagedExtensionUpdatePayload, error) {
+	if s.UpdateFn == nil {
+		return contract.ManagedExtensionUpdatePayload{}, nil
+	}
+	return s.UpdateFn(ctx, name, req, actor)
+}
+
+func (s stubExtensionService) Remove(
+	ctx context.Context,
+	name string,
+	actor taskpkg.ActorContext,
+) (contract.ManagedExtensionRemovePayload, error) {
+	if s.RemoveFn == nil {
+		return contract.ManagedExtensionRemovePayload{}, nil
+	}
+	return s.RemoveFn(ctx, name, actor)
+}
+
+func (s stubExtensionService) Enable(
+	ctx context.Context,
+	name string,
+	actor taskpkg.ActorContext,
+) (contract.ExtensionPayload, error) {
 	if s.EnableFn == nil {
 		return contract.ExtensionPayload{}, nil
 	}
-	return s.EnableFn(ctx, name)
+	return s.EnableFn(ctx, name, actor)
 }
 
-func (s stubExtensionService) Disable(ctx context.Context, name string) (contract.ExtensionPayload, error) {
+func (s stubExtensionService) Disable(
+	ctx context.Context,
+	name string,
+	actor taskpkg.ActorContext,
+) (contract.ExtensionPayload, error) {
 	if s.DisableFn == nil {
 		return contract.ExtensionPayload{}, nil
 	}
-	return s.DisableFn(ctx, name)
+	return s.DisableFn(ctx, name, actor)
 }
 
 func (s stubExtensionService) Status(ctx context.Context, name string) (contract.ExtensionPayload, error) {
@@ -76,6 +125,16 @@ func (s stubExtensionService) Status(ctx context.Context, name string) (contract
 		return contract.ExtensionPayload{}, nil
 	}
 	return s.StatusFn(ctx, name)
+}
+
+func (s stubExtensionService) Provenance(
+	ctx context.Context,
+	name string,
+) (contract.ExtensionProvenancePayload, error) {
+	if s.ProvenanceFn == nil {
+		return contract.ExtensionProvenancePayload{}, nil
+	}
+	return s.ProvenanceFn(ctx, name)
 }
 
 func TestRegisterRoutesCoversTechSpecEndpoints(t *testing.T) {
@@ -97,7 +156,9 @@ func TestRegisterRoutesCoversTechSpecEndpoints(t *testing.T) {
 		"DELETE /api/automation/triggers/:id",
 		"DELETE /api/bridges/:id/secret-bindings/:binding_name",
 		"DELETE /api/bundles/activations/:id",
+		"DELETE /api/extensions/:name",
 		"DELETE /api/memory/:filename",
+		"DELETE /api/notifications/presets/:name",
 		"DELETE /api/settings/sandboxes/:name",
 		"DELETE /api/settings/hooks/:name",
 		"DELETE /api/settings/mcp-servers/:name",
@@ -137,19 +198,26 @@ func TestRegisterRoutesCoversTechSpecEndpoints(t *testing.T) {
 		"GET /api/bridges/health/stream",
 		"GET /api/bridges/:id/routes",
 		"GET /api/bridges/:id/secret-bindings",
+		"GET /api/bridges/:id/targets",
 		"GET /api/bridges/providers",
 		"GET /api/bundles/activations",
 		"GET /api/bundles/activations/:id",
 		"GET /api/bundles/catalog",
 		"GET /api/bundles/network/settings",
-		"GET /api/daemon/status",
+		"GET /api/doctor",
 		"GET /api/extensions",
 		"GET /api/extensions/:name",
+		"GET /api/extensions/:name/provenance",
+		"GET /api/extensions/marketplace",
 		"GET /api/hooks/catalog",
 		"GET /api/hooks/events",
+		"GET /api/notifications/presets",
+		"GET /api/notifications/presets/:name",
 		"GET /api/workspaces/:workspace_id/hooks/runs",
 		"GET /api/internal/hosted-mcp/projection",
 		"GET /api/internal/hosted-mcp/projection/stream",
+		"GET /api/logs",
+		"GET /api/logs/stream",
 		"GET /api/memory",
 		"GET /api/memory/:filename",
 		"GET /api/memory/config",
@@ -181,12 +249,12 @@ func TestRegisterRoutesCoversTechSpecEndpoints(t *testing.T) {
 		"GET /api/workspaces/:workspace_id/network/channels/:channel/threads/:thread_id/messages",
 		"GET /api/network/status",
 		"GET /api/workspaces/:workspace_id/network/work/:work_id",
-		"GET /api/workspaces/:workspace_id/observe/events",
-		"GET /api/workspaces/:workspace_id/observe/events/stream",
-		"GET /api/observe/health",
+		"GET /api/status",
 		"GET /api/observe/tasks/dashboard",
 		"GET /api/observe/tasks/inbox",
-		"GET /api/providers/*catalog_path",
+		"GET /api/model-catalog/*catalog_path",
+		"GET /api/providers",
+		"GET /api/providers/:provider_id",
 		"GET /api/resources",
 		"GET /api/resources/:kind",
 		"GET /api/resources/:kind/:id",
@@ -196,11 +264,13 @@ func TestRegisterRoutesCoversTechSpecEndpoints(t *testing.T) {
 		"GET /api/workspaces/:workspace_id/sessions/:session_id/health",
 		"GET /api/workspaces/:workspace_id/sessions/:session_id/history",
 		"GET /api/workspaces/:workspace_id/sessions/:session_id/inspect",
+		"GET /api/workspaces/:workspace_id/sessions/:session_id/recap",
 		"GET /api/workspaces/:workspace_id/sessions/:session_id/status",
 		"GET /api/workspaces/:workspace_id/sessions/:session_id/transcript",
 		"GET /api/workspaces/:workspace_id/sessions/:session_id/stream",
 		"GET /api/workspaces/:workspace_id/sessions/:session_id/tools",
 		"GET /api/settings/actions/restart/:operation_id",
+		"GET /api/settings/apply",
 		"GET /api/settings/automation",
 		"GET /api/settings/sandboxes",
 		"GET /api/settings/sandboxes/:name",
@@ -216,16 +286,23 @@ func TestRegisterRoutesCoversTechSpecEndpoints(t *testing.T) {
 		"GET /api/settings/providers",
 		"GET /api/settings/providers/:name",
 		"GET /api/settings/skills",
+		"GET /api/support/bundles/:operation_id",
+		"GET /api/support/bundles/:operation_id/download",
 		"GET /api/skills",
 		"GET /api/skills/:name",
 		"GET /api/skills/:name/content",
+		"GET /api/skills/:name/shadows",
 		"GET /api/skills/marketplace/info",
 		"GET /api/skills/marketplace/search",
+		"GET /api/scheduler",
+		"GET /api/scheduler/backlog",
 		"GET /api/task-runs/:id",
 		"GET /api/task-runs/:id/reviews",
+		"GET /api/runs/:id/inspect",
 		"GET /api/task-reviews/:id",
 		"GET /api/tasks",
 		"GET /api/tasks/:id",
+		"GET /api/tasks/:id/inspect",
 		"GET /api/tasks/:id/notifications/bridges",
 		"GET /api/tasks/:id/notifications/bridges/:subscription_id",
 		"GET /api/tasks/:id/execution-profile",
@@ -262,6 +339,7 @@ func TestRegisterRoutesCoversTechSpecEndpoints(t *testing.T) {
 		"POST /api/bridges",
 		"POST /api/bridges/:id/disable",
 		"POST /api/bridges/:id/enable",
+		"POST /api/bridges/:id/resolve",
 		"POST /api/bridges/:id/restart",
 		"POST /api/bridges/:id/test-delivery",
 		"POST /api/bundles/activations",
@@ -284,6 +362,7 @@ func TestRegisterRoutesCoversTechSpecEndpoints(t *testing.T) {
 		"POST /api/extensions",
 		"POST /api/extensions/:name/disable",
 		"POST /api/extensions/:name/enable",
+		"POST /api/notifications/presets",
 		"POST /api/internal/hosted-mcp/bind",
 		"POST /api/internal/hosted-mcp/release",
 		"POST /api/internal/hosted-mcp/tools/call",
@@ -305,7 +384,16 @@ func TestRegisterRoutesCoversTechSpecEndpoints(t *testing.T) {
 		"POST /api/memory/sessions/prune",
 		"POST /api/memory/sessions/repair",
 		"POST /api/workspaces/:workspace_id/memory/sessions/:session_id/replay",
-		"POST /api/providers/*catalog_path",
+		"POST /api/model-catalog/*catalog_path",
+		"POST /api/providers/:provider_id/auth/probe",
+		"POST /api/runs/:id/fail",
+		"POST /api/runs/:id/release",
+		"POST /api/runs/:id/retry",
+		"POST /api/runs/bulk/fail",
+		"POST /api/runs/bulk/release",
+		"POST /api/scheduler/drain",
+		"POST /api/scheduler/pause",
+		"POST /api/scheduler/resume",
 		"POST /api/workspaces/:workspace_id/network/channels",
 		"POST /api/workspaces/:workspace_id/network/channels/:channel/directs/resolve",
 		"POST /api/workspaces/:workspace_id/network/send",
@@ -314,12 +402,17 @@ func TestRegisterRoutesCoversTechSpecEndpoints(t *testing.T) {
 		"POST /api/workspaces/:workspace_id/sessions/:session_id/clear",
 		"POST /api/workspaces/:workspace_id/sessions/:session_id/prompt",
 		"POST /api/workspaces/:workspace_id/sessions/:session_id/prompt/cancel",
+		"POST /api/workspaces/:workspace_id/sessions/:session_id/interrupt",
+		"POST /api/workspaces/:workspace_id/sessions/:session_id/steer",
+		"DELETE /api/workspaces/:workspace_id/sessions/:session_id/prompt/queue/:queue_entry_id",
 		"POST /api/workspaces/:workspace_id/sessions/:session_id/repair",
-		"POST /api/workspaces/:workspace_id/sessions/:session_id/resume",
+		"POST /api/workspaces/:workspace_id/sessions/:session_id/attach",
 		"POST /api/workspaces/:workspace_id/sessions/:session_id/soul/refresh",
 		"POST /api/workspaces/:workspace_id/sessions/:session_id/stop",
 		"POST /api/workspaces/:workspace_id/sessions/:session_id/tools/search",
 		"POST /api/settings/actions/restart",
+		"POST /api/settings/reload",
+		"POST /api/support/bundles",
 		"POST /api/skills/:name/disable",
 		"POST /api/skills/:name/enable",
 		"POST /api/skills/marketplace/install",
@@ -338,8 +431,10 @@ func TestRegisterRoutesCoversTechSpecEndpoints(t *testing.T) {
 		"POST /api/tasks/:id/cancel",
 		"POST /api/tasks/:id/children",
 		"POST /api/tasks/:id/dependencies",
+		"POST /api/tasks/:id/pause",
 		"POST /api/tasks/:id/publish",
 		"POST /api/tasks/:id/reject",
+		"POST /api/tasks/:id/resume",
 		"POST /api/tasks/:id/runs",
 		"POST /api/tasks/:id/start",
 		"POST /api/tasks/:id/triage/archive",
@@ -353,6 +448,8 @@ func TestRegisterRoutesCoversTechSpecEndpoints(t *testing.T) {
 		"PUT /api/agents/:name/heartbeat",
 		"PUT /api/agents/:name/soul",
 		"PUT /api/bridges/:id/secret-bindings/:binding_name",
+		"PUT /api/extensions/:name",
+		"PUT /api/notifications/presets/:name",
 		"PUT /api/settings/sandboxes/:name",
 		"PUT /api/settings/hooks/:name",
 		"PUT /api/settings/mcp-servers/:name",
@@ -370,6 +467,52 @@ func TestRegisterRoutesCoversTechSpecEndpoints(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("route[%d] = %q, want %q", i, got[i], want[i])
 		}
+	}
+}
+
+func TestRegisterRoutesRejectsLegacyStatusSurfaces(t *testing.T) {
+	t.Parallel()
+
+	homePaths := newTestHomePaths(t)
+	handlers := newTestHandlers(t, stubSessionManager{}, stubObserver{}, homePaths)
+	engine := newTestRouter(t, handlers)
+
+	for _, path := range []string{"/api/daemon/status", "/api/observe/health"} {
+		t.Run("Should return 404 for "+path, func(t *testing.T) {
+			t.Parallel()
+
+			resp := performRequest(t, engine, http.MethodGet, path, nil)
+			if resp.Code != http.StatusNotFound {
+				t.Fatalf("GET %s status = %d, want %d", path, resp.Code, http.StatusNotFound)
+			}
+		})
+	}
+}
+
+func TestRegisterRoutesRejectsLegacyProviderModelCatalogSurfaces(t *testing.T) {
+	t.Parallel()
+
+	homePaths := newTestHomePaths(t)
+	handlers := newTestHandlers(t, stubSessionManager{}, stubObserver{}, homePaths)
+	engine := newTestRouter(t, handlers)
+
+	for _, tc := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/api/providers/models"},
+		{method: http.MethodGet, path: "/api/providers/codex/models"},
+		{method: http.MethodPost, path: "/api/providers/codex/models/refresh"},
+		{method: http.MethodGet, path: "/api/providers/codex/models/status"},
+	} {
+		t.Run("Should return 404 for "+tc.method+" "+tc.path, func(t *testing.T) {
+			t.Parallel()
+
+			resp := performRequest(t, engine, tc.method, tc.path, nil)
+			if resp.Code != http.StatusNotFound {
+				t.Fatalf("%s %s status = %d, want %d", tc.method, tc.path, resp.Code, http.StatusNotFound)
+			}
+		})
 	}
 }
 
@@ -667,10 +810,17 @@ func TestRegisterTaskRoutesUseSharedHandlerBindings(t *testing.T) {
 	expectedHandlers := map[string]string{
 		"GET /api/observe/tasks/dashboard":                             "TaskDashboard",
 		"GET /api/observe/tasks/inbox":                                 "TaskInbox",
+		"GET /api/runs/:id/inspect":                                    "InspectRun",
+		"POST /api/runs/:id/fail":                                      "ForceFailTaskRun",
+		"POST /api/runs/:id/release":                                   "ForceReleaseTaskRun",
+		"POST /api/runs/:id/retry":                                     "RetryTaskRun",
+		"POST /api/runs/bulk/fail":                                     "BulkForceFailTaskRuns",
+		"POST /api/runs/bulk/release":                                  "BulkForceReleaseTaskRuns",
 		"GET /api/task-runs/:id":                                       "GetTaskRun",
 		"GET /api/task-runs/:id/reviews":                               "ListTaskRunReviews",
 		"GET /api/task-reviews/:id":                                    "GetTaskRunReview",
 		"GET /api/tasks/:id/execution-profile":                         "GetTaskExecutionProfile",
+		"GET /api/tasks/:id/inspect":                                   "InspectTask",
 		"GET /api/tasks/:id/notifications/bridges":                     "ListTaskBridgeNotificationSubscriptions",
 		"GET /api/tasks/:id/notifications/bridges/:subscription_id":    "GetTaskBridgeNotificationSubscription",
 		"GET /api/tasks/:id/reviews":                                   "ListTaskReviews",
@@ -1295,20 +1445,26 @@ func TestStopSessionHandlerReturnsStopped(t *testing.T) {
 	}
 }
 
-func TestResumeSessionHandlerReturnsSession(t *testing.T) {
+func TestAttachSessionHandlerReturnsSession(t *testing.T) {
 	homePaths := newTestHomePaths(t)
 	manager := stubSessionManager{
-		ResumeFn: func(_ context.Context, id string) (*session.Session, error) {
-			if id != "sess-123" {
-				t.Fatalf("Resume() id = %q, want sess-123", id)
+		AttachSessionFn: func(_ context.Context, req store.SessionAttachRequest) (store.SessionAttach, error) {
+			if req.SessionID != "sess-123" {
+				t.Fatalf("AttachSession() session id = %q, want sess-123", req.SessionID)
 			}
-			return newSession("sess-123"), nil
+			now := time.Date(2026, 4, 3, 12, 0, 1, 0, time.UTC)
+			return store.SessionAttach{
+				SessionID:       req.SessionID,
+				AttachedTo:      req.AttachedTo,
+				AttachedAt:      now,
+				AttachExpiresAt: now.Add(time.Minute),
+			}, nil
 		},
 	}
 	handlers := newTestHandlers(t, manager, stubObserver{}, homePaths)
 	engine := newTestRouter(t, handlers)
 
-	recorder := performRequest(t, engine, http.MethodPost, "/api/workspaces/ws-workspace/sessions/sess-123/resume", nil)
+	recorder := performRequest(t, engine, http.MethodPost, "/api/workspaces/ws-workspace/sessions/sess-123/attach", nil)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
 	}
@@ -1429,6 +1585,52 @@ func TestPromptSessionHandlerReturnsRawSSEStreamWhenRequested(t *testing.T) {
 		}
 		if records[0].Event != "agent_message" || records[1].Event != "done" {
 			t.Fatalf("events = [%s %s], want [agent_message done]", records[0].Event, records[1].Event)
+		}
+	})
+}
+
+func TestPromptSessionRawHandlerPreservesBusyInputMode(t *testing.T) {
+	t.Run("ShouldForwardInterruptModeOnRawCLIPath", func(t *testing.T) {
+		t.Parallel()
+
+		homePaths := newTestHomePaths(t)
+		var gotOpts session.SendPromptOpts
+		manager := stubSessionManager{
+			SendPromptFn: func(_ context.Context, id string, opts session.SendPromptOpts) (session.SendPromptResult, error) {
+				if id != "sess-123" {
+					t.Fatalf("SendPrompt() id = %q, want sess-123", id)
+				}
+				gotOpts = opts
+				return session.SendPromptResult{
+					Status:      "interrupted",
+					Mode:        opts.Mode,
+					Interrupted: true,
+					NewTurnID:   "turn-2",
+				}, nil
+			},
+		}
+		handlers := newTestHandlers(t, manager, stubObserver{}, homePaths)
+		engine := newTestRouter(t, handlers)
+
+		recorder := performRequest(
+			t,
+			engine,
+			http.MethodPost,
+			"/api/workspaces/ws-workspace/sessions/sess-123/prompt?format=raw",
+			[]byte("{\"message\":\"replace\",\"mode\":\"interrupt\"}"),
+		)
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
+		}
+		if gotOpts.Message != "replace" || gotOpts.Mode != session.BusyInputModeInterrupt {
+			t.Fatalf("SendPrompt() opts = %#v, want interrupt replace", gotOpts)
+		}
+		var decoded contract.SendPromptResultResponse
+		if err := json.Unmarshal(recorder.Body.Bytes(), &decoded); err != nil {
+			t.Fatalf("json.Unmarshal(prompt result) error = %v; body=%s", err, recorder.Body.String())
+		}
+		if decoded.Prompt.Mode != contract.PromptModeInterrupt || !decoded.Prompt.Interrupted {
+			t.Fatalf("decoded prompt = %#v, want interrupted mode", decoded.Prompt)
 		}
 	})
 }
@@ -1876,7 +2078,7 @@ func TestGetAgentHandlerReturnsAgent(t *testing.T) {
 	}
 }
 
-func TestObserveEventsHandlerReturnsEvents(t *testing.T) {
+func TestListLogsHandlerReturnsEvents(t *testing.T) {
 	homePaths := newTestHomePaths(t)
 	observer := stubObserver{
 		QueryEventsFn: func(context.Context, store.EventSummaryQuery) ([]store.EventSummary, error) {
@@ -1893,13 +2095,13 @@ func TestObserveEventsHandlerReturnsEvents(t *testing.T) {
 	handlers := newTestHandlers(t, stubSessionManager{}, observer, homePaths)
 	engine := newTestRouter(t, handlers)
 
-	recorder := performRequest(t, engine, http.MethodGet, "/api/workspaces/ws-workspace/observe/events", nil)
+	recorder := performRequest(t, engine, http.MethodGet, "/api/logs?workspace_id=ws-workspace", nil)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
 	}
 
 	var response struct {
-		Events []observeEventPayload `json:"events"`
+		Events []logEventPayload `json:"events"`
 	}
 	decodeJSONResponse(t, recorder, &response)
 	if len(response.Events) != 1 || response.Events[0].ID != "sum-1" {
@@ -1967,14 +2169,12 @@ func TestHealthHandlerReturnsMetrics(t *testing.T) {
 	handlers := newTestHandlers(t, stubSessionManager{}, observer, homePaths)
 	engine := newTestRouter(t, handlers)
 
-	recorder := performRequest(t, engine, http.MethodGet, "/api/observe/health", nil)
+	recorder := performRequest(t, engine, http.MethodGet, "/api/status", nil)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
 	}
 
-	var response struct {
-		Health observe.Health `json:"health"`
-	}
+	var response contract.StatusPayload
 	decodeJSONResponse(t, recorder, &response)
 	if response.Health.ActiveSessions != 3 {
 		t.Fatalf("health.active_sessions = %d, want 3", response.Health.ActiveSessions)
@@ -1996,14 +2196,12 @@ func TestDaemonStatusHandlerReturnsRunningState(t *testing.T) {
 	handlers := newTestHandlers(t, manager, observer, homePaths)
 	engine := newTestRouter(t, handlers)
 
-	recorder := performRequest(t, engine, http.MethodGet, "/api/daemon/status", nil)
+	recorder := performRequest(t, engine, http.MethodGet, "/api/status", nil)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
 	}
 
-	var response struct {
-		Daemon daemonStatusPayload `json:"daemon"`
-	}
+	var response contract.StatusPayload
 	decodeJSONResponse(t, recorder, &response)
 	if response.Daemon.Status != "running" {
 		t.Fatalf("daemon.status = %q, want running", response.Daemon.Status)
@@ -2023,8 +2221,10 @@ func TestHelperParsersAndPayloads(t *testing.T) {
 	if _, err := parseOptionalInt64("bad"); err == nil {
 		t.Fatal("parseOptionalInt64() error = nil, want non-nil")
 	}
-	if _, err := parseObserveCursor("bad"); err == nil {
-		t.Fatal("parseObserveCursor() error = nil, want non-nil")
+	if _, err := parseLogsCursor("bad"); err == nil {
+		t.Fatal("parseLogsCursor() error = nil, want non-nil")
+	} else if !strings.Contains(err.Error(), "invalid Last-Event-ID") {
+		t.Fatalf("parseLogsCursor() error = %q, want invalid Last-Event-ID", err)
 	}
 	if got := string(payloadJSON("not-json")); got != `"not-json"` {
 		t.Fatalf("payloadJSON(non-json) = %s, want %q", got, `"not-json"`)
@@ -2091,7 +2291,7 @@ func TestObserveEventStreamUsesLastEventIDCursor(t *testing.T) {
 	req := httptest.NewRequestWithContext(
 		context.Background(),
 		http.MethodGet,
-		"/api/workspaces/ws-workspace/observe/events/stream",
+		"/api/logs/stream?workspace_id=ws-workspace",
 		http.NoBody,
 	)
 	req.Header.Set("Last-Event-ID", timestamp.Format(time.RFC3339Nano)+"|00000000000000000001")

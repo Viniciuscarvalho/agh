@@ -10,10 +10,14 @@ vi.mock("../../adapters/settings-api", () => ({
   deleteSettingsProvider: vi.fn(),
   disableSettingsExtension: vi.fn(),
   enableSettingsExtension: vi.fn(),
+  installSettingsExtension: vi.fn(),
   putSettingsSandbox: vi.fn(),
   putSettingsHook: vi.fn(),
   putSettingsMCPServer: vi.fn(),
   putSettingsProvider: vi.fn(),
+  reloadSettings: vi.fn(),
+  removeSettingsExtension: vi.fn(),
+  updateSettingsExtension: vi.fn(),
   updateSettingsAutomation: vi.fn(),
   updateSettingsGeneral: vi.fn(),
   updateSettingsHooksExtensions: vi.fn(),
@@ -28,7 +32,11 @@ import {
   deleteSettingsProvider,
   disableSettingsExtension,
   enableSettingsExtension,
+  installSettingsExtension,
   putSettingsMCPServer,
+  reloadSettings,
+  removeSettingsExtension,
+  updateSettingsExtension,
   updateSettingsGeneral,
   updateSettingsMemory,
 } from "../../adapters/settings-api";
@@ -41,7 +49,11 @@ import {
   useDeleteSettingsProvider,
   useDisableSettingsExtension,
   useEnableSettingsExtension,
+  useInstallSettingsExtension,
   usePutSettingsMCPServer,
+  useReloadSettings,
+  useRemoveSettingsExtension,
+  useUpdateSettingsExtension,
   useUpdateSettingsGeneral,
   useUpdateSettingsMemory,
 } from "../use-settings-mutations";
@@ -58,10 +70,14 @@ function createWrapper() {
 }
 
 const generalMutation = {
+  active_config_hash: "sha256:active-live",
+  active_generation: 42,
   section: "general" as const,
   scope: "global" as const,
-  behavior: "restart_required" as const,
   applied: true,
+  apply_record_id: "cfg_apply_001",
+  lifecycle: "restart-required" as const,
+  next_action: "restart-daemon" as const,
   restart_required: true,
   restart_scope: "daemon",
   warnings: ["restart the daemon"],
@@ -84,7 +100,7 @@ afterEach(() => {
 });
 
 describe("useUpdateSettingsGeneral", () => {
-  it("records mutation state and invalidates only the general section", async () => {
+  it("records mutation state and invalidates the general section plus apply records", async () => {
     const { queryClient, wrapper } = createWrapper();
     const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
     vi.mocked(updateSettingsGeneral).mockResolvedValue(generalMutation);
@@ -94,7 +110,10 @@ describe("useUpdateSettingsGeneral", () => {
     await act(async () => {
       await result.current.mutateAsync({
         config: {
-          daemon: { socket: "/tmp/a.sock" },
+          daemon: {
+            reload_timeouts: { bridges: "30s", mcp: "10s", providers: "5s" },
+            socket: "/tmp/a.sock",
+          },
           defaults: { agent: "claude-code" },
           http: { host: "127.0.0.1", port: 2123 },
           limits: { max_concurrent_agents: 4 },
@@ -108,12 +127,17 @@ describe("useUpdateSettingsGeneral", () => {
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: settingsKeys.section("general"),
       });
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: settingsKeys.applyRoot(),
+      });
     });
 
     expect(useSettingsRestartStore.getState().lastMutation?.restartRequired).toBe(true);
     expect(useSettingsRestartStore.getState().lastMutation?.warnings).toEqual([
       "restart the daemon",
     ]);
+    expect(useSettingsRestartStore.getState().lastMutation?.nextAction).toBe("restart-daemon");
+    expect(useSettingsRestartStore.getState().lastMutation?.applyRecordId).toBe("cfg_apply_001");
 
     const memoryInvalidations = invalidateSpy.mock.calls.filter(([arg]) =>
       JSON.stringify(arg?.queryKey).includes("memory")
@@ -123,7 +147,7 @@ describe("useUpdateSettingsGeneral", () => {
 });
 
 describe("useUpdateSettingsMemory", () => {
-  it("invalidates only memory section queries", async () => {
+  it("invalidates memory section and apply records", async () => {
     const { queryClient, wrapper } = createWrapper();
     const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
     vi.mocked(updateSettingsMemory).mockResolvedValue({
@@ -144,7 +168,28 @@ describe("useUpdateSettingsMemory", () => {
 
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: settingsKeys.section("memory") });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: settingsKeys.applyRoot() });
     });
+  });
+});
+
+describe("useReloadSettings", () => {
+  it("records reload state and invalidates all settings queries", async () => {
+    const { queryClient, wrapper } = createWrapper();
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+    vi.mocked(reloadSettings).mockResolvedValue(generalMutation);
+
+    const { result } = renderHook(() => useReloadSettings(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync();
+    });
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: settingsKeys.all });
+    });
+
+    expect(useSettingsRestartStore.getState().lastMutation?.activeGeneration).toBe(42);
   });
 });
 
@@ -165,6 +210,7 @@ describe("provider mutations", () => {
 
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: settingsKeys.providersRoot() });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: settingsKeys.applyRoot() });
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: settingsKeys.providerDetail("openai"),
       });
@@ -193,6 +239,7 @@ describe("mcp server mutations", () => {
 
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: settingsKeys.mcpRoot() });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: settingsKeys.applyRoot() });
     });
 
     expect(putSettingsMCPServer).toHaveBeenCalledWith(
@@ -278,6 +325,64 @@ describe("extension action mutations", () => {
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: settingsKeys.extensionsRoot(),
+      });
+    });
+  });
+
+  it("installs, updates, and removes extensions through the shared invalidation path", async () => {
+    const { queryClient, wrapper } = createWrapper();
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+    vi.mocked(installSettingsExtension).mockResolvedValue(extension);
+    vi.mocked(updateSettingsExtension).mockResolvedValue({
+      name: "daytona",
+      slug: "daytona/daytona-extension",
+      registry: "github",
+      path: "/tmp/agh/extensions/daytona",
+      current_version: "1.2.3",
+      latest_version: "1.2.4",
+      status: "available",
+    });
+    vi.mocked(removeSettingsExtension).mockResolvedValue({
+      name: "daytona",
+      path: "/tmp/agh/extensions/daytona",
+      status: "removed",
+    });
+
+    const install = renderHook(() => useInstallSettingsExtension(), { wrapper });
+    await act(async () => {
+      await install.result.current.mutateAsync({
+        slug: "daytona/daytona-extension",
+        source: "github",
+        allow_unverified: true,
+      });
+    });
+    expect(installSettingsExtension).toHaveBeenCalledWith({
+      slug: "daytona/daytona-extension",
+      source: "github",
+      allow_unverified: true,
+    });
+
+    const update = renderHook(() => useUpdateSettingsExtension(), { wrapper });
+    await act(async () => {
+      await update.result.current.mutateAsync({
+        name: "daytona",
+        body: { version: "1.2.4" },
+      });
+    });
+    expect(updateSettingsExtension).toHaveBeenCalledWith("daytona", { version: "1.2.4" });
+
+    const remove = renderHook(() => useRemoveSettingsExtension(), { wrapper });
+    await act(async () => {
+      await remove.result.current.mutateAsync("daytona");
+    });
+    expect(removeSettingsExtension).toHaveBeenCalledWith("daytona");
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: settingsKeys.extensionsRoot(),
+      });
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: settingsKeys.section("hooks-extensions"),
       });
     });
   });

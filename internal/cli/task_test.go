@@ -64,6 +64,79 @@ func TestTaskCreateAndUpdateRejectInvalidFlagCombos(t *testing.T) {
 	}
 }
 
+func TestTaskInspectCommandMapsTargets(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Should inspect task ids through the task inspect client", func(t *testing.T) {
+		t.Parallel()
+
+		var gotID string
+		stdout, _, err := executeRootCommand(t, newTestDeps(t, &stubClient{
+			inspectTaskFn: func(_ context.Context, id string) (TaskInspectRecord, error) {
+				gotID = id
+				return sampleTaskInspectRecord("task"), nil
+			},
+		}), "task", "inspect", "task-1", "-o", "json")
+		if err != nil {
+			t.Fatalf("task inspect task id error = %v", err)
+		}
+		var payload TaskInspectRecord
+		if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+			t.Fatalf("decode task inspect output: %v", err)
+		}
+		if gotID != "task-1" || payload.Target != "task" || payload.NextAction != "stranded" {
+			t.Fatalf("gotID/payload = %q / %#v", gotID, payload)
+		}
+	})
+
+	t.Run("Should inspect run ids through the run inspect client", func(t *testing.T) {
+		t.Parallel()
+
+		var gotID string
+		stdout, _, err := executeRootCommand(t, newTestDeps(t, &stubClient{
+			inspectRunFn: func(_ context.Context, id string) (TaskInspectRecord, error) {
+				gotID = id
+				return sampleTaskInspectRecord("run"), nil
+			},
+		}), "task", "inspect", "run-1", "-o", "json")
+		if err != nil {
+			t.Fatalf("task inspect run id error = %v", err)
+		}
+		var payload TaskInspectRecord
+		if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+			t.Fatalf("decode run inspect output: %v", err)
+		}
+		if gotID != "run-1" || payload.Target != "run" || payload.CurrentRun == nil {
+			t.Fatalf("gotID/payload = %q / %#v", gotID, payload)
+		}
+	})
+
+	t.Run("Should render id format diagnostic without calling the daemon for unknown ids", func(t *testing.T) {
+		t.Parallel()
+
+		stdout, _, err := executeRootCommand(
+			t,
+			newTestDeps(t, &stubClient{}),
+			"task",
+			"inspect",
+			"unknown-1",
+			"-o",
+			"json",
+		)
+		if err != nil {
+			t.Fatalf("task inspect unknown id error = %v", err)
+		}
+		var payload TaskInspectRecord
+		if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+			t.Fatalf("decode unknown inspect output: %v", err)
+		}
+		if payload.Target != "unknown" || len(payload.Diagnostics) != 1 ||
+			payload.Diagnostics[0].Code != contract.CodeIDFormatUnknown {
+			t.Fatalf("unknown inspect payload = %#v", payload)
+		}
+	})
+}
+
 func TestTaskCreateRemainsOperatorExplicitWithAgentEnv(t *testing.T) {
 	t.Parallel()
 
@@ -774,45 +847,35 @@ func TestAgentTaskCommandsMapLeaseRequests(t *testing.T) {
 		{
 			name: "Should map task fail request",
 			args: []string{
-				"task", "fail", "run-1", "--error", "boom", "--metadata", `{"code":"E_TASK"}`, "-o", "json",
+				"task",
+				"fail",
+				"run-1",
+				"--error",
+				"boom",
+				"--metadata",
+				`{"phase":"agent"}`,
+				"-o",
+				"json",
 			},
 			fn: func(t *testing.T) *stubClient {
 				t.Helper()
 				return &stubClient{
 					agentTaskFailFn: func(
-						_ context.Context,
+						ctx context.Context,
 						runID string,
 						request AgentTaskFailRequest,
 						credentials agentidentity.Credentials,
 					) (AgentTaskLeaseRecord, error) {
+						if ctx == nil {
+							t.Fatal("AgentTaskFail context is nil")
+						}
 						assertAgentCredentials(t, credentials)
 						if runID != "run-1" ||
 							request.Error != "boom" ||
-							string(request.Metadata) != `{"code":"E_TASK"}` {
+							string(request.Metadata) != `{"phase":"agent"}` {
 							t.Fatalf("fail runID=%q request=%#v, want run-1 error metadata", runID, request)
 						}
 						return agentTaskLeaseRecord(taskpkg.TaskRunStatusFailed), nil
-					},
-				}
-			},
-		},
-		{
-			name: "Should map task release request",
-			args: []string{"task", "release", "run-1", "--reason", "handoff", "-o", "json"},
-			fn: func(t *testing.T) *stubClient {
-				t.Helper()
-				return &stubClient{
-					agentTaskReleaseFn: func(
-						_ context.Context,
-						runID string,
-						request AgentTaskReleaseRequest,
-						credentials agentidentity.Credentials,
-					) (AgentTaskLeaseRecord, error) {
-						assertAgentCredentials(t, credentials)
-						if runID != "run-1" || request.Reason != "handoff" {
-							t.Fatalf("release runID=%q request=%#v, want run-1 reason", runID, request)
-						}
-						return agentTaskLeaseRecord(taskpkg.TaskRunStatusQueued), nil
 					},
 				}
 			},
@@ -837,6 +900,144 @@ func TestAgentTaskCommandsMapLeaseRequests(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTaskForceCommandsMapRequests(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Should map single force fail request", func(t *testing.T) {
+		t.Parallel()
+
+		deps := newTestDeps(t, &stubClient{
+			forceFailTaskRunFn: func(
+				_ context.Context,
+				runID string,
+				request ForceFailTaskRunRequest,
+			) (TaskRunRecord, error) {
+				if runID != "run-1" ||
+					request.Reason != "boom" ||
+					string(request.Metadata) != `{"code":"E_TASK"}` {
+					t.Fatalf("force fail runID=%q request=%#v, want reason metadata", runID, request)
+				}
+				return taskRunRecord("run-1", taskpkg.TaskRunStatusFailed), nil
+			},
+		})
+		stdout, _, err := executeRootCommand(
+			t,
+			deps,
+			"task",
+			"fail",
+			"run-1",
+			"--reason",
+			"boom",
+			"--metadata",
+			`{"code":"E_TASK"}`,
+			"-o",
+			"json",
+		)
+		if err != nil {
+			t.Fatalf("task fail error = %v", err)
+		}
+		var output TaskRunRecord
+		if err := json.Unmarshal([]byte(stdout), &output); err != nil {
+			t.Fatalf("json.Unmarshal(task fail) error = %v", err)
+		}
+		if output.ID != "run-1" || output.Status != taskpkg.TaskRunStatusFailed {
+			t.Fatalf("task fail output = %#v, want failed run-1", output)
+		}
+	})
+
+	t.Run("Should map bulk release request", func(t *testing.T) {
+		t.Parallel()
+
+		deps := newTestDeps(t, &stubClient{
+			bulkForceReleaseRunsFn: func(
+				_ context.Context,
+				request BulkForceTaskRunRequest,
+			) (BulkForceTaskRunRecord, error) {
+				if strings.Join(request.RunIDs, ",") != "run-1,run-2" || request.Reason != "handoff" {
+					t.Fatalf("bulk release request = %#v, want two run ids and reason", request)
+				}
+				run1 := taskRunRecord("run-1", taskpkg.TaskRunStatusQueued)
+				run2 := taskRunRecord("run-2", taskpkg.TaskRunStatusQueued)
+				return BulkForceTaskRunRecord{Results: []BulkForceTaskRunItemRecord{
+					{
+						RunID: "run-1",
+						OK:    true,
+						Run:   &run1,
+					},
+					{
+						RunID: "run-2",
+						OK:    true,
+						Run:   &run2,
+					},
+				}}, nil
+			},
+		})
+		stdout, _, err := executeRootCommand(
+			t,
+			deps,
+			"task",
+			"release",
+			"run-1",
+			"run-2",
+			"--reason",
+			"handoff",
+			"-o",
+			"json",
+		)
+		if err != nil {
+			t.Fatalf("task release error = %v", err)
+		}
+		var output BulkForceTaskRunRecord
+		if err := json.Unmarshal([]byte(stdout), &output); err != nil {
+			t.Fatalf("json.Unmarshal(task release) error = %v", err)
+		}
+		if len(output.Results) != 2 || !output.Results[0].OK || !output.Results[1].OK {
+			t.Fatalf("task release output = %#v, want two ok results", output)
+		}
+	})
+
+	t.Run("Should map retry request", func(t *testing.T) {
+		t.Parallel()
+
+		deps := newTestDeps(t, &stubClient{
+			retryTaskRunFn: func(
+				_ context.Context,
+				runID string,
+				request RetryTaskRunRequest,
+			) (RetryTaskRunRecord, error) {
+				if runID != "run-1" || string(request.Metadata) != `{"source":"operator"}` {
+					t.Fatalf("retry runID=%q request=%#v, want metadata", runID, request)
+				}
+				return RetryTaskRunRecord{
+					PreviousRun: taskRunRecord("run-1", taskpkg.TaskRunStatusFailed),
+					Run:         taskRunRecord("run-2", taskpkg.TaskRunStatusQueued),
+				}, nil
+			},
+		})
+		stdout, _, err := executeRootCommand(
+			t,
+			deps,
+			"task",
+			"retry",
+			"run-1",
+			"--metadata",
+			`{"source":"operator"}`,
+			"-o",
+			"json",
+		)
+		if err != nil {
+			t.Fatalf("task retry error = %v", err)
+		}
+		var output RetryTaskRunRecord
+		if err := json.Unmarshal([]byte(stdout), &output); err != nil {
+			t.Fatalf("json.Unmarshal(task retry) error = %v", err)
+		}
+		if output.PreviousRun.ID != "run-1" || output.Run.ID != "run-2" {
+			t.Fatalf("task retry output = %#v, want source run-1 and new run-2", output)
+		}
+	})
 }
 
 func TestAgentTaskCommandsValidateBeforeAgentCalls(t *testing.T) {
@@ -897,12 +1098,12 @@ func TestAgentTaskCommandsValidateBeforeAgentCalls(t *testing.T) {
 			wantErr: "must not contain raw lease credential",
 		},
 		{
-			name: "Should reject raw claim token in failure metadata",
+			name: "Should reject raw claim token in force-failure metadata",
 			args: []string{
 				"task",
 				"fail",
 				"run-1",
-				"--error",
+				"--reason",
 				"boom",
 				"--metadata",
 				`{"claim_token":"secret"}`,
@@ -941,6 +1142,18 @@ func TestAgentTaskCommandsValidateBeforeAgentCalls(t *testing.T) {
 				agentTaskReleaseFn: func(context.Context, string, AgentTaskReleaseRequest, agentidentity.Credentials) (AgentTaskLeaseRecord, error) {
 					t.Fatal("AgentTaskRelease should not be called for local validation errors")
 					return AgentTaskLeaseRecord{}, nil
+				},
+				forceFailTaskRunFn: func(context.Context, string, ForceFailTaskRunRequest) (TaskRunRecord, error) {
+					t.Fatal("ForceFailTaskRun should not be called for local validation errors")
+					return TaskRunRecord{}, nil
+				},
+				forceReleaseTaskRunFn: func(context.Context, string, ForceReleaseTaskRunRequest) (TaskRunRecord, error) {
+					t.Fatal("ForceReleaseTaskRun should not be called for local validation errors")
+					return TaskRunRecord{}, nil
+				},
+				retryTaskRunFn: func(context.Context, string, RetryTaskRunRequest) (RetryTaskRunRecord, error) {
+					t.Fatal("RetryTaskRun should not be called for local validation errors")
+					return RetryTaskRunRecord{}, nil
 				},
 			}
 			deps := newTestDeps(t, client)
@@ -1039,6 +1252,82 @@ func TestTaskMutationCommandsMapRequests(t *testing.T) {
 				if cancelTaskID != "task-1" || cancelRequest.Reason != "operator-request" ||
 					string(cancelRequest.Metadata) != `{"source":"cli"}` {
 					t.Fatalf("cancel request = %#v, want parsed cancel payload", cancelRequest)
+				}
+			},
+		},
+		{
+			name: "Should parse task pause request",
+			run: func(t *testing.T) {
+				t.Helper()
+
+				var (
+					pauseTaskID  string
+					pauseRequest PauseTaskRequest
+				)
+				deps := newTestDeps(t, &stubClient{
+					pauseTaskFn: func(_ context.Context, taskID string, request PauseTaskRequest) (TaskRecord, error) {
+						pauseTaskID = taskID
+						pauseRequest = request
+						record := sampleTaskRecord()
+						record.Paused = true
+						record.PausedReason = request.Reason
+						return record, nil
+					},
+				})
+
+				if _, _, err := executeRootCommand(
+					t,
+					deps,
+					"task",
+					"pause",
+					"task-1",
+					"--reason",
+					"provider incident",
+					"--metadata",
+					"{\"source\":\"cli\"}",
+					"-o",
+					"json",
+				); err != nil {
+					t.Fatalf("task pause error = %v", err)
+				}
+				if pauseTaskID != "task-1" || pauseRequest.Reason != "provider incident" ||
+					string(pauseRequest.Metadata) != "{\"source\":\"cli\"}" {
+					t.Fatalf("pause request = %#v taskID=%q, want parsed pause payload", pauseRequest, pauseTaskID)
+				}
+			},
+		},
+		{
+			name: "Should parse task resume request",
+			run: func(t *testing.T) {
+				t.Helper()
+
+				var (
+					resumeTaskID  string
+					resumeRequest ResumeTaskRequest
+				)
+				deps := newTestDeps(t, &stubClient{
+					resumeTaskFn: func(_ context.Context, taskID string, request ResumeTaskRequest) (TaskRecord, error) {
+						resumeTaskID = taskID
+						resumeRequest = request
+						return sampleTaskRecord(), nil
+					},
+				})
+
+				if _, _, err := executeRootCommand(
+					t,
+					deps,
+					"task",
+					"resume",
+					"task-1",
+					"--metadata",
+					"{\"source\":\"cli\"}",
+					"-o",
+					"json",
+				); err != nil {
+					t.Fatalf("task resume error = %v", err)
+				}
+				if resumeTaskID != "task-1" || string(resumeRequest.Metadata) != "{\"source\":\"cli\"}" {
+					t.Fatalf("resume request = %#v taskID=%q, want parsed resume payload", resumeRequest, resumeTaskID)
 				}
 			},
 		},
@@ -2044,6 +2333,38 @@ func sampleTaskRecord() TaskRecord {
 	}
 }
 
+func sampleTaskInspectRecord(target string) TaskInspectRecord {
+	now := time.Date(2026, 4, 17, 12, 30, 0, 0, time.UTC)
+	return TaskInspectRecord{
+		Target: target,
+		Task: TaskSummaryRecord{
+			ID:     "task-1",
+			Title:  "Inspect task",
+			Status: taskpkg.TaskStatusReady,
+			Scope:  taskpkg.ScopeWorkspace,
+		},
+		CurrentRun: &contract.TaskInspectRunPayload{
+			RunID:                   "run-1",
+			TaskID:                  "task-1",
+			Status:                  taskpkg.TaskRunStatusQueued,
+			ClaimTokenHashTruncated: "abcdef12",
+			QueuedAt:                now.Add(-10 * time.Minute),
+			Attempt:                 1,
+		},
+		Diagnostics: []contract.DiagnosticItem{{
+			ID:            "task.inspect.task_run_stranded.run-1",
+			Code:          contract.CodeTaskRunStranded,
+			Severity:      contract.SeverityWarn,
+			Category:      contract.CategoryTask,
+			Title:         "Queued task run has no eligible session",
+			Message:       "No eligible session is visible.",
+			DataFreshness: contract.FreshnessLive,
+		}},
+		NextAction: "stranded",
+		AsOf:       now,
+	}
+}
+
 func sampleTaskExecutionProfileRecord() TaskExecutionProfileRecord {
 	return TaskExecutionProfileRecord{
 		TaskID: "task-1",
@@ -2216,6 +2537,17 @@ func agentTaskLeaseRecord(status taskpkg.RunStatus) AgentTaskLeaseRecord {
 		LeaseUntil:            &leaseUntil,
 		HeartbeatAt:           &heartbeatAt,
 		CoordinationChannelID: "builders",
+	}
+}
+
+func taskRunRecord(id string, status taskpkg.RunStatus) TaskRunRecord {
+	return TaskRunRecord{
+		ID:       id,
+		TaskID:   "task-1",
+		Status:   status,
+		Attempt:  1,
+		Origin:   taskpkg.Origin{Kind: taskpkg.OriginKindCLI, Ref: "cli"},
+		QueuedAt: fixedTestNow,
 	}
 }
 

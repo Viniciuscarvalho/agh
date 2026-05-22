@@ -22,8 +22,12 @@ const (
 		"ON event_summaries(actor_kind, actor_id);"
 	idxSummaryHookEventSQL = "CREATE INDEX IF NOT EXISTS idx_summaries_hook_event " +
 		"ON event_summaries(hook_event);"
+	idxSummaryOutcomeTimestampSQL = "CREATE INDEX IF NOT EXISTS idx_summaries_outcome_timestamp " +
+		"ON event_summaries(outcome, timestamp DESC);"
 	idxSummaryParentSQL = "CREATE INDEX IF NOT EXISTS idx_summaries_parent " +
 		"ON event_summaries(parent_session_id);"
+	idxSummaryProviderTimestampSQL = "CREATE INDEX IF NOT EXISTS idx_summaries_provider_timestamp " +
+		"ON event_summaries(provider, timestamp DESC);"
 	idxSummaryRootSQL = "CREATE INDEX IF NOT EXISTS idx_summaries_root " +
 		"ON event_summaries(root_session_id);"
 	idxSummaryRunSQL = "CREATE INDEX IF NOT EXISTS idx_summaries_run " +
@@ -42,18 +46,25 @@ const (
 	globalDBActorRefKey                             = "actor_ref"
 	globalDBAddAgentHeartbeatStorageKey             = "add_agent_heartbeat_storage"
 	globalDBAddAgentSoulSnapshotsKey                = "add_agent_soul_snapshots"
+	globalDBAttachExpiresAtColumn                   = "attach_expires_at"
 	globalDBAutoStopOnParentKey                     = "auto_stop_on_parent"
 	globalDBClaimTokenKey                           = "claim_token"
 	globalDBClaimTokenHashKey                       = "claim_token_hash"
 	globalDBLeaseUntilKey                           = "lease_until"
+	globalDBOutcomeKey                              = "outcome"
 	globalDBParentSessionIDKey                      = "parent_session_id"
 	globalDBPermissionPolicyJSONKey                 = "permission_policy_json"
+	globalDBExtensionProvenanceJSONKey              = "provenance_json"
+	globalDBBridgeNotificationSuppressColumn        = "notification_suppress"
 	globalDBRebuildModelCatalogSourceConstraintsKey = "rebuild_model_catalog_source_constraints"
 	globalDBRootSessionIDKey                        = "root_session_id"
 	globalDBScopeKey                                = "scope"
 	globalDBSpawnBudgetJSONKey                      = "spawn_budget_json"
 	globalDBSpawnDepthKey                           = "spawn_depth"
 	globalDBSpawnRoleKey                            = "spawn_role"
+	globalDBSessionAttachedToColumn                 = "attached_to"
+	globalDBSessionStateActive                      = "active"
+	globalDBSessionStateStopped                     = "stopped"
 	globalDBSummaryKey                              = "summary"
 	globalDBTaskEventsKey                           = "task_events"
 	globalDBTTLExpiresAtKey                         = "ttl_expires_at"
@@ -71,6 +82,7 @@ var taskTableIndexStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_task_id);`,
 	`CREATE INDEX IF NOT EXISTS idx_tasks_owner ON tasks(owner_kind, owner_ref);`,
 	`CREATE INDEX IF NOT EXISTS idx_tasks_channel ON tasks(network_channel);`,
+	`CREATE INDEX IF NOT EXISTS idx_tasks_paused ON tasks(paused, updated_at DESC);`,
 	taskCurrentRunIndexStatement,
 }
 
@@ -274,6 +286,8 @@ var globalSchemaStatements = appendSchemaStatements(
 		stall_state    TEXT NOT NULL DEFAULT '',
 		stall_reason   TEXT NOT NULL DEFAULT '',
 		activity_json  TEXT NOT NULL DEFAULT '',
+		attached_to    TEXT NOT NULL DEFAULT '',
+		attach_expires_at TEXT,
 		sandbox_id TEXT NOT NULL DEFAULT '',
 		sandbox_backend TEXT NOT NULL DEFAULT 'local',
 		sandbox_profile TEXT NOT NULL DEFAULT '',
@@ -376,7 +390,8 @@ var globalSchemaStatements = appendSchemaStatements(
 		checksum      TEXT NOT NULL,
 		registry_slug TEXT,
 		registry_name TEXT,
-		remote_version TEXT
+		remote_version TEXT,
+		` + globalDBExtensionProvenanceJSONKey + ` TEXT NOT NULL DEFAULT '{}'
 	);`,
 		`CREATE TABLE IF NOT EXISTS automation_jobs (
 		id           TEXT PRIMARY KEY,
@@ -503,6 +518,10 @@ var globalSchemaStatements = appendSchemaStatements(
 		closed_at       TEXT,
 		metadata_json   TEXT,
 		current_run_id  TEXT REFERENCES task_runs(id) ON DELETE SET NULL,
+		paused          INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1)),
+		paused_by       TEXT NOT NULL DEFAULT '',
+		paused_at       TEXT,
+		paused_reason   TEXT NOT NULL DEFAULT '',
 		max_runtime_seconds INTEGER NOT NULL DEFAULT 0 CHECK (max_runtime_seconds >= 0),
 		spawn_failure_count INTEGER NOT NULL DEFAULT 0 CHECK (spawn_failure_count >= 0),
 		last_spawn_error TEXT NOT NULL DEFAULT '',
@@ -541,6 +560,7 @@ var globalSchemaStatements = appendSchemaStatements(
 		taskTableIndexStatements[5],
 		taskTableIndexStatements[6],
 		taskTableIndexStatements[7],
+		taskTableIndexStatements[8],
 		`CREATE TABLE IF NOT EXISTS task_runs (
 		id              TEXT PRIMARY KEY,
 		task_id         TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -550,6 +570,10 @@ var globalSchemaStatements = appendSchemaStatements(
 			)
 		),
 		attempt         INTEGER NOT NULL CHECK (attempt > 0),
+		previous_run_id TEXT,
+		failure_kind    TEXT NOT NULL DEFAULT '' CHECK (
+			failure_kind = '' OR failure_kind IN ('operator_forced')
+		),
 		claimed_by_kind TEXT CHECK (
 			claimed_by_kind IS NULL OR claimed_by_kind IN (
 				'human', 'agent_session', 'automation', 'extension', 'network_peer', 'daemon'
@@ -607,6 +631,7 @@ var globalSchemaStatements = appendSchemaStatements(
 		`CREATE INDEX IF NOT EXISTS idx_task_runs_task ON task_runs(task_id, queued_at DESC, id DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_task_runs_task_status ON task_runs(task_id, status, queued_at DESC, id DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_task_runs_status ON task_runs(status);`,
+		`CREATE INDEX IF NOT EXISTS idx_task_runs_previous ON task_runs(previous_run_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_task_runs_session ON task_runs(session_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_task_runs_channel ON task_runs(network_channel);`,
 		`CREATE TABLE IF NOT EXISTS task_dependencies (
@@ -664,6 +689,7 @@ var globalSchemaStatements = appendSchemaStatements(
 	taskRunReviewTableSchemaStatements(),
 	taskReviewGateIndexStatements(),
 	notificationCursorSchemaStatements(),
+	notificationPresetSchemaStatements(),
 	[]string{
 		`CREATE TABLE IF NOT EXISTS task_triage_state (
 		task_id               TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -696,6 +722,7 @@ var globalSchemaStatements = appendSchemaStatements(
 		routing_policy    TEXT NOT NULL,
 		provider_config   TEXT,
 		delivery_defaults TEXT,
+		notification_suppress BOOLEAN NOT NULL DEFAULT 0,
 		degradation_reason TEXT,
 		degradation_message TEXT,
 		created_at        TEXT NOT NULL,
@@ -953,6 +980,151 @@ var globalSchemaMigrations = []store.Migration{
 		Up:       migrateNetworkTimelineExtensions,
 		Checksum: "2026-05-16-add-network-timeline-extensions",
 	},
+	{
+		Version:  27,
+		Name:     "add_config_apply_records",
+		Up:       migrateConfigApplyRecords,
+		Checksum: "2026-05-20-add-config-apply-records",
+	},
+	{
+		Version:  28,
+		Name:     "add_event_summary_projections",
+		Up:       migrateEventSummaryProjections,
+		Checksum: "2026-05-20-add-event-summary-projections",
+	},
+	{
+		Version:  29,
+		Name:     "add_scheduler_pause_state",
+		Up:       migrateSchedulerPauseState,
+		Checksum: "2026-05-20-add-scheduler-pause-state",
+	},
+	{
+		Version:  30,
+		Name:     "add_session_attach_lock",
+		Up:       migrateSessionAttachLock,
+		Checksum: "2026-05-20-add-session-attach-lock",
+	},
+	{
+		Version:  31,
+		Name:     "add_session_input_queue",
+		Up:       migrateSessionInputQueue,
+		Checksum: "2026-05-21-add-session-input-queue",
+	},
+	{
+		Version:  32,
+		Name:     "add_task_run_force_ops",
+		Up:       migrateTaskRunForceOps,
+		Checksum: "2026-05-21-add-task-run-force-ops",
+	},
+	{
+		Version:  33,
+		Name:     "add_task_pause_state",
+		Up:       migratePauseState,
+		Checksum: "2026-05-21-add-task-pause-state",
+	},
+	{
+		Version:  34,
+		Name:     "add_extension_provenance",
+		Up:       migrateExtensionProvenance,
+		Checksum: "2026-05-21-add-extension-provenance",
+	},
+	{
+		Version:  35,
+		Name:     "add_bridge_target_directory",
+		Up:       migrateBridgeTargetDirectory,
+		Checksum: "2026-05-21-add-bridge-target-directory",
+	},
+	{
+		Version:  36,
+		Name:     "add_notification_presets",
+		Up:       migrateNotificationPresets,
+		Checksum: "2026-05-21-add-notification-presets",
+	},
+}
+
+func migrateSessionInputQueue(ctx context.Context, tx *sql.Tx) error {
+	exists, err := tableExists(ctx, tx, "sessions")
+	if err != nil {
+		return err
+	}
+	if exists {
+		if err := addMissingMigrationColumns(ctx, tx, "sessions", []migrationColumnSpec{
+			{
+				name: sessionInputGenerationColumn,
+				sql:  `ALTER TABLE sessions ADD COLUMN input_generation INTEGER NOT NULL DEFAULT 0`,
+			},
+		}); err != nil {
+			return err
+		}
+	}
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS session_input_queue (
+			id TEXT PRIMARY KEY,
+			session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+			status TEXT NOT NULL CHECK (status IN ('queued', 'dispatching', 'sent', 'failed', 'canceled')),
+			mode TEXT NOT NULL CHECK (mode IN ('queue', 'steer')),
+			text TEXT NOT NULL,
+			session_generation INTEGER NOT NULL DEFAULT 0,
+			task_run_id TEXT NOT NULL DEFAULT '',
+			run_generation INTEGER,
+			attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+			enqueued_at TEXT NOT NULL,
+			dispatch_started_at TEXT,
+			sent_at TEXT,
+			failed_at TEXT,
+			failure_summary TEXT NOT NULL DEFAULT '',
+			canceled_at TEXT,
+			updated_at TEXT NOT NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_session_input_queue_pending
+			ON session_input_queue(session_id, status, enqueued_at, id);`,
+		`CREATE INDEX IF NOT EXISTS idx_session_input_queue_generation
+			ON session_input_queue(session_id, session_generation, status);`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_session_input_queue_active_steer
+			ON session_input_queue(session_id)
+			WHERE mode = 'steer' AND status IN ('queued', 'dispatching');`,
+	}
+	for _, statement := range statements {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
+			return fmt.Errorf("store: create session input queue schema: %w", err)
+		}
+	}
+	return nil
+}
+
+func migrateSessionAttachLock(ctx context.Context, tx *sql.Tx) error {
+	exists, err := tableExists(ctx, tx, "sessions")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	if err := addMissingMigrationColumns(ctx, tx, "sessions", []migrationColumnSpec{
+		{
+			name: globalDBSessionAttachedToColumn,
+			sql:  `ALTER TABLE sessions ADD COLUMN attached_to TEXT NOT NULL DEFAULT ''`,
+		},
+		{
+			name: globalDBAttachExpiresAtColumn,
+			sql:  `ALTER TABLE sessions ADD COLUMN attach_expires_at TEXT`,
+		},
+	}); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+			CREATE INDEX IF NOT EXISTS idx_sessions_attach_lock
+			ON sessions(attached_to, attach_expires_at);
+		`); err != nil {
+		return fmt.Errorf("store: create session attach lock index: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+			CREATE INDEX IF NOT EXISTS idx_sessions_resumable
+			ON sessions(state, failure_kind, last_update_at, updated_at);
+		`); err != nil {
+		return fmt.Errorf("store: create session resumable index: %w", err)
+	}
+	return nil
 }
 
 func migrateNetworkTimelineExtensions(ctx context.Context, tx *sql.Tx) error {

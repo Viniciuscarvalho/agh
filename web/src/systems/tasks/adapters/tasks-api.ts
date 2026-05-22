@@ -17,6 +17,12 @@ import type {
   CreateTaskRequest,
   EnqueueTaskRunRequest,
   FailTaskRunRequest,
+  ForceFailTaskRunRequest,
+  ForceReleaseTaskRunRequest,
+  PauseTaskRequest,
+  RetryTaskRunRequest,
+  RetryTaskRunResult,
+  ResumeTaskRequest,
   StartTaskRunRequest,
   TaskBridgeNotificationSubscription,
   TaskBridgeNotificationSubscriptionCreateRequest,
@@ -29,12 +35,14 @@ import type {
   TaskExecutionProfileSetRequest,
   TaskInboxFilter,
   TaskInboxView,
+  TaskInspectView,
   TaskListFilter,
   TaskListItem,
   TaskRecord,
   TaskReviewsFilter,
   TaskRun,
   TaskRunDetailView,
+  TaskRunInspectView,
   TaskRunReview,
   TaskRunReviewRequest,
   TaskRunReviewRequestResult,
@@ -161,6 +169,26 @@ export async function getTask(id: string, signal?: AbortSignal): Promise<TaskDet
   return requireResponseData(data, response, `Failed to fetch task "${id}"`).task;
 }
 
+export async function inspectTask(id: string, signal?: AbortSignal): Promise<TaskInspectView> {
+  const { data, error, response } = await apiClient.GET("/api/tasks/{id}/inspect", {
+    params: { path: { id } },
+    signal,
+  });
+
+  if (apiRequestFailed(response, error)) {
+    if (response.status === 404) {
+      throw new TasksApiError(`Task not found: ${id}`, 404);
+    }
+
+    throw new TasksApiError(
+      defaultApiErrorMessage(`Failed to inspect task "${id}"`, response, error),
+      response.status
+    );
+  }
+
+  return requireResponseData(data, response, `Failed to inspect task "${id}"`).inspect;
+}
+
 export async function deleteTask(id: string, signal?: AbortSignal): Promise<void> {
   const { error, response } = await apiClient.DELETE("/api/tasks/{id}", {
     params: { path: { id } },
@@ -264,6 +292,56 @@ export async function cancelTask(
   }
 
   return requireResponseData(data, response, `Failed to cancel task "${id}"`).task;
+}
+
+export async function pauseTask(
+  id: string,
+  body: PauseTaskRequest,
+  signal?: AbortSignal
+): Promise<TaskRecord> {
+  const { data, error, response } = await apiClient.POST("/api/tasks/{id}/pause", {
+    params: { path: { id } },
+    body,
+    signal,
+  });
+
+  if (apiRequestFailed(response, error)) {
+    if (response.status === 404) {
+      throw new TasksApiError(`Task not found: ${id}`, 404);
+    }
+
+    throw new TasksApiError(
+      defaultApiErrorMessage(`Failed to pause task "${id}"`, response, error),
+      response.status
+    );
+  }
+
+  return requireResponseData(data, response, `Failed to pause task "${id}"`).task;
+}
+
+export async function resumeTask(
+  id: string,
+  body: ResumeTaskRequest = {},
+  signal?: AbortSignal
+): Promise<TaskRecord> {
+  const { data, error, response } = await apiClient.POST("/api/tasks/{id}/resume", {
+    params: { path: { id } },
+    body,
+    signal,
+  });
+
+  if (apiRequestFailed(response, error)) {
+    if (response.status === 404) {
+      throw new TasksApiError(`Task not found: ${id}`, 404);
+    }
+
+    throw new TasksApiError(
+      defaultApiErrorMessage(`Failed to resume task "${id}"`, response, error),
+      response.status
+    );
+  }
+
+  return requireResponseData(data, response, `Failed to resume task "${id}"`).task;
 }
 
 export async function approveTask(id: string, signal?: AbortSignal): Promise<TaskRecord> {
@@ -570,6 +648,26 @@ export async function getTaskRun(id: string, signal?: AbortSignal): Promise<Task
   return requireResponseData(data, response, `Failed to fetch task run "${id}"`).run;
 }
 
+export async function inspectRun(id: string, signal?: AbortSignal): Promise<TaskRunInspectView> {
+  const { data, error, response } = await apiClient.GET("/api/runs/{id}/inspect", {
+    params: { path: { id } },
+    signal,
+  });
+
+  if (apiRequestFailed(response, error)) {
+    if (response.status === 404) {
+      throw new TasksApiError(`Task run not found: ${id}`, 404);
+    }
+
+    throw new TasksApiError(
+      defaultApiErrorMessage(`Failed to inspect task run "${id}"`, response, error),
+      response.status
+    );
+  }
+
+  return requireResponseData(data, response, `Failed to inspect task run "${id}"`).inspect;
+}
+
 export async function attachTaskRunSession(
   id: string,
   body: AttachTaskRunSessionRequest,
@@ -718,6 +816,81 @@ export async function failTaskRun(
   }
 
   return requireResponseData(data, response, `Failed to fail task run "${id}"`).run;
+}
+
+export async function forceReleaseTaskRun(
+  id: string,
+  body: ForceReleaseTaskRunRequest = {},
+  signal?: AbortSignal
+): Promise<TaskRun> {
+  const { data, error, response } = await apiClient.POST("/api/runs/{id}/release", {
+    params: { path: { id } },
+    body,
+    signal,
+  });
+
+  if (apiRequestFailed(response, error)) {
+    if (response.status === 404) {
+      throw new TasksApiError(`Task run not found: ${id}`, 404);
+    }
+
+    throw new TasksApiError(
+      defaultApiErrorMessage(`Failed to release task run "${id}"`, response, error),
+      response.status
+    );
+  }
+
+  return requireResponseData(data, response, `Failed to release task run "${id}"`).run;
+}
+
+export async function forceFailTaskRun(
+  id: string,
+  body: ForceFailTaskRunRequest,
+  signal?: AbortSignal
+): Promise<TaskRun> {
+  const { data, error, response } = await apiClient.POST("/api/runs/{id}/fail", {
+    params: { path: { id } },
+    body,
+    signal,
+  });
+
+  if (apiRequestFailed(response, error)) {
+    if (response.status === 404) {
+      throw new TasksApiError(`Task run not found: ${id}`, 404);
+    }
+
+    throw new TasksApiError(
+      defaultApiErrorMessage(`Failed to fail task run "${id}"`, response, error),
+      response.status
+    );
+  }
+
+  return requireResponseData(data, response, `Failed to fail task run "${id}"`).run;
+}
+
+export async function retryTaskRun(
+  id: string,
+  body: RetryTaskRunRequest = {},
+  signal?: AbortSignal
+): Promise<RetryTaskRunResult> {
+  const { data, error, response } = await apiClient.POST("/api/runs/{id}/retry", {
+    params: { path: { id } },
+    body,
+    signal,
+  });
+
+  if (apiRequestFailed(response, error)) {
+    if (response.status === 404) {
+      throw new TasksApiError(`Task run not found: ${id}`, 404);
+    }
+
+    throw new TasksApiError(
+      defaultApiErrorMessage(`Failed to retry task run "${id}"`, response, error),
+      response.status
+    );
+  }
+
+  return requireResponseData(data, response, `Failed to retry task run "${id}"`);
 }
 
 export async function getTaskDashboard(

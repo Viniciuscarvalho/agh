@@ -72,16 +72,17 @@ func (p *BridgeDeliveryDefaultsPayload) UnmarshalJSON(data []byte) error {
 
 // CreateBridgeRequest is the shared bridge-instance creation payload.
 type CreateBridgeRequest struct {
-	Scope            bridgepkg.Scope               `json:"scope"`
-	WorkspaceID      string                        `json:"workspace_id,omitempty"`
-	Platform         string                        `json:"platform"`
-	ExtensionName    string                        `json:"extension_name"`
-	DisplayName      string                        `json:"display_name"`
-	Enabled          bool                          `json:"enabled"`
-	DMPolicy         bridgepkg.BridgeDMPolicy      `json:"dm_policy,omitempty"`
-	RoutingPolicy    bridgepkg.RoutingPolicy       `json:"routing_policy"`
-	ProviderConfig   BridgeProviderConfigPayload   `json:"provider_config,omitempty"`
-	DeliveryDefaults BridgeDeliveryDefaultsPayload `json:"delivery_defaults,omitempty"`
+	Scope                bridgepkg.Scope               `json:"scope"`
+	WorkspaceID          string                        `json:"workspace_id,omitempty"`
+	Platform             string                        `json:"platform"`
+	ExtensionName        string                        `json:"extension_name"`
+	DisplayName          string                        `json:"display_name"`
+	Enabled              bool                          `json:"enabled"`
+	DMPolicy             bridgepkg.BridgeDMPolicy      `json:"dm_policy,omitempty"`
+	RoutingPolicy        bridgepkg.RoutingPolicy       `json:"routing_policy"`
+	ProviderConfig       BridgeProviderConfigPayload   `json:"provider_config,omitempty"`
+	DeliveryDefaults     BridgeDeliveryDefaultsPayload `json:"delivery_defaults,omitempty"`
+	NotificationSuppress bool                          `json:"notification_suppress,omitempty"`
 }
 
 // ToCreateInstanceRequest validates and converts the transport payload into the
@@ -105,17 +106,18 @@ func (r CreateBridgeRequest) ToCreateInstanceRequest() (bridgepkg.CreateInstance
 	}
 
 	req := bridgepkg.CreateInstanceRequest{
-		Scope:            r.Scope,
-		WorkspaceID:      strings.TrimSpace(r.WorkspaceID),
-		Platform:         strings.TrimSpace(r.Platform),
-		ExtensionName:    strings.TrimSpace(r.ExtensionName),
-		DisplayName:      strings.TrimSpace(r.DisplayName),
-		Enabled:          r.Enabled,
-		Status:           bridgeCreateInitialStatus(r.Enabled),
-		DMPolicy:         r.DMPolicy,
-		RoutingPolicy:    r.RoutingPolicy,
-		ProviderConfig:   providerConfig,
-		DeliveryDefaults: deliveryDefaults,
+		Scope:                r.Scope,
+		WorkspaceID:          strings.TrimSpace(r.WorkspaceID),
+		Platform:             strings.TrimSpace(r.Platform),
+		ExtensionName:        strings.TrimSpace(r.ExtensionName),
+		DisplayName:          strings.TrimSpace(r.DisplayName),
+		Enabled:              r.Enabled,
+		Status:               bridgeCreateInitialStatus(r.Enabled),
+		DMPolicy:             r.DMPolicy,
+		RoutingPolicy:        r.RoutingPolicy,
+		ProviderConfig:       providerConfig,
+		DeliveryDefaults:     deliveryDefaults,
+		NotificationSuppress: r.NotificationSuppress,
 	}
 	if err := req.Validate(); err != nil {
 		return bridgepkg.CreateInstanceRequest{}, err
@@ -132,13 +134,14 @@ func bridgeCreateInitialStatus(enabled bool) bridgepkg.BridgeStatus {
 
 // UpdateBridgeRequest is the shared mutable bridge-instance patch payload.
 type UpdateBridgeRequest struct {
-	DisplayName      *string                        `json:"display_name,omitempty"`
-	DMPolicy         *bridgepkg.BridgeDMPolicy      `json:"dm_policy,omitempty"`
-	RoutingPolicy    *bridgepkg.RoutingPolicy       `json:"routing_policy,omitempty"`
-	ProviderConfig   *BridgeProviderConfigPayload   `json:"provider_config,omitempty"`
-	DeliveryDefaults *BridgeDeliveryDefaultsPayload `json:"delivery_defaults,omitempty"`
-	Degradation      *bridgepkg.BridgeDegradation   `json:"degradation,omitempty"`
-	ClearDegradation bool                           `json:"clear_degradation,omitempty"`
+	DisplayName          *string                        `json:"display_name,omitempty"`
+	DMPolicy             *bridgepkg.BridgeDMPolicy      `json:"dm_policy,omitempty"`
+	RoutingPolicy        *bridgepkg.RoutingPolicy       `json:"routing_policy,omitempty"`
+	ProviderConfig       *BridgeProviderConfigPayload   `json:"provider_config,omitempty"`
+	DeliveryDefaults     *BridgeDeliveryDefaultsPayload `json:"delivery_defaults,omitempty"`
+	NotificationSuppress *bool                          `json:"notification_suppress,omitempty"`
+	Degradation          *bridgepkg.BridgeDegradation   `json:"degradation,omitempty"`
+	ClearDegradation     bool                           `json:"clear_degradation,omitempty"`
 }
 
 // PutBridgeSecretBindingRequest is the shared bridge secret binding upsert payload.
@@ -191,6 +194,10 @@ func (r UpdateBridgeRequest) ToUpdateInstanceRequest(id string) (bridgepkg.Updat
 			return bridgepkg.UpdateInstanceRequest{}, err
 		}
 		req.DeliveryDefaults = &value
+	}
+	if r.NotificationSuppress != nil {
+		value := *r.NotificationSuppress
+		req.NotificationSuppress = &value
 	}
 	if r.Degradation != nil {
 		req.Degradation = cloneBridgeDegradation(r.Degradation)
@@ -292,6 +299,27 @@ type BridgeResponse struct {
 // BridgeRoutesResponse wraps one bridge's route set.
 type BridgeRoutesResponse struct {
 	Routes []bridgepkg.BridgeRoute `json:"routes"`
+}
+
+// BridgeTargetsResponse wraps one bridge's daemon-owned target directory.
+type BridgeTargetsResponse struct {
+	BridgeID                string                   `json:"bridge_id"`
+	Targets                 []bridgepkg.BridgeTarget `json:"targets"`
+	Total                   int                      `json:"total"`
+	CacheStale              bool                     `json:"cache_stale"`
+	GeneratedAt             time.Time                `json:"generated_at"`
+	LastSuccessfulRefreshAt *time.Time               `json:"last_successful_refresh_at,omitempty"`
+}
+
+// BridgeResolveTargetRequest resolves a human-facing or canonical bridge target name.
+type BridgeResolveTargetRequest struct {
+	Name string `json:"name"`
+}
+
+// BridgeResolveTargetResponse wraps the deterministic bridge target resolver result.
+type BridgeResolveTargetResponse struct {
+	Result     bridgepkg.ResolveBridgeTargetResult `json:"result"`
+	Diagnostic *DiagnosticItem                     `json:"diagnostic,omitempty"`
 }
 
 // TaskBridgeNotificationCursorPayload exposes the durable cursor identity and
@@ -400,22 +428,23 @@ type BridgeProviderPayload struct {
 
 // BridgePayload captures the shared bridge-management contract returned by HTTP/UDS.
 type BridgePayload struct {
-	ID               string                         `json:"id"`
-	Scope            bridgepkg.Scope                `json:"scope"`
-	WorkspaceID      string                         `json:"workspace_id,omitempty"`
-	Platform         string                         `json:"platform"`
-	ExtensionName    string                         `json:"extension_name"`
-	DisplayName      string                         `json:"display_name"`
-	Source           bridgepkg.BridgeInstanceSource `json:"source,omitempty"`
-	Enabled          bool                           `json:"enabled"`
-	Status           bridgepkg.BridgeStatus         `json:"status"`
-	DMPolicy         bridgepkg.BridgeDMPolicy       `json:"dm_policy,omitempty"`
-	RoutingPolicy    bridgepkg.RoutingPolicy        `json:"routing_policy"`
-	ProviderConfig   BridgeProviderConfigPayload    `json:"provider_config,omitempty"`
-	DeliveryDefaults BridgeDeliveryDefaultsPayload  `json:"delivery_defaults,omitempty"`
-	Degradation      *bridgepkg.BridgeDegradation   `json:"degradation,omitempty"`
-	CreatedAt        time.Time                      `json:"created_at"`
-	UpdatedAt        time.Time                      `json:"updated_at"`
+	ID                   string                         `json:"id"`
+	Scope                bridgepkg.Scope                `json:"scope"`
+	WorkspaceID          string                         `json:"workspace_id,omitempty"`
+	Platform             string                         `json:"platform"`
+	ExtensionName        string                         `json:"extension_name"`
+	DisplayName          string                         `json:"display_name"`
+	Source               bridgepkg.BridgeInstanceSource `json:"source,omitempty"`
+	Enabled              bool                           `json:"enabled"`
+	Status               bridgepkg.BridgeStatus         `json:"status"`
+	DMPolicy             bridgepkg.BridgeDMPolicy       `json:"dm_policy,omitempty"`
+	RoutingPolicy        bridgepkg.RoutingPolicy        `json:"routing_policy"`
+	ProviderConfig       BridgeProviderConfigPayload    `json:"provider_config,omitempty"`
+	DeliveryDefaults     BridgeDeliveryDefaultsPayload  `json:"delivery_defaults,omitempty"`
+	NotificationSuppress bool                           `json:"notification_suppress"`
+	Degradation          *bridgepkg.BridgeDegradation   `json:"degradation,omitempty"`
+	CreatedAt            time.Time                      `json:"created_at"`
+	UpdatedAt            time.Time                      `json:"updated_at"`
 }
 
 // ToBridgeSecretBinding validates and converts the transport payload into the daemon-owned binding request.

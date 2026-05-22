@@ -28,18 +28,23 @@ import {
   dismissTask,
   enqueueTaskRun,
   failTaskRun,
+  forceFailTaskRun,
+  forceReleaseTaskRun,
   getTask,
   getTaskDashboard,
   getTaskInbox,
   getTaskRun,
   getTaskTimeline,
   getTaskTree,
+  inspectRun,
+  inspectTask,
   listTaskRuns,
   listTasks,
   markTaskRead,
   publishTask,
   rejectTask,
   removeTaskDependency,
+  retryTaskRun,
   startTaskRun,
   updateTask,
 } from "@/systems/tasks/adapters/tasks-api";
@@ -81,6 +86,22 @@ const runDetailFixture = {
     scope: taskFixture.scope,
   },
   summary: { last_activity_at: "2026-04-11T09:00:00Z" },
+};
+
+const inspectFixture = {
+  target: "task",
+  task: taskFixture,
+  current_run: {
+    run_id: runFixture.id,
+    task_id: taskFixture.id,
+    status: runFixture.status,
+    queued_at: runFixture.queued_at,
+    attempt: runFixture.attempt,
+  },
+  scheduler: { paused: false },
+  diagnostics: [],
+  next_action: "running",
+  as_of: "2026-04-11T09:00:00Z",
 };
 
 const timelineFixture = {
@@ -246,6 +267,23 @@ describe("getTask", () => {
     vi.mocked(globalThis.fetch).mockResolvedValue(new Response(null, { status: 404 }));
 
     await expect(getTask("missing")).rejects.toThrow("Task not found: missing");
+  });
+});
+
+describe("inspectTask", () => {
+  it("fetches task inspect snapshots by id", async () => {
+    mockJsonResponse({ inspect: inspectFixture });
+
+    const result = await inspectTask("task_001");
+
+    expect(result).toEqual(inspectFixture);
+    await expectFetchRequest({ path: "/api/tasks/task_001/inspect" });
+  });
+
+  it("throws not-found for missing task inspect targets", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(new Response(null, { status: 404 }));
+
+    await expect(inspectTask("missing")).rejects.toThrow("Task not found: missing");
   });
 });
 
@@ -419,6 +457,15 @@ describe("task runs", () => {
     await expectFetchRequest({ path: "/api/task-runs/run_001" });
   });
 
+  it("fetches run inspect snapshots", async () => {
+    mockJsonResponse({ inspect: { ...inspectFixture, target: "run" } });
+
+    const result = await inspectRun("run_001");
+
+    expect(result.target).toBe("run");
+    await expectFetchRequest({ path: "/api/runs/run_001/inspect" });
+  });
+
   it("runs lifecycle commands against /api/task-runs/{id}/*", async () => {
     mockJsonSequence({ run: runFixture });
 
@@ -463,6 +510,33 @@ describe("task runs", () => {
       callIndex: 5,
       method: "POST",
       path: "/api/task-runs/run_001/attach-session",
+    });
+  });
+
+  it("runs force recovery commands against /api/runs/{id}/*", async () => {
+    mockJsonSequence({ run: runFixture });
+
+    await forceReleaseTaskRun("run_001", { reason: "handoff" });
+    await forceFailTaskRun("run_001", { reason: "operator recovery" });
+    const retry = await retryTaskRun("run_001", { metadata: { source: "operator" } });
+
+    expect(retry.run).toEqual(runFixture);
+    await expectFetchRequest({
+      body: { reason: "handoff" },
+      method: "POST",
+      path: "/api/runs/run_001/release",
+    });
+    await expectFetchRequest({
+      body: { reason: "operator recovery" },
+      callIndex: 1,
+      method: "POST",
+      path: "/api/runs/run_001/fail",
+    });
+    await expectFetchRequest({
+      body: { metadata: { source: "operator" } },
+      callIndex: 2,
+      method: "POST",
+      path: "/api/runs/run_001/retry",
     });
   });
 });

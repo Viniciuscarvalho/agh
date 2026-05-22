@@ -24,6 +24,8 @@ extensions, and query runtime state over the daemon socket.
 
 agh --> runtime
 runtime --> daemon[daemon]
+runtime --> status[status]
+runtime --> doctor[doctor]
 runtime --> network[network]
 runtime --> bridge[bridge]
 runtime --> mcp[mcp]
@@ -89,9 +91,23 @@ caption="The CLI groups commands by the runtime surface they operate: daemon pro
   <RouteRow
     href="/runtime/cli-reference/daemon"
     label="Daemon"
-    title="Start, stop, and inspect the background runtime"
-    description="Use this group for daemon lifecycle and socket-level health checks."
+    title="Start and stop the background runtime"
+    description="Use this group for daemon lifecycle. Use `agh status` and `agh doctor` for runtime inspection."
     meta="Runtime process"
+  />
+  <RouteRow
+    href="/runtime/cli-reference/status"
+    label="Status"
+    title="Read consolidated runtime state"
+    description="Use this command for daemon, session, provider, MCP, task, bridge, config, and log-tail status over the shared public contract."
+    meta="Runtime process"
+  />
+  <RouteRow
+    href="/runtime/cli-reference/doctor"
+    label="Doctor"
+    title="Run runtime diagnostics"
+    description="Use this command for DiagnosticItem-backed health checks that match the HTTP and UDS doctor payload."
+    meta="Diagnostics"
   />
   <RouteRow
     href="/runtime/cli-reference/mcp"
@@ -173,8 +189,8 @@ caption="The CLI groups commands by the runtime surface they operate: daemon pro
   <RouteRow
     href="/runtime/cli-reference/observe"
     label="Observe"
-    title="Query health and global observability streams"
-    description="Use this group for daemon health, global event history, and observability views."
+    title="Query global observability streams"
+    description="Use this group for global event history and observability views. Runtime health moved to `agh status` and `agh doctor`."
     meta="Observability"
   />
   <RouteRow
@@ -235,7 +251,7 @@ Example: run a separate AGH home for a demo without touching your normal daemon.
 ```bash
 AGH_HOME="$PWD/.agh-demo" agh install
 AGH_HOME="$PWD/.agh-demo" agh daemon start
-AGH_HOME="$PWD/.agh-demo" agh daemon status --output json
+AGH_HOME="$PWD/.agh-demo" agh status --output json
 ```
 
 Example: set the daemon socket and log level in `~/.agh/config.toml`.
@@ -270,20 +286,21 @@ agh session events sess_1234 --follow
 The daemon start command waits until the socket responds. If a daemon is already running, it returns
 an error instead of starting a second process.
 
-### Resume a Session
+### Attach to a Session
 
-Stopped sessions remain in the session store. List them with `--all`, resume by ID, and then inspect
-the new active state.
+Live sessions expose an explicit attach path. List eligible sessions with `--resumable`, attach by
+ID, and use recap when you need a deterministic read-only reconstruction.
 
 ```bash
-agh session list --all
+agh session list --resumable
 agh session resume sess_1234
+agh session recap sess_1234
 agh session status sess_1234
 ```
 
-Resume succeeds only when the daemon can reconstruct the stored session state and the agent provider
-can load the previous ACP session. If the provider cannot resume, AGH reports the error rather than
-silently starting unrelated work.
+`agh session resume` attaches to an eligible live session. It does not start a new provider
+subprocess or rewrite transcript history. Terminal sessions stay available through
+`agh session recap`, `agh session events`, and `agh session history`.
 
 ### Manage Workspaces
 

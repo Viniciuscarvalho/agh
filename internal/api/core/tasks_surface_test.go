@@ -44,6 +44,8 @@ func TestExpandedTaskPayloadBuildersPreserveLiveAndAggregateFields(t *testing.T)
 		Draft:           false,
 		Owner:           &taskpkg.Ownership{Kind: taskpkg.OwnerKindPool, Ref: "reviewers"},
 		LatestEventSeq:  17,
+		EffectivePaused: true,
+		PausedByTaskID:  "task-root",
 		CreatedBy:       taskpkg.ActorIdentity{Kind: taskpkg.ActorKindHuman, Ref: "user-1"},
 		Origin:          taskpkg.Origin{Kind: taskpkg.OriginKindHTTP, Ref: "tasks.create"},
 		CreatedAt:       now.Add(-2 * time.Hour),
@@ -87,6 +89,8 @@ func TestExpandedTaskPayloadBuildersPreserveLiveAndAggregateFields(t *testing.T)
 		summaryPayload.ApprovalState != taskpkg.ApprovalStatePending ||
 		summaryPayload.DependencyCount != 1 ||
 		summaryPayload.LatestEventSeq != 17 ||
+		!summaryPayload.EffectivePaused ||
+		summaryPayload.PausedByTaskID != "task-root" ||
 		summaryPayload.ActiveRun == nil ||
 		summaryPayload.LastActivityAt == nil ||
 		summaryPayload.Dependencies[0].DependsOn.Identifier != "TASK-2" ||
@@ -124,6 +128,8 @@ func TestExpandedTaskPayloadBuildersPreserveLiveAndAggregateFields(t *testing.T)
 		detailPayload.Task.MaxAttempts != 4 ||
 		detailPayload.Task.ApprovalPolicy != taskpkg.ApprovalPolicyManual ||
 		detailPayload.Task.LatestEventSeq != 17 ||
+		!detailPayload.Task.EffectivePaused ||
+		detailPayload.Task.PausedByTaskID != "task-root" ||
 		len(detailPayload.DependencyReferences) != 1 {
 		t.Fatalf("TaskDetailPayloadFromView() = %#v", detailPayload)
 	}
@@ -339,11 +345,168 @@ func TestExpandedTaskPayloadBuildersPreserveLiveAndAggregateFields(t *testing.T)
 	}
 }
 
+func TestSchedulerControlHandlersDelegateToTaskService(t *testing.T) {
+	t.Run("Should expose scheduler and per-task pause operations through shared handlers", func(t *testing.T) {
+		now := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
+		var pauseTask taskpkg.PauseTaskRequest
+		var drainRequest taskpkg.SchedulerDrainRequest
+		var backlogQuery taskpkg.SchedulerBacklogQuery
+		tasks := testutil.StubTaskManager{
+			PauseTaskFn: func(
+				_ context.Context,
+				id string,
+				req taskpkg.PauseTaskRequest,
+				_ taskpkg.ActorContext,
+			) (*taskpkg.Task, error) {
+				if id != "task-1" {
+					t.Fatalf("PauseTask id = %q, want task-1", id)
+				}
+				pauseTask = req
+				return &taskpkg.Task{
+					ID:           id,
+					Title:        "Paused task",
+					Status:       taskpkg.TaskStatusReady,
+					Paused:       true,
+					PausedBy:     "human:operator",
+					PausedAt:     now,
+					PausedReason: req.Reason,
+					CreatedAt:    now,
+					UpdatedAt:    now,
+				}, nil
+			},
+			SchedulerStatusFn: func(_ context.Context, _ taskpkg.ActorContext) (taskpkg.SchedulerStatus, error) {
+				return taskpkg.SchedulerStatus{
+					Paused:           true,
+					PausedBy:         "human:operator",
+					PausedAt:         now,
+					PausedReason:     "maintenance",
+					ActiveClaimCount: 2,
+					QueuedRunCount:   3,
+					PausedTaskCount:  1,
+					AsOf:             now,
+				}, nil
+			},
+			DrainSchedulerFn: func(
+				_ context.Context,
+				req taskpkg.SchedulerDrainRequest,
+				_ taskpkg.ActorContext,
+			) (taskpkg.SchedulerDrainResult, error) {
+				drainRequest = req
+				return taskpkg.SchedulerDrainResult{
+					Status:      taskpkg.SchedulerStatus{Paused: true, AsOf: now},
+					Completed:   false,
+					TimedOut:    true,
+					StartedAt:   now,
+					CompletedAt: now,
+				}, nil
+			},
+			SchedulerBacklogFn: func(
+				_ context.Context,
+				query taskpkg.SchedulerBacklogQuery,
+				_ taskpkg.ActorContext,
+			) (taskpkg.SchedulerBacklog, error) {
+				backlogQuery = query
+				return taskpkg.SchedulerBacklog{
+					Runs: []taskpkg.SchedulerBacklogRun{{
+						Task: taskpkg.Task{
+							ID:          "task-queued",
+							Title:       "Queued task",
+							Status:      taskpkg.TaskStatusReady,
+							WorkspaceID: "ws-alpha",
+							CreatedAt:   now,
+							UpdatedAt:   now,
+						},
+						Run: taskpkg.Run{
+							ID:       "run-queued",
+							TaskID:   "task-queued",
+							Status:   taskpkg.TaskRunStatusQueued,
+							QueuedAt: now,
+						},
+					}},
+					Total: 1,
+				}, nil
+			},
+		}
+		fixture := newHandlerFixtureWithTasks(
+			t,
+			testutil.StubSessionManager{},
+			testutil.StubObserver{},
+			tasks,
+			testutil.StubWorkspaceService{},
+			nil,
+			nil,
+		)
+
+		pauseResp := performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPost,
+			"/tasks/task-1/pause",
+			[]byte("{\"reason\":\"maintenance\"}"),
+		)
+		if pauseResp.Code != http.StatusOK {
+			t.Fatalf("pause status = %d, want 200; body=%s", pauseResp.Code, pauseResp.Body.String())
+		}
+		if pauseTask.Reason != "maintenance" {
+			t.Fatalf("pause request = %#v, want reason", pauseTask)
+		}
+		var pausePayload contract.TaskResponse
+		if err := json.Unmarshal(pauseResp.Body.Bytes(), &pausePayload); err != nil {
+			t.Fatalf("decode pause response: %v", err)
+		}
+		if !pausePayload.Task.Paused || pausePayload.Task.PausedReason != "maintenance" {
+			t.Fatalf("pause payload task = %#v", pausePayload.Task)
+		}
+
+		statusResp := performRequest(t, fixture.Engine, http.MethodGet, "/scheduler", nil)
+		if statusResp.Code != http.StatusOK {
+			t.Fatalf("status code = %d, want 200; body=%s", statusResp.Code, statusResp.Body.String())
+		}
+		var statusPayload contract.SchedulerStatusResponse
+		if err := json.Unmarshal(statusResp.Body.Bytes(), &statusPayload); err != nil {
+			t.Fatalf("decode scheduler status: %v", err)
+		}
+		if !statusPayload.Scheduler.Paused || statusPayload.Scheduler.QueuedRunCount != 3 {
+			t.Fatalf("scheduler status = %#v", statusPayload.Scheduler)
+		}
+
+		drainResp := performRequest(
+			t,
+			fixture.Engine,
+			http.MethodPost,
+			"/scheduler/drain",
+			[]byte("{\"timeout_seconds\":0}"),
+		)
+		if drainResp.Code != http.StatusOK {
+			t.Fatalf("drain status = %d, want 200; body=%s", drainResp.Code, drainResp.Body.String())
+		}
+		if drainRequest.Timeout != 0 {
+			t.Fatalf("drain timeout = %s, want 0", drainRequest.Timeout)
+		}
+
+		backlogResp := performRequest(
+			t,
+			fixture.Engine,
+			http.MethodGet,
+			"/scheduler/backlog?limit=2&workspace=ws-alpha&include_paused=true",
+			nil,
+		)
+		if backlogResp.Code != http.StatusOK {
+			t.Fatalf("backlog status = %d, want 200; body=%s", backlogResp.Code, backlogResp.Body.String())
+		}
+		if backlogQuery.Limit != 2 || backlogQuery.WorkspaceID != "ws-alpha" || !backlogQuery.IncludePaused {
+			t.Fatalf("backlog query = %#v", backlogQuery)
+		}
+	})
+}
+
 func TestBaseHandlersExpandedTaskEndpoints(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 4, 17, 13, 0, 0, 0, time.UTC)
 	var publishActor taskpkg.ActorContext
+	var inspectTaskActor taskpkg.ActorContext
+	var inspectRunActor taskpkg.ActorContext
 	var runDetailActor taskpkg.ActorContext
 	var timelineActor taskpkg.ActorContext
 	var timelineQuery taskpkg.TimelineQuery
@@ -360,6 +523,58 @@ func TestBaseHandlersExpandedTaskEndpoints(t *testing.T) {
 	var streamQuery taskpkg.StreamQuery
 
 	tasks := testutil.StubTaskManager{
+		InspectTaskFn: func(_ context.Context, id string, actor taskpkg.ActorContext) (*taskpkg.InspectView, error) {
+			inspectTaskActor = actor
+			return &taskpkg.InspectView{
+				Target: taskpkg.InspectTargetTask,
+				Task: taskpkg.Summary{
+					ID:          id,
+					Title:       "Published task",
+					Status:      taskpkg.TaskStatusReady,
+					Scope:       taskpkg.ScopeWorkspace,
+					WorkspaceID: "ws-alpha",
+				},
+				CurrentRun: &taskpkg.InspectRunSummary{
+					RunID:                   "run-1",
+					TaskID:                  id,
+					Status:                  taskpkg.TaskRunStatusQueued,
+					ClaimTokenHashTruncated: "abcdef12",
+					QueuedAt:                now.Add(-10 * time.Minute),
+					Attempt:                 1,
+				},
+				Diagnostics: []contract.DiagnosticItem{{
+					ID:            "task.inspect.task_run_stranded.run-1",
+					Code:          contract.CodeTaskRunStranded,
+					Severity:      contract.SeverityWarn,
+					Category:      contract.CategoryTask,
+					Title:         "Queued task run has no eligible session",
+					Message:       "No eligible session is visible.",
+					DataFreshness: contract.FreshnessLive,
+				}},
+				NextAction: taskpkg.InspectNextActionStranded,
+				AsOf:       now,
+			}, nil
+		},
+		InspectRunFn: func(_ context.Context, id string, actor taskpkg.ActorContext) (*taskpkg.InspectView, error) {
+			inspectRunActor = actor
+			return &taskpkg.InspectView{
+				Target: taskpkg.InspectTargetRun,
+				Task: taskpkg.Summary{
+					ID:     "task-1",
+					Title:  "Published task",
+					Status: taskpkg.TaskStatusInProgress,
+				},
+				CurrentRun: &taskpkg.InspectRunSummary{
+					RunID:    id,
+					TaskID:   "task-1",
+					Status:   taskpkg.TaskRunStatusRunning,
+					QueuedAt: now.Add(-10 * time.Minute),
+					Attempt:  2,
+				},
+				NextAction: taskpkg.InspectNextActionRunning,
+				AsOf:       now,
+			}, nil
+		},
 		PublishTaskFn: func(
 			_ context.Context,
 			id string,
@@ -690,6 +905,41 @@ func TestBaseHandlersExpandedTaskEndpoints(t *testing.T) {
 		if runPayload.Run.Run.ID != "run-1" || runPayload.Run.Session == nil ||
 			runDetailActor.Origin.Ref != "tasks.get_run" {
 			t.Fatalf("run detail payload/actor = %#v / %#v", runPayload, runDetailActor)
+		}
+
+		inspectTaskResp := performRequest(t, fixture.Engine, http.MethodGet, "/tasks/task-1/inspect", nil)
+		if inspectTaskResp.Code != http.StatusOK {
+			t.Fatalf(
+				"task inspect status = %d, want %d; body=%s",
+				inspectTaskResp.Code,
+				http.StatusOK,
+				inspectTaskResp.Body.String(),
+			)
+		}
+		var inspectTaskPayload contract.TaskInspectResponse
+		testutil.DecodeJSONResponse(t, inspectTaskResp, &inspectTaskPayload)
+		if inspectTaskPayload.Inspect.NextAction != string(taskpkg.InspectNextActionStranded) ||
+			inspectTaskPayload.Inspect.CurrentRun == nil ||
+			inspectTaskPayload.Inspect.CurrentRun.ClaimTokenHashTruncated != "abcdef12" ||
+			inspectTaskActor.Origin.Ref != "tasks.inspect" {
+			t.Fatalf("task inspect payload/actor = %#v / %#v", inspectTaskPayload, inspectTaskActor)
+		}
+
+		inspectRunResp := performRequest(t, fixture.Engine, http.MethodGet, "/runs/run-1/inspect", nil)
+		if inspectRunResp.Code != http.StatusOK {
+			t.Fatalf(
+				"run inspect status = %d, want %d; body=%s",
+				inspectRunResp.Code,
+				http.StatusOK,
+				inspectRunResp.Body.String(),
+			)
+		}
+		var inspectRunPayload contract.TaskInspectResponse
+		testutil.DecodeJSONResponse(t, inspectRunResp, &inspectRunPayload)
+		if inspectRunPayload.Inspect.Target != string(taskpkg.InspectTargetRun) ||
+			inspectRunPayload.Inspect.NextAction != string(taskpkg.InspectNextActionRunning) ||
+			inspectRunActor.Origin.Ref != "tasks.inspect" {
+			t.Fatalf("run inspect payload/actor = %#v / %#v", inspectRunPayload, inspectRunActor)
 		}
 
 		timelineResp := performRequest(

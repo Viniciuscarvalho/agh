@@ -18,6 +18,7 @@ import (
 	bridgepkg "github.com/pedronauck/agh/internal/bridges"
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	"github.com/pedronauck/agh/internal/diagnostics"
+	eventspkg "github.com/pedronauck/agh/internal/events"
 	hookspkg "github.com/pedronauck/agh/internal/hooks"
 	"github.com/pedronauck/agh/internal/notifications"
 	observepkg "github.com/pedronauck/agh/internal/observe"
@@ -61,6 +62,10 @@ func SessionPayloadFromInfo(info *session.Info) contract.SessionPayload {
 		Channel:         info.Channel,
 		Type:            info.Type,
 		State:           info.State,
+		Badge:           session.BadgeForInfo(info),
+		Attachable:      session.AttachableForInfo(info, time.Now().UTC()),
+		AttachedTo:      strings.TrimSpace(info.AttachedTo),
+		AttachExpiresAt: cloneTimePtr(info.AttachExpiresAt),
 		StopReason:      info.StopReason,
 		StopDetail:      info.StopDetail,
 		Failure:         SessionFailurePayloadFromStore(info.Failure),
@@ -79,6 +84,55 @@ func SessionPayloadFromInfo(info *session.Info) contract.SessionPayload {
 		payload.Sandbox = sandbox
 	}
 	return payload
+}
+
+// SessionPayloadFromStoreInfo converts the persisted session index row into the shared payload.
+func SessionPayloadFromStoreInfo(info store.SessionInfo) contract.SessionPayload {
+	state := session.State(strings.TrimSpace(info.State))
+	converted := &session.Info{
+		ID:               strings.TrimSpace(info.ID),
+		Name:             strings.TrimSpace(info.Name),
+		AgentName:        strings.TrimSpace(info.AgentName),
+		Provider:         strings.TrimSpace(info.Provider),
+		WorkspaceID:      strings.TrimSpace(info.WorkspaceID),
+		Channel:          strings.TrimSpace(info.Channel),
+		Type:             session.Type(strings.TrimSpace(info.SessionType)),
+		State:            state,
+		StopReason:       info.StopReason,
+		StopDetail:       strings.TrimSpace(info.StopDetail),
+		Failure:          store.CloneSessionFailure(info.Failure),
+		ACPSessionID:     stringPointerValue(info.ACPSessionID),
+		Lineage:          store.NormalizeSessionLineage(info.ID, info.Lineage),
+		Liveness:         store.CloneSessionLivenessMeta(info.Liveness),
+		Sandbox:          cloneStoreSessionSandboxMeta(info.Sandbox),
+		SoulSnapshotID:   strings.TrimSpace(info.SoulSnapshotID),
+		SoulDigest:       strings.TrimSpace(info.SoulDigest),
+		ParentSoulDigest: strings.TrimSpace(info.ParentSoulDigest),
+		AttachedTo:       strings.TrimSpace(info.AttachedTo),
+		AttachExpiresAt:  cloneTimePtr(info.AttachExpiresAt),
+		CreatedAt:        info.CreatedAt,
+		UpdatedAt:        info.UpdatedAt,
+	}
+	return SessionPayloadFromInfo(converted)
+}
+
+func stringPointerValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
+}
+
+func cloneStoreSessionSandboxMeta(meta *store.SessionSandboxMeta) *store.SessionSandboxMeta {
+	if meta == nil {
+		return nil
+	}
+	cloned := *meta
+	cloned.RuntimeAdditionalDirs = append([]string(nil), meta.RuntimeAdditionalDirs...)
+	cloned.ProviderState = append([]byte(nil), meta.ProviderState...)
+	cloned.SSHAccessExpiresAt = cloneTimePtr(meta.SSHAccessExpiresAt)
+	cloned.LastSyncAt = cloneTimePtr(meta.LastSyncAt)
+	return &cloned
 }
 
 // RuntimeActivityPayloadFromSessionMeta converts persisted session activity metadata into the shared payload.
@@ -403,14 +457,17 @@ func TokenUsagePayloadFromUsage(usage *acp.TokenUsage) *contract.TokenUsagePaylo
 	}
 }
 
-// ObserveEventPayloadFromEvent converts an observe event into the shared payload.
-func ObserveEventPayloadFromEvent(event store.EventSummary) contract.ObserveEventPayload {
-	return contract.ObserveEventPayload{
+// LogEventPayloadFromSummary converts an event summary into the shared logs payload.
+func LogEventPayloadFromSummary(event store.EventSummary) contract.LogEventPayload {
+	return contract.LogEventPayload{
 		ID:               event.ID,
 		SessionID:        event.SessionID,
 		WorkspaceID:      event.WorkspaceID,
 		Type:             event.Type,
 		AgentName:        event.AgentName,
+		Provider:         event.Provider,
+		Component:        eventspkg.ComponentFor(event.Type),
+		Outcome:          logEventOutcome(event),
 		Content:          ssepkg.ScrubMemoryContextBytes(append([]byte(nil), event.Content...)),
 		EventCorrelation: event.Normalize(),
 		ParentSessionID:  event.ParentSessionID,
@@ -419,6 +476,14 @@ func ObserveEventPayloadFromEvent(event store.EventSummary) contract.ObserveEven
 		Summary:          ssepkg.ScrubMemoryContextString(event.Summary),
 		Timestamp:        event.Timestamp,
 	}
+}
+
+func logEventOutcome(event store.EventSummary) string {
+	outcome := strings.TrimSpace(event.Outcome)
+	if outcome != "" {
+		return outcome
+	}
+	return string(eventspkg.OutcomeFor(event.Type))
 }
 
 func sessionEventCorrelation(event store.SessionEvent) store.EventCorrelation {
@@ -522,6 +587,117 @@ func ObserveHealthPayloadFromHealth(health *observepkg.Health) contract.ObserveH
 		Activities:         SessionActivityHealthPayloadsFromObserve(health.Activities),
 		Version:            health.Version,
 	}
+}
+
+// TaskHealthPayloadFromObserve converts observer task health into the shared status payload.
+func TaskHealthPayloadFromObserve(health observepkg.TaskHealth) contract.TaskHealthPayload {
+	return contract.TaskHealthPayload{
+		Status:                     strings.TrimSpace(health.Status),
+		QueueDepthTotal:            health.QueueDepthTotal,
+		OldestQueuedAt:             optionalTime(health.OldestQueuedAt),
+		OldestQueueAgeMilli:        health.OldestQueueAgeMilli,
+		QueueDepth:                 TaskQueueDepthPayloadsFromObserve(health.QueueDepth),
+		StuckRuns:                  StuckTaskRunPayloadsFromObserve(health.StuckRuns),
+		ActiveOrphanRuns:           health.ActiveOrphanRuns,
+		TaskTotals:                 TaskStatusTotalPayloadsFromObserve(health.TaskTotals),
+		RunTotals:                  TaskRunTotalPayloadsFromObserve(health.RunTotals),
+		OwnerTotals:                TaskOwnerTotalPayloadsFromObserve(health.OwnerTotals),
+		ForcedStopsSinceStart:      health.ForcedStopsSinceStart,
+		DuplicateIngressSinceStart: health.DuplicateIngressSinceStart,
+		ChannelMismatchSinceStart:  health.ChannelMismatchSinceStart,
+		RecoverySinceStart: contract.TaskRecoveryTotalsPayload{
+			Requeued:      health.RecoverySinceStart.Requeued,
+			MarkedRunning: health.RecoverySinceStart.MarkedRunning,
+			Failed:        health.RecoverySinceStart.Failed,
+		},
+	}
+}
+
+// TaskQueueDepthPayloadsFromObserve converts task queue-depth rows.
+func TaskQueueDepthPayloadsFromObserve(rows []observepkg.TaskQueueDepth) []contract.TaskQueueDepthPayload {
+	if len(rows) == 0 {
+		return nil
+	}
+	payloads := make([]contract.TaskQueueDepthPayload, 0, len(rows))
+	for _, row := range rows {
+		payloads = append(payloads, contract.TaskQueueDepthPayload{
+			NetworkChannel:      strings.TrimSpace(row.NetworkChannel),
+			Count:               row.Count,
+			OldestQueuedAt:      optionalTime(row.OldestQueuedAt),
+			OldestQueueAgeMilli: row.OldestQueueAgeMilli,
+		})
+	}
+	return payloads
+}
+
+// StuckTaskRunPayloadsFromObserve converts stuck task-run diagnostics.
+func StuckTaskRunPayloadsFromObserve(rows []observepkg.StuckTaskRun) []contract.StuckTaskRunPayload {
+	if len(rows) == 0 {
+		return nil
+	}
+	payloads := make([]contract.StuckTaskRunPayload, 0, len(rows))
+	for _, row := range rows {
+		payloads = append(payloads, contract.StuckTaskRunPayload{
+			TaskID:         strings.TrimSpace(row.TaskID),
+			RunID:          strings.TrimSpace(row.RunID),
+			Status:         strings.TrimSpace(string(row.Status)),
+			OriginKind:     strings.TrimSpace(string(row.OriginKind)),
+			NetworkChannel: strings.TrimSpace(row.NetworkChannel),
+			SessionID:      strings.TrimSpace(row.SessionID),
+			AgeMillis:      row.AgeMillis,
+		})
+	}
+	return payloads
+}
+
+// TaskStatusTotalPayloadsFromObserve converts task status buckets.
+func TaskStatusTotalPayloadsFromObserve(rows []observepkg.TaskStatusTotal) []contract.TaskStatusTotalPayload {
+	if len(rows) == 0 {
+		return nil
+	}
+	payloads := make([]contract.TaskStatusTotalPayload, 0, len(rows))
+	for _, row := range rows {
+		payloads = append(payloads, contract.TaskStatusTotalPayload{
+			Scope:          strings.TrimSpace(string(row.Scope)),
+			Status:         strings.TrimSpace(string(row.Status)),
+			NetworkChannel: strings.TrimSpace(row.NetworkChannel),
+			Count:          row.Count,
+		})
+	}
+	return payloads
+}
+
+// TaskRunTotalPayloadsFromObserve converts task-run status buckets.
+func TaskRunTotalPayloadsFromObserve(rows []observepkg.TaskRunTotal) []contract.TaskRunTotalPayload {
+	if len(rows) == 0 {
+		return nil
+	}
+	payloads := make([]contract.TaskRunTotalPayload, 0, len(rows))
+	for _, row := range rows {
+		payloads = append(payloads, contract.TaskRunTotalPayload{
+			Status:         strings.TrimSpace(string(row.Status)),
+			OriginKind:     strings.TrimSpace(string(row.OriginKind)),
+			NetworkChannel: strings.TrimSpace(row.NetworkChannel),
+			Count:          row.Count,
+		})
+	}
+	return payloads
+}
+
+// TaskOwnerTotalPayloadsFromObserve converts task ownership buckets.
+func TaskOwnerTotalPayloadsFromObserve(rows []observepkg.TaskOwnerTotal) []contract.TaskOwnerTotalPayload {
+	if len(rows) == 0 {
+		return nil
+	}
+	payloads := make([]contract.TaskOwnerTotalPayload, 0, len(rows))
+	for _, row := range rows {
+		payloads = append(payloads, contract.TaskOwnerTotalPayload{
+			OwnerKind: strings.TrimSpace(string(row.OwnerKind)),
+			OwnerRef:  strings.TrimSpace(row.OwnerRef),
+			Count:     row.Count,
+		})
+	}
+	return payloads
 }
 
 // ObservePersistenceHealthPayloadFromHealth converts persistence health into the shared payload.
@@ -871,22 +1047,23 @@ func BridgeHealthPayloadFromObserve(health observepkg.BridgeInstanceHealth) cont
 // the shared bridge-management payload exposed by transports and OpenAPI.
 func BridgePayloadFromBridgeInstance(instance bridgepkg.BridgeInstance) contract.BridgePayload {
 	return contract.BridgePayload{
-		ID:               instance.ID,
-		Scope:            instance.Scope,
-		WorkspaceID:      instance.WorkspaceID,
-		Platform:         instance.Platform,
-		ExtensionName:    instance.ExtensionName,
-		DisplayName:      instance.DisplayName,
-		Source:           instance.Source,
-		Enabled:          instance.Enabled,
-		Status:           instance.Status,
-		DMPolicy:         instance.DMPolicy,
-		RoutingPolicy:    instance.RoutingPolicy,
-		ProviderConfig:   contract.BridgeProviderConfigPayload(cloneRawMessage(instance.ProviderConfig)),
-		DeliveryDefaults: contract.BridgeDeliveryDefaultsPayload(cloneRawMessage(instance.DeliveryDefaults)),
-		Degradation:      cloneBridgeDegradation(instance.Degradation),
-		CreatedAt:        instance.CreatedAt,
-		UpdatedAt:        instance.UpdatedAt,
+		ID:                   instance.ID,
+		Scope:                instance.Scope,
+		WorkspaceID:          instance.WorkspaceID,
+		Platform:             instance.Platform,
+		ExtensionName:        instance.ExtensionName,
+		DisplayName:          instance.DisplayName,
+		Source:               instance.Source,
+		Enabled:              instance.Enabled,
+		Status:               instance.Status,
+		DMPolicy:             instance.DMPolicy,
+		RoutingPolicy:        instance.RoutingPolicy,
+		ProviderConfig:       contract.BridgeProviderConfigPayload(cloneRawMessage(instance.ProviderConfig)),
+		DeliveryDefaults:     contract.BridgeDeliveryDefaultsPayload(cloneRawMessage(instance.DeliveryDefaults)),
+		NotificationSuppress: instance.NotificationSuppress,
+		Degradation:          cloneBridgeDegradation(instance.Degradation),
+		CreatedAt:            instance.CreatedAt,
+		UpdatedAt:            instance.UpdatedAt,
 	}
 }
 
@@ -1187,16 +1364,83 @@ func SkillPayloadFromSkill(skill *skills.Skill) contract.SkillPayload {
 		Metadata:    skill.Meta.Metadata,
 		Diagnostics: SkillDiagnosticPayloadsFromDiagnostics(skills.DiagnosticsForSkill(skill)),
 	}
+	payload.Provenance = &contract.ProvenancePayload{
+		InstalledFromBundle:    strings.TrimSpace(skill.InstalledFromBundle),
+		InstalledFromExtension: strings.TrimSpace(skill.InstalledFromExtension),
+		PrecedenceTier:         skills.SkillPrecedenceTierName(skill.Source),
+		ShadowedBy:             SkillShadowEntryPayloadsFromRefs(skill.Diagnostics.ShadowedDefinitions),
+	}
 	if skill.Provenance != nil {
-		payload.Provenance = &contract.ProvenancePayload{
-			Slug:        skill.Provenance.Slug,
-			Registry:    skill.Provenance.Registry,
-			Version:     skill.Provenance.Version,
-			InstalledAt: skill.Provenance.InstalledAt,
+		payload.Provenance.Slug = skill.Provenance.Slug
+		payload.Provenance.Registry = skill.Provenance.Registry
+		payload.Provenance.Version = skill.Provenance.Version
+		if !skill.Provenance.InstalledAt.IsZero() {
+			installedAt := skill.Provenance.InstalledAt.UTC()
+			payload.Provenance.InstalledAt = &installedAt
 		}
 	}
 
 	return payload
+}
+
+// SkillShadowsResponseFromDomain converts one resolver shadow snapshot into the shared API payload.
+func SkillShadowsResponseFromDomain(snapshot skills.SkillShadows) contract.SkillShadowsResponse {
+	return contract.SkillShadowsResponse{
+		Name:    strings.TrimSpace(snapshot.Name),
+		Winner:  SkillShadowEntryPayloadFromDomain(snapshot.Winner),
+		Shadows: SkillShadowEntryPayloadsFromDomain(snapshot.Shadows),
+	}
+}
+
+func SkillShadowEntryPayloadsFromDomain(entries []skills.ShadowEntry) []contract.SkillShadowEntryPayload {
+	if len(entries) == 0 {
+		return nil
+	}
+	payloads := make([]contract.SkillShadowEntryPayload, 0, len(entries))
+	for _, entry := range entries {
+		payloads = append(payloads, SkillShadowEntryPayloadFromDomain(entry))
+	}
+	return payloads
+}
+
+func SkillShadowEntryPayloadFromDomain(entry skills.ShadowEntry) contract.SkillShadowEntryPayload {
+	return contract.SkillShadowEntryPayload{
+		Path:             strings.TrimSpace(entry.Path),
+		Tier:             skillPrecedenceTierFromSourceLabel(entry.Tier),
+		ResolvedToWinner: entry.ResolvedToWinner,
+		DetectedAt:       skillShadowDetectedAt(entry.DetectedAt),
+	}
+}
+
+func SkillShadowEntryPayloadsFromRefs(refs []skills.SkillDefinitionRef) []contract.SkillShadowEntryPayload {
+	if len(refs) == 0 {
+		return nil
+	}
+	payloads := make([]contract.SkillShadowEntryPayload, 0, len(refs))
+	for _, ref := range refs {
+		payloads = append(payloads, contract.SkillShadowEntryPayload{
+			Path:             strings.TrimSpace(ref.Path),
+			Tier:             skillPrecedenceTierFromSourceLabel(ref.Source),
+			ResolvedToWinner: false,
+			DetectedAt:       skillShadowDetectedAt(ref.DetectedAt),
+		})
+	}
+	return payloads
+}
+
+func skillPrecedenceTierFromSourceLabel(source string) string {
+	trimmed := strings.TrimSpace(source)
+	if trimmed == "agent-local" {
+		return "agent_local"
+	}
+	return trimmed
+}
+
+func skillShadowDetectedAt(value time.Time) time.Time {
+	if value.IsZero() {
+		return time.Time{}
+	}
+	return value.UTC()
 }
 
 // SkillDiagnosticPayloadsFromDiagnostics converts skill registry diagnostics for API payloads.
@@ -1624,6 +1868,74 @@ func SettingsCollectionMutationResultPayloadFromResult(result settingspkg.Mutati
 	}
 }
 
+// SettingsApplyResponseFromResult converts one settings apply result into the public payload.
+func SettingsApplyResponseFromResult(result settingspkg.ApplyResult) contract.SettingsApplyResponse {
+	return contract.SettingsApplyResponse{
+		Section:          contract.SettingsApplyTargetName(strings.TrimSpace(string(result.Section))),
+		Scope:            contract.SettingsScopeKind(strings.TrimSpace(string(result.Scope))),
+		WriteTarget:      contract.SettingsWriteTargetKind(result.WriteTarget),
+		WorkspaceID:      strings.TrimSpace(result.WorkspaceID),
+		AgentName:        strings.TrimSpace(result.AgentName),
+		Applied:          result.Applied,
+		Lifecycle:        contract.SettingsApplyLifecycle(result.Record.Lifecycle),
+		ApplyRecordID:    strings.TrimSpace(result.Record.ID),
+		ActiveGeneration: result.Record.Generation,
+		ActiveConfigHash: strings.TrimSpace(result.Record.ActiveHash),
+		NextAction:       contract.SettingsApplyNextAction(result.NextAction),
+		RestartRequired:  result.RestartRequired,
+		RestartScope:     strings.TrimSpace(result.RestartScope),
+		Warnings:         cloneStrings(result.Warnings),
+		PartialFailures:  settingsApplyFailurePayloads(result.PartialFailures),
+		Skipped:          result.Skipped,
+		SkippedReason:    strings.TrimSpace(result.SkippedReason),
+	}
+}
+
+// ConfigApplyRecordsResponseFromRecords converts apply history rows into the public payload.
+func ConfigApplyRecordsResponseFromRecords(
+	records []settingspkg.ApplyRecord,
+) contract.ConfigApplyRecordsResponse {
+	entries := make([]contract.ConfigApplyRecordPayload, 0, len(records))
+	for _, record := range records {
+		entries = append(entries, configApplyRecordPayload(record))
+	}
+	return contract.ConfigApplyRecordsResponse{Entries: entries}
+}
+
+func configApplyRecordPayload(record settingspkg.ApplyRecord) contract.ConfigApplyRecordPayload {
+	return contract.ConfigApplyRecordPayload{
+		ID:                strings.TrimSpace(record.ID),
+		DesiredConfigHash: strings.TrimSpace(record.DesiredHash),
+		ActiveConfigHash:  strings.TrimSpace(record.ActiveHash),
+		Generation:        record.Generation,
+		Actor:             strings.TrimSpace(record.Actor),
+		DiffClass:         contract.SettingsApplyLifecycle(record.DiffClass),
+		Status:            contract.ConfigApplyStatus(record.Status),
+		Lifecycle:         contract.SettingsApplyLifecycle(record.Lifecycle),
+		NextAction:        contract.SettingsApplyNextAction(record.NextAction),
+		Diagnostics:       append([]contract.DiagnosticItem(nil), record.Diagnostics...),
+		CreatedAt:         record.CreatedAt,
+		AppliedAt:         record.AppliedAt,
+		UpdatedAt:         record.UpdatedAt,
+	}
+}
+
+func settingsApplyFailurePayloads(
+	failures []settingspkg.ApplyFailure,
+) []contract.SettingsApplyFailurePayload {
+	if len(failures) == 0 {
+		return nil
+	}
+	payloads := make([]contract.SettingsApplyFailurePayload, 0, len(failures))
+	for _, failure := range failures {
+		payloads = append(payloads, contract.SettingsApplyFailurePayload{
+			Subsystem:  strings.TrimSpace(failure.Subsystem),
+			Diagnostic: failure.Diagnostic,
+		})
+	}
+	return payloads
+}
+
 // SettingsRestartActionResponseFromOperation converts one daemon restart operation into the action response payload.
 func SettingsRestartActionResponseFromOperation(operation SettingsRestartOperation) contract.RestartActionResponse {
 	return contract.RestartActionResponse{
@@ -1776,6 +2088,11 @@ func settingsGeneralConfigPayload(value settingspkg.GeneralSettings) contract.Se
 		},
 		Daemon: contract.SettingsDaemonPayload{
 			Socket: strings.TrimSpace(value.Daemon.Socket),
+			ReloadTimeouts: contract.SettingsDaemonReloadTimeoutsPayload{
+				Providers: value.Daemon.ReloadTimeouts.Providers.String(),
+				MCP:       value.Daemon.ReloadTimeouts.MCP.String(),
+				Bridges:   value.Daemon.ReloadTimeouts.Bridges.String(),
+			},
 		},
 	}
 }
@@ -2296,6 +2613,7 @@ func settingsProviderAuthStatusPayload(
 		EnvPolicy:  string(value.EnvPolicy),
 		HomePolicy: string(value.HomePolicy),
 		State:      strings.TrimSpace(value.State),
+		Code:       strings.TrimSpace(value.Code),
 		Message:    strings.TrimSpace(value.Message),
 		StatusCmd:  strings.TrimSpace(value.StatusCmd),
 		LoginCmd:   strings.TrimSpace(value.LoginCmd),
@@ -2619,15 +2937,18 @@ func durationString(value time.Duration) string {
 // TaskReferencePayloadFromReference converts one task reference into the shared payload.
 func TaskReferencePayloadFromReference(record taskpkg.Reference) contract.TaskReferencePayload {
 	return contract.TaskReferencePayload{
-		ID:             record.ID,
-		Identifier:     record.Identifier,
-		Title:          record.Title,
-		Status:         record.Status,
-		Priority:       record.Priority,
-		Owner:          cloneOwnership(record.Owner),
-		Scope:          record.Scope,
-		WorkspaceID:    record.WorkspaceID,
-		LatestEventSeq: record.LatestEventSeq,
+		ID:              record.ID,
+		Identifier:      record.Identifier,
+		Title:           record.Title,
+		Status:          record.Status,
+		Priority:        record.Priority,
+		Owner:           cloneOwnership(record.Owner),
+		Scope:           record.Scope,
+		WorkspaceID:     record.WorkspaceID,
+		LatestEventSeq:  record.LatestEventSeq,
+		Paused:          record.Paused,
+		EffectivePaused: record.EffectivePaused,
+		PausedByTaskID:  record.PausedByTaskID,
 	}
 }
 
@@ -2642,6 +2963,8 @@ func TaskRunSummaryPayloadFromSummary(summary *taskpkg.RunSummary) *contract.Tas
 		TaskID:                summary.TaskID,
 		Status:                summary.Status,
 		Attempt:               summary.Attempt,
+		PreviousRunID:         summary.PreviousRunID,
+		FailureKind:           summary.FailureKind,
 		MaxAttempts:           summary.MaxAttempts,
 		SessionID:             summary.SessionID,
 		ClaimedBy:             cloneActorIdentity(summary.ClaimedBy),

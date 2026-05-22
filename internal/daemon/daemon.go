@@ -133,6 +133,7 @@ type Observer interface {
 // Registry is the narrowed global database surface shared by observe and workspace.
 type Registry interface {
 	observe.Registry
+	store.SessionCatalog
 	store.NetworkAuditStore
 	store.NetworkChannelStore
 	store.NetworkConversationStore
@@ -161,6 +162,7 @@ type RuntimeDeps struct {
 	Observer            Observer
 	Automation          core.AutomationManager
 	Bridges             core.BridgeService
+	Notifications       core.NotificationPresetService
 	Registry            Registry
 	MemoryStore         *memory.Store
 	MemoryExtractor     core.MemoryExtractorService
@@ -184,6 +186,7 @@ type RuntimeDeps struct {
 	Settings            core.SettingsService
 	SettingsRestart     core.SettingsRestartController
 	SettingsUpdate      core.SettingsUpdateController
+	SupportBundles      core.SupportBundleService
 	Vault               core.VaultService
 	Extensions          udsapi.ExtensionService
 	Bundles             core.BundleService
@@ -363,6 +366,8 @@ type SessionManagerDeps struct {
 	WorkspaceResolver    workspacepkg.RuntimeResolver
 	SandboxRegistry      *sandbox.Registry
 	SessionSupervision   aghconfig.SessionSupervisionConfig
+	SessionBusyInput     aghconfig.SessionBusyInputConfig
+	SessionInputQueue    store.SessionInputQueueStore
 	SessionHealthConfig  aghconfig.HeartbeatConfig
 	ProcessRegistry      *toolruntime.Registry
 	HostedMCP            session.HostedMCPLauncher
@@ -636,6 +641,8 @@ func (d *Daemon) applySessionManagerFactoryDefault() {
 			session.WithWorkspaceResolver(deps.WorkspaceResolver),
 			session.WithSandboxRegistry(deps.SandboxRegistry),
 			session.WithSessionSupervision(deps.SessionSupervision),
+			session.WithSessionBusyInputConfig(deps.SessionBusyInput),
+			session.WithSessionInputQueueStore(deps.SessionInputQueue),
 			session.WithSessionHealthConfig(deps.SessionHealthConfig),
 			session.WithSessionHealthStore(deps.SessionHealthStore),
 			session.WithHostedMCPLauncher(deps.HostedMCP),
@@ -646,6 +653,7 @@ func (d *Daemon) applySessionManagerFactoryDefault() {
 			session.WithDriver(session.NewACPDriverAdapter(acp.New(
 				acp.WithLogger(deps.Logger),
 				acp.WithProcessRegistry(deps.ProcessRegistry),
+				acp.WithSteerSource(sessionSteerSource{queue: deps.SessionInputQueue, now: d.now}),
 			))),
 		)
 	}
@@ -1038,12 +1046,14 @@ func httpServerOptions(deps *RuntimeDeps) []httpapi.Option {
 		httpapi.WithLogger(deps.Logger),
 		httpapi.WithStartedAt(deps.StartedAt),
 		httpapi.WithSessionManager(deps.Sessions),
+		httpapi.WithSessionCatalog(deps.Registry),
 		httpapi.WithTaskService(deps.Tasks),
 		httpapi.WithNetworkService(deps.Network),
 		httpapi.WithNetworkStore(deps.Registry),
 		httpapi.WithObserver(deps.Observer),
 		httpapi.WithAutomation(deps.Automation),
 		httpapi.WithBridgeService(deps.Bridges),
+		httpapi.WithNotificationPresetService(notificationPresetServiceFromDeps(deps)),
 		httpapi.WithBundleService(deps.Bundles),
 		httpapi.WithToolRegistry(deps.ToolRegistry),
 		httpapi.WithToolsetRegistry(deps.Toolsets),
@@ -1051,6 +1061,7 @@ func httpServerOptions(deps *RuntimeDeps) []httpapi.Option {
 		httpapi.WithSettingsService(deps.Settings),
 		httpapi.WithSettingsRestartController(deps.SettingsRestart),
 		httpapi.WithSettingsUpdateController(deps.SettingsUpdate),
+		httpapi.WithSupportBundleService(deps.SupportBundles),
 		httpapi.WithVaultService(deps.Vault),
 		httpapi.WithResourceService(deps.Resources),
 		httpapi.WithWorkspaceResolver(deps.WorkspaceService),
@@ -1075,6 +1086,13 @@ func httpServerOptions(deps *RuntimeDeps) []httpapi.Option {
 	}
 }
 
+func notificationPresetServiceFromDeps(deps *RuntimeDeps) core.NotificationPresetService {
+	if deps == nil {
+		return nil
+	}
+	return deps.Notifications
+}
+
 func udsServerOptions(deps *RuntimeDeps) []udsapi.Option {
 	return []udsapi.Option{
 		udsapi.WithHomePaths(deps.HomePaths),
@@ -1082,12 +1100,14 @@ func udsServerOptions(deps *RuntimeDeps) []udsapi.Option {
 		udsapi.WithLogger(deps.Logger),
 		udsapi.WithStartedAt(deps.StartedAt),
 		udsapi.WithSessionManager(deps.Sessions),
+		udsapi.WithSessionCatalog(deps.Registry),
 		udsapi.WithTaskService(deps.Tasks),
 		udsapi.WithNetworkService(deps.Network),
 		udsapi.WithNetworkStore(deps.Registry),
 		udsapi.WithObserver(deps.Observer),
 		udsapi.WithAutomation(deps.Automation),
 		udsapi.WithBridgeService(deps.Bridges),
+		udsapi.WithNotificationPresetService(notificationPresetServiceFromDeps(deps)),
 		udsapi.WithBundleService(deps.Bundles),
 		udsapi.WithToolRegistry(deps.ToolRegistry),
 		udsapi.WithToolsetRegistry(deps.Toolsets),
@@ -1095,6 +1115,7 @@ func udsServerOptions(deps *RuntimeDeps) []udsapi.Option {
 		udsapi.WithSettingsService(deps.Settings),
 		udsapi.WithSettingsRestartController(deps.SettingsRestart),
 		udsapi.WithSettingsUpdateController(deps.SettingsUpdate),
+		udsapi.WithSupportBundleService(deps.SupportBundles),
 		udsapi.WithVaultService(deps.Vault),
 		udsapi.WithResourceService(deps.Resources),
 		udsapi.WithWorkspaceResolver(deps.WorkspaceService),

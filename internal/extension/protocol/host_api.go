@@ -27,6 +27,7 @@ const (
 	ExtensionServiceMethodMemoryRecall   ExtensionServiceMethod = "memory/recall"
 	ExtensionServiceMethodMemoryForget   ExtensionServiceMethod = "memory/forget"
 	ExtensionServiceMethodBridgesDeliver ExtensionServiceMethod = "bridges/deliver"
+	ExtensionServiceMethodBridgeTargets  ExtensionServiceMethod = "bridges/targets/snapshot"
 	ExtensionServiceMethodProvideTools   ExtensionServiceMethod = "provide_tools"
 	ExtensionServiceMethodToolsCall      ExtensionServiceMethod = "tools/call"
 	ExtensionServiceMethodModelsList     ExtensionServiceMethod = "models/list"
@@ -49,7 +50,7 @@ const (
 	HostAPIMethodMemoryStore                 HostAPIMethod = "memory/store"
 	HostAPIMethodMemoryForget                HostAPIMethod = "memory/forget"
 	HostAPIMethodObserveHealth               HostAPIMethod = "observe/health"
-	HostAPIMethodObserveEvents               HostAPIMethod = "observe/events"
+	HostAPIMethodListLogs                    HostAPIMethod = "logs/list"
 	HostAPIMethodSkillsList                  HostAPIMethod = "skills/list"
 	HostAPIMethodModelsList                  HostAPIMethod = "models/list"
 	HostAPIMethodModelsRefresh               HostAPIMethod = "models/refresh"
@@ -155,7 +156,7 @@ func preNetworkHostAPIMethods() []HostAPIMethod {
 		HostAPIMethodMemoryStore,
 		HostAPIMethodMemoryForget,
 		HostAPIMethodObserveHealth,
-		HostAPIMethodObserveEvents,
+		HostAPIMethodListLogs,
 		HostAPIMethodSkillsList,
 		HostAPIMethodModelsList,
 		HostAPIMethodModelsRefresh,
@@ -234,6 +235,7 @@ var capabilityServiceMethods = map[string][]ExtensionServiceMethod{
 	},
 	CapabilityProvideBridgeAdapter: {
 		ExtensionServiceMethodBridgesDeliver,
+		ExtensionServiceMethodBridgeTargets,
 	},
 	CapabilityToolProvider: {
 		ExtensionServiceMethodProvideTools,

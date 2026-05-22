@@ -7,11 +7,13 @@ import {
   deleteSettingsProvider,
   disableSettingsExtension,
   enableSettingsExtension,
+  getSettingsExtensionProvenance,
   getSettingsGeneral,
   getSettingsObservability,
   getSettingsRestartStatus,
   getSettingsSkills,
   listSettingsSandboxes,
+  listSettingsApplyRecords,
   listSettingsExtensions,
   listSettingsHooks,
   listSettingsMCPServers,
@@ -19,9 +21,14 @@ import {
   putSettingsSandbox,
   putSettingsMCPServer,
   putSettingsProvider,
+  reloadSettings,
+  installSettingsExtension,
+  removeSettingsExtension,
+  searchSettingsExtensionMarketplace,
   SettingsApiError,
   settingsObservabilityLogTailPath,
   triggerSettingsRestart,
+  updateSettingsExtension,
   updateSettingsAutomation,
   updateSettingsGeneral,
   updateSettingsSkills,
@@ -63,10 +70,14 @@ const generalSectionFixture = {
 };
 
 const mutationFixture = {
+  active_config_hash: "sha256:active-live",
+  active_generation: 42,
   section: "general" as const,
   scope: "global" as const,
-  behavior: "restart_required" as const,
   applied: true,
+  apply_record_id: "cfg_apply_001",
+  lifecycle: "restart-required" as const,
+  next_action: "restart-daemon" as const,
   restart_required: true,
   restart_scope: "daemon",
   warnings: ["restart the daemon"],
@@ -144,7 +155,10 @@ describe("section reads and updates", () => {
 
     const body = {
       config: {
-        daemon: { socket: "/tmp/next.sock" },
+        daemon: {
+          reload_timeouts: { bridges: "30s", mcp: "10s", providers: "5s" },
+          socket: "/tmp/next.sock",
+        },
         defaults: { agent: "claude-code" },
         http: { host: "127.0.0.1", port: 2123 },
         limits: { max_concurrent_agents: 4 },
@@ -297,7 +311,8 @@ describe("collection endpoints", () => {
             mode: "native_cli",
             env_policy: "filtered",
             home_policy: "operator",
-            state: "native_cli",
+            state: "unknown",
+            code: "provider_classification_unknown",
           },
         },
       ],
@@ -309,7 +324,7 @@ describe("collection endpoints", () => {
     expect(result.providers).toHaveLength(1);
     expect(result.providers[0]?.source_metadata.effective_source.kind).toBe("global-config");
     expect(result.providers[0]?.settings.auth_mode).toBe("native_cli");
-    expect(result.providers[0]?.auth_status?.state).toBe("native_cli");
+    expect(result.providers[0]?.auth_status?.state).toBe("unknown");
     await expectFetchRequest({ path: "/api/settings/providers" });
   });
 
@@ -512,6 +527,53 @@ describe("restart action", () => {
   });
 });
 
+describe("apply records", () => {
+  it("lists apply records with normalized filters", async () => {
+    mockJsonResponse({
+      entries: [
+        {
+          id: "cfg_apply_001",
+          desired_config_hash: "sha256:desired",
+          active_config_hash: "sha256:active",
+          generation: 42,
+          actor: "http",
+          diff_class: "restart-required" as const,
+          status: "blocked" as const,
+          lifecycle: "restart-required" as const,
+          next_action: "restart-daemon" as const,
+          diagnostics: [],
+          created_at: "2026-05-20T13:00:00Z",
+          updated_at: "2026-05-20T13:00:01Z",
+        },
+      ],
+    });
+
+    const result = await listSettingsApplyRecords({
+      status: "blocked",
+      actor: " http ",
+      limit: 5,
+    });
+
+    expect(result.entries[0]?.status).toBe("blocked");
+    await expectFetchRequest({
+      path: "/api/settings/apply?status=blocked&actor=http&limit=5",
+    });
+  });
+
+  it("reloads settings and returns apply metadata", async () => {
+    mockJsonResponse(mutationFixture);
+
+    const result = await reloadSettings();
+
+    expect(result.next_action).toBe("restart-daemon");
+    expect(result.apply_record_id).toBe("cfg_apply_001");
+    await expectFetchRequest({
+      method: "POST",
+      path: "/api/settings/reload",
+    });
+  });
+});
+
 describe("extension operational actions", () => {
   const extensionFixture = {
     name: "daytona",
@@ -534,6 +596,106 @@ describe("extension operational actions", () => {
     expect(result).toEqual([extensionFixture]);
     expect(result[0]?.missing_env).toEqual(["DAYTONA_TOKEN"]);
     await expectFetchRequest({ path: "/api/extensions" });
+  });
+
+  it("searches extension marketplace through the HTTP endpoint", async () => {
+    const marketplaceEntry = {
+      slug: "daytona/daytona-extension",
+      name: "daytona",
+      source: "github",
+      type: "backend",
+      version: "1.2.4",
+      trust: {
+        decision: "allowed_unverified",
+        registry_tier: "community",
+        checksum_verified: false,
+        allow_unverified: true,
+      },
+    };
+    mockJsonResponse({ extensions: [marketplaceEntry] });
+
+    const result = await searchSettingsExtensionMarketplace({
+      q: "daytona",
+      source: "github",
+      limit: 12,
+    });
+
+    expect(result).toEqual([marketplaceEntry]);
+    await expectFetchRequest({
+      path: "/api/extensions/marketplace?q=daytona&source=github&limit=12",
+    });
+  });
+
+  it("installs marketplace extensions with allow_unverified carried in the body", async () => {
+    mockJsonResponse({ extension: extensionFixture }, { status: 201 });
+
+    const result = await installSettingsExtension({
+      slug: "daytona/daytona-extension",
+      source: "github",
+      version: "1.2.4",
+      allow_unverified: true,
+    });
+
+    expect(result).toEqual(extensionFixture);
+    await expectFetchRequest({
+      method: "POST",
+      path: "/api/extensions",
+      body: {
+        slug: "daytona/daytona-extension",
+        source: "github",
+        version: "1.2.4",
+        allow_unverified: true,
+      },
+    });
+  });
+
+  it("updates, removes, and reads extension provenance through daemon routes", async () => {
+    mockJsonResponse({
+      update: {
+        name: "daytona",
+        slug: "daytona/daytona-extension",
+        registry: "github",
+        path: "/tmp/agh/extensions/daytona",
+        current_version: "1.2.3",
+        latest_version: "1.2.4",
+        status: "available",
+      },
+    });
+    const update = await updateSettingsExtension("daytona", {
+      version: "1.2.4",
+      allow_unverified: true,
+    });
+    expect(update.status).toBe("available");
+    await expectFetchRequest({
+      method: "PUT",
+      path: "/api/extensions/daytona",
+      body: { version: "1.2.4", allow_unverified: true },
+    });
+
+    mockJsonResponse({
+      extension: { name: "daytona", path: "/tmp/agh/extensions/daytona", status: "removed" },
+    });
+    const removed = await removeSettingsExtension("daytona");
+    expect(removed.status).toBe("removed");
+    await expectFetchRequest({
+      callIndex: 1,
+      method: "DELETE",
+      path: "/api/extensions/daytona",
+    });
+
+    const provenance = {
+      installed_from: "marketplace_registry",
+      checksum_sha256: "sha256:fixture-daytona",
+      checksum_verified: false,
+      registry_tier: "community",
+      permissions: ["logs.read"],
+      installed_at: "2026-05-21T10:00:00Z",
+      installed_by: "operator:web",
+      allow_unverified: true,
+    };
+    mockJsonResponse({ provenance });
+    await expect(getSettingsExtensionProvenance("daytona")).resolves.toEqual(provenance);
+    await expectFetchRequest({ callIndex: 2, path: "/api/extensions/daytona/provenance" });
   });
 
   it("enables an extension and returns the updated record", async () => {

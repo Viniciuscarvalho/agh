@@ -96,18 +96,29 @@ function TaskDetailRoute() {
           cancel: page.isCancelPending,
           delete: deleteMutation.isPending,
           enqueue: page.isEnqueuePending,
+          pause: page.isPausePending,
           publish: page.isPublishPending,
+          resume: page.isResumePending,
         }}
         onCancel={page.handleCancelTask}
         onDelete={handleDeleteTask}
         onEnqueueRun={page.handleEnqueueRun}
+        onPause={page.handlePauseTask}
         onPublish={page.handlePublishTask}
+        onResume={page.handleResumeTask}
       />
 
       <TasksDetailTabs active={page.panel} items={tabItems} onChange={page.handlePanelChange} />
 
       <div className="flex min-h-0 flex-1 overflow-y-auto">
-        {page.panel === "overview" ? <TasksDetailOverviewPanel detail={detail} /> : null}
+        {page.panel === "overview" ? (
+          <TasksDetailOverviewPanel
+            detail={detail}
+            inspect={page.inspect}
+            inspectErrorMessage={page.inspectError?.message ?? null}
+            inspectLoading={page.inspectLoading}
+          />
+        ) : null}
         {page.panel === "runs" ? (
           <TasksDetailRunsPanel
             errorMessage={page.runsError?.message ?? null}

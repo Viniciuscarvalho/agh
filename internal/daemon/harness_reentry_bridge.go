@@ -13,6 +13,7 @@ import (
 
 	"github.com/pedronauck/agh/internal/acp"
 	aghconfig "github.com/pedronauck/agh/internal/config"
+	eventspkg "github.com/pedronauck/agh/internal/events"
 	"github.com/pedronauck/agh/internal/heartbeat"
 	"github.com/pedronauck/agh/internal/session"
 	"github.com/pedronauck/agh/internal/store"
@@ -20,15 +21,15 @@ import (
 )
 
 const (
-	harnessSummaryDetachedCompleted       = "harness.detached_run_completed"
-	harnessSummarySyntheticReentryEmitted = "harness.synthetic_reentry_emitted"
-	harnessSummarySyntheticReentryDropped = "harness.synthetic_reentry_dropped"
+	harnessSummaryDetachedCompleted       = eventspkg.HarnessDetachedRunCompleted
+	harnessSummarySyntheticReentryEmitted = eventspkg.HarnessSyntheticReentryEmitted
+	harnessSummarySyntheticReentryDropped = eventspkg.HarnessSyntheticReentryDropped
 
 	harnessReentryShutdownFinalizationTimeout = time.Second
 
-	harnessTaskEventRunCompleted = "task.run_completed"
-	harnessTaskEventRunFailed    = "task.run_failed"
-	harnessTaskEventRunCanceled  = "task.run_canceled"
+	harnessTaskEventRunCompleted = eventspkg.TaskRunCompleted
+	harnessTaskEventRunFailed    = eventspkg.TaskRunFailed
+	harnessTaskEventRunCanceled  = eventspkg.TaskRunCanceled
 
 	harnessReentryOutcomeEmitted = "emitted"
 	harnessReentryOutcomeSilent  = "silent"
@@ -270,7 +271,8 @@ func (b *harnessReentryBridge) recoverPendingRuns(ctx context.Context) error {
 		return err
 	}
 
-	for _, item := range recovered {
+	for i := range recovered {
+		item := &recovered[i]
 		if err := b.processTerminalRun(
 			item.run.TaskID,
 			item.run.ID,

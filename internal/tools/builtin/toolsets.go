@@ -120,7 +120,7 @@ var builtinToolsets = []toolspkg.Toolset{
 	{
 		ID: toolspkg.ToolsetIDObserve,
 		Tools: []string{
-			toolspkg.ToolIDObserveEvents.String(),
+			toolspkg.ToolIDListLogs.String(),
 			toolspkg.ToolIDObserveMetrics.String(),
 			toolspkg.ToolIDObserveSearch.String(),
 		},
@@ -169,5 +169,8 @@ var builtinToolsets = []toolspkg.Toolset{
 	{ID: toolspkg.ToolsetIDHooks, Tools: []string{"agh__hooks_*"}},
 	{ID: toolspkg.ToolsetIDAutomation, Tools: []string{"agh__automation_*"}},
 	{ID: toolspkg.ToolsetIDExtensions, Tools: []string{"agh__extensions_*"}},
+	{ID: toolspkg.ToolsetIDBundles, Tools: []string{"agh__bundles_*"}},
+	{ID: toolspkg.ToolsetIDResources, Tools: []string{"agh__resources_*"}},
+	{ID: toolspkg.ToolsetIDMCP, Tools: []string{toolspkg.ToolIDMCPStatus.String()}},
 	{ID: toolspkg.ToolsetIDMCPAuth, Tools: []string{toolspkg.ToolIDMCPAuthStatus.String()}},
 }

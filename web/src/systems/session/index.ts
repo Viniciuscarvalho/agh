@@ -17,6 +17,13 @@ export type {
   SessionLedgerResponse,
   SessionMessage,
   SessionPayload,
+  SessionPromptPayload,
+  SessionPromptRequest,
+  SessionPromptResponse,
+  SessionAttachResponse,
+  SessionBadge,
+  SessionRecapPayload,
+  SessionRecapResponse,
   SessionRepairPayload,
   SessionRepairQuery,
   SessionRepairResponse,
@@ -24,6 +31,7 @@ export type {
   SessionState,
   SessionsResponse,
   SessionTranscriptResponse,
+  TranscriptMarkerPayload,
   SessionDataParts,
   TokenUsagePayload,
   ToolUseResult,
@@ -35,6 +43,7 @@ export type {
 // Adapters
 export {
   approveSession,
+  cancelQueuedSessionPrompt,
   cancelSessionPrompt,
   createSession,
   deleteSession,
@@ -42,11 +51,15 @@ export {
   fetchSessionEvents,
   fetchSessionHistory,
   fetchSessionLedger,
+  fetchSessionRecap,
   fetchSessionTranscript,
   fetchSessions,
+  interruptSessionPrompt,
   repairSession,
   resumeSession,
+  sendSessionPrompt,
   SessionLedgerUnavailableError,
+  steerSessionPrompt,
   stopSession,
 } from "./adapters/session-api";
 
@@ -57,6 +70,7 @@ export {
   sessionEventsOptions,
   sessionHistoryOptions,
   sessionLedgerOptions,
+  sessionRecapOptions,
   sessionTranscriptOptions,
   sessionsListOptions,
 } from "./lib/query-options";
@@ -71,15 +85,23 @@ export type {
 } from "./stores/session-store";
 
 // Hooks
-export { useSession, useSessionLedger, useSessions } from "./hooks/use-sessions";
+export { useSession, useSessionLedger, useSessionRecap, useSessions } from "./hooks/use-sessions";
 export {
   useClearSessionConversation,
+  useCancelQueuedSessionPrompt,
   useCreateSession,
   useDeleteSession,
+  useInterruptSessionPrompt,
+  useQueueSessionPrompt,
   useRepairSession,
   useResumeSession,
+  useSendSessionPrompt,
+  useSteerSessionPrompt,
   useStopSession,
+  type CancelQueuedSessionPromptParams,
   type RepairSessionParams,
+  type SendSessionPromptParams,
+  type SessionPromptActionParams,
 } from "./hooks/use-session-actions";
 export {
   useSessionCreateDialog,

@@ -52,10 +52,13 @@ const (
 	bridgeListKey           = "list"
 	bridgeMessageKey        = "message"
 	bridgePeerIDKey         = "peer_id"
+	bridgeResolvedValue     = "resolved"
 	bridgeScopeKey          = "scope"
+	bridgeStepValue         = "Step"
 	bridgeSessionIDKey      = "session_id"
 	bridgeStatusKey         = "status"
 	bridgeThreadIDKey       = "thread_id"
+	bridgeUnresolvedValue   = "unresolved"
 	bridgeUpdateIDValue     = "update <id>"
 	bridgeUpdatedAtKey      = "updated_at"
 	bridgeWorkspaceIDKey    = "workspace_id"
@@ -77,6 +80,8 @@ func newBridgeCommand(deps commandDeps) *cobra.Command {
 	cmd.AddCommand(newBridgeDisableCommand(deps))
 	cmd.AddCommand(newBridgeRestartCommand(deps))
 	cmd.AddCommand(newBridgeRoutesCommand(deps))
+	cmd.AddCommand(newBridgeTargetsCommand(deps))
+	cmd.AddCommand(newBridgeResolveCommand(deps))
 	cmd.AddCommand(newBridgeSecretBindingsCommand(deps))
 	cmd.AddCommand(newBridgeTestDeliveryCommand(deps))
 	return cmd
@@ -132,6 +137,7 @@ func newBridgeCreateCommand(deps commandDeps) *cobra.Command {
 		includePeer      bool
 		includeThread    bool
 		includeGroup     bool
+		notificationMute bool
 		deliveryDefaults string
 	)
 
@@ -154,6 +160,7 @@ func newBridgeCreateCommand(deps commandDeps) *cobra.Command {
 				includePeer,
 				includeThread,
 				includeGroup,
+				notificationMute,
 				deliveryDefaults,
 			)
 			if err != nil {
@@ -167,15 +174,24 @@ func newBridgeCreateCommand(deps commandDeps) *cobra.Command {
 			return writeCommandOutput(cmd, bridgeBundle(item))
 		},
 	}
-	cmd.Flags().StringVar(&scopeRaw, bridgeScopeKey, string(bridgepkg.ScopeGlobal), "Bridge scope: global or workspace")
-	cmd.Flags().StringVar(&workspaceID, "workspace-id", "", "Owning workspace ID for workspace-scoped bridges")
+	cmd.Flags().
+		StringVar(&scopeRaw, bridgeScopeKey, string(bridgepkg.ScopeGlobal), "Bridge scope: global or workspace")
+	cmd.Flags().
+		StringVar(&workspaceID, "workspace-id", "", "Owning workspace ID for workspace-scoped bridges")
 	cmd.Flags().StringVar(&platform, "platform", "", "Messaging platform name")
 	cmd.Flags().StringVar(&extensionName, "extension", "", "Owning extension name")
 	cmd.Flags().StringVar(&displayName, "display-name", "", "Operator-facing bridge display name")
 	cmd.Flags().BoolVar(&enabled, bridgeEnabledKey, true, "Whether the instance starts enabled")
 	cmd.Flags().BoolVar(&includePeer, "include-peer", false, "Include peer identity in routing")
-	cmd.Flags().BoolVar(&includeThread, "include-thread", false, "Include thread identity in routing")
+	cmd.Flags().
+		BoolVar(&includeThread, "include-thread", false, "Include thread identity in routing")
 	cmd.Flags().BoolVar(&includeGroup, "include-group", false, "Include group identity in routing")
+	cmd.Flags().BoolVar(
+		&notificationMute,
+		"notification-suppress",
+		false,
+		"Suppress notification deliveries to this bridge",
+	)
 	cmd.Flags().
 		StringVar(&deliveryDefaults, bridgeDeliveryDefaultsFlag, "", "JSON object or null for delivery target defaults")
 	mustMarkFlagRequired(cmd, "platform")
@@ -194,6 +210,7 @@ func buildBridgeCreatePayload(
 	includePeer bool,
 	includeThread bool,
 	includeGroup bool,
+	notificationSuppress bool,
 	deliveryDefaults string,
 ) (CreateBridgeRequest, error) {
 	scope, err := parseBridgeScope(scopeRaw)
@@ -201,7 +218,9 @@ func buildBridgeCreatePayload(
 		return CreateBridgeRequest{}, err
 	}
 	if scope == bridgepkg.ScopeWorkspace && strings.TrimSpace(workspaceID) == "" {
-		return CreateBridgeRequest{}, errors.New("cli: --workspace-id is required when --scope=workspace")
+		return CreateBridgeRequest{}, errors.New(
+			"cli: --workspace-id is required when --scope=workspace",
+		)
 	}
 
 	payload := CreateBridgeRequest{
@@ -216,6 +235,7 @@ func buildBridgeCreatePayload(
 			IncludeThread: includeThread,
 			IncludeGroup:  includeGroup,
 		},
+		NotificationSuppress: notificationSuppress,
 	}
 
 	raw, err := parseOptionalBridgeJSON(deliveryDefaults)
@@ -232,81 +252,138 @@ func buildBridgeCreatePayload(
 }
 
 func newBridgeUpdateCommand(deps commandDeps) *cobra.Command {
-	var (
-		displayName      string
-		includePeer      bool
-		includeThread    bool
-		includeGroup     bool
-		deliveryDefaults string
-	)
+	flags := bridgeUpdateFlags{}
 
 	cmd := &cobra.Command{
 		Use:   bridgeUpdateIDValue,
 		Short: "Update mutable bridge fields",
 		Args:  exactOneNonBlankArg(),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := clientFromDeps(deps)
-			if err != nil {
-				return err
-			}
-
-			displayChanged := cmd.Flags().Changed("display-name")
-			routingChanged := bridgeRoutingFlagsChanged(cmd)
-			deliveryChanged := cmd.Flags().Changed(bridgeDeliveryDefaultsFlag)
-			if !displayChanged && !routingChanged && !deliveryChanged {
-				return errors.New("cli: at least one update flag is required")
-			}
-
-			req := UpdateBridgeRequest{}
-			if displayChanged {
-				trimmed := strings.TrimSpace(displayName)
-				if trimmed == "" {
-					return errors.New("cli: --display-name cannot be empty")
-				}
-				req.DisplayName = &trimmed
-			}
-
-			if routingChanged {
-				current, err := client.GetBridge(cmd.Context(), args[0])
-				if err != nil {
-					return err
-				}
-				policy := current.RoutingPolicy
-				if cmd.Flags().Changed("include-peer") {
-					policy.IncludePeer = includePeer
-				}
-				if cmd.Flags().Changed("include-thread") {
-					policy.IncludeThread = includeThread
-				}
-				if cmd.Flags().Changed("include-group") {
-					policy.IncludeGroup = includeGroup
-				}
-				req.RoutingPolicy = &policy
-			}
-
-			if deliveryChanged {
-				raw, err := parseRequiredBridgeJSON(strings.TrimSpace(deliveryDefaults))
-				if err != nil {
-					return err
-				}
-				value := contract.BridgeDeliveryDefaultsPayload(*raw)
-				req.DeliveryDefaults = &value
-			}
-
-			item, err := client.UpdateBridge(cmd.Context(), args[0], req)
-			if err != nil {
-				return err
-			}
-			return writeCommandOutput(cmd, bridgeBundle(item))
+			return runBridgeUpdateCommand(cmd, deps, args[0], flags)
 		},
 	}
-	cmd.Flags().StringVar(&displayName, "display-name", "", "New operator-facing bridge display name")
-	cmd.Flags().BoolVar(&includePeer, "include-peer", false, "Override whether routing includes peer identity")
-	cmd.Flags().BoolVar(&includeThread, "include-thread", false, "Override whether routing includes thread identity")
-	cmd.Flags().BoolVar(&includeGroup, "include-group", false, "Override whether routing includes group identity")
 	cmd.Flags().
-		StringVar(&deliveryDefaults, bridgeDeliveryDefaultsFlag, "", "JSON object or null for delivery target defaults")
+		StringVar(&flags.displayName, "display-name", "", "New operator-facing bridge display name")
+	cmd.Flags().
+		BoolVar(&flags.includePeer, "include-peer", false, "Override whether routing includes peer identity")
+	cmd.Flags().
+		BoolVar(&flags.includeThread, "include-thread", false, "Override whether routing includes thread identity")
+	cmd.Flags().
+		BoolVar(&flags.includeGroup, "include-group", false, "Override whether routing includes group identity")
+	cmd.Flags().BoolVar(
+		&flags.notificationSuppress,
+		"notification-suppress",
+		false,
+		"Override whether notification deliveries are suppressed",
+	)
+	cmd.Flags().
+		StringVar(&flags.deliveryDefaults, bridgeDeliveryDefaultsFlag, "", "JSON object or null for delivery target defaults")
 	return cmd
+}
+
+type bridgeUpdateFlags struct {
+	displayName          string
+	includePeer          bool
+	includeThread        bool
+	includeGroup         bool
+	notificationSuppress bool
+	deliveryDefaults     string
+}
+
+func runBridgeUpdateCommand(
+	cmd *cobra.Command,
+	deps commandDeps,
+	id string,
+	flags bridgeUpdateFlags,
+) error {
+	client, err := clientFromDeps(deps)
+	if err != nil {
+		return err
+	}
+	req, err := buildBridgeUpdateRequest(cmd, client, id, flags)
+	if err != nil {
+		return err
+	}
+	item, err := client.UpdateBridge(cmd.Context(), id, req)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, bridgeBundle(item))
+}
+
+func buildBridgeUpdateRequest(
+	cmd *cobra.Command,
+	client DaemonClient,
+	id string,
+	flags bridgeUpdateFlags,
+) (UpdateBridgeRequest, error) {
+	displayChanged := cmd.Flags().Changed("display-name")
+	routingChanged := bridgeRoutingFlagsChanged(cmd)
+	deliveryChanged := cmd.Flags().Changed(bridgeDeliveryDefaultsFlag)
+	notificationChanged := cmd.Flags().Changed("notification-suppress")
+	if !displayChanged && !routingChanged && !deliveryChanged && !notificationChanged {
+		return UpdateBridgeRequest{}, errors.New("cli: at least one update flag is required")
+	}
+
+	req := UpdateBridgeRequest{}
+	if displayChanged {
+		trimmed := strings.TrimSpace(flags.displayName)
+		if trimmed == "" {
+			return UpdateBridgeRequest{}, errors.New("cli: --display-name cannot be empty")
+		}
+		req.DisplayName = &trimmed
+	}
+	if routingChanged {
+		policy, err := bridgeRoutingPolicyForUpdate(cmd, client, id, flags)
+		if err != nil {
+			return UpdateBridgeRequest{}, err
+		}
+		req.RoutingPolicy = &policy
+	}
+	if deliveryChanged {
+		value, err := bridgeDeliveryDefaultsForUpdate(flags.deliveryDefaults)
+		if err != nil {
+			return UpdateBridgeRequest{}, err
+		}
+		req.DeliveryDefaults = &value
+	}
+	if notificationChanged {
+		req.NotificationSuppress = &flags.notificationSuppress
+	}
+	return req, nil
+}
+
+func bridgeRoutingPolicyForUpdate(
+	cmd *cobra.Command,
+	client DaemonClient,
+	id string,
+	flags bridgeUpdateFlags,
+) (bridgepkg.RoutingPolicy, error) {
+	current, err := client.GetBridge(cmd.Context(), id)
+	if err != nil {
+		return bridgepkg.RoutingPolicy{}, err
+	}
+	policy := current.RoutingPolicy
+	if cmd.Flags().Changed("include-peer") {
+		policy.IncludePeer = flags.includePeer
+	}
+	if cmd.Flags().Changed("include-thread") {
+		policy.IncludeThread = flags.includeThread
+	}
+	if cmd.Flags().Changed("include-group") {
+		policy.IncludeGroup = flags.includeGroup
+	}
+	return policy, nil
+}
+
+func bridgeDeliveryDefaultsForUpdate(
+	rawValue string,
+) (contract.BridgeDeliveryDefaultsPayload, error) {
+	raw, err := parseRequiredBridgeJSON(strings.TrimSpace(rawValue))
+	if err != nil {
+		return nil, err
+	}
+	return contract.BridgeDeliveryDefaultsPayload(*raw), nil
 }
 
 func newBridgeEnableCommand(deps commandDeps) *cobra.Command {
@@ -385,6 +462,53 @@ func newBridgeRoutesCommand(deps commandDeps) *cobra.Command {
 				return err
 			}
 			return writeCommandOutput(cmd, bridgeRoutesBundle(routes, deps.now))
+		},
+	}
+}
+
+func newBridgeTargetsCommand(deps commandDeps) *cobra.Command {
+	var query string
+	var limit int
+	cmd := &cobra.Command{
+		Use:   "targets <id>",
+		Short: "List discovered targets for one bridge instance",
+		Args:  exactOneNonBlankArg(),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if limit < 0 {
+				return errors.New("cli: --limit cannot be negative")
+			}
+			client, err := clientFromDeps(deps)
+			if err != nil {
+				return err
+			}
+			result, err := client.BridgeTargets(cmd.Context(), args[0], query, limit)
+			if err != nil {
+				return err
+			}
+			return writeCommandOutput(cmd, bridgeTargetsBundle(result, deps.now))
+		},
+	}
+	cmd.Flags().
+		StringVarP(&query, "query", "q", "", "Filter targets by display name, qualifier, or route")
+	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum targets to return")
+	return cmd
+}
+
+func newBridgeResolveCommand(deps commandDeps) *cobra.Command {
+	return &cobra.Command{
+		Use:   "resolve <id> <name>",
+		Short: "Resolve a bridge target name without sending",
+		Args:  exactTwoNonBlankArgs(),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := clientFromDeps(deps)
+			if err != nil {
+				return err
+			}
+			result, err := client.ResolveBridgeTarget(cmd.Context(), args[0], args[1])
+			if err != nil {
+				return err
+			}
+			return writeCommandOutput(cmd, bridgeResolveTargetBundle(result))
 		},
 	}
 }
@@ -505,15 +629,19 @@ func newBridgeTestDeliveryCommand(deps commandDeps) *cobra.Command {
 				}
 			}
 
-			item, err := client.TestBridgeDelivery(cmd.Context(), args[0], BridgeTestDeliveryRequest{
-				Message: strings.TrimSpace(message),
-				Target: BridgeDeliveryTargetInput{
-					PeerID:   strings.TrimSpace(peerID),
-					ThreadID: strings.TrimSpace(threadID),
-					GroupID:  strings.TrimSpace(groupID),
-					Mode:     mode,
+			item, err := client.TestBridgeDelivery(
+				cmd.Context(),
+				args[0],
+				BridgeTestDeliveryRequest{
+					Message: strings.TrimSpace(message),
+					Target: BridgeDeliveryTargetInput{
+						PeerID:   strings.TrimSpace(peerID),
+						ThreadID: strings.TrimSpace(threadID),
+						GroupID:  strings.TrimSpace(groupID),
+						Mode:     mode,
+					},
 				},
-			})
+			)
 			if err != nil {
 				return err
 			}
@@ -598,10 +726,23 @@ func bridgeBundle(item BridgeRecord) outputBundle {
 				{Label: "Workspace", Value: stringOrDash(item.WorkspaceID)},
 				{Label: bridgeEnabledValue, Value: fmt.Sprintf("%t", item.Enabled)},
 				{Label: automationStatusValue, Value: stringOrDash(string(item.Status))},
-				{Label: "Routing", Value: stringOrDash(bridgeRoutingPolicyLabel(item.RoutingPolicy))},
-				{Label: "Delivery Defaults", Value: stringOrDash(compactJSON(item.DeliveryDefaults))},
+				{
+					Label: "Routing",
+					Value: stringOrDash(bridgeRoutingPolicyLabel(item.RoutingPolicy)),
+				},
+				{
+					Label: "Notification Suppress",
+					Value: fmt.Sprintf("%t", item.NotificationSuppress),
+				},
+				{
+					Label: "Delivery Defaults",
+					Value: stringOrDash(compactJSON(item.DeliveryDefaults)),
+				},
 				{Label: bridgeCreatedValue, Value: stringOrDash(formatTime(item.CreatedAt))},
-				{Label: authoredContextUpdatedValue, Value: stringOrDash(formatTime(item.UpdatedAt))},
+				{
+					Label: authoredContextUpdatedValue,
+					Value: stringOrDash(formatTime(item.UpdatedAt)),
+				},
 			}), nil
 		},
 		toon: func() (string, error) {
@@ -618,6 +759,7 @@ func bridgeBundle(item BridgeRecord) outputBundle {
 				"include_peer",
 				"include_thread",
 				"include_group",
+				"notification_suppress",
 				"delivery_defaults",
 				bridgeCreatedAtKey,
 				bridgeUpdatedAtKey,
@@ -634,6 +776,7 @@ func bridgeBundle(item BridgeRecord) outputBundle {
 				fmt.Sprintf("%t", item.RoutingPolicy.IncludePeer),
 				fmt.Sprintf("%t", item.RoutingPolicy.IncludeThread),
 				fmt.Sprintf("%t", item.RoutingPolicy.IncludeGroup),
+				fmt.Sprintf("%t", item.NotificationSuppress),
 				compactJSON(item.DeliveryDefaults),
 				formatTime(item.CreatedAt),
 				formatTime(item.UpdatedAt),
@@ -648,7 +791,7 @@ func bridgeRoutesBundle(routes []BridgeRouteRecord, now func() time.Time) output
 		routes,
 		"Bridge Routes",
 		[]string{
-			"Hash",
+			cliHashValue,
 			automationScopeValue,
 			configWorkspaceValue,
 			taskPeerValue,
@@ -699,6 +842,92 @@ func bridgeRoutesBundle(routes []BridgeRouteRecord, now func() time.Time) output
 	)
 }
 
+func bridgeTargetsBundle(result BridgeTargetsRecord, now func() time.Time) outputBundle {
+	return listBundle(
+		result,
+		result.Targets,
+		"Bridge Targets",
+		[]string{"ROUTE", automationNameValue, "TYPE", "QUALIFIER", "CAPABILITIES", "LAST SEEN"},
+		"bridge_targets",
+		[]string{
+			"canonical_route",
+			bridgeDisplayNameKey,
+			"target_type",
+			"qualifier",
+			"capabilities",
+			"last_seen_at",
+		},
+		func(target BridgeTargetRecord) []string {
+			return []string{
+				stringOrDash(target.CanonicalRoute),
+				stringOrDash(target.DisplayName),
+				stringOrDash(string(target.TargetType)),
+				stringOrDash(target.Qualifier),
+				stringOrDash(strings.Join(target.Capabilities, ",")),
+				stringOrDash(formatAge(now, target.LastSeenAt)),
+			}
+		},
+		func(target BridgeTargetRecord) []string {
+			return []string{
+				target.CanonicalRoute,
+				target.DisplayName,
+				string(target.TargetType),
+				target.Qualifier,
+				strings.Join(target.Capabilities, ","),
+				formatTime(target.LastSeenAt),
+			}
+		},
+	)
+}
+
+func bridgeResolveTargetBundle(result BridgeResolveTargetRecord) outputBundle {
+	return outputBundle{
+		jsonValue: result,
+		human: func() (string, error) {
+			if result.Result.Match == nil {
+				return renderHumanSection("Bridge Target", []keyValue{
+					{Label: automationStatusValue, Value: bridgeUnresolvedValue},
+					{Label: bridgeStepValue, Value: fmt.Sprintf("%d", result.Result.Step)},
+					{Label: "Ambiguous", Value: fmt.Sprintf("%t", result.Result.Ambiguous)},
+					{Label: "Candidates", Value: fmt.Sprintf("%d", len(result.Result.Candidates))},
+				}), nil
+			}
+			target := result.Result.Match
+			return renderHumanSection("Bridge Target", []keyValue{
+				{Label: automationStatusValue, Value: bridgeResolvedValue},
+				{Label: bridgeStepValue, Value: fmt.Sprintf("%d", result.Result.Step)},
+				{Label: "Route", Value: stringOrDash(target.CanonicalRoute)},
+				{Label: automationNameValue, Value: stringOrDash(target.DisplayName)},
+				{Label: "Type", Value: stringOrDash(string(target.TargetType))},
+				{Label: "Qualifier", Value: stringOrDash(target.Qualifier)},
+			}), nil
+		},
+		toon: func() (string, error) {
+			status := bridgeUnresolvedValue
+			route := ""
+			name := ""
+			if result.Result.Match != nil {
+				status = bridgeResolvedValue
+				route = result.Result.Match.CanonicalRoute
+				name = result.Result.Match.DisplayName
+			}
+			return renderToonObject("bridge_target", []string{
+				bridgeStatusKey,
+				"step",
+				"ambiguous",
+				"canonical_route",
+				bridgeDisplayNameKey,
+			}, []string{
+				status,
+				fmt.Sprintf("%d", result.Result.Step),
+				fmt.Sprintf("%t", result.Result.Ambiguous),
+				route,
+				name,
+			}), nil
+		},
+	}
+}
+
 func bridgeSecretBindingListBundle(items []BridgeSecretBindingRecord) outputBundle {
 	return listBundle(
 		struct {
@@ -708,7 +937,13 @@ func bridgeSecretBindingListBundle(items []BridgeSecretBindingRecord) outputBund
 		"Bridge Secret Bindings",
 		[]string{"BRIDGE", "NAME", "SECRET REF", "KIND", "UPDATED"},
 		"bridge_secret_bindings",
-		[]string{taskBridgeInstanceIDKey, bridgeBindingNameKey, "secret_ref", "kind", bridgeUpdatedAtKey},
+		[]string{
+			taskBridgeInstanceIDKey,
+			bridgeBindingNameKey,
+			"secret_ref",
+			"kind",
+			bridgeUpdatedAtKey,
+		},
 		func(item BridgeSecretBindingRecord) []string {
 			return []string{
 				stringOrDash(item.BridgeInstanceID),
@@ -742,7 +977,10 @@ func bridgeSecretBindingBundle(item BridgeSecretBindingRecord) outputBundle {
 				{Label: "Secret Ref", Value: stringOrDash(item.SecretRef)},
 				{Label: bridgeKindValue, Value: stringOrDash(item.Kind)},
 				{Label: bridgeCreatedValue, Value: stringOrDash(formatTime(item.CreatedAt))},
-				{Label: authoredContextUpdatedValue, Value: stringOrDash(formatTime(item.UpdatedAt))},
+				{
+					Label: authoredContextUpdatedValue,
+					Value: stringOrDash(formatTime(item.UpdatedAt)),
+				},
 			}), nil
 		},
 		toon: func() (string, error) {
@@ -808,7 +1046,10 @@ func bridgeTestDeliveryBundle(item BridgeTestDeliveryRecord) outputBundle {
 					{Label: bridgeMessageValue, Value: stringOrDash(item.Message)},
 				}),
 				renderHumanSection("Delivery Target", []keyValue{
-					{Label: bridgeBridgeValue, Value: stringOrDash(item.DeliveryTarget.BridgeInstanceID)},
+					{
+						Label: bridgeBridgeValue,
+						Value: stringOrDash(item.DeliveryTarget.BridgeInstanceID),
+					},
 					{Label: taskPeerValue, Value: stringOrDash(item.DeliveryTarget.PeerID)},
 					{Label: taskThreadValue, Value: stringOrDash(item.DeliveryTarget.ThreadID)},
 					{Label: taskGroupValue, Value: stringOrDash(item.DeliveryTarget.GroupID)},

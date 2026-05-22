@@ -9,8 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/pedronauck/agh/internal/acp"
 	aghconfig "github.com/pedronauck/agh/internal/config"
 	"github.com/pedronauck/agh/internal/session"
+	"github.com/pedronauck/agh/internal/store"
 	workspacepkg "github.com/pedronauck/agh/internal/workspace"
 )
 
@@ -143,7 +145,10 @@ func statusForWorkspaceError(err error) int {
 // StatusForSessionError maps session and workspace-domain errors to transport statuses.
 func statusForSessionError(err error) int {
 	switch {
-	case errors.Is(err, session.ErrSessionNotFound), errors.Is(err, os.ErrNotExist):
+	case errors.Is(err, session.ErrSessionNotFound),
+		errors.Is(err, store.ErrSessionNotFound),
+		errors.Is(err, store.ErrSessionInputQueueEntryNotFound),
+		errors.Is(err, os.ErrNotExist):
 		return http.StatusNotFound
 	case errors.Is(err, workspacepkg.ErrWorkspaceNotFound):
 		return http.StatusNotFound
@@ -153,6 +158,8 @@ func statusForSessionError(err error) int {
 		return http.StatusBadRequest
 	case errors.Is(err, aghconfig.ErrProviderUnavailable):
 		return http.StatusBadRequest
+	case isProviderAuthFailure(err):
+		return http.StatusUnprocessableEntity
 	case errors.Is(err, session.ErrInvalidRuntimeOverride):
 		return http.StatusBadRequest
 	case errors.Is(err, session.ErrInvalidPermissionDecision):
@@ -160,14 +167,24 @@ func statusForSessionError(err error) int {
 	case errors.Is(err, session.ErrSessionNotActive):
 		return http.StatusBadRequest
 	case errors.Is(err, session.ErrPromptInProgress),
+		errors.Is(err, session.ErrPromptNotInProgress),
 		errors.Is(err, session.ErrPendingPermissionNotFound),
 		errors.Is(err, session.ErrPendingPermissionConflict),
+		errors.Is(err, store.ErrSessionAttachLocked),
+		errors.Is(err, store.ErrSessionNotAttachable),
 		errors.Is(err, workspacepkg.ErrWorkspaceNameTaken),
 		errors.Is(err, workspacepkg.ErrWorkspacePathTaken):
 		return http.StatusConflict
+	case errors.Is(err, store.ErrSessionInputQueueFull):
+		return http.StatusRequestEntityTooLarge
 	default:
 		return http.StatusInternalServerError
 	}
+}
+
+func isProviderAuthFailure(err error) bool {
+	var failure *acp.FailureError
+	return errors.As(err, &failure) && failure != nil && failure.Kind == store.FailureProviderAuth
 }
 
 func prefixedError(prefix string, message string) error {

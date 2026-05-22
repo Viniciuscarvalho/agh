@@ -15,9 +15,11 @@ import (
 	automationpkg "github.com/pedronauck/agh/internal/automation"
 	bridgepkg "github.com/pedronauck/agh/internal/bridges"
 	aghconfig "github.com/pedronauck/agh/internal/config"
+	diagnosticspkg "github.com/pedronauck/agh/internal/diagnostics"
 	"github.com/pedronauck/agh/internal/memory"
 	"github.com/pedronauck/agh/internal/modelcatalog"
 	"github.com/pedronauck/agh/internal/network"
+	presetspkg "github.com/pedronauck/agh/internal/notifications/presets"
 	"github.com/pedronauck/agh/internal/resources"
 	"github.com/pedronauck/agh/internal/session"
 	settingspkg "github.com/pedronauck/agh/internal/settings"
@@ -34,18 +36,66 @@ const (
 	errorsUnknownErrorValue        = "unknown error"
 )
 
+type normalizedErrorStatus struct {
+	status             int
+	err                error
+	maskInternalErrors bool
+}
+
 // ErrRequestBodyTooLarge is the shared transport sentinel for request bodies
 // rejected by HTTP MaxBytesReader enforcement.
 var ErrRequestBodyTooLarge = errors.New("request body too large")
 
 // RespondError writes a transport error response, optionally masking internal error details.
 func RespondError(c *gin.Context, status int, err error, maskInternalErrors bool) {
+	normalized := normalizeErrorStatus(status, err, maskInternalErrors)
+	c.JSON(
+		normalized.status,
+		errorPayloadForNormalizedStatus(
+			normalized.status,
+			normalized.err,
+			normalized.maskInternalErrors,
+		),
+	)
+}
+
+// ErrorPayloadForError builds a redacted error payload for stream frames and other non-status envelopes.
+func ErrorPayloadForError(err error) contract.ErrorPayload {
+	message := errorsUnknownErrorValue
+	if err != nil && strings.TrimSpace(err.Error()) != "" {
+		message = err.Error()
+	}
+	return errorPayloadForMessage(message, err)
+}
+
+// ErrorPayloadForStatus builds a redacted HTTP/UDS error payload for status.
+func ErrorPayloadForStatus(status int, err error, maskInternalErrors bool) contract.ErrorPayload {
+	normalized := normalizeErrorStatus(status, err, maskInternalErrors)
+	return errorPayloadForNormalizedStatus(
+		normalized.status,
+		normalized.err,
+		normalized.maskInternalErrors,
+	)
+}
+
+func normalizeErrorStatus(status int, err error, maskInternalErrors bool) normalizedErrorStatus {
 	if maxBytesErr, ok := errors.AsType[*http.MaxBytesError](err); ok && maxBytesErr != nil {
 		status = http.StatusRequestEntityTooLarge
 		err = ErrRequestBodyTooLarge
 		maskInternalErrors = false
 	}
+	return normalizedErrorStatus{
+		status:             status,
+		err:                err,
+		maskInternalErrors: maskInternalErrors,
+	}
+}
 
+func errorPayloadForNormalizedStatus(
+	status int,
+	err error,
+	maskInternalErrors bool,
+) contract.ErrorPayload {
 	message := http.StatusText(status)
 	switch {
 	case maskInternalErrors && status >= http.StatusInternalServerError:
@@ -58,8 +108,16 @@ func RespondError(c *gin.Context, status int, err error, maskInternalErrors bool
 		message = errorsUnknownErrorValue
 	}
 
-	message = taskpkg.RedactClaimTokens(message)
-	c.JSON(status, contract.ErrorPayload{Error: message})
+	return errorPayloadForMessage(message, err)
+}
+
+func errorPayloadForMessage(message string, err error) contract.ErrorPayload {
+	message = diagnosticspkg.Redact(taskpkg.RedactClaimTokens(message))
+	payload := contract.ErrorPayload{Error: message}
+	if item, ok := diagnosticspkg.ItemFromError(err); ok {
+		payload.Diagnostic = &item
+	}
+	return payload
 }
 
 // StatusForSessionError maps session and workspace-domain errors to transport statuses.
@@ -301,6 +359,14 @@ func StatusForTaskError(err error) int {
 		return http.StatusRequestEntityTooLarge
 	case errors.Is(err, taskpkg.ErrPermissionDenied):
 		return http.StatusForbidden
+	case errors.Is(err, taskpkg.ErrForbiddenOperatorAction):
+		return http.StatusForbidden
+	case errors.Is(err, taskpkg.ErrForceOpRateLimited):
+		return http.StatusTooManyRequests
+	case errors.Is(err, taskpkg.ErrForceOpRequiresReason),
+		errors.Is(err, taskpkg.ErrRetryChainTooDeep),
+		errors.Is(err, taskpkg.ErrBulkTooLarge):
+		return http.StatusUnprocessableEntity
 	case errors.Is(err, errAgentIdentityUnavailable),
 		errors.Is(err, agentidentity.ErrIdentityLookupUnavailable):
 		return http.StatusServiceUnavailable
@@ -319,6 +385,7 @@ func StatusForTaskError(err error) int {
 		errors.Is(err, taskpkg.ErrRunReviewNotFound),
 		errors.Is(err, workspacepkg.ErrWorkspaceNotFound),
 		errors.Is(err, session.ErrSessionNotFound),
+		errors.Is(err, store.ErrSessionNotFound),
 		errors.Is(err, os.ErrNotExist):
 		return http.StatusNotFound
 	case errors.Is(err, workspacepkg.ErrWorkspaceRootMissing):
@@ -328,6 +395,8 @@ func StatusForTaskError(err error) int {
 		errors.Is(err, taskpkg.ErrCycleDetected),
 		errors.Is(err, taskpkg.ErrSessionAlreadyBound),
 		errors.Is(err, taskpkg.ErrSessionAttachNotAllowed),
+		errors.Is(err, store.ErrSessionAttachLocked),
+		errors.Is(err, store.ErrSessionNotAttachable),
 		errors.Is(err, taskpkg.ErrStaleNetworkChannel),
 		errors.Is(err, taskpkg.ErrNoClaimableRun),
 		errors.Is(err, taskpkg.ErrInvalidClaimToken),
@@ -350,7 +419,11 @@ func StatusForBridgeError(err error) int {
 		return http.StatusBadRequest
 	case errors.Is(err, bridgepkg.ErrInvalidBridgeTaskSubscription):
 		return http.StatusBadRequest
+	case errors.Is(err, bridgepkg.ErrInvalidBridgeTarget):
+		return http.StatusBadRequest
 	case errors.Is(err, bridgepkg.ErrBridgeInstanceNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, bridgepkg.ErrBridgeTargetUnknown):
 		return http.StatusNotFound
 	case errors.Is(err, bridgepkg.ErrBridgeSecretBindingNotFound):
 		return http.StatusNotFound
@@ -360,6 +433,8 @@ func StatusForBridgeError(err error) int {
 		return http.StatusNotFound
 	case errors.Is(err, bridgepkg.ErrBridgeInstanceUnavailable):
 		return http.StatusConflict
+	case errors.Is(err, bridgepkg.ErrBridgeTargetAmbiguous):
+		return http.StatusUnprocessableEntity
 	case errors.Is(err, bridgepkg.ErrInvalidBridgeStateTransition):
 		return http.StatusConflict
 	case errors.Is(err, bridgepkg.ErrBridgeInstanceReadOnly):
@@ -370,8 +445,34 @@ func StatusForBridgeError(err error) int {
 		return http.StatusServiceUnavailable
 	case errors.Is(err, bridgepkg.ErrDeliveryTransportUnavailable):
 		return http.StatusServiceUnavailable
+	case errors.Is(err, bridgepkg.ErrBridgeTargetDirectoryUnavailable):
+		return http.StatusServiceUnavailable
 	case errors.Is(err, workspacepkg.ErrWorkspaceNotFound):
 		return http.StatusNotFound
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+// StatusForNotificationPresetError maps notification preset failures to transport statuses.
+func StatusForNotificationPresetError(err error) int {
+	switch {
+	case err == nil:
+		return http.StatusOK
+	case errors.Is(err, presetspkg.ErrInvalidPreset):
+		return http.StatusBadRequest
+	case errors.Is(err, presetspkg.ErrPresetNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, presetspkg.ErrPresetDuplicateName):
+		return http.StatusConflict
+	case errors.Is(err, presetspkg.ErrPresetBuiltIn):
+		return http.StatusConflict
+	case errors.Is(err, bridgepkg.ErrBridgeTargetAmbiguous):
+		return http.StatusUnprocessableEntity
+	case errors.Is(err, bridgepkg.ErrBridgeInstanceUnavailable),
+		errors.Is(err, bridgepkg.ErrDeliveryQueueSaturated),
+		errors.Is(err, bridgepkg.ErrDeliveryTransportUnavailable):
+		return http.StatusServiceUnavailable
 	default:
 		return http.StatusInternalServerError
 	}
@@ -557,7 +658,7 @@ func RespondOpenAIError(c *gin.Context, status int, err error, maskInternalError
 	case strings.TrimSpace(message) == "":
 		message = errorsUnknownErrorValue
 	}
-	message = taskpkg.RedactClaimTokens(message)
+	message = diagnosticspkg.Redact(taskpkg.RedactClaimTokens(message))
 	c.JSON(status, contract.OpenAIErrorResponse{
 		Error: contract.OpenAIErrorPayload{
 			Message: message,

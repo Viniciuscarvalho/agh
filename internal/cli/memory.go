@@ -618,7 +618,7 @@ func newMemoryReloadCommand(deps commandDeps) *cobra.Command {
 	var flags memorySelectorFlags
 
 	cmd := &cobra.Command{
-		Use:   "reload",
+		Use:   configReloadCommandName,
 		Short: "Invalidate frozen memory snapshots for future session boots",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -1100,7 +1100,7 @@ func newMemoryExtractorDisableCommand() *cobra.Command {
 
 func newMemoryProviderCommand(deps commandDeps) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   memoryProviderKey,
+		Use:   cliProviderKey,
 		Short: "Operate Memory v2 providers",
 	}
 	cmd.AddCommand(newMemoryProviderListCommand(deps))
@@ -1130,7 +1130,7 @@ func newMemoryProviderListCommand(deps commandDeps) *cobra.Command {
 
 func newMemoryProviderEnableCommand(deps commandDeps) *cobra.Command {
 	return &cobra.Command{
-		Use:   "enable <name>",
+		Use:   cliUseEnableName,
 		Short: "Enable and select one Memory v2 provider",
 		Args:  exactOneNonBlankArg(),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -1154,7 +1154,7 @@ func newMemoryProviderEnableCommand(deps commandDeps) *cobra.Command {
 
 func newMemoryProviderDisableCommand(deps commandDeps) *cobra.Command {
 	return &cobra.Command{
-		Use:   "disable <name>",
+		Use:   cliUseDisableName,
 		Short: "Disable one Memory v2 provider",
 		Args:  exactOneNonBlankArg(),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -1676,7 +1676,7 @@ func memoryHistoryBundle(records []MemoryHistoryRecord, now func() time.Time) ou
 		contract.MemoryOperationHistoryResponse{Operations: records},
 		items,
 		"Memory History",
-		[]string{"Time", memoryOperationValue, automationScopeValue, memoryFilenameValue, "Summary"},
+		[]string{"Time", memoryOperationValue, automationScopeValue, memoryFilenameValue, authoredContextSummaryValue},
 		"operations",
 		[]string{networkTimestampKey, memoryOperationKey, automationScopeKey, memoryFilenameKey, memorySummaryKey},
 		func(item memoryHistoryItem) []string {

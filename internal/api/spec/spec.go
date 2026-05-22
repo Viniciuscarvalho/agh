@@ -40,7 +40,14 @@ const (
 	specAPIAutomationTriggersIDPath                          = "/api/automation/triggers/{id}"
 	specAPIBundlesActivationsIDPath                          = "/api/bundles/activations/{id}"
 	specAPIExtensionsPath                                    = "/api/extensions"
+	specAPIExtensionsMarketplacePath                         = specAPIExtensionsPath + "/marketplace"
+	specAPIExtensionsNamePath                                = "/api/extensions/{name}"
+	specAPIExtensionsNameProvenancePath                      = specAPIExtensionsNamePath + "/provenance"
+	specAPIExtensionsNameEnablePath                          = specAPIExtensionsNamePath + "/enable"
+	specAPIExtensionsNameDisablePath                         = specAPIExtensionsNamePath + "/disable"
 	specAPIMemoryFilenamePath                                = "/api/memory/{filename}"
+	specAPINotificationsPresetsPath                          = "/api/notifications/presets"
+	specAPINotificationsPresetsNamePath                      = specAPINotificationsPresetsPath + "/{name}"
 	specAPIResourcesKindIDPath                               = "/api/resources/{kind}/{id}"
 	specAPISettingsAutomationPath                            = "/api/settings/automation"
 	specAPISettingsGeneralPath                               = "/api/settings/general"
@@ -53,12 +60,26 @@ const (
 	specAPISettingsProvidersNamePath                         = "/api/settings/providers/{name}"
 	specAPISettingsSandboxesNamePath                         = "/api/settings/sandboxes/{name}"
 	specAPISettingsSkillsPath                                = "/api/settings/skills"
+	specAPIRunsBulkFailPath                                  = "/api/runs/bulk/fail"
+	specAPIRunsBulkReleasePath                               = "/api/runs/bulk/release"
+	specAPIRunsIDFailPath                                    = "/api/runs/{id}/fail"
+	specAPIRunsIDInspectPath                                 = "/api/runs/{id}/inspect"
+	specAPIRunsIDReleasePath                                 = "/api/runs/{id}/release"
+	specAPIRunsIDRetryPath                                   = "/api/runs/{id}/retry"
+	specAPISchedulerPath                                     = "/api/scheduler"
+	specAPISchedulerBacklogPath                              = "/api/scheduler/backlog"
+	specAPISchedulerDrainPath                                = "/api/scheduler/drain"
+	specAPISchedulerPausePath                                = "/api/scheduler/pause"
+	specAPISchedulerResumePath                               = "/api/scheduler/resume"
 	specAPITaskRunsIDReviewsPath                             = "/api/task-runs/{id}/reviews"
 	specAPITasksPath                                         = "/api/tasks"
 	specAPITasksIDPath                                       = "/api/tasks/{id}"
 	specAPITasksIDExecutionProfilePath                       = "/api/tasks/{id}/execution-profile"
+	specAPITasksIDInspectPath                                = "/api/tasks/{id}/inspect"
 	specAPITasksIDNotificationsBridgesPath                   = "/api/tasks/{id}/notifications/bridges"
 	specAPITasksIDNotificationsBridgesSubscriptionIDPath     = "/api/tasks/{id}/notifications/bridges/{subscription_id}"
+	specAPITasksIDPausePath                                  = "/api/tasks/{id}/pause"
+	specAPITasksIDResumePath                                 = "/api/tasks/{id}/resume"
 	specAPITasksIDRunsPath                                   = "/api/tasks/{id}/runs"
 	specAPIVaultEntriesPath                                  = "/api/vault/secrets"
 	specAPIWorkspacesIDPath                                  = "/api/workspaces/{id}"
@@ -78,9 +99,13 @@ const (
 	specExtensionNotFoundDescription                         = "Extension not found"
 	specExtensionServiceIsNotConfiguredDescription           = "Extension service is not configured"
 	specForbiddenDescription                                 = "Forbidden"
+	specForceOperationForbiddenDescription                   = "Force operation forbidden"
+	specForceOperationRateLimitExceededDescription           = "Force-operation rate limit exceeded"
+	specSupportBundleServiceIsNotConfiguredDescription       = "Support bundle service is not configured"
 	specForbiddenWorkspaceOrPermissionMismatchDescription    = "Forbidden - workspace or permission mismatch"
 	specInternalDaemonErrorDescription                       = "Internal daemon error"
 	specInternalServerErrorDescription                       = "Internal server error"
+	specSessionPromptConflictDescription                     = "Session prompt conflict"
 	specInvalidAgentLocalLayerDescription                    = "Invalid agent-local layer"
 	specInvalidAutomationRunFilterDescription                = "Invalid automation run filter"
 	specInvalidBridgeStateTransitionDescription              = "Invalid bridge state transition"
@@ -90,8 +115,11 @@ const (
 	specInvalidTaskIDDescription                             = "Invalid task id"
 	specInvalidTaskTriageRequestDescription                  = "Invalid task triage request"
 	specNetworkRuntimeIsNotConfiguredDescription             = "Network runtime is not configured"
+	specNotificationPresetNotFoundDescription                = "Notification preset not found"
+	specNotificationPresetServiceIsNotConfiguredDescription  = "Notification preset service is not configured"
 	specNoContentDescription                                 = "No Content"
 	specPayloadTooLargeDescription                           = "Payload too large"
+	specProviderNotFoundDescription                          = "Provider not found"
 	specServiceUnavailableDependentServiceMissingDescription = "Service unavailable - dependent service missing"
 	specSessionNotFoundDescription                           = "Session not found"
 	specSkillMarketplaceIsNotConfiguredDescription           = "Skill marketplace is not configured"
@@ -110,19 +138,22 @@ const (
 	specAutomationKey                                        = "automation"
 	specBridgesKey                                           = "bridges"
 	specBundlesKey                                           = "bundles"
-	specDaemonKey                                            = "daemon"
+	specDiagnosticsKey                                       = "diagnostics"
 	specExtensionKey                                         = "extension"
 	specExtensionsKey                                        = "extensions"
 	specHooksKey                                             = "hooks"
 	specIntegerKey                                           = "integer"
+	specLogsKey                                              = "logs"
 	specMemoryKey                                            = "memory"
 	specNetworkKey                                           = "network"
+	specNotificationsKey                                     = "notifications"
 	specObserveKey                                           = "observe"
 	specProvidersKey                                         = "providers"
 	specResourcesKey                                         = "resources"
 	specSessionsKey                                          = "sessions"
 	specSettingsKey                                          = "settings"
 	specSkillsKey                                            = "skills"
+	specSupportKey                                           = "support"
 	specTasksKey                                             = "tasks"
 	specToolsKey                                             = "tools"
 	specToolsetsKey                                          = "toolsets"
@@ -204,6 +235,9 @@ var schemaEnumValues = map[reflect.Type][]string{
 	reflect.TypeFor[contract.SettingsWriteTargetKind]():          settingsWriteTargetValues(),
 	reflect.TypeFor[contract.SettingsTargetSelector]():           settingsTargetSelectorValues(),
 	reflect.TypeFor[contract.SettingsMutationBehavior]():         settingsMutationBehaviorValues(),
+	reflect.TypeFor[contract.SettingsApplyLifecycle]():           settingsApplyLifecycleValues(),
+	reflect.TypeFor[contract.ConfigApplyStatus]():                configApplyStatusValues(),
+	reflect.TypeFor[contract.SettingsApplyNextAction]():          settingsApplyNextActionValues(),
 	reflect.TypeFor[contract.SettingsPermissionMode]():           settingsPermissionModeValues(),
 	reflect.TypeFor[contract.SettingsSourceKind]():               settingsSourceKindValues(),
 	reflect.TypeFor[contract.RestartOperationStatus]():           restartOperationStatusValues(),
@@ -232,6 +266,10 @@ var schemaEnumValues = map[reflect.Type][]string{
 }
 
 var schemaCustomizers = map[reflect.Type]func(*openapi3.Schema){
+	reflect.TypeFor[binaryResponse](): func(schema *openapi3.Schema) {
+		*schema = *openapi3.NewStringSchema()
+		schema.Format = "binary"
+	},
 	rawMessageType: func(schema *openapi3.Schema) {
 		*schema = *openapi3.NewSchema()
 	},
@@ -250,6 +288,8 @@ const (
 	TransportHTTP Transport = "http"
 	TransportUDS  Transport = "uds"
 )
+
+type binaryResponse struct{}
 
 // ParameterSpec describes one OpenAPI parameter.
 type ParameterSpec struct {
@@ -303,10 +343,12 @@ func Document() (*openapi3.T, error) {
 			{Name: specAutomationKey},
 			{Name: specBridgesKey},
 			{Name: specBundlesKey},
-			{Name: specDaemonKey},
+			{Name: specDiagnosticsKey},
 			{Name: specNetworkKey},
+			{Name: specNotificationsKey},
 			{Name: specExtensionsKey},
 			{Name: specHooksKey},
+			{Name: specLogsKey},
 			{Name: specMemoryKey},
 			{Name: specObserveKey},
 			{Name: specOpenAIKey},
@@ -314,6 +356,7 @@ func Document() (*openapi3.T, error) {
 			{Name: specResourcesKey},
 			{Name: specSessionsKey},
 			{Name: specSettingsKey},
+			{Name: specSupportKey},
 			{Name: specSkillsKey},
 			{Name: specTasksKey},
 			{Name: specToolsKey},
@@ -1238,6 +1281,53 @@ var operationRegistry = []OperationSpec{
 	},
 	{
 		Method:      httpMethodGet,
+		Path:        "/api/bridges/{id}/targets",
+		OperationID: "listBridgeTargets",
+		Summary:     "List discovered targets for a bridge instance",
+		Tags:        []string{specBridgesKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Bridge instance id"),
+			queryParam("q", "Filter targets by display name, qualifier, or route", false),
+			intQueryParam("limit", "Maximum targets to return"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.BridgeTargetsResponse{}},
+			{Status: 404, Description: specBridgeInstanceNotFoundDescription, Body: contract.ErrorPayload{}},
+			{Status: 503, Description: specBridgeServiceIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodPost,
+		Path:        "/api/bridges/{id}/resolve",
+		OperationID: "resolveBridgeTarget",
+		Summary:     "Resolve a bridge target name without sending",
+		Tags:        []string{specBridgesKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Bridge instance id"),
+		},
+		RequestBody: contract.BridgeResolveTargetRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.BridgeResolveTargetResponse{}},
+			{Status: 400, Description: "Invalid target resolve request", Body: contract.ErrorPayload{}},
+			{
+				Status:      404,
+				Description: "Bridge instance or target not found",
+				Body:        contract.BridgeResolveTargetResponse{},
+			},
+			{
+				Status:      422,
+				Description: "Bridge target lookup is ambiguous",
+				Body:        contract.BridgeResolveTargetResponse{},
+			},
+			{Status: 503, Description: specBridgeServiceIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodGet,
 		Path:        "/api/bridges/{id}/secret-bindings",
 		OperationID: "listBridgeSecretBindings",
 		Summary:     "List persisted secret bindings for a bridge instance",
@@ -1318,13 +1408,30 @@ var operationRegistry = []OperationSpec{
 	},
 	{
 		Method:      httpMethodGet,
-		Path:        "/api/daemon/status",
-		OperationID: "getDaemonStatus",
-		Summary:     "Get the daemon status snapshot",
-		Tags:        []string{specDaemonKey},
+		Path:        "/api/doctor",
+		OperationID: "getDoctor",
+		Summary:     "Run runtime diagnostics",
+		Tags:        []string{specDiagnosticsKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			queryParam("only", "Comma-separated probe ids or categories to include", false),
+			queryParam("exclude", "Comma-separated probe ids or categories to exclude", false),
+			boolQueryParam("quiet", "Omit OK diagnostics"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.DoctorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodGet,
+		Path:        "/api/status",
+		OperationID: "getStatus",
+		Summary:     "Get the runtime status snapshot",
+		Tags:        []string{specDiagnosticsKey},
 		Transports:  []Transport{TransportHTTP, TransportUDS},
 		Responses: []ResponseSpec{
-			{Status: 200, Description: "OK", Body: contract.DaemonStatusResponse{}},
+			{Status: 200, Description: "OK", Body: contract.StatusPayload{}},
 			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
 		},
 	},
@@ -1656,7 +1763,7 @@ var operationRegistry = []OperationSpec{
 		Method:      httpMethodPost,
 		Path:        specAPIExtensionsPath,
 		OperationID: "installExtension",
-		Summary:     "Install an extension by path and checksum",
+		Summary:     "Install a local or marketplace extension",
 		Tags:        []string{specExtensionsKey},
 		Transports:  []Transport{TransportHTTP, TransportUDS},
 		RequestBody: contract.InstallExtensionRequest{},
@@ -1664,13 +1771,33 @@ var operationRegistry = []OperationSpec{
 			{Status: 201, Description: specCreatedDescription, Body: contract.ExtensionResponse{}},
 			{Status: 400, Description: "Invalid install request", Body: contract.ErrorPayload{}},
 			{Status: 403, Description: specForbiddenDescription, Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Extension trust decision required", Body: contract.ErrorPayload{}},
 			{Status: 503, Description: specExtensionServiceIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
 			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
 		},
 	},
 	{
 		Method:      httpMethodGet,
-		Path:        "/api/extensions/{name}",
+		Path:        specAPIExtensionsMarketplacePath,
+		OperationID: "searchExtensionMarketplace",
+		Summary:     "Search configured extension marketplace sources",
+		Tags:        []string{specExtensionsKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			queryParam("q", "Search query", false),
+			queryParam("source", "Marketplace source filter", false),
+			intQueryParam("limit", "Maximum number of results"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.ExtensionMarketplaceResponse{}},
+			{Status: 400, Description: "Invalid marketplace request", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: specExtensionServiceIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodGet,
+		Path:        specAPIExtensionsNamePath,
 		OperationID: "getExtension",
 		Summary:     "Get one installed extension",
 		Tags:        []string{specExtensionsKey},
@@ -1686,8 +1813,65 @@ var operationRegistry = []OperationSpec{
 		},
 	},
 	{
+		Method:      httpMethodPut,
+		Path:        specAPIExtensionsNamePath,
+		OperationID: "updateExtension",
+		Summary:     "Update one marketplace-installed extension",
+		Tags:        []string{specExtensionsKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("name", "Extension name"),
+		},
+		RequestBody: contract.UpdateExtensionRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.ExtensionUpdateResponse{}},
+			{Status: 400, Description: "Invalid update request", Body: contract.ErrorPayload{}},
+			{Status: 403, Description: specForbiddenDescription, Body: contract.ErrorPayload{}},
+			{Status: 404, Description: specExtensionNotFoundDescription, Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Extension trust decision required", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: specExtensionServiceIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodDelete,
+		Path:        specAPIExtensionsNamePath,
+		OperationID: "removeExtension",
+		Summary:     "Remove one managed extension",
+		Tags:        []string{specExtensionsKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("name", "Extension name"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.ExtensionRemoveResponse{}},
+			{Status: 403, Description: specForbiddenDescription, Body: contract.ErrorPayload{}},
+			{Status: 404, Description: specExtensionNotFoundDescription, Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Extension is in use", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: specExtensionServiceIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodGet,
+		Path:        specAPIExtensionsNameProvenancePath,
+		OperationID: "getExtensionProvenance",
+		Summary:     "Get extension provenance and trust evidence",
+		Tags:        []string{specExtensionsKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("name", "Extension name"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.ExtensionProvenanceResponse{}},
+			{Status: 404, Description: specExtensionNotFoundDescription, Body: contract.ErrorPayload{}},
+			{Status: 503, Description: specExtensionServiceIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
 		Method:      httpMethodPost,
-		Path:        "/api/extensions/{name}/enable",
+		Path:        specAPIExtensionsNameEnablePath,
 		OperationID: "enableExtension",
 		Summary:     "Enable an installed extension",
 		Tags:        []string{specExtensionsKey},
@@ -1705,7 +1889,7 @@ var operationRegistry = []OperationSpec{
 	},
 	{
 		Method:      httpMethodPost,
-		Path:        "/api/extensions/{name}/disable",
+		Path:        specAPIExtensionsNameDisablePath,
 		OperationID: "disableExtension",
 		Summary:     "Disable an installed extension",
 		Tags:        []string{specExtensionsKey},
@@ -2253,7 +2437,6 @@ var operationRegistry = []OperationSpec{
 		Transports:  []Transport{TransportHTTP, TransportUDS},
 		Parameters: []ParameterSpec{
 			queryParam(specWorkspaceKey, "Workspace id or path", false),
-			boolQueryParam("include_health", "Include metadata-only session health when available"),
 		},
 		Responses: []ResponseSpec{
 			{Status: 200, Description: "OK", Body: contract.AgentCoordinatorConfigResponse{}},
@@ -2874,34 +3057,102 @@ var operationRegistry = []OperationSpec{
 	},
 	{
 		Method:      httpMethodGet,
-		Path:        "/api/workspaces/{workspace_id}/observe/events",
-		OperationID: "listObserveEvents",
-		Summary:     "List observability events",
-		Tags:        []string{specObserveKey},
+		Path:        "/api/logs",
+		OperationID: "listLogs",
+		Summary:     "List runtime logs",
+		Tags:        []string{specLogsKey},
 		Transports:  []Transport{TransportHTTP, TransportUDS},
-		Parameters: []ParameterSpec{
-			pathParam("workspace_id", "Workspace id"),
-			queryParam("session_id", "Session id", false),
-			queryParam("agent_name", "Agent name", false),
-			queryParam("type", "Event type", false),
-			dateTimeQueryParam("since", "Only events emitted since this timestamp"),
-			intQueryParam("limit", "Maximum number of records to return"),
-		},
+		Parameters:  logFilterQueryParams(),
 		Responses: []ResponseSpec{
-			{Status: 200, Description: "OK", Body: contract.ObserveEventsResponse{}},
+			{Status: 200, Description: "OK", Body: contract.LogsListResponse{}},
 			{Status: 400, Description: specInvalidFilterDescription, Body: contract.ErrorPayload{}},
 			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
 		},
 	},
 	{
 		Method:      httpMethodGet,
-		Path:        "/api/observe/health",
-		OperationID: "getObserveHealth",
-		Summary:     "Get daemon health and memory health",
-		Tags:        []string{specObserveKey},
+		Path:        "/api/logs/stream",
+		OperationID: "streamLogs",
+		Summary:     "Stream runtime logs",
+		Tags:        []string{specLogsKey},
 		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters:  logFilterQueryParams(),
 		Responses: []ResponseSpec{
-			{Status: 200, Description: "OK", Body: contract.HealthResponse{}},
+			{
+				Status:      200,
+				Description: "Log event stream",
+				Body:        contract.LogEventPayload{},
+				ContentType: "text/event-stream",
+			},
+			{Status: 400, Description: specInvalidFilterDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:              httpMethodPost,
+		Path:                "/api/support/bundles",
+		OperationID:         "createSupportBundle",
+		Summary:             "Create a support bundle",
+		Tags:                []string{specSupportKey},
+		Transports:          []Transport{TransportHTTP, TransportUDS},
+		RequestBody:         contract.CreateSupportBundleRequest{},
+		RequestBodyOptional: true,
+		Responses: []ResponseSpec{
+			{Status: 202, Description: specAcceptedDescription, Body: contract.SupportBundleOperationResponse{}},
+			{Status: 400, Description: "Invalid support bundle request", Body: contract.ErrorPayload{}},
+			{
+				Status:      503,
+				Description: specSupportBundleServiceIsNotConfiguredDescription,
+				Body:        contract.ErrorPayload{},
+			},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodGet,
+		Path:        "/api/support/bundles/{operation_id}",
+		OperationID: "getSupportBundle",
+		Summary:     "Get support bundle operation status",
+		Tags:        []string{specSupportKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("operation_id", "Support bundle operation id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SupportBundleOperationResponse{}},
+			{Status: 404, Description: "Support bundle operation not found", Body: contract.ErrorPayload{}},
+			{
+				Status:      503,
+				Description: specSupportBundleServiceIsNotConfiguredDescription,
+				Body:        contract.ErrorPayload{},
+			},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodGet,
+		Path:        "/api/support/bundles/{operation_id}/download",
+		OperationID: "downloadSupportBundle",
+		Summary:     "Download a completed support bundle archive",
+		Tags:        []string{specSupportKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("operation_id", "Support bundle operation id"),
+		},
+		Responses: []ResponseSpec{
+			{
+				Status:      200,
+				Description: "Support bundle archive",
+				Body:        binaryResponse{},
+				ContentType: "application/gzip",
+			},
+			{Status: 404, Description: "Support bundle operation not found", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Support bundle operation is not ready", Body: contract.ErrorPayload{}},
+			{
+				Status:      503,
+				Description: specSupportBundleServiceIsNotConfiguredDescription,
+				Body:        contract.ErrorPayload{},
+			},
 			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
 		},
 	},
@@ -2915,6 +3166,9 @@ var operationRegistry = []OperationSpec{
 		Parameters: []ParameterSpec{
 			queryParam(specWorkspaceKey, "Workspace id or path", false),
 			boolQueryParam("include_health", "Include metadata-only session health when available"),
+			boolQueryParam("resumable", "Only list sessions eligible for explicit attach"),
+			queryParam("sort", "Optional sort key. Use last_activity with resumable=true.", false),
+			intQueryParam("limit", "Maximum sessions to return when filtering resumable sessions"),
 		},
 		Responses: []ResponseSpec{
 			{Status: 200, Description: "OK", Body: contract.SessionsResponse{}},
@@ -2992,9 +3246,51 @@ var operationRegistry = []OperationSpec{
 	},
 	{
 		Method:      httpMethodPost,
-		Path:        "/api/workspaces/{workspace_id}/sessions/{session_id}/resume",
-		OperationID: "resumeSession",
-		Summary:     "Resume a stopped session",
+		Path:        "/api/workspaces/{workspace_id}/sessions/{session_id}/attach",
+		OperationID: "attachSession",
+		Summary:     "Attach to a resumable live session",
+		Tags:        []string{specSessionsKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("workspace_id", "Workspace id"),
+			pathParam("session_id", "Session id"),
+		},
+		RequestBody:         contract.AttachSessionRequest{},
+		RequestBodyOptional: true,
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SessionAttachResponse{}},
+			{Status: 404, Description: specSessionNotFoundDescription, Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Session cannot be attached", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodPost,
+		Path:        "/api/workspaces/{workspace_id}/sessions/{session_id}/prompt",
+		OperationID: "sendSessionPrompt",
+		Summary:     "Send, queue, interrupt, or steer a session prompt",
+		Tags:        []string{specSessionsKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("workspace_id", "Workspace id"),
+			pathParam("session_id", "Session id"),
+		},
+		RequestBody: contract.SendPromptRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "Prompt accepted", Body: contract.SendPromptResultResponse{}},
+			{Status: 202, Description: "Prompt queued or staged", Body: contract.SendPromptResultResponse{}},
+			{Status: 400, Description: "Invalid prompt request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: specSessionNotFoundDescription, Body: contract.ErrorPayload{}},
+			{Status: 409, Description: specSessionPromptConflictDescription, Body: contract.ErrorPayload{}},
+			{Status: 413, Description: "Session input queue is full", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodPost,
+		Path:        "/api/workspaces/{workspace_id}/sessions/{session_id}/interrupt",
+		OperationID: "interruptSessionPrompt",
+		Summary:     "Interrupt the active prompt turn for a session",
 		Tags:        []string{specSessionsKey},
 		Transports:  []Transport{TransportHTTP, TransportUDS},
 		Parameters: []ParameterSpec{
@@ -3002,7 +3298,65 @@ var operationRegistry = []OperationSpec{
 			pathParam("session_id", "Session id"),
 		},
 		Responses: []ResponseSpec{
-			{Status: 200, Description: "OK", Body: contract.SessionResponse{}},
+			{Status: 200, Description: "Prompt interrupted", Body: contract.SendPromptResultResponse{}},
+			{Status: 404, Description: specSessionNotFoundDescription, Body: contract.ErrorPayload{}},
+			{Status: 409, Description: specSessionPromptConflictDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodPost,
+		Path:        "/api/workspaces/{workspace_id}/sessions/{session_id}/steer",
+		OperationID: "steerSessionPrompt",
+		Summary:     "Stage steering input for the active session turn",
+		Tags:        []string{specSessionsKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("workspace_id", "Workspace id"),
+			pathParam("session_id", "Session id"),
+		},
+		RequestBody: contract.SteerPromptRequest{},
+		Responses: []ResponseSpec{
+			{Status: 202, Description: "Prompt steering staged", Body: contract.SendPromptResultResponse{}},
+			{Status: 400, Description: "Invalid steer request", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: specSessionNotFoundDescription, Body: contract.ErrorPayload{}},
+			{Status: 409, Description: specSessionPromptConflictDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodDelete,
+		Path:        "/api/workspaces/{workspace_id}/sessions/{session_id}/prompt/queue/{queue_entry_id}",
+		OperationID: "cancelQueuedSessionPrompt",
+		Summary:     "Cancel a queued session prompt entry",
+		Tags:        []string{specSessionsKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("workspace_id", "Workspace id"),
+			pathParam("session_id", "Session id"),
+			pathParam("queue_entry_id", "Queue entry id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "Queued prompt canceled", Body: contract.SendPromptResultResponse{}},
+			{Status: 404, Description: specSessionNotFoundDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodGet,
+		Path:        "/api/workspaces/{workspace_id}/sessions/{session_id}/recap",
+		OperationID: "getSessionRecap",
+		Summary:     "Get a deterministic session recap",
+		Tags:        []string{specSessionsKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("workspace_id", "Workspace id"),
+			pathParam("session_id", "Session id"),
+			intQueryParam("limit", "Maximum recent messages to include"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SessionRecapResponse{}},
+			{Status: 400, Description: "Invalid recap query", Body: contract.ErrorPayload{}},
 			{Status: 404, Description: specSessionNotFoundDescription, Body: contract.ErrorPayload{}},
 			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
 		},
@@ -3170,6 +3524,24 @@ var operationRegistry = []OperationSpec{
 		},
 		Responses: []ResponseSpec{
 			{Status: 200, Description: "OK", Body: contract.TaskDetailResponse{}},
+			{Status: 404, Description: specTaskNotFoundDescription, Body: contract.ErrorPayload{}},
+			{Status: 422, Description: specInvalidTaskIDDescription, Body: contract.ErrorPayload{}},
+			{Status: 503, Description: specTaskServiceIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodGet,
+		Path:        specAPITasksIDInspectPath,
+		OperationID: "inspectTask",
+		Summary:     "Inspect one task with diagnostics",
+		Tags:        []string{specTasksKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Task id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.TaskInspectResponse{}},
 			{Status: 404, Description: specTaskNotFoundDescription, Body: contract.ErrorPayload{}},
 			{Status: 422, Description: specInvalidTaskIDDescription, Body: contract.ErrorPayload{}},
 			{Status: 503, Description: specTaskServiceIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
@@ -3458,6 +3830,51 @@ var operationRegistry = []OperationSpec{
 	},
 	{
 		Method:      httpMethodPost,
+		Path:        specAPITasksIDPausePath,
+		OperationID: "pauseTask",
+		Summary:     "Pause one task for future scheduler claims",
+		Tags:        []string{specTasksKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Task id"),
+		},
+		RequestBody: contract.PauseTaskRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.TaskResponse{}},
+			{Status: 403, Description: specForceOperationForbiddenDescription, Body: contract.ErrorPayload{}},
+			{Status: 404, Description: specTaskNotFoundDescription, Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Task pause conflict", Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Invalid task pause request", Body: contract.ErrorPayload{}},
+			{Status: 429, Description: specForceOperationRateLimitExceededDescription, Body: contract.ErrorPayload{}},
+			{Status: 503, Description: specTaskServiceIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodPost,
+		Path:        specAPITasksIDResumePath,
+		OperationID: "resumeTask",
+		Summary:     "Resume one paused task for future scheduler claims",
+		Tags:        []string{specTasksKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Task id"),
+		},
+		RequestBody:         contract.ResumeTaskRequest{},
+		RequestBodyOptional: true,
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.TaskResponse{}},
+			{Status: 403, Description: specForceOperationForbiddenDescription, Body: contract.ErrorPayload{}},
+			{Status: 404, Description: specTaskNotFoundDescription, Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Task resume conflict", Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Invalid task resume request", Body: contract.ErrorPayload{}},
+			{Status: 429, Description: specForceOperationRateLimitExceededDescription, Body: contract.ErrorPayload{}},
+			{Status: 503, Description: specTaskServiceIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodPost,
 		Path:        "/api/tasks/{id}/children",
 		OperationID: "createChildTask",
 		Summary:     "Create one child task",
@@ -3571,6 +3988,209 @@ var operationRegistry = []OperationSpec{
 			{Status: 200, Description: "OK", Body: contract.TaskRunDetailResponse{}},
 			{Status: 404, Description: specTaskRunNotFoundDescription, Body: contract.ErrorPayload{}},
 			{Status: 422, Description: "Invalid task-run id", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: specTaskServiceIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodGet,
+		Path:        specAPIRunsIDInspectPath,
+		OperationID: "inspectRun",
+		Summary:     "Inspect one task run with diagnostics",
+		Tags:        []string{specTasksKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Task run id"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.TaskInspectResponse{}},
+			{Status: 404, Description: specTaskRunNotFoundDescription, Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Invalid task-run id", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: specTaskServiceIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodPost,
+		Path:        specAPIRunsIDReleasePath,
+		OperationID: "forceReleaseTaskRun",
+		Summary:     "Force release one claimed task run",
+		Tags:        []string{specTasksKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Task run id"),
+		},
+		RequestBody: contract.ForceReleaseTaskRunRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.TaskRunResponse{}},
+			{Status: 403, Description: specForceOperationForbiddenDescription, Body: contract.ErrorPayload{}},
+			{Status: 404, Description: specTaskRunNotFoundDescription, Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Task-run force-release conflict", Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Invalid force-release request", Body: contract.ErrorPayload{}},
+			{Status: 429, Description: specForceOperationRateLimitExceededDescription, Body: contract.ErrorPayload{}},
+			{Status: 503, Description: specTaskServiceIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodPost,
+		Path:        specAPIRunsIDFailPath,
+		OperationID: "forceFailTaskRun",
+		Summary:     "Force fail one queued or claimed task run",
+		Tags:        []string{specTasksKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Task run id"),
+		},
+		RequestBody: contract.ForceFailTaskRunRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.TaskRunResponse{}},
+			{Status: 403, Description: specForceOperationForbiddenDescription, Body: contract.ErrorPayload{}},
+			{Status: 404, Description: specTaskRunNotFoundDescription, Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Task-run forced-failure conflict", Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Invalid forced-failure request", Body: contract.ErrorPayload{}},
+			{Status: 429, Description: specForceOperationRateLimitExceededDescription, Body: contract.ErrorPayload{}},
+			{Status: 503, Description: specTaskServiceIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodPost,
+		Path:        specAPIRunsIDRetryPath,
+		OperationID: "retryTaskRun",
+		Summary:     "Retry one failed task run",
+		Tags:        []string{specTasksKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("id", "Task run id"),
+		},
+		RequestBody: contract.RetryTaskRunRequest{},
+		Responses: []ResponseSpec{
+			{Status: 201, Description: specCreatedDescription, Body: contract.RetryTaskRunResponse{}},
+			{Status: 403, Description: specForceOperationForbiddenDescription, Body: contract.ErrorPayload{}},
+			{Status: 404, Description: specTaskRunNotFoundDescription, Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Task-run retry conflict", Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Invalid retry request", Body: contract.ErrorPayload{}},
+			{Status: 429, Description: specForceOperationRateLimitExceededDescription, Body: contract.ErrorPayload{}},
+			{Status: 503, Description: specTaskServiceIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodPost,
+		Path:        specAPIRunsBulkReleasePath,
+		OperationID: "bulkForceReleaseTaskRuns",
+		Summary:     "Force release a bounded set of claimed task runs",
+		Tags:        []string{specTasksKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		RequestBody: contract.BulkForceTaskRunRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.BulkForceTaskRunResponse{}},
+			{Status: 403, Description: specForceOperationForbiddenDescription, Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Invalid bulk force-release request", Body: contract.ErrorPayload{}},
+			{Status: 429, Description: specForceOperationRateLimitExceededDescription, Body: contract.ErrorPayload{}},
+			{Status: 503, Description: specTaskServiceIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodPost,
+		Path:        specAPIRunsBulkFailPath,
+		OperationID: "bulkForceFailTaskRuns",
+		Summary:     "Force fail a bounded set of queued or claimed task runs",
+		Tags:        []string{specTasksKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		RequestBody: contract.BulkForceTaskRunRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.BulkForceTaskRunResponse{}},
+			{Status: 403, Description: specForceOperationForbiddenDescription, Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Invalid bulk forced-failure request", Body: contract.ErrorPayload{}},
+			{Status: 429, Description: specForceOperationRateLimitExceededDescription, Body: contract.ErrorPayload{}},
+			{Status: 503, Description: specTaskServiceIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodGet,
+		Path:        specAPISchedulerPath,
+		OperationID: "getScheduler",
+		Summary:     "Get scheduler pause state and queue pressure",
+		Tags:        []string{specTasksKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SchedulerStatusResponse{}},
+			{Status: 403, Description: specForbiddenDescription, Body: contract.ErrorPayload{}},
+			{Status: 503, Description: specTaskServiceIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:              httpMethodPost,
+		Path:                specAPISchedulerPausePath,
+		OperationID:         "pauseScheduler",
+		Summary:             "Pause scheduler dispatch and task-run claims",
+		Tags:                []string{specTasksKey},
+		Transports:          []Transport{TransportHTTP, TransportUDS},
+		RequestBody:         contract.SchedulerPauseRequest{},
+		RequestBodyOptional: true,
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SchedulerStatusResponse{}},
+			{Status: 403, Description: specForbiddenDescription, Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Invalid scheduler pause request", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: specTaskServiceIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:              httpMethodPost,
+		Path:                specAPISchedulerResumePath,
+		OperationID:         "resumeScheduler",
+		Summary:             "Resume scheduler dispatch and task-run claims",
+		Tags:                []string{specTasksKey},
+		Transports:          []Transport{TransportHTTP, TransportUDS},
+		RequestBody:         contract.SchedulerResumeRequest{},
+		RequestBodyOptional: true,
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SchedulerStatusResponse{}},
+			{Status: 403, Description: specForbiddenDescription, Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Invalid scheduler resume request", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: specTaskServiceIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:              httpMethodPost,
+		Path:                specAPISchedulerDrainPath,
+		OperationID:         "drainScheduler",
+		Summary:             "Pause the scheduler and wait for active claims to drain",
+		Tags:                []string{specTasksKey},
+		Transports:          []Transport{TransportHTTP, TransportUDS},
+		RequestBody:         contract.SchedulerDrainRequest{},
+		RequestBodyOptional: true,
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SchedulerDrainResponse{}},
+			{Status: 403, Description: specForbiddenDescription, Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Invalid scheduler drain request", Body: contract.ErrorPayload{}},
+			{Status: 503, Description: specTaskServiceIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodGet,
+		Path:        specAPISchedulerBacklogPath,
+		OperationID: "getSchedulerBacklog",
+		Summary:     "List queued scheduler backlog rows",
+		Tags:        []string{specTasksKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			intQueryParam("limit", "Maximum number of queued runs to return"),
+			queryParam(specWorkspaceKey, "Filter by workspace path, name, or ID", false),
+			boolQueryParam("include_paused", "Include runs blocked by task pause state"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SchedulerBacklogResponse{}},
+			{Status: 403, Description: specForbiddenDescription, Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Invalid scheduler backlog query", Body: contract.ErrorPayload{}},
 			{Status: 503, Description: specTaskServiceIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
 			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
 		},
@@ -4129,6 +4749,27 @@ var operationRegistry = []OperationSpec{
 		},
 	},
 	{
+		Method:      httpMethodGet,
+		Path:        "/api/skills/{name}/shadows",
+		OperationID: "getSkillShadows",
+		Summary:     "Get resolver provenance and shadow declarations for one skill",
+		Tags:        []string{specSkillsKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			pathParam("name", "Skill name"),
+			queryParam(specWorkspaceKey, "Workspace id or path for resolution context", false),
+			queryParam("for_agent", "Logical agent name for agent-local resolution", false),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SkillShadowsResponse{}},
+			{Status: 400, Description: specInvalidSkillLookupDescription, Body: contract.ErrorPayload{}},
+			{Status: 404, Description: specSkillOrScopeNotFoundDescription, Body: contract.ErrorPayload{}},
+			{Status: 422, Description: specInvalidAgentLocalLayerDescription, Body: contract.ErrorPayload{}},
+			{Status: 503, Description: specSkillsRegistryIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
 		Method:      httpMethodPost,
 		Path:        "/api/skills/{name}/enable",
 		OperationID: "enableSkill",
@@ -4167,6 +4808,38 @@ var operationRegistry = []OperationSpec{
 			{Status: 404, Description: specSkillOrScopeNotFoundDescription, Body: contract.ErrorPayload{}},
 			{Status: 422, Description: specInvalidAgentLocalLayerDescription, Body: contract.ErrorPayload{}},
 			{Status: 503, Description: specSkillsRegistryIsNotConfiguredDescription, Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodGet,
+		Path:        "/api/settings/apply",
+		OperationID: "listSettingsApplyRecords",
+		Summary:     "List config apply records for desired and active generation reconciliation",
+		Tags:        []string{specSettingsKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			enumQueryParam("status", "Filter by apply status", configApplyStatusValues()),
+			queryParam("actor", "Filter by config apply actor", false),
+			intQueryParam("limit", "Maximum number of records to return"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.ConfigApplyRecordsResponse{}},
+			{Status: 400, Description: "Invalid apply history filter", Body: contract.ErrorPayload{}},
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	},
+	{
+		Method:      httpMethodPost,
+		Path:        "/api/settings/reload",
+		OperationID: "reloadSettings",
+		Summary:     "Reconcile config.toml with the daemon active generation",
+		Tags:        []string{specSettingsKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.SettingsApplyResponse{}},
+			{Status: 400, Description: specInvalidSettingsPayloadDescription, Body: contract.ErrorPayload{}},
+			{Status: 409, Description: specConflictingSettingsChangeDescription, Body: contract.ErrorPayload{}},
 			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
 		},
 	},
@@ -4233,7 +4906,7 @@ var operationRegistry = []OperationSpec{
 		Transports:  []Transport{TransportHTTP, TransportUDS},
 		RequestBody: contract.UpdateSettingsAutomationRequest{},
 		Responses: []ResponseSpec{
-			{Status: 200, Description: "OK", Body: contract.SettingsGlobalSectionMutationResult{}},
+			{Status: 200, Description: "OK", Body: contract.SettingsApplyResponse{}},
 			{Status: 400, Description: specInvalidSettingsPayloadDescription, Body: contract.ErrorPayload{}},
 			{Status: 403, Description: specForbiddenDescription, Body: contract.ErrorPayload{}},
 			{Status: 409, Description: specConflictingSettingsChangeDescription, Body: contract.ErrorPayload{}},
@@ -4280,7 +4953,7 @@ var operationRegistry = []OperationSpec{
 		},
 		RequestBody: contract.PutSettingsSandboxRequest{},
 		Responses: []ResponseSpec{
-			{Status: 200, Description: "OK", Body: contract.SettingsGlobalCollectionMutationResult{}},
+			{Status: 200, Description: "OK", Body: contract.SettingsApplyResponse{}},
 			{Status: 400, Description: "Invalid sandbox payload", Body: contract.ErrorPayload{}},
 			{Status: 403, Description: specForbiddenDescription, Body: contract.ErrorPayload{}},
 			{Status: 409, Description: "Conflicting sandbox change", Body: contract.ErrorPayload{}},
@@ -4298,7 +4971,7 @@ var operationRegistry = []OperationSpec{
 			pathParam("name", "Sandbox name"),
 		},
 		Responses: []ResponseSpec{
-			{Status: 200, Description: "OK", Body: contract.SettingsGlobalCollectionMutationResult{}},
+			{Status: 200, Description: "OK", Body: contract.SettingsApplyResponse{}},
 			{Status: 403, Description: specForbiddenDescription, Body: contract.ErrorPayload{}},
 			{Status: 404, Description: "Sandbox not found", Body: contract.ErrorPayload{}},
 			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
@@ -4325,7 +4998,7 @@ var operationRegistry = []OperationSpec{
 		Transports:  []Transport{TransportHTTP, TransportUDS},
 		RequestBody: contract.UpdateSettingsGeneralRequest{},
 		Responses: []ResponseSpec{
-			{Status: 200, Description: "OK", Body: contract.SettingsGlobalSectionMutationResult{}},
+			{Status: 200, Description: "OK", Body: contract.SettingsApplyResponse{}},
 			{Status: 400, Description: specInvalidSettingsPayloadDescription, Body: contract.ErrorPayload{}},
 			{Status: 403, Description: specForbiddenDescription, Body: contract.ErrorPayload{}},
 			{Status: 409, Description: specConflictingSettingsChangeDescription, Body: contract.ErrorPayload{}},
@@ -4356,7 +5029,7 @@ var operationRegistry = []OperationSpec{
 		},
 		RequestBody: contract.PutSettingsHookRequest{},
 		Responses: []ResponseSpec{
-			{Status: 200, Description: "OK", Body: contract.SettingsGlobalCollectionMutationResult{}},
+			{Status: 200, Description: "OK", Body: contract.SettingsApplyResponse{}},
 			{Status: 400, Description: "Invalid hook payload", Body: contract.ErrorPayload{}},
 			{Status: 403, Description: specForbiddenDescription, Body: contract.ErrorPayload{}},
 			{Status: 409, Description: "Conflicting hook change", Body: contract.ErrorPayload{}},
@@ -4374,7 +5047,7 @@ var operationRegistry = []OperationSpec{
 			pathParam("name", "Hook name"),
 		},
 		Responses: []ResponseSpec{
-			{Status: 200, Description: "OK", Body: contract.SettingsGlobalCollectionMutationResult{}},
+			{Status: 200, Description: "OK", Body: contract.SettingsApplyResponse{}},
 			{Status: 403, Description: specForbiddenDescription, Body: contract.ErrorPayload{}},
 			{Status: 404, Description: "Hook not found", Body: contract.ErrorPayload{}},
 			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
@@ -4401,7 +5074,7 @@ var operationRegistry = []OperationSpec{
 		Transports:  []Transport{TransportHTTP, TransportUDS},
 		RequestBody: contract.UpdateSettingsHooksExtensionsRequest{},
 		Responses: []ResponseSpec{
-			{Status: 200, Description: "OK", Body: contract.SettingsGlobalSectionMutationResult{}},
+			{Status: 200, Description: "OK", Body: contract.SettingsApplyResponse{}},
 			{Status: 400, Description: specInvalidSettingsPayloadDescription, Body: contract.ErrorPayload{}},
 			{Status: 403, Description: specForbiddenDescription, Body: contract.ErrorPayload{}},
 			{Status: 409, Description: specConflictingSettingsChangeDescription, Body: contract.ErrorPayload{}},
@@ -4441,7 +5114,7 @@ var operationRegistry = []OperationSpec{
 		},
 		RequestBody: contract.PutSettingsMCPServerRequest{},
 		Responses: []ResponseSpec{
-			{Status: 200, Description: "OK", Body: contract.SettingsGlobalWorkspaceCollectionMutationResult{}},
+			{Status: 200, Description: "OK", Body: contract.SettingsApplyResponse{}},
 			{Status: 400, Description: "Invalid MCP server payload", Body: contract.ErrorPayload{}},
 			{Status: 403, Description: specForbiddenDescription, Body: contract.ErrorPayload{}},
 			{Status: 404, Description: specWorkspaceNotFoundDescription, Body: contract.ErrorPayload{}},
@@ -4463,7 +5136,7 @@ var operationRegistry = []OperationSpec{
 			enumQueryParam("target", "Select the persistence target", settingsTargetSelectorValues()),
 		},
 		Responses: []ResponseSpec{
-			{Status: 200, Description: "OK", Body: contract.SettingsGlobalWorkspaceCollectionMutationResult{}},
+			{Status: 200, Description: "OK", Body: contract.SettingsApplyResponse{}},
 			{Status: 400, Description: "Invalid MCP server request", Body: contract.ErrorPayload{}},
 			{Status: 403, Description: specForbiddenDescription, Body: contract.ErrorPayload{}},
 			{Status: 404, Description: "MCP server or workspace not found", Body: contract.ErrorPayload{}},
@@ -4492,7 +5165,7 @@ var operationRegistry = []OperationSpec{
 		Transports:  []Transport{TransportHTTP, TransportUDS},
 		RequestBody: contract.UpdateSettingsMemoryRequest{},
 		Responses: []ResponseSpec{
-			{Status: 200, Description: "OK", Body: contract.SettingsGlobalSectionMutationResult{}},
+			{Status: 200, Description: "OK", Body: contract.SettingsApplyResponse{}},
 			{Status: 400, Description: specInvalidSettingsPayloadDescription, Body: contract.ErrorPayload{}},
 			{Status: 403, Description: specForbiddenDescription, Body: contract.ErrorPayload{}},
 			{Status: 409, Description: specConflictingSettingsChangeDescription, Body: contract.ErrorPayload{}},
@@ -4520,7 +5193,7 @@ var operationRegistry = []OperationSpec{
 		Transports:  []Transport{TransportHTTP, TransportUDS},
 		RequestBody: contract.UpdateSettingsNetworkRequest{},
 		Responses: []ResponseSpec{
-			{Status: 200, Description: "OK", Body: contract.SettingsGlobalSectionMutationResult{}},
+			{Status: 200, Description: "OK", Body: contract.SettingsApplyResponse{}},
 			{Status: 400, Description: specInvalidSettingsPayloadDescription, Body: contract.ErrorPayload{}},
 			{Status: 403, Description: specForbiddenDescription, Body: contract.ErrorPayload{}},
 			{Status: 409, Description: specConflictingSettingsChangeDescription, Body: contract.ErrorPayload{}},
@@ -4548,7 +5221,7 @@ var operationRegistry = []OperationSpec{
 		Transports:  []Transport{TransportHTTP, TransportUDS},
 		RequestBody: contract.UpdateSettingsObservabilityRequest{},
 		Responses: []ResponseSpec{
-			{Status: 200, Description: "OK", Body: contract.SettingsGlobalSectionMutationResult{}},
+			{Status: 200, Description: "OK", Body: contract.SettingsApplyResponse{}},
 			{Status: 400, Description: specInvalidSettingsPayloadDescription, Body: contract.ErrorPayload{}},
 			{Status: 403, Description: specForbiddenDescription, Body: contract.ErrorPayload{}},
 			{Status: 409, Description: specConflictingSettingsChangeDescription, Body: contract.ErrorPayload{}},
@@ -4591,7 +5264,7 @@ var operationRegistry = []OperationSpec{
 		},
 		Responses: []ResponseSpec{
 			{Status: 200, Description: "OK", Body: contract.SettingsProviderResponse{}},
-			{Status: 404, Description: "Provider not found", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: specProviderNotFoundDescription, Body: contract.ErrorPayload{}},
 			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
 		},
 	},
@@ -4607,7 +5280,7 @@ var operationRegistry = []OperationSpec{
 		},
 		RequestBody: contract.PutSettingsProviderRequest{},
 		Responses: []ResponseSpec{
-			{Status: 200, Description: "OK", Body: contract.SettingsGlobalCollectionMutationResult{}},
+			{Status: 200, Description: "OK", Body: contract.SettingsApplyResponse{}},
 			{Status: 400, Description: "Invalid provider payload", Body: contract.ErrorPayload{}},
 			{Status: 403, Description: specForbiddenDescription, Body: contract.ErrorPayload{}},
 			{Status: 409, Description: "Conflicting provider change", Body: contract.ErrorPayload{}},
@@ -4625,9 +5298,9 @@ var operationRegistry = []OperationSpec{
 			pathParam("name", "Provider name"),
 		},
 		Responses: []ResponseSpec{
-			{Status: 200, Description: "OK", Body: contract.SettingsGlobalCollectionMutationResult{}},
+			{Status: 200, Description: "OK", Body: contract.SettingsApplyResponse{}},
 			{Status: 403, Description: specForbiddenDescription, Body: contract.ErrorPayload{}},
-			{Status: 404, Description: "Provider not found", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: specProviderNotFoundDescription, Body: contract.ErrorPayload{}},
 			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
 		},
 	},
@@ -4665,7 +5338,7 @@ var operationRegistry = []OperationSpec{
 		},
 		RequestBody: contract.UpdateSettingsSkillsRequest{},
 		Responses: []ResponseSpec{
-			{Status: 200, Description: "OK", Body: contract.SettingsSkillsMutationResult{}},
+			{Status: 200, Description: "OK", Body: contract.SettingsApplyResponse{}},
 			{Status: 400, Description: specInvalidSettingsPayloadDescription, Body: contract.ErrorPayload{}},
 			{Status: 403, Description: specForbiddenDescription, Body: contract.ErrorPayload{}},
 			{Status: 404, Description: specAgentNotFoundDescription, Body: contract.ErrorPayload{}},
@@ -4769,10 +5442,130 @@ var operationRegistry = []OperationSpec{
 }
 
 // Operations returns the canonical REST operation registry in deterministic order.
+func notificationPresetOperations() []OperationSpec {
+	return []OperationSpec{
+		listNotificationPresetsOperation(),
+		createNotificationPresetOperation(),
+		getNotificationPresetOperation(),
+		updateNotificationPresetOperation(),
+		deleteNotificationPresetOperation(),
+	}
+}
+
+func listNotificationPresetsOperation() OperationSpec {
+	return OperationSpec{
+		Method:      httpMethodGet,
+		Path:        specAPINotificationsPresetsPath,
+		OperationID: "listNotificationPresets",
+		Summary:     "List notification presets",
+		Tags:        []string{specNotificationsKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters: []ParameterSpec{
+			boolQueryParam("enabled", "Filter by enabled state"),
+			boolQueryParam("built_in", "Filter by built-in state"),
+			queryParam("name", "Filter by exact preset name", false),
+			intQueryParam("limit", "Maximum number of presets to return"),
+		},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.NotificationPresetListResponse{}},
+			{Status: 400, Description: "Invalid notification preset filter", Body: contract.ErrorPayload{}},
+			notificationPresetServiceUnavailableResponse(),
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	}
+}
+
+func createNotificationPresetOperation() OperationSpec {
+	return OperationSpec{
+		Method:      httpMethodPost,
+		Path:        specAPINotificationsPresetsPath,
+		OperationID: "createNotificationPreset",
+		Summary:     "Create a notification preset",
+		Tags:        []string{specNotificationsKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		RequestBody: contract.CreateNotificationPresetRequest{},
+		Responses: []ResponseSpec{
+			{Status: 201, Description: specCreatedDescription, Body: contract.NotificationPresetResponse{}},
+			{Status: 400, Description: "Invalid notification preset", Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Notification preset already exists", Body: contract.ErrorPayload{}},
+			notificationPresetServiceUnavailableResponse(),
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	}
+}
+
+func getNotificationPresetOperation() OperationSpec {
+	return OperationSpec{
+		Method:      httpMethodGet,
+		Path:        specAPINotificationsPresetsNamePath,
+		OperationID: "getNotificationPreset",
+		Summary:     "Get one notification preset",
+		Tags:        []string{specNotificationsKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters:  []ParameterSpec{pathParam("name", "Notification preset name")},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.NotificationPresetResponse{}},
+			{Status: 404, Description: specNotificationPresetNotFoundDescription, Body: contract.ErrorPayload{}},
+			notificationPresetServiceUnavailableResponse(),
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	}
+}
+
+func updateNotificationPresetOperation() OperationSpec {
+	return OperationSpec{
+		Method:      httpMethodPut,
+		Path:        specAPINotificationsPresetsNamePath,
+		OperationID: "updateNotificationPreset",
+		Summary:     "Update one notification preset",
+		Tags:        []string{specNotificationsKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters:  []ParameterSpec{pathParam("name", "Notification preset name")},
+		RequestBody: contract.UpdateNotificationPresetRequest{},
+		Responses: []ResponseSpec{
+			{Status: 200, Description: "OK", Body: contract.NotificationPresetResponse{}},
+			{Status: 400, Description: "Invalid notification preset update", Body: contract.ErrorPayload{}},
+			{Status: 404, Description: specNotificationPresetNotFoundDescription, Body: contract.ErrorPayload{}},
+			{Status: 422, Description: "Bridge target lookup is ambiguous", Body: contract.ErrorPayload{}},
+			notificationPresetServiceUnavailableResponse(),
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	}
+}
+
+func deleteNotificationPresetOperation() OperationSpec {
+	return OperationSpec{
+		Method:      httpMethodDelete,
+		Path:        specAPINotificationsPresetsNamePath,
+		OperationID: "deleteNotificationPreset",
+		Summary:     "Delete one custom notification preset",
+		Tags:        []string{specNotificationsKey},
+		Transports:  []Transport{TransportHTTP, TransportUDS},
+		Parameters:  []ParameterSpec{pathParam("name", "Notification preset name")},
+		Responses: []ResponseSpec{
+			{Status: 204, Description: specNoContentDescription},
+			{Status: 404, Description: specNotificationPresetNotFoundDescription, Body: contract.ErrorPayload{}},
+			{Status: 409, Description: "Built-in notification preset cannot be deleted", Body: contract.ErrorPayload{}},
+			notificationPresetServiceUnavailableResponse(),
+			{Status: 500, Description: specInternalServerErrorDescription, Body: contract.ErrorPayload{}},
+		},
+	}
+}
+
+func notificationPresetServiceUnavailableResponse() ResponseSpec {
+	return ResponseSpec{
+		Status:      503,
+		Description: specNotificationPresetServiceIsNotConfiguredDescription,
+		Body:        contract.ErrorPayload{},
+	}
+}
+
 func Operations() []OperationSpec {
 	ops := cloneOperationSpecs(operationRegistry)
+	ops = append(ops, notificationPresetOperations()...)
 	ops = append(ops, authoredContextOperations()...)
 	ops = append(ops, modelCatalogOperations()...)
+	ops = append(ops, providerOperations()...)
 	sort.SliceStable(ops, func(i, j int) bool {
 		if ops[i].Path == ops[j].Path {
 			return ops[i].Method < ops[j].Method
@@ -5002,6 +5795,34 @@ func settingsMutationBehaviorValues() []string {
 		string(contract.SettingsMutationBehaviorAppliedNow),
 		string(contract.SettingsMutationBehaviorRestartRequired),
 		string(contract.SettingsMutationBehaviorActionTrigger),
+	}
+}
+
+func settingsApplyLifecycleValues() []string {
+	return []string{
+		string(contract.SettingsApplyLifecycleLive),
+		string(contract.SettingsApplyLifecycleLiveAdd),
+		string(contract.SettingsApplyLifecycleLiveRemoveIfUnused),
+		string(contract.SettingsApplyLifecycleRestartRequired),
+		string(contract.SettingsApplyLifecycleSessionRebind),
+	}
+}
+
+func configApplyStatusValues() []string {
+	return []string{
+		string(contract.ConfigApplyStatusPendingApply),
+		string(contract.ConfigApplyStatusApplied),
+		string(contract.ConfigApplyStatusBlocked),
+		string(contract.ConfigApplyStatusFailed),
+	}
+}
+
+func settingsApplyNextActionValues() []string {
+	return []string{
+		string(contract.SettingsApplyNextActionNone),
+		string(contract.SettingsApplyNextActionRestartDaemon),
+		string(contract.SettingsApplyNextActionNewSession),
+		string(contract.SettingsApplyNextActionRetry),
 	}
 }
 
@@ -5299,6 +6120,26 @@ func intQueryParam(name string, description string) ParameterSpec {
 		Required:    false,
 		Kind:        specIntegerKey,
 		Format:      "int32",
+	}
+}
+
+func logFilterQueryParams() []ParameterSpec {
+	return []ParameterSpec{
+		queryParam("workspace_id", "Workspace id", false),
+		queryParam("session_id", "Session id", false),
+		queryParam("agent_name", "Agent name", false),
+		queryParam("type", "Event type", false),
+		queryParam("run", "Task run id", false),
+		queryParam("actor", "Actor as kind:id", false),
+		queryParam("actor_kind", "Actor kind", false),
+		queryParam("actor_id", "Actor id", false),
+		queryParam("provider", "Provider id projected at event write time", false),
+		queryParam("outcome", "Event registry outcome", false),
+		queryParam("component", "Event registry component", false),
+		boolQueryParam("error_only", "Return warning and failure outcomes only"),
+		intQueryParam("after_seq", "Return rows after this event summary sequence"),
+		dateTimeQueryParam("since", "Only logs emitted since this timestamp"),
+		intQueryParam("limit", "Maximum number of records to return"),
 	}
 }
 

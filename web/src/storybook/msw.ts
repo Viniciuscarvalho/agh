@@ -3,12 +3,13 @@ import type { HttpHandler } from "msw";
 import { handlers as agentHandlers } from "@/systems/agent/mocks";
 import { handlers as automationHandlers } from "@/systems/automation/mocks";
 import { handlers as bridgeHandlers } from "@/systems/bridges/mocks";
-import { handlers as daemonHandlers } from "@/systems/daemon/mocks";
+import { handlers as daemonHandlers } from "@/systems/status/mocks";
 import { handlers as knowledgeHandlers } from "@/systems/knowledge/mocks";
 import { handlers as networkHandlers } from "@/systems/network/mocks";
 import { handlers as sessionHandlers } from "@/systems/session/mocks";
 import { handlers as settingsHandlers } from "@/systems/settings/mocks";
 import { handlers as skillHandlers } from "@/systems/skill/mocks";
+import { handlers as schedulerHandlers } from "@/systems/scheduler/mocks";
 import { handlers as tasksHandlers } from "@/systems/tasks/mocks";
 import { handlers as workspaceHandlers } from "@/systems/workspace/mocks";
 
@@ -22,6 +23,7 @@ export type StorybookHandlerGroupName =
   | "session"
   | "settings"
   | "skill"
+  | "scheduler"
   | "tasks"
   | "workspace";
 
@@ -38,6 +40,7 @@ export const storybookSystemHandlerGroups: StorybookHandlerGroups = {
   session: sessionHandlers,
   settings: settingsHandlers,
   skill: skillHandlers,
+  scheduler: schedulerHandlers,
   tasks: tasksHandlers,
   workspace: workspaceHandlers,
 };

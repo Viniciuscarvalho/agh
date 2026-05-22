@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,9 +20,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/pedronauck/agh/internal/api/contract"
 	aghconfig "github.com/pedronauck/agh/internal/config"
+	"github.com/pedronauck/agh/internal/events"
 	"github.com/pedronauck/agh/internal/memory"
+	authproviders "github.com/pedronauck/agh/internal/providers"
 	"github.com/pedronauck/agh/internal/session"
+	"github.com/pedronauck/agh/internal/store"
 	taskpkg "github.com/pedronauck/agh/internal/task"
+	"github.com/pedronauck/agh/internal/transcript"
 	workspacepkg "github.com/pedronauck/agh/internal/workspace"
 )
 
@@ -30,6 +35,14 @@ const (
 )
 
 const defaultPollInterval = 100 * time.Millisecond
+
+const (
+	defaultSessionAttachTTL      = 15 * time.Minute
+	maxSessionAttachTTL          = 24 * time.Hour
+	defaultSessionRecapLimit     = 20
+	maxSessionRecapLimit         = 100
+	recapConsistencyReadSnapshot = "read_snapshot"
+)
 
 var errCreateAgentRequestInvalid = errors.New("api: invalid create agent request")
 
@@ -42,17 +55,21 @@ type BaseHandlerConfig struct {
 	MaskInternalErrors           bool
 	IncludeSessionWorkspaceInSSE bool
 	Sessions                     SessionManager
+	SessionCatalog               SessionCatalog
 	Network                      NetworkService
 	NetworkStore                 NetworkStore
 	Observer                     Observer
 	Resources                    ResourceService
+	Extensions                   ExtensionService
 	Tools                        ToolRegistry
 	Toolsets                     ToolsetRegistry
 	ToolApprovals                ToolApprovalIssuer
 	Automation                   AutomationManager
 	Tasks                        TaskService
 	Bridges                      BridgeService
+	Notifications                NotificationPresetService
 	Bundles                      BundleService
+	SupportBundles               SupportBundleService
 	Settings                     SettingsService
 	SettingsRestart              SettingsRestartController
 	SettingsUpdate               SettingsUpdateController
@@ -60,6 +77,7 @@ type BaseHandlerConfig struct {
 	Workspaces                   WorkspaceService
 	AgentCatalog                 AgentCatalog
 	ModelCatalog                 ModelCatalogService
+	ProviderAuthRunner           authproviders.ProviderAuthCommandRunner
 	AgentContextService          AgentContextService
 	SoulAuthoring                SoulAuthoringService
 	SoulRefresher                SoulRefresher
@@ -95,17 +113,21 @@ type BaseHandlers struct {
 	MaskInternalErrors           bool
 	IncludeSessionWorkspaceInSSE bool
 	Sessions                     SessionManager
+	SessionCatalog               SessionCatalog
 	Network                      NetworkService
 	NetworkStore                 NetworkStore
 	Observer                     Observer
 	Resources                    ResourceService
+	Extensions                   ExtensionService
 	Tools                        ToolRegistry
 	Toolsets                     ToolsetRegistry
 	ToolApprovals                ToolApprovalIssuer
 	Automation                   AutomationManager
 	Tasks                        TaskService
 	Bridges                      BridgeService
+	Notifications                NotificationPresetService
 	Bundles                      BundleService
+	SupportBundles               SupportBundleService
 	Settings                     SettingsService
 	SettingsRestart              SettingsRestartController
 	SettingsUpdate               SettingsUpdateController
@@ -113,6 +135,7 @@ type BaseHandlers struct {
 	Workspaces                   WorkspaceService
 	AgentCatalog                 AgentCatalog
 	ModelCatalog                 ModelCatalogService
+	ProviderAuthRunner           authproviders.ProviderAuthCommandRunner
 	AgentContextService          AgentContextService
 	SoulAuthoring                SoulAuthoringService
 	SoulRefresher                SoulRefresher
@@ -156,17 +179,21 @@ func NewBaseHandlers(cfg *BaseHandlerConfig) *BaseHandlers {
 		MaskInternalErrors:           cfg.MaskInternalErrors,
 		IncludeSessionWorkspaceInSSE: cfg.IncludeSessionWorkspaceInSSE,
 		Sessions:                     cfg.Sessions,
+		SessionCatalog:               cfg.SessionCatalog,
 		Network:                      cfg.Network,
 		NetworkStore:                 cfg.NetworkStore,
 		Observer:                     cfg.Observer,
 		Resources:                    cfg.Resources,
+		Extensions:                   cfg.Extensions,
 		Tools:                        cfg.Tools,
 		Toolsets:                     cfg.Toolsets,
 		ToolApprovals:                cfg.ToolApprovals,
 		Automation:                   cfg.Automation,
 		Tasks:                        cfg.Tasks,
 		Bridges:                      cfg.Bridges,
+		Notifications:                cfg.Notifications,
 		Bundles:                      cfg.Bundles,
+		SupportBundles:               cfg.SupportBundles,
 		Settings:                     cfg.Settings,
 		SettingsRestart:              cfg.SettingsRestart,
 		SettingsUpdate:               cfg.SettingsUpdate,
@@ -174,6 +201,7 @@ func NewBaseHandlers(cfg *BaseHandlerConfig) *BaseHandlers {
 		Workspaces:                   cfg.Workspaces,
 		AgentCatalog:                 cfg.AgentCatalog,
 		ModelCatalog:                 cfg.ModelCatalog,
+		ProviderAuthRunner:           defaults.providerAuthRunner,
 		AgentContextService:          cfg.AgentContextService,
 		CoordinatorConfig:            cfg.CoordinatorConfig,
 		SkillsRegistry:               cfg.SkillsRegistry,
@@ -200,10 +228,11 @@ func NewBaseHandlers(cfg *BaseHandlerConfig) *BaseHandlers {
 }
 
 type baseHandlerDefaults struct {
-	logger      *slog.Logger
-	now         func() time.Time
-	agentLoader AgentLoader
-	pid         func() int
+	logger             *slog.Logger
+	now                func() time.Time
+	agentLoader        AgentLoader
+	pid                func() int
+	providerAuthRunner authproviders.ProviderAuthCommandRunner
 }
 
 func normalizeBaseHandlerConfig(cfg *BaseHandlerConfig) baseHandlerDefaults {
@@ -231,6 +260,10 @@ func normalizeBaseHandlerConfig(cfg *BaseHandlerConfig) baseHandlerDefaults {
 	if pid == nil {
 		pid = os.Getpid
 	}
+	providerAuthRunner := cfg.ProviderAuthRunner
+	if providerAuthRunner == nil {
+		providerAuthRunner = authproviders.DefaultProviderAuthCommandRunner
+	}
 	if cfg.StreamDone == nil {
 		logger.Warn(
 			"api: stream shutdown bridge not provided; streaming handlers will rely on caller context " +
@@ -239,10 +272,11 @@ func normalizeBaseHandlerConfig(cfg *BaseHandlerConfig) baseHandlerDefaults {
 		cfg.StreamDone = make(chan struct{})
 	}
 	return baseHandlerDefaults{
-		logger:      logger,
-		now:         now,
-		agentLoader: agentLoader,
-		pid:         pid,
+		logger:             logger,
+		now:                now,
+		agentLoader:        agentLoader,
+		pid:                pid,
+		providerAuthRunner: providerAuthRunner,
 	}
 }
 
@@ -288,13 +322,21 @@ func (h *BaseHandlers) SetHTTPPort(port int) {
 
 // ListSessions returns the visible session list.
 func (h *BaseHandlers) ListSessions(c *gin.Context) {
+	workspaceFilter := strings.TrimSpace(c.Query("workspace"))
+	resumable, err := parseBoolQuery(c, "resumable")
+	if err != nil {
+		h.respondError(c, http.StatusBadRequest, err)
+		return
+	}
+	if resumable {
+		h.listResumableSessions(c, workspaceFilter)
+		return
+	}
 	infos, err := h.Sessions.ListAll(c.Request.Context())
 	if err != nil {
 		h.respondError(c, http.StatusInternalServerError, err)
 		return
 	}
-
-	workspaceFilter := strings.TrimSpace(c.Query("workspace"))
 	if workspaceFilter != "" {
 		workspaceID, lookupErr := h.lookupWorkspaceID(c.Request.Context(), workspaceFilter)
 		if lookupErr != nil {
@@ -314,6 +356,43 @@ func (h *BaseHandlers) ListSessions(c *gin.Context) {
 		return
 	}
 
+	c.JSON(http.StatusOK, contract.SessionsResponse{Sessions: payloads})
+}
+
+func (h *BaseHandlers) listResumableSessions(c *gin.Context, workspaceFilter string) {
+	if h.SessionCatalog == nil {
+		h.respondError(c, http.StatusServiceUnavailable, errors.New("api: session catalog is required"))
+		return
+	}
+	workspaceID := ""
+	if workspaceFilter != "" {
+		resolved, err := h.lookupWorkspaceID(c.Request.Context(), workspaceFilter)
+		if err != nil {
+			h.respondError(c, StatusForWorkspaceError(err), err)
+			return
+		}
+		workspaceID = resolved
+	}
+	limit, err := parseOptionalPositiveIntQuery(c, "limit", 0, maxSessionRecapLimit)
+	if err != nil {
+		h.respondError(c, http.StatusBadRequest, err)
+		return
+	}
+	sortKey := strings.TrimSpace(c.Query("sort"))
+	infos, err := h.SessionCatalog.ListSessions(c.Request.Context(), store.SessionListQuery{
+		WorkspaceID: workspaceID,
+		Resumable:   true,
+		Sort:        sortKey,
+		Limit:       limit,
+	})
+	if err != nil {
+		h.respondError(c, http.StatusInternalServerError, err)
+		return
+	}
+	payloads := make([]contract.SessionPayload, 0, len(infos))
+	for _, info := range infos {
+		payloads = append(payloads, SessionPayloadFromStoreInfo(info))
+	}
 	c.JSON(http.StatusOK, contract.SessionsResponse{Sessions: payloads})
 }
 
@@ -406,19 +485,78 @@ func (h *BaseHandlers) StopSession(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// ResumeSession resumes a stopped session.
+// ResumeSession attaches a caller to an eligible live session.
 func (h *BaseHandlers) ResumeSession(c *gin.Context) {
-	_, sessionID, _, ok := h.routeSessionInWorkspace(c)
+	h.AttachSession(c)
+}
+
+// AttachSession acquires a short-lived attach lease without starting a new runtime authority.
+func (h *BaseHandlers) AttachSession(c *gin.Context) {
+	if h.SessionCatalog == nil {
+		h.respondError(c, http.StatusServiceUnavailable, errors.New("api: session catalog is required"))
+		return
+	}
+	_, sessionID, info, ok := h.routeSessionInWorkspace(c)
 	if !ok {
 		return
 	}
-	sess, err := h.Sessions.Resume(c.Request.Context(), sessionID)
+	var req contract.AttachSessionRequest
+	if err := decodeOptionalJSONBody(c, &req); err != nil {
+		h.respondError(c, http.StatusBadRequest, err)
+		return
+	}
+	ttl := defaultSessionAttachTTL
+	if req.TTLSeconds > 0 {
+		ttl = time.Duration(req.TTLSeconds) * time.Second
+	}
+	if ttl > maxSessionAttachTTL {
+		h.respondError(c, http.StatusBadRequest, fmt.Errorf("attach ttl must be <= %s", maxSessionAttachTTL))
+		return
+	}
+	attachedTo := strings.TrimSpace(req.AttachedTo)
+	if attachedTo == "" {
+		attachedTo = fmt.Sprintf("%s:%d", h.transportName(), h.PID())
+	}
+	attach, err := h.SessionCatalog.AttachSession(c.Request.Context(), store.SessionAttachRequest{
+		SessionID:  sessionID,
+		AttachedTo: attachedTo,
+		Now:        h.Now(),
+		TTL:        ttl,
+	})
 	if err != nil {
 		h.respondError(c, StatusForSessionError(err), err)
 		return
 	}
 
-	c.JSON(http.StatusOK, contract.SessionResponse{Session: SessionPayloadFromInfo(sess.Info())})
+	payload := SessionPayloadFromInfo(info)
+	payload.AttachedTo = attach.AttachedTo
+	payload.AttachExpiresAt = &attach.AttachExpiresAt
+	c.JSON(http.StatusOK, contract.SessionAttachResponse{
+		Session: payload,
+		Attach: contract.SessionAttachPayload{
+			SessionID:       attach.SessionID,
+			AttachedTo:      attach.AttachedTo,
+			AttachExpiresAt: attach.AttachExpiresAt,
+			AttachedAt:      attach.AttachedAt,
+		},
+	})
+}
+
+func decodeOptionalJSONBody(c *gin.Context, dest any) error {
+	if c.Request.Body == nil {
+		return nil
+	}
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		return fmt.Errorf("read request body: %w", err)
+	}
+	if strings.TrimSpace(string(body)) == "" {
+		return nil
+	}
+	if err := json.Unmarshal(body, dest); err != nil {
+		return fmt.Errorf("decode request body: %w", err)
+	}
+	return nil
 }
 
 // RepairSession inspects and optionally repairs an interrupted persisted session transcript.
@@ -556,6 +694,173 @@ func (h *BaseHandlers) SessionTranscript(c *gin.Context) {
 	c.JSON(http.StatusOK, contract.SessionTranscriptResponse{Messages: messages})
 }
 
+// SessionRecap returns a deterministic recap composed from persisted session state.
+func (h *BaseHandlers) SessionRecap(c *gin.Context) {
+	_, sessionID, info, ok := h.routeSessionInWorkspace(c)
+	if !ok {
+		return
+	}
+	limit, err := parseOptionalPositiveIntQuery(c, "limit", defaultSessionRecapLimit, maxSessionRecapLimit)
+	if err != nil {
+		h.respondError(c, http.StatusBadRequest, err)
+		return
+	}
+	eventsList, err := h.Sessions.Events(
+		c.Request.Context(),
+		sessionID,
+		// Over-fetch so transcript/message filtering can still return a full recap window.
+		store.EventQuery{Limit: maxSessionRecapLimit * 5},
+	)
+	if err != nil {
+		h.respondError(c, StatusForSessionError(err), err)
+		return
+	}
+	messages, err := transcript.ToUIMessages(eventsList)
+	if err != nil {
+		h.respondError(c, http.StatusInternalServerError, err)
+		return
+	}
+	markers, err := h.recentTranscriptMarkers(c.Request.Context(), sessionID, eventsList, 5)
+	if err != nil {
+		h.respondError(c, http.StatusInternalServerError, err)
+		return
+	}
+	eventCursor := maxSessionEventSequence(eventsList)
+	payload := contract.RecapPayload{
+		Session:        SessionPayloadFromInfo(info),
+		RecentMarkers:  markers,
+		RecentMessages: recentUIMessages(messages, limit),
+		PendingInputs:  0,
+		PendingMarkers: 0,
+		Snapshot: contract.RecapSnapshotPayload{
+			GeneratedAt:      h.Now().UTC(),
+			EventCursor:      eventCursor,
+			TranscriptCursor: eventCursor,
+			QueueGeneration:  0,
+			Consistency:      recapConsistencyReadSnapshot,
+		},
+	}
+	c.JSON(http.StatusOK, contract.SessionRecapResponse{Recap: payload})
+}
+
+func (h *BaseHandlers) recentTranscriptMarkers(
+	ctx context.Context,
+	sessionID string,
+	eventsList []store.SessionEvent,
+	limit int,
+) ([]contract.TranscriptMarkerPayload, error) {
+	if limit <= 0 {
+		return []contract.TranscriptMarkerPayload{}, nil
+	}
+	if h.Observer != nil {
+		summaries, err := h.queryRecentTranscriptMarkerSummaries(ctx, sessionID, limit)
+		if err != nil {
+			return nil, fmt.Errorf("api: query transcript marker summaries: %w", err)
+		}
+		markers := markerPayloadsFromSummaries(summaries)
+		if len(markers) > 0 {
+			return markers, nil
+		}
+	}
+	return markerPayloadsFromEvents(eventsList, limit), nil
+}
+
+func (h *BaseHandlers) queryRecentTranscriptMarkerSummaries(
+	ctx context.Context,
+	sessionID string,
+	limit int,
+) ([]store.EventSummary, error) {
+	summaries := make([]store.EventSummary, 0, limit*2)
+	seen := make(map[string]struct{}, limit*2)
+	for _, eventType := range []string{events.TranscriptMarkerCreated, events.TranscriptMarkerRedacted} {
+		results, err := h.Observer.QueryEvents(ctx, store.EventSummaryQuery{
+			SessionID: sessionID,
+			Type:      eventType,
+			Limit:     limit,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("query %s summaries: %w", eventType, err)
+		}
+		for _, summary := range results {
+			if _, ok := seen[summary.ID]; ok {
+				continue
+			}
+			seen[summary.ID] = struct{}{}
+			summaries = append(summaries, summary)
+		}
+	}
+	sort.SliceStable(summaries, func(i int, j int) bool {
+		return summaries[i].Timestamp.After(summaries[j].Timestamp)
+	})
+	if limit > 0 && len(summaries) > limit {
+		summaries = summaries[:limit]
+	}
+	return summaries, nil
+}
+
+func markerPayloadsFromSummaries(summaries []store.EventSummary) []contract.TranscriptMarkerPayload {
+	markers := make([]contract.TranscriptMarkerPayload, 0, len(summaries))
+	for _, summary := range summaries {
+		marker, ok := transcript.ParseMarker(summary.Content)
+		if !ok {
+			continue
+		}
+		markers = append(markers, transcriptMarkerPayload(marker))
+	}
+	return markers
+}
+
+func markerPayloadsFromEvents(eventsList []store.SessionEvent, limit int) []contract.TranscriptMarkerPayload {
+	markers := make([]contract.TranscriptMarkerPayload, 0, limit)
+	for index := len(eventsList) - 1; index >= 0 && len(markers) < limit; index-- {
+		event := eventsList[index]
+		if event.Type != events.TranscriptMarkerCreated && event.Type != events.TranscriptMarkerRedacted {
+			continue
+		}
+		agentEvent, err := transcript.UnmarshalAgentEvent(event.Content)
+		if err != nil {
+			continue
+		}
+		marker, ok := transcript.ParseMarker(agentEvent.Raw)
+		if !ok {
+			continue
+		}
+		markers = append(markers, transcriptMarkerPayload(marker))
+	}
+	return markers
+}
+
+func transcriptMarkerPayload(marker transcript.Marker) contract.TranscriptMarkerPayload {
+	normalized := marker.Normalize()
+	return contract.TranscriptMarkerPayload{
+		Kind:       normalized.Kind,
+		OccurredAt: normalized.OccurredAt,
+		Summary:    normalized.Summary,
+		Evidence:   normalized.Evidence,
+		Diagnostic: normalized.Diagnostic,
+	}
+}
+
+func recentUIMessages(messages []transcript.UIMessage, limit int) []transcript.UIMessage {
+	if len(messages) == 0 || limit == 0 {
+		return []transcript.UIMessage{}
+	}
+	if limit < 0 || limit >= len(messages) {
+		return append([]transcript.UIMessage(nil), messages...)
+	}
+	return append([]transcript.UIMessage(nil), messages[len(messages)-limit:]...)
+}
+
+func maxSessionEventSequence(eventsList []store.SessionEvent) int64 {
+	var maxSequence int64
+	for _, event := range eventsList {
+		if event.Sequence > maxSequence {
+			maxSequence = event.Sequence
+		}
+	}
+	return maxSequence
+}
+
 func repairBoolQuery(c *gin.Context, names ...string) (bool, error) {
 	var (
 		value bool
@@ -578,6 +883,24 @@ func repairBoolQuery(c *gin.Context, names ...string) (bool, error) {
 		}
 		value = parsed
 		seen = true
+	}
+	return value, nil
+}
+
+func parseOptionalPositiveIntQuery(c *gin.Context, name string, fallback int, maxValue int) (int, error) {
+	raw := strings.TrimSpace(c.Query(name))
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s query: %w", name, err)
+	}
+	if value < 0 {
+		return 0, fmt.Errorf("invalid %s query: must be zero or positive", name)
+	}
+	if maxValue > 0 && value > maxValue {
+		return 0, fmt.Errorf("invalid %s query: must be <= %d", name, maxValue)
 	}
 	return value, nil
 }
@@ -1062,18 +1385,17 @@ func (h *BaseHandlers) HookEvents(c *gin.Context) {
 	c.JSON(http.StatusOK, contract.HookEventsResponse{Events: HookEventPayloadsFromDescriptors(events)})
 }
 
-// ObserveEvents returns the filtered observe event list.
-func (h *BaseHandlers) ObserveEvents(c *gin.Context) {
-	query, err := ParseObserveEventQuery(c)
+// ListLogs returns the filtered runtime log list.
+func (h *BaseHandlers) ListLogs(c *gin.Context) {
+	if h.Observer == nil {
+		h.respondError(c, http.StatusServiceUnavailable, errors.New("api: observer is required"))
+		return
+	}
+	query, err := ParseLogsQuery(c)
 	if err != nil {
 		h.respondError(c, http.StatusBadRequest, err)
 		return
 	}
-	scope, ok := h.resolveWorkspaceScope(c)
-	if !ok {
-		return
-	}
-	query.WorkspaceID = scope.SessionWorkspaceID()
 
 	events, err := h.Observer.QueryEvents(c.Request.Context(), query)
 	if err != nil {
@@ -1081,28 +1403,27 @@ func (h *BaseHandlers) ObserveEvents(c *gin.Context) {
 		return
 	}
 
-	payload := make([]contract.ObserveEventPayload, 0, len(events))
+	payload := make([]contract.LogEventPayload, 0, len(events))
 	for _, event := range events {
-		payload = append(payload, ObserveEventPayloadFromEvent(event))
+		payload = append(payload, LogEventPayloadFromSummary(event))
 	}
 
-	c.JSON(http.StatusOK, contract.ObserveEventsResponse{Events: payload})
+	c.JSON(http.StatusOK, contract.LogsListResponse{Events: payload})
 }
 
-// StreamObserveEvents streams observe events over SSE.
-func (h *BaseHandlers) StreamObserveEvents(c *gin.Context) {
-	query, err := ParseObserveEventQuery(c)
+// StreamLogs streams runtime logs over SSE.
+func (h *BaseHandlers) StreamLogs(c *gin.Context) {
+	if h.Observer == nil {
+		h.respondError(c, http.StatusServiceUnavailable, errors.New("api: observer is required"))
+		return
+	}
+	query, err := ParseLogsQuery(c)
 	if err != nil {
 		h.respondError(c, http.StatusBadRequest, err)
 		return
 	}
-	scope, ok := h.resolveWorkspaceScope(c)
-	if !ok {
-		return
-	}
-	query.WorkspaceID = scope.SessionWorkspaceID()
 
-	cursor, err := ParseObserveCursor(c.GetHeader("Last-Event-ID"))
+	cursor, err := ParseLogsCursor(c.GetHeader("Last-Event-ID"))
 	if err != nil {
 		h.respondError(c, http.StatusBadRequest, err)
 		return
@@ -1123,7 +1444,7 @@ func (h *BaseHandlers) StreamObserveEvents(c *gin.Context) {
 		return
 	}
 
-	cursor = EmitObserveEvents(writer, initial, cursor)
+	cursor = EmitLogs(writer, initial, cursor)
 
 	pollQuery := query
 	pollQuery.Limit = 0
@@ -1148,88 +1469,20 @@ func (h *BaseHandlers) StreamObserveEvents(c *gin.Context) {
 			if pollErr != nil {
 				h.writeSSEBestEffort(writer, SSEMessage{
 					Name: handlersErrorKey,
-					Data: contract.ErrorPayload{Error: pollErr.Error()},
+					Data: ErrorPayloadForError(pollErr),
 				})
 				return
 			}
-			cursor = EmitObserveEvents(writer, events, cursor)
+			cursor = EmitLogs(writer, events, cursor)
 		}
 	}
-}
-
-// Health returns the daemon health snapshot plus memory health.
-func (h *BaseHandlers) Health(c *gin.Context) {
-	health, err := h.Observer.Health(c.Request.Context())
-	if err != nil {
-		h.respondError(c, http.StatusInternalServerError, err)
-		return
-	}
-
-	memoryHealth, err := h.memoryHealth(c)
-	if err != nil {
-		h.respondError(c, StatusForMemoryError(err), err)
-		return
-	}
-
-	automationHealth, err := h.automationHealth(c.Request.Context())
-	if err != nil {
-		h.respondError(c, StatusForAutomationError(err), err)
-		return
-	}
-
-	c.JSON(http.StatusOK, contract.HealthResponse{
-		Health:     ObserveHealthPayloadFromHealth(&health),
-		Memory:     memoryHealth,
-		Automation: automationHealth,
-	})
-}
-
-// DaemonStatus returns the daemon status snapshot.
-func (h *BaseHandlers) DaemonStatus(c *gin.Context) {
-	health, err := h.Observer.Health(c.Request.Context())
-	if err != nil {
-		h.respondError(c, http.StatusInternalServerError, err)
-		return
-	}
-
-	sessions, err := h.Sessions.ListAll(c.Request.Context())
-	if err != nil {
-		h.respondError(c, http.StatusInternalServerError, err)
-		return
-	}
-
-	httpPort := h.HTTPPortValue()
-	if httpPort <= 0 {
-		httpPort = h.Config.HTTP.Port
-	}
-	networkStatus, err := h.networkStatusPayload(c.Request.Context())
-	if err != nil {
-		h.respondError(c, http.StatusInternalServerError, err)
-		return
-	}
-
-	c.JSON(http.StatusOK, contract.DaemonStatusResponse{
-		Daemon: contract.DaemonStatusPayload{
-			Status:         "running",
-			PID:            h.PID(),
-			StartedAt:      h.StartedAt,
-			Socket:         h.Config.Daemon.Socket,
-			HTTPHost:       h.Config.HTTP.Host,
-			HTTPPort:       httpPort,
-			UserHomeDir:    h.daemonUserHomeDir(),
-			ActiveSessions: health.ActiveSessions,
-			TotalSessions:  len(sessions),
-			Version:        health.Version,
-			Network:        networkStatus,
-		},
-	})
 }
 
 func (h *BaseHandlers) networkStatusPayload(ctx context.Context) (*contract.NetworkStatusPayload, error) {
 	if !h.Config.Network.Enabled {
 		return &contract.NetworkStatusPayload{
 			Enabled: false,
-			Status:  "disabled",
+			Status:  memoryHealthStatusDisabled,
 		}, nil
 	}
 	if h.Network == nil {
