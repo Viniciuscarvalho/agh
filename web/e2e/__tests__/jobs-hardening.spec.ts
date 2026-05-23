@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 
 import type { Page } from "@playwright/test";
 
+import { reloadDaemonServedPage } from "../fixtures/navigation";
 import { automationOperatorSelectors, sessionLifecycleSelectors } from "../fixtures/selectors";
 import type { BrowserRuntime } from "../fixtures/runtime";
 import { browserAutomationOperatorFlowScenario } from "../fixtures/runtime";
@@ -327,13 +328,12 @@ test("scheduled job survives daemon restart and does not duplicate fire ids", as
   expect(restart.operation_id).toMatch(
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   );
-  await appPage.reload({ waitUntil: "domcontentloaded" });
   await expect
     .poll(async () => await pollRestartStatus(runtime, restart.status_url), {
       timeout: 45_000,
     })
     .toBe("ready");
-  await appPage.reload({ waitUntil: "domcontentloaded" });
+  await reloadDaemonServedPage(appPage, runtime, "/jobs");
   await expect(ui.jobsShell).toBeVisible();
   await expect(ui.item(job.id)).toBeVisible({ timeout: 20_000 });
   await ui.item(job.id).click();

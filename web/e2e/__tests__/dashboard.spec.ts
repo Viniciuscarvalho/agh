@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { sessionLifecycleTestIds } from "../fixtures/selectors";
+import { reloadDaemonServedPage } from "../fixtures/navigation";
 import type { BrowserRuntime, WorkspacePayload } from "../fixtures/runtime";
 import { expect, test } from "../fixtures/test";
 import { useGlobalWorkspaceIfPrompted } from "../fixtures/workspace";
@@ -246,7 +247,7 @@ test("dashboard refreshes after daemon restart action without stale health", asy
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   );
 
-  await appPage.reload({ waitUntil: "domcontentloaded" });
+  await reloadDaemonServedPage(appPage, runtime, "/");
   await expect(appPage.getByTestId("home-shell")).toBeVisible({ timeout: 15_000 });
   await browserArtifacts.captureScreenshot("dashboard-restart-polling", appPage);
 
@@ -255,7 +256,7 @@ test("dashboard refreshes after daemon restart action without stale health", asy
       timeout: 45_000,
     })
     .toBe("ready");
-  await appPage.reload({ waitUntil: "domcontentloaded" });
+  await reloadDaemonServedPage(appPage, runtime, "/");
 
   const afterRestart = await captureDashboardSnapshot(runtime, workspace);
   await expect(appPage.getByTestId("home-connection-indicator")).toHaveAttribute(

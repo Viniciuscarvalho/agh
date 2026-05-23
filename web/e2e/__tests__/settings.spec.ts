@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
+import { reloadDaemonServedPage } from "../fixtures/navigation";
 import { settingsOperatorSelectors, sessionLifecycleSelectors } from "../fixtures/selectors";
 import {
   browserSettingsOperatorFlowScenario,
@@ -410,34 +411,6 @@ async function nextSessionTimeoutValue(
   const primary = browserSettingsOperatorFlowScenario.general.primarySessionTimeoutSeconds;
   const fallback = browserSettingsOperatorFlowScenario.general.fallbackSessionTimeoutSeconds;
   return String(currentValue === primary ? fallback : primary);
-}
-
-async function reloadDaemonServedPage(
-  page: import("@playwright/test").Page,
-  runtime: { url(pathname?: string): string },
-  pathname: string
-) {
-  const targetURL = runtime.url(pathname);
-
-  await expect
-    .poll(
-      async () => {
-        try {
-          await page.goto(targetURL, {
-            waitUntil: "domcontentloaded",
-            timeout: 2_000,
-          });
-          return new URL(page.url()).pathname;
-        } catch {
-          return "";
-        }
-      },
-      {
-        timeout: 15_000,
-        intervals: [250, 500, 1_000],
-      }
-    )
-    .toBe(pathname);
 }
 
 async function pickBuiltinProviderName(runtime: {
