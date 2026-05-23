@@ -66,6 +66,16 @@ func TestGoReleaserConfigPreservesTrustArtifactsAndPackageTargets(t *testing.T) 
 		assertSBOMArtifact(t, sboms, "source", "source")
 	})
 
+	t.Run("Should build embedded web bundle before release binaries", func(t *testing.T) {
+		t.Parallel()
+
+		before := mapAt(t, cfg, "before")
+		hooks := sliceAt(t, before, "hooks")
+		if !stringSliceContains(hooks, "go run github.com/magefile/mage@v1.17.0 webBuild") {
+			t.Fatalf("before.hooks = %#v, want webBuild before GoReleaser builds embedded web assets", hooks)
+		}
+	})
+
 	t.Run("Should publish stable archives and curl installer asset", func(t *testing.T) {
 		t.Parallel()
 

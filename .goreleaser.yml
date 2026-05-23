@@ -23,6 +23,7 @@ git:
 before:
   hooks:
     - go run github.com/magefile/mage@v1.17.0 daytonaSidecarsCheck
+    - go run github.com/magefile/mage@v1.17.0 webBuild
 
 builds:
   - id: agh
