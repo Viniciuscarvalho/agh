@@ -29,11 +29,9 @@ type cliArgs struct {
 }
 
 type sessionState struct {
-	PromptCount         int
-	ConfigOptions       []acpsdk.SessionConfigOption
-	activePromptCancel  context.CancelFunc
-	promptStarting      bool
-	pendingPromptCancel bool
+	PromptCount        int
+	ConfigOptions      []acpsdk.SessionConfigOption
+	activePromptCancel context.CancelFunc
 }
 
 type mockAgent struct {
@@ -150,9 +148,6 @@ func (a *mockAgent) Cancel(_ context.Context, params acpsdk.CancelNotification) 
 	var cancel context.CancelFunc
 	if session != nil {
 		cancel = session.activePromptCancel
-		if cancel == nil && session.promptStarting {
-			session.pendingPromptCancel = true
-		}
 	}
 	a.mu.Unlock()
 	if cancel != nil {
@@ -408,7 +403,7 @@ func (a *mockAgent) Prompt(ctx context.Context, params acpsdk.PromptRequest) (ac
 	if sessionID == "" {
 		return acpsdk.PromptResponse{}, errors.New("sessionId is required")
 	}
-	a.beginPromptRegistration(sessionID)
+	a.ensurePromptSession(sessionID)
 	defer a.clearPromptCancel(sessionID)
 
 	promptMeta, err := decodePromptMeta(params.Meta)
@@ -461,7 +456,7 @@ func (a *mockAgent) Prompt(ctx context.Context, params acpsdk.PromptRequest) (ac
 	return acpsdk.PromptResponse{StopReason: stopReason(turn.StopReason)}, nil
 }
 
-func (a *mockAgent) beginPromptRegistration(sessionID string) {
+func (a *mockAgent) ensurePromptSession(sessionID string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -472,11 +467,9 @@ func (a *mockAgent) beginPromptRegistration(sessionID string) {
 		}
 		a.sessions[sessionID] = session
 	}
-	session.promptStarting = true
 }
 
 func (a *mockAgent) registerPromptCancel(sessionID string, cancel context.CancelFunc) {
-	shouldCancel := false
 	a.mu.Lock()
 	session := a.sessions[sessionID]
 	if session == nil {
@@ -486,15 +479,7 @@ func (a *mockAgent) registerPromptCancel(sessionID string, cancel context.Cancel
 		a.sessions[sessionID] = session
 	}
 	session.activePromptCancel = cancel
-	session.promptStarting = false
-	if session.pendingPromptCancel {
-		session.pendingPromptCancel = false
-		shouldCancel = true
-	}
 	a.mu.Unlock()
-	if shouldCancel {
-		cancel()
-	}
 }
 
 func (a *mockAgent) clearPromptCancel(sessionID string) {
@@ -503,8 +488,6 @@ func (a *mockAgent) clearPromptCancel(sessionID string) {
 
 	if session := a.sessions[sessionID]; session != nil {
 		session.activePromptCancel = nil
-		session.promptStarting = false
-		session.pendingPromptCancel = false
 	}
 }
 
