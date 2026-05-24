@@ -1227,6 +1227,51 @@ func TestRegistryRefreshGlobalDoesNotIncrementVersionWithoutChange(t *testing.T)
 	}
 }
 
+func TestRegistryRefreshGlobalCancellation(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Should leave global snapshot unchanged when cancellation arrives before commit", func(t *testing.T) {
+		t.Parallel()
+
+		root := t.TempDir()
+		userDir := filepath.Join(root, "user")
+		skillPath := writeSkillFile(
+			t,
+			userDir,
+			filepath.Join("refresh", skillFileName),
+			skillWithDescription("refresh", "Version one"),
+		)
+		registry := newTestRegistry(t, RegistryConfig{
+			UserSkillsDir: userDir,
+		})
+
+		if err := registry.LoadAll(context.Background()); err != nil {
+			t.Fatalf("LoadAll() error = %v", err)
+		}
+		before := registry.GlobalVersion()
+		rewriteSkillFile(
+			t,
+			skillPath,
+			skillWithDescription("refresh", "Version two with different content"),
+		)
+
+		err := registry.RefreshGlobal(newCancelAfterContext(context.Background(), 2))
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("RefreshGlobal() error = %v, want context.Canceled", err)
+		}
+		if got := registry.GlobalVersion(); got != before {
+			t.Fatalf("GlobalVersion() after canceled refresh = %d, want %d", got, before)
+		}
+		skill, ok := registry.Get("refresh")
+		if !ok {
+			t.Fatal("Get(refresh) ok = false, want original skill")
+		}
+		if got, want := skill.Meta.Description, "Version one"; got != want {
+			t.Fatalf("Get(refresh) description after canceled refresh = %q, want %q", got, want)
+		}
+	})
+}
+
 func TestRegistryForWorkspaceReloadsWhenSkillMCPSidecarChanges(t *testing.T) {
 	t.Parallel()
 

@@ -17,8 +17,6 @@ import (
 	"github.com/compozy/agh/internal/testutil"
 )
 
-const hostAPIIngestContractTimeout = 10 * time.Second
-
 func TestHostAPIHandlerBridgesMessagesIngestContract(t *testing.T) {
 	t.Parallel()
 
@@ -69,8 +67,8 @@ func TestHostAPIHandlerBridgesMessagesIngestContract(t *testing.T) {
 		case <-driver.promptStarted:
 		case err := <-firstDone:
 			t.Fatalf("first ingest finished before prompt started: %v", err)
-		case <-time.After(hostAPIIngestContractTimeout):
-			t.Fatal("first prompt did not start before timeout")
+		case <-bridgeCtx.Done():
+			t.Fatalf("first prompt did not start before bridge context deadline: %v", bridgeCtx.Err())
 		}
 		firstCancel()
 
@@ -87,16 +85,16 @@ func TestHostAPIHandlerBridgesMessagesIngestContract(t *testing.T) {
 			if err != nil && firstCtx.Err() == nil {
 				t.Fatalf("first ingest error = %v with active context, want nil or canceled-context result", err)
 			}
-		case <-time.After(hostAPIIngestContractTimeout):
-			t.Fatal("first ingest did not finish after prompt release")
+		case <-bridgeCtx.Done():
+			t.Fatalf("first ingest did not finish after prompt release: %v", bridgeCtx.Err())
 		}
 		select {
 		case err := <-retryDone:
 			if err != nil {
 				t.Fatalf("retry ingest error = %v", err)
 			}
-		case <-time.After(hostAPIIngestContractTimeout):
-			t.Fatal("retry ingest did not finish after prompt release")
+		case <-bridgeCtx.Done():
+			t.Fatalf("retry ingest did not finish after prompt release: %v", bridgeCtx.Err())
 		}
 
 		if got := driver.promptCount(); got != 1 {

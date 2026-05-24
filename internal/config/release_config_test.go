@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -264,6 +265,16 @@ func TestPackagingMetadataStaysAlignedWithRuntimeAndInstaller(t *testing.T) {
 
 		jobs := mapAt(t, ciWorkflow, "jobs")
 		assertWorkflowJobCommand(t, jobs, "verify", 90, "make verify")
+		magefile := readTextFile(t, root, "magefile.go")
+		if !regexp.MustCompile(`goUnitTestTimeout\s*=\s*"30m"`).MatchString(magefile) {
+			t.Fatal("magefile unit test timeout missing goUnitTestTimeout = 30m")
+		}
+		assertContainsText(
+			t,
+			"magefile unit test command",
+			magefile,
+			"\"-timeout\", goUnitTestTimeout, \"./...\"",
+		)
 	})
 
 	t.Run("Should keep Bun workspace release artifacts backed by workspace metadata", func(t *testing.T) {

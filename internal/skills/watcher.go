@@ -148,15 +148,24 @@ func (w *Watcher) pollOnce(ctx context.Context) error {
 		w.logger.Debug("skills: watcher detected change", "path", change.path, "action", change.action)
 	}
 
+	if err := checkRegistryContext(ctx); err != nil {
+		return err
+	}
 	if w.registry != nil {
 		if err := w.registry.RefreshGlobal(ctx); err != nil {
 			return fmt.Errorf("skills: refresh global registry: %w", err)
 		}
 	}
+	if err := checkRegistryContext(ctx); err != nil {
+		return err
+	}
 	if w.afterRefresh != nil {
 		if err := w.afterRefresh(ctx); err != nil {
 			return fmt.Errorf("skills: run watcher refresh callback: %w", err)
 		}
+	}
+	if err := checkRegistryContext(ctx); err != nil {
+		return err
 	}
 
 	w.commitSnapshots(snapshots)

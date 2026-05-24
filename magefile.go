@@ -25,6 +25,7 @@ import (
 const (
 	golangciLintVersion       = "v2.12.2"
 	golangciLintTimeout       = "10m"
+	goUnitTestTimeout         = "30m"
 	goIntegrationPackageLimit = "2"
 	goIntegrationTestTimeout  = "30m"
 	goplsModernizeVersion     = "v0.22.0"
@@ -168,7 +169,7 @@ func Test() error {
 	}
 	return runRaceEnabledGoCommand(context.Background(), nil,
 		"run", "gotest.tools/gotestsum@"+gotestsumVersion,
-		"--format", "pkgname", "--", "-race", "-parallel=4", "./...")
+		"--format", "pkgname", "--", "-race", "-parallel=4", "-timeout", goUnitTestTimeout, "./...")
 }
 
 // TestIntegration runs all tests including integration tests.

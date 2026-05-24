@@ -368,8 +368,15 @@ func (r *Registry) reloadGlobal(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := checkRegistryContext(ctx); err != nil {
+		return err
+	}
 
 	r.mu.Lock()
+	if err := checkRegistryContext(ctx); err != nil {
+		r.mu.Unlock()
+		return err
+	}
 
 	r.evictExpiredWorkspaceLocked(r.now())
 	if r.globalLoaded && filesnap.Equal(r.globalSnapshots, snapshots) {

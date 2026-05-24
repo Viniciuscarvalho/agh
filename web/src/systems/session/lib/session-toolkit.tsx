@@ -1,4 +1,4 @@
-import type { ToolCallMessagePartProps, Toolkit } from "@assistant-ui/react";
+import type { DataMessagePartProps, ToolCallMessagePartProps, Toolkit } from "@assistant-ui/react";
 import { makeAssistantDataUI } from "@assistant-ui/react";
 import { AlertCircle } from "lucide-react";
 
@@ -71,34 +71,34 @@ function createBackendTool() {
 export const sessionToolkit: Toolkit = {
   Bash: {
     ...createBackendTool(),
-    render: part => <BackendToolPart {...part} />,
+    render: (part: SessionToolPartProps) => <BackendToolPart {...part} />,
   },
   Read: {
     ...createBackendTool(),
-    render: part => <BackendToolPart {...part} />,
+    render: (part: SessionToolPartProps) => <BackendToolPart {...part} />,
   },
   Write: {
     ...createBackendTool(),
-    render: part => <BackendToolPart {...part} />,
+    render: (part: SessionToolPartProps) => <BackendToolPart {...part} />,
   },
   Edit: {
     ...createBackendTool(),
-    render: part => <BackendToolPart {...part} />,
+    render: (part: SessionToolPartProps) => <BackendToolPart {...part} />,
   },
   Grep: {
     ...createBackendTool(),
-    render: part => <BackendToolPart {...part} />,
+    render: (part: SessionToolPartProps) => <BackendToolPart {...part} />,
   },
   Glob: {
     ...createBackendTool(),
-    render: part => <BackendToolPart {...part} />,
+    render: (part: SessionToolPartProps) => <BackendToolPart {...part} />,
   },
 };
 
 export function createAghPermissionDataUI(workspaceId: string, sessionId: string) {
   return makeAssistantDataUI<AghPermissionData>({
     name: "agh-permission",
-    render: ({ data }) => (
+    render: ({ data }: DataMessagePartProps<AghPermissionData>) => (
       <PermissionDataPart data={data} sessionId={sessionId} workspaceId={workspaceId} />
     ),
   });
@@ -107,6 +107,8 @@ export function createAghPermissionDataUI(workspaceId: string, sessionId: string
 export function createAghEventDataUI() {
   return makeAssistantDataUI<AgentEventPayload>({
     name: "agh-event",
-    render: ({ data }) => <RuntimeActivityNotice event={data} />,
+    render: ({ data }: DataMessagePartProps<AgentEventPayload>) => (
+      <RuntimeActivityNotice event={data} />
+    ),
   });
 }

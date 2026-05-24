@@ -2,7 +2,10 @@ import {
   AuiIf,
   ComposerPrimitive,
   type DataMessagePartProps,
+  type EmptyMessagePartProps,
   MessagePrimitive,
+  type ReasoningMessagePartProps,
+  type TextMessagePartProps,
   ThreadPrimitive,
   type ToolCallMessagePartProps,
 } from "@assistant-ui/react";
@@ -133,7 +136,9 @@ function UserMessage() {
       >
         <MessagePrimitive.Parts
           components={{
-            Text: ({ text, status }) => <SessionTextPart text={text} state={status} />,
+            Text: ({ text, status }: TextMessagePartProps) => (
+              <SessionTextPart text={text} state={status} />
+            ),
             data: {
               Fallback: SessionDataPart,
             },
@@ -150,9 +155,13 @@ function AssistantMessage() {
       <div className="flex min-w-0 flex-1 flex-col gap-3">
         <MessagePrimitive.Parts
           components={{
-            Text: ({ text, status }) => <SessionTextPart text={text} state={status} />,
-            Reasoning: ({ text, status }) => <SessionReasoningPart text={text} state={status} />,
-            Empty: ({ status }) => <SessionMessageEmpty status={status} />,
+            Text: ({ text, status }: TextMessagePartProps) => (
+              <SessionTextPart text={text} state={status} />
+            ),
+            Reasoning: ({ text, status }: ReasoningMessagePartProps) => (
+              <SessionReasoningPart text={text} state={status} />
+            ),
+            Empty: ({ status }: EmptyMessagePartProps) => <SessionMessageEmpty status={status} />,
             tools: {
               Fallback: SessionToolPart,
             },

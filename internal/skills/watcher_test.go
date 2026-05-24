@@ -2,6 +2,7 @@ package skills
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -368,6 +369,38 @@ func TestWatcherStartStopsOnContextCancellation(t *testing.T) {
 	}
 }
 
+func TestWatcherPollCancellation(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Should skip refresh when cancellation arrives after change detection", func(t *testing.T) {
+		t.Parallel()
+
+		root := t.TempDir()
+		spy := newRefreshSpy()
+		watcher := newTestWatcher(spy, time.Millisecond, root)
+		if changed, _, _, err := watcher.detectChanges(context.Background()); err != nil {
+			t.Fatalf("detectChanges() baseline error = %v", err)
+		} else if changed {
+			t.Fatal("detectChanges() baseline changed = true, want false")
+		}
+		writeSkillFile(
+			t,
+			root,
+			filepath.Join("pending", skillFileName),
+			skillWithDescription("pending", "Pending skill"),
+		)
+		ctx := newCancelAfterContext(context.Background(), 2)
+
+		err := watcher.pollOnce(ctx)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("pollOnce() error = %v, want context.Canceled", err)
+		}
+		if calls := spy.calls(); calls != 0 {
+			t.Fatalf("RefreshGlobal() calls after cancellation = %d, want 0", calls)
+		}
+	})
+}
+
 func TestWatcherStartDoesNotRefreshWithoutChangesAcrossMultiplePolls(t *testing.T) {
 	t.Parallel()
 
@@ -454,4 +487,59 @@ func (s *refreshSpy) waitForCalls(want int, timeout time.Duration) error {
 			return context.DeadlineExceeded
 		}
 	}
+}
+
+type cancelAfterContext struct {
+	context.Context
+
+	mu        sync.Mutex
+	remaining int
+	done      chan struct{}
+	canceled  bool
+}
+
+func newCancelAfterContext(parent context.Context, allowedErrChecks int) *cancelAfterContext {
+	if parent == nil {
+		parent = context.Background()
+	}
+	if allowedErrChecks < 0 {
+		allowedErrChecks = 0
+	}
+	return &cancelAfterContext{
+		Context:   parent,
+		remaining: allowedErrChecks,
+		done:      make(chan struct{}),
+	}
+}
+
+func (c *cancelAfterContext) Done() <-chan struct{} {
+	return c.done
+}
+
+func (c *cancelAfterContext) Err() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.canceled {
+		return context.Canceled
+	}
+	if err := c.Context.Err(); err != nil {
+		c.cancelLocked()
+		return err
+	}
+	if c.remaining > 0 {
+		c.remaining--
+		return nil
+	}
+
+	c.cancelLocked()
+	return context.Canceled
+}
+
+func (c *cancelAfterContext) cancelLocked() {
+	if c.canceled {
+		return
+	}
+	c.canceled = true
+	close(c.done)
 }
