@@ -11,6 +11,7 @@ import {
   seedBrowserSettingsFixtures,
 } from "../fixtures/runtime";
 import { expect, test } from "../fixtures/test";
+import { ensureGlobalWorkspace } from "../fixtures/workspace";
 
 test.use({
   runtimeOptions: {
@@ -29,6 +30,7 @@ test("operator can navigate the settings shell and complete a restart-aware gene
   const sessionUI = sessionLifecycleSelectors(appPage);
   const settingsUI = settingsOperatorSelectors(appPage);
 
+  await ensureGlobalWorkspace(runtime);
   await useGlobalWorkspaceIfPrompted(sessionUI);
   await appPage.goto(runtime.url("/settings/general"), { waitUntil: "domcontentloaded" });
   await expect(settingsUI.shell.shell).toBeVisible({ timeout: 20_000 });
@@ -140,6 +142,7 @@ test("operator can distinguish skills actions that apply now from policy changes
   });
 
   try {
+    await ensureGlobalWorkspace(runtime);
     await useGlobalWorkspaceIfPrompted(sessionUI);
     await appPage.goto(runtime.url("/settings/skills"), { waitUntil: "domcontentloaded" });
 
@@ -186,6 +189,7 @@ test("operator can replace a builtin provider with a config overlay and delete i
   const settingsUI = settingsOperatorSelectors(appPage);
   const builtinProviderName = await pickBuiltinProviderName(runtime);
 
+  await ensureGlobalWorkspace(runtime);
   await useGlobalWorkspaceIfPrompted(sessionUI);
   await appPage.goto(runtime.url("/settings/providers"), { waitUntil: "domcontentloaded" });
 
@@ -241,6 +245,7 @@ test("operator can manage MCP servers across global and workspace scopes with vi
   const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "agh-settings-mcp-workspace-"));
   const workspace = await runtime.resolveWorkspace(workspaceRoot);
 
+  await ensureGlobalWorkspace(runtime);
   await useGlobalWorkspaceIfPrompted(sessionUI);
   await appPage.goto(runtime.url("/settings/mcp-servers"), { waitUntil: "domcontentloaded" });
 
@@ -333,6 +338,7 @@ test("operator can distinguish restart-aware hook edits from immediate extension
   });
 
   try {
+    await ensureGlobalWorkspace(runtime);
     await useGlobalWorkspaceIfPrompted(sessionUI);
     await appPage.goto(runtime.url("/settings/hooks-extensions"), {
       waitUntil: "domcontentloaded",

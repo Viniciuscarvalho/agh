@@ -216,7 +216,7 @@ func TestHarnessHelperUtilities(t *testing.T) {
 }
 
 func TestMarkerHelpersReadStandaloneMarkerSet(t *testing.T) {
-	markers := NewMarkerPaths(t.TempDir())
+	markers := NewTempMarkerPaths(t)
 	handshake := HandshakeRecord{
 		Request: subprocess.InitializeRequest{
 			Runtime: subprocess.InitializeRuntime{

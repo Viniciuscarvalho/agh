@@ -282,7 +282,7 @@ func TestDaemonNightlyE2EBridgeIngressDeliversThenUserSandboxTool(t *testing.T) 
 	repoRoot := daemonBridgeRuntimeRepoRoot(t)
 	extensionDir := prepareDaemonTelegramReferenceExtension(t, repoRoot)
 
-	markers := extensiontest.NewMarkerPaths(filepath.Join(t.TempDir(), "markers"))
+	markers := extensiontest.NewTempMarkerPaths(t)
 	env := markers.Env()
 	delete(env, extensiontest.EnvCrashOncePath)
 	env["AGH_TEST_TELEGRAM_TOKEN"] = "telegram-bot-token"

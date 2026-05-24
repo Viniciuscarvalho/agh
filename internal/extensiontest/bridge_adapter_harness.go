@@ -96,6 +96,26 @@ func NewMarkerPaths(root string) MarkerPaths {
 	}
 }
 
+// NewTempMarkerPaths keeps side-effect files under os.TempDir(), which is the
+// boundary enforced by subprocess-backed reference adapters.
+func NewTempMarkerPaths(t testing.TB) MarkerPaths {
+	t.Helper()
+
+	root, err := os.MkdirTemp("", "agh-e2e-bridge-markers-")
+	if err != nil {
+		t.Fatalf("os.MkdirTemp(bridge markers) error = %v", err)
+	}
+	t.Cleanup(func() {
+		if t.Failed() {
+			return
+		}
+		if err := os.RemoveAll(root); err != nil {
+			t.Errorf("os.RemoveAll(%q) error = %v", root, err)
+		}
+	})
+	return NewMarkerPaths(root)
+}
+
 // HandshakeRecord captures the adapter initialize marker.
 type HandshakeRecord struct {
 	Request  subprocess.InitializeRequest  `json:"request"`
@@ -898,7 +918,7 @@ func NewHarness(t testing.TB, cfg HarnessConfig) *Harness {
 
 	now := resolveHarnessStartTime(cfg.StartTime)
 	homePaths := newHarnessHomePaths(t)
-	markers := NewMarkerPaths(filepath.Join(t.TempDir(), "markers"))
+	markers := NewTempMarkerPaths(t)
 	configureHarnessMarkers(t, markers, cfg)
 	workspace := defaultResolvedWorkspace(filepath.Join(t.TempDir(), "workspace"), now)
 	if err := os.MkdirAll(workspace.RootDir, 0o755); err != nil {
