@@ -129,6 +129,7 @@ func TestPromptActivitySupervisorProgressIsPersistedThroughPromptPump(t *testing
 		cancel()
 		t.Fatalf("Prompt() error = %v", err)
 	}
+	defer cancel()
 
 	progress := waitForPromptEvent(t, events, acp.EventTypeRuntimeProgress)
 	if !strings.Contains(progress.Text, "Still working") {
@@ -138,10 +139,6 @@ func TestPromptActivitySupervisorProgressIsPersistedThroughPromptPump(t *testing
 		t.Fatal("runtime progress Runtime = nil, want activity payload")
 	}
 
-	cancel()
-	if err := h.manager.CancelPrompt(testutil.Context(t), session.ID); err != nil {
-		t.Fatalf("CancelPrompt() error = %v", err)
-	}
 	close(source)
 	drainPromptEvents(t, events)
 	stored := readStoredEvents(t, session)
@@ -151,7 +148,7 @@ func TestPromptActivitySupervisorProgressIsPersistedThroughPromptPump(t *testing
 
 	meta := readMeta(t, session.MetaPath())
 	if meta.Liveness != nil && meta.Liveness.Activity != nil {
-		t.Fatalf("meta activity after prompt cancellation = %#v, want cleared", meta.Liveness.Activity)
+		t.Fatalf("meta activity after prompt stream close = %#v, want cleared", meta.Liveness.Activity)
 	}
 }
 

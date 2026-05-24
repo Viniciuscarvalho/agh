@@ -259,6 +259,13 @@ func TestPackagingMetadataStaysAlignedWithRuntimeAndInstaller(t *testing.T) {
 		}
 	})
 
+	t.Run("Should give CI verify enough budget for the full monorepo gate", func(t *testing.T) {
+		t.Parallel()
+
+		jobs := mapAt(t, ciWorkflow, "jobs")
+		assertWorkflowJobCommand(t, jobs, "verify", 90, "make verify")
+	})
+
 	t.Run("Should keep Bun workspace release artifacts backed by workspace metadata", func(t *testing.T) {
 		t.Parallel()
 

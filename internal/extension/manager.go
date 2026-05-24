@@ -206,6 +206,15 @@ type managedExtension struct {
 	lastExitedAt        time.Time
 }
 
+type launchedRuntime struct {
+	process           processHandle
+	response          subprocess.InitializeResponse
+	runtime           subprocess.InitializeRuntime
+	healthInterval    time.Duration
+	sessionNonce      string
+	redactionCleanups []func()
+}
+
 var _ bridgepkg.DeliveryTransport = (*Manager)(nil)
 var _ bridgepkg.TargetSnapshotTransport = (*Manager)(nil)
 
@@ -1037,7 +1046,7 @@ func (m *Manager) initializeExtension(ctx context.Context, ext *managedExtension
 		return nil
 	}
 
-	process, response, runtime, healthInterval, err := m.launchRuntime(ctx, ext)
+	launched, err := m.launchRuntime(ctx, ext)
 	if err != nil {
 		if errors.Is(err, ErrBridgeRuntimeDeferred) {
 			m.mu.Lock()
@@ -1057,10 +1066,12 @@ func (m *Manager) initializeExtension(ctx context.Context, ext *managedExtension
 	}
 
 	m.mu.Lock()
-	ext.process = process
-	ext.initialize = &response
-	ext.runtime = runtime
-	ext.healthInterval = healthInterval
+	ext.process = launched.process
+	ext.initialize = &launched.response
+	ext.runtime = launched.runtime
+	ext.healthInterval = launched.healthInterval
+	ext.sessionNonce = launched.sessionNonce
+	ext.redactionCleanups = launched.redactionCleanups
 	ext.awaitingStability = true
 	ext.lastStartedAt = m.now()
 	ext.phase = ExtensionPhaseInitialize
@@ -1194,7 +1205,7 @@ func (m *Manager) recoverExtension(name string, reason error) (int64, bool) {
 		if !ok {
 			return 0, false
 		}
-		process, response, runtime, healthInterval, err := m.launchRuntime(m.lifecycleContext(), ext)
+		launched, err := m.launchRuntime(m.lifecycleContext(), ext)
 		if err != nil {
 			reason = err
 			continue
@@ -1203,11 +1214,13 @@ func (m *Manager) recoverExtension(name string, reason error) (int64, bool) {
 		m.mu.Lock()
 		if m.stopping || ext.generation == 0 && !ext.info.Enabled {
 			m.mu.Unlock()
-			if shutdownErr := shutdownProcessWithTimeout(
+			shutdownErr := shutdownProcessWithTimeout(
 				m.lifecycleContext(),
-				process,
+				launched.process,
 				m.defaultShutdownTimeout,
-			); shutdownErr != nil {
+			)
+			runExtensionRedactionCleanups(launched.redactionCleanups)
+			if shutdownErr != nil {
 				m.logger.Warn(
 					"extension.lifecycle.shutdown_failed",
 					managerExtensionKey, name,
@@ -1218,10 +1231,12 @@ func (m *Manager) recoverExtension(name string, reason error) (int64, bool) {
 			return 0, false
 		}
 
-		ext.process = process
-		ext.initialize = &response
-		ext.runtime = runtime
-		ext.healthInterval = healthInterval
+		ext.process = launched.process
+		ext.initialize = &launched.response
+		ext.runtime = launched.runtime
+		ext.healthInterval = launched.healthInterval
+		ext.sessionNonce = launched.sessionNonce
+		ext.redactionCleanups = launched.redactionCleanups
 		ext.awaitingStability = true
 		ext.active = true
 		ext.phase = ExtensionPhaseActivate
@@ -1242,16 +1257,16 @@ func (m *Manager) recoverExtension(name string, reason error) (int64, bool) {
 func (m *Manager) launchRuntime(
 	ctx context.Context,
 	ext *managedExtension,
-) (processHandle, subprocess.InitializeResponse, subprocess.InitializeRuntime, time.Duration, error) {
+) (launchedRuntime, error) {
 	launchCfg, runtime, healthInterval, cleanups, err := m.launchConfigFor(ctx, ext)
 	if err != nil {
-		return nil, subprocess.InitializeResponse{}, subprocess.InitializeRuntime{}, 0, err
+		return launchedRuntime{}, err
 	}
 
 	process, err := m.launch(ctx, launchCfg)
 	if err != nil {
 		runExtensionRedactionCleanups(cleanups)
-		return nil, subprocess.InitializeResponse{}, subprocess.InitializeRuntime{}, 0, fmt.Errorf(
+		return launchedRuntime{}, fmt.Errorf(
 			"launch subprocess: %w",
 			err,
 		)
@@ -1259,7 +1274,7 @@ func (m *Manager) launchRuntime(
 
 	resourceSession, err := m.prepareExtensionResourceSession(ctx, ext)
 	if err != nil {
-		return nil, subprocess.InitializeResponse{}, subprocess.InitializeRuntime{}, 0, m.cleanupLaunchedProcess(
+		return launchedRuntime{}, m.cleanupLaunchedProcess(
 			ctx,
 			process,
 			cleanups,
@@ -1267,7 +1282,7 @@ func (m *Manager) launchRuntime(
 		)
 	}
 	if err := m.registerRuntimeHostMethods(process, ext, runtime, resourceSession); err != nil {
-		return nil, subprocess.InitializeResponse{}, subprocess.InitializeRuntime{}, 0, m.cleanupLaunchedProcess(
+		return launchedRuntime{}, m.cleanupLaunchedProcess(
 			ctx,
 			process,
 			cleanups,
@@ -1277,7 +1292,7 @@ func (m *Manager) launchRuntime(
 
 	response, err := m.initializeRuntimeProcess(ctx, process, ext, runtime, resourceSession)
 	if err != nil {
-		return nil, subprocess.InitializeResponse{}, subprocess.InitializeRuntime{}, 0, m.cleanupLaunchedProcess(
+		return launchedRuntime{}, m.cleanupLaunchedProcess(
 			ctx,
 			process,
 			cleanups,
@@ -1285,7 +1300,7 @@ func (m *Manager) launchRuntime(
 		)
 	}
 	if err := validateSupportedHookEvents(response.SupportedHookEvents); err != nil {
-		return nil, subprocess.InitializeResponse{}, subprocess.InitializeRuntime{}, 0, m.cleanupLaunchedProcess(
+		return launchedRuntime{}, m.cleanupLaunchedProcess(
 			ctx,
 			process,
 			cleanups,
@@ -1293,10 +1308,14 @@ func (m *Manager) launchRuntime(
 		)
 	}
 
-	ext.sessionNonce = resourceSession.Actor.SessionNonce
-	ext.redactionCleanups = cleanups
-
-	return process, response, runtime, healthInterval, nil
+	return launchedRuntime{
+		process:           process,
+		response:          response,
+		runtime:           runtime,
+		healthInterval:    healthInterval,
+		sessionNonce:      resourceSession.Actor.SessionNonce,
+		redactionCleanups: cleanups,
+	}, nil
 }
 
 func (m *Manager) cleanupLaunchedProcess(
