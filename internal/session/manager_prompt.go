@@ -32,10 +32,11 @@ const (
 )
 
 type promptPumpLoopState struct {
-	source    <-chan acp.AgentEvent
-	runtime   <-chan acp.AgentEvent
-	activity  *promptActivitySupervisor
-	turnEnded bool
+	source              <-chan acp.AgentEvent
+	runtime             <-chan acp.AgentEvent
+	activity            *promptActivitySupervisor
+	turnEnded           bool
+	sourceProbeRequired bool
 }
 
 func (s *promptPumpLoopState) active() bool {
@@ -47,6 +48,7 @@ func (s *promptPumpLoopState) sourceClosedShouldReturn() bool {
 		return true
 	}
 	s.source = nil
+	s.sourceProbeRequired = false
 	s.stopRuntime()
 	return s.runtime == nil || s.turnEnded
 }
@@ -56,6 +58,7 @@ func (s *promptPumpLoopState) runtimeClosedShouldReturn() bool {
 		return true
 	}
 	s.runtime = nil
+	s.sourceProbeRequired = false
 	return s.turnEnded || s.source == nil
 }
 
@@ -64,6 +67,7 @@ func (s *promptPumpLoopState) turnEndedShouldReturn() bool {
 		return true
 	}
 	s.turnEnded = true
+	s.sourceProbeRequired = false
 	s.stopRuntime()
 	return s.runtime == nil
 }
@@ -661,6 +665,21 @@ func nextPromptPumpEvent(
 	loop *promptPumpLoopState,
 ) (acp.AgentEvent, bool, bool) {
 	for {
+		if loop.sourceProbeRequired && loop.source != nil {
+			select {
+			case event, ok := <-loop.source:
+				loop.sourceProbeRequired = false
+				if !ok {
+					if loop.sourceClosedShouldReturn() {
+						return acp.AgentEvent{}, false, false
+					}
+					continue
+				}
+				return event, false, true
+			default:
+				loop.sourceProbeRequired = false
+			}
+		}
 		if loop.runtime != nil {
 			select {
 			case event, ok := <-loop.runtime:
@@ -669,6 +688,7 @@ func nextPromptPumpEvent(
 						return acp.AgentEvent{}, false, false
 					}
 				} else {
+					loop.sourceProbeRequired = true
 					return event, true, true
 				}
 			default:
@@ -678,6 +698,7 @@ func nextPromptPumpEvent(
 		case <-ctx.Done():
 			return acp.AgentEvent{}, false, false
 		case event, ok := <-loop.source:
+			loop.sourceProbeRequired = false
 			if !ok {
 				if loop.sourceClosedShouldReturn() {
 					return acp.AgentEvent{}, false, false
@@ -692,6 +713,7 @@ func nextPromptPumpEvent(
 				}
 				continue
 			}
+			loop.sourceProbeRequired = true
 			return event, true, true
 		}
 	}

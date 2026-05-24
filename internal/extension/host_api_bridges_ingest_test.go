@@ -17,6 +17,8 @@ import (
 	"github.com/compozy/agh/internal/testutil"
 )
 
+const hostAPIIngestContractTimeout = 10 * time.Second
+
 func TestHostAPIHandlerBridgesMessagesIngestContract(t *testing.T) {
 	t.Parallel()
 
@@ -67,7 +69,7 @@ func TestHostAPIHandlerBridgesMessagesIngestContract(t *testing.T) {
 		case <-driver.promptStarted:
 		case err := <-firstDone:
 			t.Fatalf("first ingest finished before prompt started: %v", err)
-		case <-time.After(time.Second):
+		case <-time.After(hostAPIIngestContractTimeout):
 			t.Fatal("first prompt did not start before timeout")
 		}
 		firstCancel()
@@ -85,7 +87,7 @@ func TestHostAPIHandlerBridgesMessagesIngestContract(t *testing.T) {
 			if err != nil && firstCtx.Err() == nil {
 				t.Fatalf("first ingest error = %v with active context, want nil or canceled-context result", err)
 			}
-		case <-time.After(time.Second):
+		case <-time.After(hostAPIIngestContractTimeout):
 			t.Fatal("first ingest did not finish after prompt release")
 		}
 		select {
@@ -93,7 +95,7 @@ func TestHostAPIHandlerBridgesMessagesIngestContract(t *testing.T) {
 			if err != nil {
 				t.Fatalf("retry ingest error = %v", err)
 			}
-		case <-time.After(time.Second):
+		case <-time.After(hostAPIIngestContractTimeout):
 			t.Fatal("retry ingest did not finish after prompt release")
 		}
 

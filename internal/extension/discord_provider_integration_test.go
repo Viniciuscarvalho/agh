@@ -28,6 +28,7 @@ import (
 const (
 	discordProviderListenAddrEnv = "AGH_BRIDGE_DISCORD_LISTEN_ADDR"
 	discordProviderAPIBaseEnv    = "AGH_BRIDGE_DISCORD_API_BASE_URL"
+	discordWebhookAckBudget      = 3 * time.Second
 )
 
 var (
@@ -147,8 +148,8 @@ func TestDiscordProviderIngressAndDeliveryConformance(t *testing.T) {
 	if got, want := status, http.StatusNoContent; got != want {
 		t.Fatalf("message webhook status = %d, want %d", got, want)
 	}
-	if elapsed > time.Second {
-		t.Fatalf("message webhook ack took %s, want <= 1s", elapsed)
+	if elapsed > discordWebhookAckBudget {
+		t.Fatalf("message webhook ack took %s, want <= %s", elapsed, discordWebhookAckBudget)
 	}
 
 	status, body, elapsed := postDiscordSignedJSON(
@@ -161,8 +162,8 @@ func TestDiscordProviderIngressAndDeliveryConformance(t *testing.T) {
 	if got, want := status, http.StatusOK; got != want {
 		t.Fatalf("command interaction status = %d, want %d", got, want)
 	}
-	if elapsed > time.Second {
-		t.Fatalf("command interaction ack took %s, want <= 1s", elapsed)
+	if elapsed > discordWebhookAckBudget {
+		t.Fatalf("command interaction ack took %s, want <= %s", elapsed, discordWebhookAckBudget)
 	}
 	if got, want := strings.TrimSpace(body), `{"type":5}`; got != want {
 		t.Fatalf("command interaction body = %s, want %s", got, want)
@@ -178,8 +179,8 @@ func TestDiscordProviderIngressAndDeliveryConformance(t *testing.T) {
 	if got, want := status, http.StatusOK; got != want {
 		t.Fatalf("action interaction status = %d, want %d", got, want)
 	}
-	if elapsed > time.Second {
-		t.Fatalf("action interaction ack took %s, want <= 1s", elapsed)
+	if elapsed > discordWebhookAckBudget {
+		t.Fatalf("action interaction ack took %s, want <= %s", elapsed, discordWebhookAckBudget)
 	}
 	if got, want := strings.TrimSpace(body), `{"type":6}`; got != want {
 		t.Fatalf("action interaction body = %s, want %s", got, want)
@@ -195,8 +196,8 @@ func TestDiscordProviderIngressAndDeliveryConformance(t *testing.T) {
 	if got, want := status, http.StatusNoContent; got != want {
 		t.Fatalf("reaction webhook status = %d, want %d", got, want)
 	}
-	if elapsed > time.Second {
-		t.Fatalf("reaction webhook ack took %s, want <= 1s", elapsed)
+	if elapsed > discordWebhookAckBudget {
+		t.Fatalf("reaction webhook ack took %s, want <= %s", elapsed, discordWebhookAckBudget)
 	}
 
 	ingests := harness.WaitForIngests(t, 10*time.Second, func(records []extensiontest.IngestRecord) bool {

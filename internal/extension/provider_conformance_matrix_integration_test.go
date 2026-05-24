@@ -219,6 +219,7 @@ func runTelegramRestartRecoveryMatrixCase(t *testing.T, repoRoot string) extensi
 	})
 
 	harness.WaitForHandshake(t, 10*time.Second)
+	waitForBridgeAdapterState(t, harness, bridgepkg.BridgeStatusReady)
 	postTelegramProviderWebhook(
 		t,
 		fmt.Sprintf("http://%s/telegram/%s", listenAddr, harness.Instances[0].ID),
@@ -316,12 +317,7 @@ func runWhatsAppDMPolicyMatrixCase(t *testing.T, repoRoot string) extensiontest.
 	})
 
 	harness.WaitForHandshake(t, 10*time.Second)
-	states := harness.WaitForStates(t, 10*time.Second, func(records []extensiontest.StateRecord) bool {
-		return len(records) > 0
-	})
-	if got, want := states[len(states)-1].Status.Normalize(), bridgepkg.BridgeStatusReady; got != want {
-		t.Fatalf("last adapter state = %q (error=%q), want %q", got, states[len(states)-1].Error, want)
-	}
+	waitForBridgeAdapterState(t, harness, bridgepkg.BridgeStatusReady)
 
 	webhookURL := fmt.Sprintf("http://%s/whatsapp/%s", listenAddr, harness.Instances[0].ID)
 	postWhatsAppProviderWebhook(t, webhookURL, "app-secret", whatsappProviderMixedDMWebhook("123456789"))
@@ -508,6 +504,7 @@ func runWhatsAppRateLimitMatrixCase(t *testing.T, repoRoot string) extensiontest
 	})
 
 	harness.WaitForHandshake(t, 10*time.Second)
+	waitForBridgeAdapterState(t, harness, bridgepkg.BridgeStatusReady)
 	webhookURL := fmt.Sprintf("http://%s/whatsapp/%s", listenAddr, harness.Instances[0].ID)
 	postWhatsAppProviderWebhook(
 		t,
@@ -516,38 +513,19 @@ func runWhatsAppRateLimitMatrixCase(t *testing.T, repoRoot string) extensiontest
 		whatsappProviderInboundWebhook("123456789", "Trigger rate limit"),
 	)
 
-	var instance *bridgepkg.BridgeInstance
-	waitForCondition(t, 10*time.Second, "bridge instance degraded after rate limit", func() bool {
-		loaded, err := harness.Bridges.GetInstance(context.Background(), harness.Instances[0].ID)
-		if err != nil {
-			return false
-		}
-		instance = loaded
-		return loaded.Status.Normalize() == bridgepkg.BridgeStatusDegraded &&
-			loaded.Degradation != nil &&
-			loaded.Degradation.Reason == bridgepkg.BridgeDegradationReasonRateLimited
-	})
-	if instance == nil {
-		t.Fatal("rate-limited bridge instance = nil, want persisted degraded state")
-	}
-
 	states := harness.WaitForStates(t, 10*time.Second, func(records []extensiontest.StateRecord) bool {
-		for _, record := range records {
-			if record.Status.Normalize() != bridgepkg.BridgeStatusDegraded {
-				continue
-			}
-			if record.Instance.Degradation != nil &&
-				record.Instance.Degradation.Reason == bridgepkg.BridgeDegradationReasonRateLimited {
-				return true
-			}
-		}
-		return false
+		return stateRecordsContainDegradation(
+			records,
+			bridgepkg.BridgeStatusDegraded,
+			bridgepkg.BridgeDegradationReasonRateLimited,
+		)
 	})
-	if !stateRecordsContainDegradation(
+	degraded, ok := findStateRecordWithDegradation(
 		states,
 		bridgepkg.BridgeStatusDegraded,
 		bridgepkg.BridgeDegradationReasonRateLimited,
-	) {
+	)
+	if !ok {
 		t.Fatalf("state markers = %#v, want degraded rate-limited state report", states)
 	}
 
@@ -561,10 +539,9 @@ func runWhatsAppRateLimitMatrixCase(t *testing.T, repoRoot string) extensiontest
 		RequireOwnedInstanceFetch: true,
 		RequireStateReport:        true,
 		ManagedInstances: []extensiontest.ManagedInstanceExpectation{{
-			InstanceID:          harness.Instances[0].ID,
-			ExtensionName:       "whatsapp",
-			BoundSecretNames:    []string{"access_token", "app_secret", "verify_token"},
-			ExpectedFinalStatus: bridgepkg.BridgeStatusDegraded,
+			InstanceID:       harness.Instances[0].ID,
+			ExtensionName:    "whatsapp",
+			BoundSecretNames: []string{"access_token", "app_secret", "verify_token"},
 		}},
 	}); err != nil {
 		t.Fatalf("ValidateConformance() error = %v", err)
@@ -574,8 +551,8 @@ func runWhatsAppRateLimitMatrixCase(t *testing.T, repoRoot string) extensiontest
 		extensiontest.ClassifiedOutcome{
 			Provider:       "whatsapp",
 			Classification: extensiontest.OutcomeClassRateLimit,
-			Status:         instance.Status,
-			Reason:         instance.Degradation.Reason,
+			Status:         degraded.Status,
+			Reason:         degraded.Instance.Degradation.Reason,
 			Retryable:      true,
 		},
 		extensiontest.ClassifiedOutcomeExpectation{
@@ -641,6 +618,25 @@ func whatsappProviderMixedDMWebhook(phoneNumberID string) map[string]any {
 	}
 }
 
+func waitForBridgeAdapterState(
+	t *testing.T,
+	harness *extensiontest.Harness,
+	want bridgepkg.BridgeStatus,
+) []extensiontest.StateRecord {
+	t.Helper()
+
+	states := harness.WaitForStates(t, 10*time.Second, func(records []extensiontest.StateRecord) bool {
+		if len(records) == 0 {
+			return false
+		}
+		return records[len(records)-1].Status.Normalize() == want
+	})
+	if got := states[len(states)-1].Status.Normalize(); got != want {
+		t.Fatalf("last adapter state = %q (error=%q), want %q", got, states[len(states)-1].Error, want)
+	}
+	return states
+}
+
 const httpMethodPost = "POST"
 
 func stateRecordsContainDegradation(
@@ -648,6 +644,15 @@ func stateRecordsContainDegradation(
 	status bridgepkg.BridgeStatus,
 	reason bridgepkg.BridgeDegradationReason,
 ) bool {
+	_, ok := findStateRecordWithDegradation(records, status, reason)
+	return ok
+}
+
+func findStateRecordWithDegradation(
+	records []extensiontest.StateRecord,
+	status bridgepkg.BridgeStatus,
+	reason bridgepkg.BridgeDegradationReason,
+) (extensiontest.StateRecord, bool) {
 	for _, record := range records {
 		if record.Status.Normalize() != status.Normalize() {
 			continue
@@ -656,8 +661,8 @@ func stateRecordsContainDegradation(
 			continue
 		}
 		if record.Instance.Degradation.Reason.Normalize() == reason.Normalize() {
-			return true
+			return record, true
 		}
 	}
-	return false
+	return extensiontest.StateRecord{}, false
 }

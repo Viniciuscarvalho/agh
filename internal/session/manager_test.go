@@ -1192,6 +1192,49 @@ func TestNextPromptPumpEventPrioritizesReadyRuntimeEvents(t *testing.T) {
 			t.Fatal("source event drained unexpectedly")
 		}
 	})
+
+	t.Run("Should probe source closure after a prioritized runtime event", func(t *testing.T) {
+		t.Parallel()
+
+		source := make(chan acp.AgentEvent)
+		runtimeEvents := make(chan acp.AgentEvent, 2)
+		loop := &promptPumpLoopState{source: source, runtime: runtimeEvents}
+
+		runtimeEvents <- acp.AgentEvent{
+			Type:   acp.EventTypeRuntimeProgress,
+			TurnID: "turn-runtime-priority",
+		}
+		runtimeEvents <- acp.AgentEvent{
+			Type:   acp.EventTypeRuntimeProgress,
+			TurnID: "turn-runtime-priority",
+		}
+
+		event, runtimeEvent, ok := nextPromptPumpEvent(testutil.Context(t), loop)
+		if !ok {
+			t.Fatal("nextPromptPumpEvent() ok = false, want true")
+		}
+		if !runtimeEvent {
+			t.Fatal("nextPromptPumpEvent() runtimeEvent = false, want true")
+		}
+		if got, want := event.Type, acp.EventTypeRuntimeProgress; got != want {
+			t.Fatalf("nextPromptPumpEvent() type = %q, want %q", got, want)
+		}
+
+		close(source)
+		event, runtimeEvent, ok = nextPromptPumpEvent(testutil.Context(t), loop)
+		if !ok {
+			t.Fatal("nextPromptPumpEvent() ok = false, want buffered runtime event after source closure")
+		}
+		if !runtimeEvent {
+			t.Fatal("nextPromptPumpEvent() runtimeEvent = false, want true")
+		}
+		if got, want := event.Type, acp.EventTypeRuntimeProgress; got != want {
+			t.Fatalf("nextPromptPumpEvent() type = %q, want %q", got, want)
+		}
+		if loop.source != nil {
+			t.Fatal("loop source = non-nil, want closed source observed before draining more runtime events")
+		}
+	})
 }
 
 func receivePromptEvent(t *testing.T, events <-chan acp.AgentEvent) acp.AgentEvent {
