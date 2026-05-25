@@ -6,10 +6,10 @@
     {
       "name": "agh",
       "sidecar_branch": "agh/__branches__/main",
-      "commit": "4d6439a119c3e68743a1c1ac6177d2e26b051de2",
-      "digest": "sha256:e2d753fb4017bdeaebc5b86b2153ec18bc66167850b983e91683d206a43a6f1e",
-      "files": 7564,
-      "bytes": 128161615
+      "commit": "3af5e813021e05ca7d7ef17cf3c99fb973429827",
+      "digest": "sha256:c3df9f816f1dbf4d9a3d60e9dd5c8084eae5d8c3601e963c4b6aa7ca493f1dd7",
+      "files": 7730,
+      "bytes": 130792685
     }
   ]
 }
