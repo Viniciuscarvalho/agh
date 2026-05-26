@@ -241,17 +241,20 @@ func TestRootPackageFormatScriptRunsRepoFormatters(t *testing.T) {
 
 		repoRoot := repoRoot(t)
 		pkg := readPackageJSON(t, filepath.Join(repoRoot, "package.json"))
-		goFormatCommand, ok := pkg.LintStaged["*.go"].(string)
-		if !ok || goFormatCommand == "" {
+		lintStagedGoFormatCommand, ok := pkg.LintStaged["*.go"].(string)
+		if !ok || lintStagedGoFormatCommand == "" {
 			t.Fatalf("package.json lint-staged *.go = %#v, want Go formatter command", pkg.LintStaged["*.go"])
+		}
+		if got, want := lintStagedGoFormatCommand, "sh -c 'make fmt'"; got != want {
+			t.Fatalf("package.json lint-staged *.go = %q, want %q", got, want)
 		}
 
 		formatScript := pkg.Scripts["format"]
 		if formatScript != "make fmt && oxfmt" {
 			t.Fatalf("package.json format script = %q, want repo-wide formatter command", formatScript)
 		}
-		if !strings.Contains(formatScript, goFormatCommand) {
-			t.Fatalf("package.json format script = %q, want Go formatter command %q", formatScript, goFormatCommand)
+		if !strings.Contains(formatScript, "make fmt") {
+			t.Fatalf("package.json format script = %q, want Go formatter command", formatScript)
 		}
 		if !strings.Contains(formatScript, "oxfmt") {
 			t.Fatalf("package.json format script = %q, want frontend formatter", formatScript)

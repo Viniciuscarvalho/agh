@@ -2,18 +2,83 @@ package httpapi
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
-	webassets "github.com/compozy/agh/web"
+	webassets "github.com/compozy/agh-web-assets"
 	"github.com/gin-gonic/gin"
 )
 
-func newStaticFS() (fs.FS, error) {
-	return fs.Sub(webassets.DistFS, "dist")
+const webDistDirEnvVar = "AGH_WEB_DIST_DIR"
+
+type staticSourceFS struct {
+	fs     fs.FS
+	source string
+}
+
+func newStaticFS() (staticSourceFS, error) {
+	if override := strings.TrimSpace(os.Getenv(webDistDirEnvVar)); override != "" {
+		return newLocalStaticFS(override)
+	}
+	return newEmbeddedStaticFS()
+}
+
+func newEmbeddedStaticFS() (staticSourceFS, error) {
+	staticFS, err := fs.Sub(webassets.DistFS, webassets.DistDir)
+	if err != nil {
+		return staticSourceFS{}, fmt.Errorf("embedded web bundle directory %q: %w", webassets.DistDir, err)
+	}
+	if _, err := fs.Stat(staticFS, "index.html"); err != nil {
+		return staticSourceFS{}, fmt.Errorf("embedded web bundle missing index.html: %w", err)
+	}
+	return staticSourceFS{
+		fs:     staticFS,
+		source: fmt.Sprintf("embedded %s/%s", "github.com/compozy/agh-web-assets", webassets.DistDir),
+	}, nil
+}
+
+func newLocalStaticFS(dir string) (staticSourceFS, error) {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return staticSourceFS{}, fmt.Errorf("%s resolve %q: %w", webDistDirEnvVar, dir, err)
+	}
+	info, err := os.Stat(absDir)
+	if err != nil {
+		return staticSourceFS{}, fmt.Errorf("%s stat %q: %w", webDistDirEnvVar, absDir, err)
+	}
+	if !info.IsDir() {
+		return staticSourceFS{}, fmt.Errorf("%s %q is not a directory", webDistDirEnvVar, absDir)
+	}
+	indexPath := filepath.Join(absDir, "index.html")
+	indexInfo, err := os.Stat(indexPath)
+	if err != nil {
+		return staticSourceFS{}, fmt.Errorf(
+			"%s missing readable index.html at %q: %w",
+			webDistDirEnvVar,
+			indexPath,
+			err,
+		)
+	}
+	if indexInfo.IsDir() {
+		return staticSourceFS{}, fmt.Errorf("%s index.html at %q is a directory", webDistDirEnvVar, indexPath)
+	}
+	file, err := os.Open(indexPath)
+	if err != nil {
+		return staticSourceFS{}, fmt.Errorf("%s open index.html at %q: %w", webDistDirEnvVar, indexPath, err)
+	}
+	if err := file.Close(); err != nil {
+		return staticSourceFS{}, fmt.Errorf("%s close index.html at %q: %w", webDistDirEnvVar, indexPath, err)
+	}
+	return staticSourceFS{
+		fs:     os.DirFS(absDir),
+		source: webDistDirEnvVar + "=" + absDir,
+	}, nil
 }
 
 func (h *Handlers) serveStaticRoute(c *gin.Context) {

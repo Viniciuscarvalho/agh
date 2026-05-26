@@ -2,12 +2,15 @@ module github.com/compozy/agh
 
 go 1.26.3
 
+retract v0.0.1 // broken source module: missing embedded web/dist assets; use v0.0.2 or newer
+
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/coder/acp-go-sdk v0.12.2
+	github.com/compozy/agh-web-assets v0.0.2
 	github.com/creativeprojects/go-selfupdate v1.5.2
 	github.com/daytonaio/daytona/libs/sdk-go v0.166.0
 	github.com/getkin/kin-openapi v0.135.0
@@ -34,7 +37,9 @@ require (
 	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.49.0
 	golang.org/x/sys v0.43.0
+	golang.org/x/term v0.41.0
 	golang.org/x/text v0.35.0
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.48.0
 )
@@ -186,13 +191,11 @@ require (
 	golang.org/x/mod v0.33.0 // indirect
 	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/term v0.41.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/grpc v1.80.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
-	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	modernc.org/libc v1.70.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect

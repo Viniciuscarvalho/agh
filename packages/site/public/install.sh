@@ -2,7 +2,7 @@
 set -eu
 
 RELEASE_REPO="compozy/agh"
-COSIGN_CERT_IDENTITY_REGEXP='^https://github\.com/compozy/agh/\.github/workflows/release\.yml@refs/tags/v[0-9][A-Za-z0-9._-]*$'
+COSIGN_CERT_IDENTITY_REGEXP='^https://github\.com/compozy/agh/\.github/workflows/release\.yml@refs/heads/main$'
 COSIGN_CERT_OIDC_ISSUER="https://token.actions.githubusercontent.com"
 VERSION="${AGH_VERSION:-latest}"
 INSTALL_DIR="${AGH_INSTALL_DIR:-}"

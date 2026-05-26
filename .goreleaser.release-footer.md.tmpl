@@ -13,7 +13,7 @@ Known limitation: this release text does not claim a manual post-release install
 ```bash
 cosign verify-blob \
   --bundle checksums.txt.sigstore.json \
-  --certificate-identity-regexp '^https://github\.com/compozy/agh/\.github/workflows/release\.yml@refs/tags/v[0-9][A-Za-z0-9._-]*$' \
+  --certificate-identity-regexp '^https://github\.com/compozy/agh/\.github/workflows/release\.yml@refs/heads/main$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   checksums.txt
 ```

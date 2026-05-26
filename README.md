@@ -55,7 +55,7 @@ npm install -g @compozy/agh
 Go:
 
 ```bash
-go install github.com/compozy/agh/cmd/agh@latest
+go install github.com/compozy/agh@latest
 ```
 
 The full [Installation guide](https://agh.network/runtime/core/getting-started/installation) covers the verified binary installer, Linux packages, and source builds.

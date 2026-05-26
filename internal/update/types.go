@@ -15,11 +15,11 @@ import (
 const (
 	githubReleaseAPIURL        = "https://api.github.com/repos/compozy/agh/releases/latest"
 	githubRepositorySlug       = "compozy/agh"
-	goInstallModulePath        = "github.com/compozy/agh/cmd/agh"
+	goInstallModulePath        = "github.com/compozy/agh"
 	checksumsAssetName         = "checksums.txt"
 	checksumsBundleAssetName   = "checksums.txt.sigstore.json"
 	sigstoreOIDCIssuer         = "https://token.actions.githubusercontent.com"
-	releaseWorkflowIdentityExp = `^https://github\.com/compozy/agh/\.github/workflows/release\.yml@refs/tags/v[0-9][A-Za-z0-9._-]*$`
+	releaseWorkflowIdentityExp = `^https://github\.com/compozy/agh/\.github/workflows/release\.yml@refs/heads/main$`
 )
 
 const (

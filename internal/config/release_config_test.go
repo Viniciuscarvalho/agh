@@ -75,6 +75,9 @@ func TestGoReleaserConfigPreservesTrustArtifactsAndPackageTargets(t *testing.T) 
 		if !stringSliceContains(hooks, "go run github.com/magefile/mage@v1.17.0 webBuild") {
 			t.Fatalf("before.hooks = %#v, want webBuild before GoReleaser builds embedded web assets", hooks)
 		}
+		if !stringSliceContains(hooks, "go run github.com/magefile/mage@v1.17.0 webAssetsCheck") {
+			t.Fatalf("before.hooks = %#v, want webAssetsCheck before GoReleaser builds binaries", hooks)
+		}
 	})
 
 	t.Run("Should publish stable archives and curl installer asset", func(t *testing.T) {
@@ -192,11 +195,21 @@ func TestPackagingMetadataStaysAlignedWithRuntimeAndInstaller(t *testing.T) {
 	goreleaser := readYAMLMap(t, root, ".goreleaser.yml")
 	ciWorkflow := readYAMLMap(t, root, filepath.Join(".github", "workflows", "ci.yml"))
 	releaseWorkflow := readYAMLMap(t, root, filepath.Join(".github", "workflows", "release.yml"))
+	syncWebAssetsWorkflow := readYAMLMap(t, root, filepath.Join(".github", "workflows", "sync-web-assets.yml"))
 	setupBun := readYAMLMap(t, root, filepath.Join(".github", "actions", "setup-bun", "action.yml"))
 	setupGo := readYAMLMap(t, root, filepath.Join(".github", "actions", "setup-go", "action.yml"))
+	setupNode := readYAMLMap(t, root, filepath.Join(".github", "actions", "setup-node", "action.yml"))
 	rootPackage := readJSONMap(t, root, "package.json")
 	prRelease := readYAMLMap(t, root, ".pr-release")
 	installScript := readTextFile(t, root, filepath.Join("packages", "site", "public", "install.sh"))
+	releaseWorkflowText := readTextFile(t, root, filepath.Join(".github", "workflows", "release.yml"))
+	syncWebAssetsWorkflowText := readTextFile(t, root, filepath.Join(".github", "workflows", "sync-web-assets.yml"))
+	cliffConfig := readTextFile(t, root, "cliff.toml")
+	gitignore := readTextFile(t, root, ".gitignore")
+	goMod := readTextFile(t, root, "go.mod")
+	magefile := readTextFile(t, root, "magefile.go")
+	staticSource := readTextFile(t, root, filepath.Join("internal", "api", "httpapi", "static.go"))
+	goreleaserText := readTextFile(t, root, ".goreleaser.yml")
 
 	t.Run("Should keep toolchain versions synchronized across package metadata and workflows", func(t *testing.T) {
 		t.Parallel()
@@ -235,6 +248,11 @@ func TestPackagingMetadataStaysAlignedWithRuntimeAndInstaller(t *testing.T) {
 		setupGoInputs := mapAt(t, setupGo, "inputs")
 		setupGoVersion := mapAt(t, setupGoInputs, "go-version")
 		assertEqualString(t, "setup-go default", stringAt(t, setupGoVersion, "default"), goVersion)
+
+		nodeVersion := workflowEnvValue(t, releaseWorkflow, "NODE_VERSION")
+		setupNodeInputs := mapAt(t, setupNode, "inputs")
+		setupNodeVersion := mapAt(t, setupNodeInputs, "node-version")
+		assertEqualString(t, "setup-node default", stringAt(t, setupNodeVersion, "default"), nodeVersion)
 	})
 
 	t.Run("Should isolate release verification gates across runners", func(t *testing.T) {
@@ -257,6 +275,123 @@ func TestPackagingMetadataStaysAlignedWithRuntimeAndInstaller(t *testing.T) {
 			if stringListContains(dryRunCommands, unwanted) {
 				t.Fatalf("dry-run step commands = %#v, want %q isolated in its own job", dryRunCommands, unwanted)
 			}
+		}
+	})
+
+	t.Run("Should keep the tagless repair release on v0.0.2", func(t *testing.T) {
+		t.Parallel()
+
+		assertEqualString(
+			t,
+			"release env INITIAL_VERSION",
+			workflowEnvValue(t, releaseWorkflow, "INITIAL_VERSION"),
+			"v0.0.2",
+		)
+		assertContainsText(t, "cliff initial tag", cliffConfig, `initial_tag = "v0.0.2"`)
+		assertNotContainsText(t, "cliff initial tag", cliffConfig, `initial_tag = "v0.0.1"`)
+	})
+
+	t.Run("Should keep Go source installs backed by the external web assets module", func(t *testing.T) {
+		t.Parallel()
+
+		for _, snippet := range []string{
+			"webAssetsModulePath       = \"github.com/compozy/agh-web-assets\"",
+			"func WebAssetsCheck() error",
+			"func ReleaseInstallCheck() error",
+			"WebAssetsPublicCheck",
+			"SourceInstallCheck",
+		} {
+			assertContainsText(t, "magefile", magefile, snippet)
+		}
+		assertContainsText(t, "go.mod", goMod, "github.com/compozy/agh-web-assets")
+		assertContainsText(t, "httpapi static fs", staticSource, "github.com/compozy/agh-web-assets")
+		assertContainsText(t, "httpapi static fs", staticSource, `fs.Sub(webassets.DistFS, webassets.DistDir)`)
+		assertContainsText(t, "httpapi static fs", staticSource, "embedded web bundle missing index.html")
+		assertContainsText(t, "httpapi static fs", staticSource, "AGH_WEB_DIST_DIR")
+		assertContainsText(t, "gitignore", gitignore, "web/embed/")
+		assertNotContainsText(t, "gitignore", gitignore, "!web/embed/")
+		assertNotContainsText(t, "gitignore", gitignore, "!web/embed/**")
+		assertNotContainsText(t, "gitignore", gitignore, "!web/dist/")
+		assertContainsText(
+			t,
+			"release workflow",
+			releaseWorkflowText,
+			"go run github.com/magefile/mage@v1.17.0 releaseInstallCheck",
+		)
+		assertNotContainsText(
+			t,
+			"release workflow",
+			releaseWorkflowText,
+			"go run github.com/magefile/mage@v1.17.0 webAssetsCheck",
+		)
+		assertNotContainsText(t, "release workflow", releaseWorkflowText, "web/embed/index.html")
+	})
+
+	t.Run("Should run asset install validation only in release-owned lanes", func(t *testing.T) {
+		t.Parallel()
+
+		assertContainsText(
+			t,
+			"release workflow",
+			releaseWorkflowText,
+			"go run github.com/magefile/mage@v1.17.0 releaseInstallCheck",
+		)
+		for _, forbidden := range []string{"webAssetsPrepare", "webAssetsNextTag"} {
+			assertNotContainsText(t, "release workflow", releaseWorkflowText, forbidden)
+			assertNotContainsText(t, "GoReleaser config", goreleaserText, forbidden)
+		}
+
+		jobs := mapAt(t, releaseWorkflow, "jobs")
+		release := mapAt(t, jobs, "release")
+		releaseSteps := sliceAt(t, release, "steps")
+		assertWorkflowRunBeforeUses(
+			t,
+			releaseSteps,
+			"go run github.com/magefile/mage@v1.17.0 releaseInstallCheck",
+			"goreleaser/goreleaser-action@v6",
+		)
+		assertWorkflowJobCommand(
+			t,
+			jobs,
+			"dry-run",
+			90,
+			"go run github.com/magefile/mage@v1.17.0 releaseInstallCheck",
+		)
+	})
+
+	t.Run("Should keep privileged web assets sync out of pull request events", func(t *testing.T) {
+		t.Parallel()
+
+		assertNotContainsText(t, "sync web assets workflow", syncWebAssetsWorkflowText, "pull_request:")
+		assertNotContainsText(t, "sync web assets workflow", syncWebAssetsWorkflowText, "pull_request_target:")
+		assertContainsText(t, "sync web assets workflow", syncWebAssetsWorkflowText, "cancel-in-progress: false")
+		assertContainsText(t, "sync web assets workflow", syncWebAssetsWorkflowText, "origin/main")
+		assertContainsText(
+			t,
+			"sync web assets workflow",
+			syncWebAssetsWorkflowText,
+			"GOPROXY=https://proxy.golang.org,direct",
+		)
+		assertContainsText(t, "sync web assets workflow", syncWebAssetsWorkflowText, "GOPRIVATE=")
+
+		permissions := mapAt(t, syncWebAssetsWorkflow, "permissions")
+		assertEqualString(t, "sync contents permission", stringAt(t, permissions, "contents"), "write")
+		assertEqualString(t, "sync pull request permission", stringAt(t, permissions, "pull-requests"), "write")
+
+		jobs := mapAt(t, syncWebAssetsWorkflow, "jobs")
+		syncJob := mapAt(t, jobs, "sync")
+		if got := stringAt(t, syncJob, "if"); !strings.Contains(got, "github.repository == 'compozy/agh'") {
+			t.Fatalf("sync job if = %q, want repository guard", got)
+		}
+		commands := strings.Join(workflowRunCommands(t, sliceAt(t, syncJob, "steps")), "\n")
+		for _, snippet := range []string{
+			"webAssetsDeterminismCheck",
+			"webAssetsPrepare",
+			"webAssetsNextTag",
+			"go get",
+			"releaseInstallCheck",
+		} {
+			assertContainsText(t, "sync web assets commands", commands, snippet)
 		}
 	})
 
@@ -287,6 +422,58 @@ func TestPackagingMetadataStaysAlignedWithRuntimeAndInstaller(t *testing.T) {
 		}
 		assertWorkflowUsesBefore(t, steps, "./.github/actions/setup-bun", "./.github/actions/setup-release")
 		assertWorkflowUsesBefore(t, steps, "./.github/actions/setup-bun", "goreleaser/goreleaser-action@v6")
+	})
+
+	t.Run("Should bootstrap npm authentication before release publishing", func(t *testing.T) {
+		t.Parallel()
+
+		assertEqualString(
+			t,
+			"release env NODE_AUTH_TOKEN",
+			workflowEnvValue(t, releaseWorkflow, "NODE_AUTH_TOKEN"),
+			"${{ secrets.NPM_TOKEN }}",
+		)
+		assertEqualString(
+			t,
+			"release env NPM_TOKEN",
+			workflowEnvValue(t, releaseWorkflow, "NPM_TOKEN"),
+			"${{ secrets.NPM_TOKEN }}",
+		)
+
+		runs := mapAt(t, setupNode, "runs")
+		setupNodeSteps := sliceAt(t, runs, "steps")
+		setupNodeAction := workflowStepByUses(t, setupNodeSteps, "actions/setup-node@v6")
+		with := mapAt(t, setupNodeAction, "with")
+		assertEqualString(t, "setup-node registry-url", stringAt(t, with, "registry-url"), "https://registry.npmjs.org")
+		assertEqualString(t, "setup-node scope", stringAt(t, with, "scope"), "@compozy")
+		if !stringListContains(workflowRunCommands(t, setupNodeSteps), "npm whoami") {
+			t.Fatalf("setup-node step commands = %#v, want npm whoami", workflowRunCommands(t, setupNodeSteps))
+		}
+
+		jobs := mapAt(t, releaseWorkflow, "jobs")
+		for _, jobName := range []string{"release-pr", "dry-run", "release"} {
+			job := mapAt(t, jobs, jobName)
+			steps := sliceAt(t, job, "steps")
+			workflowStepByUses(t, steps, "./.github/actions/setup-node")
+			assertWorkflowUsesBefore(t, steps, "./.github/actions/setup-node", "./.github/actions/setup-bun")
+		}
+		release := mapAt(t, jobs, "release")
+		releaseSteps := sliceAt(t, release, "steps")
+		assertWorkflowUsesBefore(t, releaseSteps, "./.github/actions/setup-node", "goreleaser/goreleaser-action@v6")
+		for _, snippet := range []string{
+			"echo \"RELEASE_VERSION=$VERSION\" >> \"$GITHUB_ENV\"",
+			"echo \"RELEASE_TAG=$TAG\" >> \"$GITHUB_ENV\"",
+			"name: Verify npm publish authentication",
+			"NPM_TOKEN is required to publish @compozy/agh",
+			"npm whoami --registry=https://registry.npmjs.org",
+			"npm_view_output=\"$(mktemp)\"",
+			"npm view \"@compozy/agh@${RELEASE_VERSION}\" version --registry=https://registry.npmjs.org >\"$npm_view_output\" 2>&1",
+			"npm versions are immutable",
+			"grep -Eq 'E404|404 Not Found' \"$npm_view_output\"",
+			"Could not confirm @compozy/agh@${RELEASE_VERSION} is unpublished",
+		} {
+			assertContainsText(t, "release workflow", releaseWorkflowText, snippet)
+		}
 	})
 
 	t.Run("Should give CI verify enough budget for the full monorepo gate", func(t *testing.T) {
@@ -504,7 +691,7 @@ func TestReleaseWorkflowPreservesInstallerSourceTextGuards(t *testing.T) {
 		for _, snippet := range []string{
 			"brew install compozy/compozy/agh",
 			"npm install -g @compozy/agh",
-			"go install github.com/compozy/agh/cmd/agh@{{ .Tag }}",
+			"go install github.com/compozy/agh@{{ .Tag }}",
 			"curl -fsSL https://agh.network/install.sh | sh",
 			"Verified Binary Installer",
 		} {
@@ -541,6 +728,7 @@ func TestReleaseWorkflowPreservesInstallerSourceTextGuards(t *testing.T) {
 			"does not claim a manual post-release install smoke",
 			"--bundle checksums.txt.sigstore.json",
 			"--certificate-identity-regexp",
+			"refs/heads/main",
 			"--certificate-oidc-issuer https://token.actions.githubusercontent.com",
 		} {
 			assertContainsText(t, "GoReleaser release footer", footer, snippet)
@@ -742,6 +930,26 @@ func assertWorkflowUsesBefore(t *testing.T, steps []any, earlier string, later s
 	laterIndex := workflowStepIndexByUses(t, steps, later)
 	if earlierIndex >= laterIndex {
 		t.Fatalf("workflow step %q index = %d, want before %q index %d", earlier, earlierIndex, later, laterIndex)
+	}
+}
+
+func assertWorkflowRunBeforeUses(t *testing.T, steps []any, runSnippet string, laterUses string) {
+	t.Helper()
+
+	runIndex := -1
+	for index, entry := range steps {
+		step := asMap(t, entry, "workflow steps[]")
+		if command, ok := step["run"].(string); ok && strings.Contains(command, runSnippet) {
+			runIndex = index
+			break
+		}
+	}
+	if runIndex == -1 {
+		t.Fatalf("workflow steps missing run containing %q", runSnippet)
+	}
+	laterIndex := workflowStepIndexByUses(t, steps, laterUses)
+	if runIndex >= laterIndex {
+		t.Fatalf("workflow run %q index = %d, want before %q index %d", runSnippet, runIndex, laterUses, laterIndex)
 	}
 }
 

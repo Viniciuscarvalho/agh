@@ -18,9 +18,9 @@ const readmePath = resolve(siteRoot, "../../README.md");
 
 const homebrewInstallCommand = "brew install compozy/compozy/agh";
 const npmInstallCommand = "npm install -g @compozy/agh";
-const goInstallCommand = "go install github.com/compozy/agh/cmd/agh@latest";
+const goInstallCommand = "go install github.com/compozy/agh@latest";
 const verifiedInstallerCommand = "curl -fsSL https://agh.network/install.sh | sh";
-const sourceInstallCommand = "go build -o ./bin/agh ./cmd/agh";
+const sourceInstallCommand = "go build -o ./bin/agh .";
 const workspaceAddCommand = 'agh workspace add "$PWD" --name current';
 const firstSessionCommand = "agh session new --workspace current --agent general";
 const retiredPackageInstallCommands = [
@@ -137,7 +137,7 @@ describe("public install contract", () => {
     );
     expect(script).toContain('BUNDLE_URL="${BASE_URL}/checksums.txt.sigstore.json"');
     expect(script).toContain(
-      "COSIGN_CERT_IDENTITY_REGEXP='^https://github\\.com/compozy/agh/\\.github/workflows/release\\.yml@refs/tags/v[0-9][A-Za-z0-9._-]*$'"
+      "COSIGN_CERT_IDENTITY_REGEXP='^https://github\\.com/compozy/agh/\\.github/workflows/release\\.yml@refs/heads/main$'"
     );
     expect(script).toContain("v[0-9][A-Za-z0-9._-]*)");
     expect(script).toContain(

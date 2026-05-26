@@ -90,6 +90,7 @@ type Server struct {
 
 	engine       *gin.Engine
 	handlers     *Handlers
+	staticSource string
 	httpServer   *http.Server
 	listener     net.Listener
 	serveDone    chan struct{}
@@ -468,12 +469,13 @@ func New(opts ...Option) (*Server, error) {
 		return nil, err
 	}
 
-	staticFS, err := newStaticFS()
+	staticSource, err := newStaticFS()
 	if err != nil {
-		return nil, fmt.Errorf("httpapi: load embedded frontend bundle: %w", err)
+		return nil, fmt.Errorf("httpapi: load frontend bundle: %w", err)
 	}
 	server.ensureEngine()
-	server.handlers = newHandlers(server.handlerConfig(staticFS))
+	server.staticSource = staticSource.source
+	server.handlers = newHandlers(server.handlerConfig(staticSource.fs))
 	RegisterRoutes(server.engine, server.handlers)
 
 	return server, nil
@@ -695,6 +697,8 @@ func (s *Server) Start(ctx context.Context) error {
 	s.started = true
 	s.actualPort = actualPort
 	s.mu.Unlock()
+
+	s.logger.Info("httpapi: static web assets source selected", "source", s.staticSource)
 
 	go func() {
 		defer close(serveDone)

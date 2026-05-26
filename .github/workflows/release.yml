@@ -23,8 +23,11 @@ env:
   CGO_ENABLED: 0
   GO_VERSION: "1.26.3"
   BUN_VERSION: "1.3.4"
-  INITIAL_VERSION: "v0.0.1"
+  NODE_VERSION: "22"
+  INITIAL_VERSION: "v0.0.2"
   PR_RELEASE_MODULE: github.com/compozy/releasepr@v0.0.22
+  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
 permissions:
   contents: write
@@ -63,6 +66,10 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           install-tools: "false"
+
+      - uses: ./.github/actions/setup-node
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
       - uses: ./.github/actions/setup-bun
         with:
@@ -107,6 +114,10 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           install-tools: "false"
 
+      - uses: ./.github/actions/setup-node
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ env.BUN_VERSION }}
@@ -119,6 +130,9 @@ jobs:
           setup-docker: false
           setup-docker-login: false
           setup-qemu: false
+
+      - name: Validate release install contract
+        run: go run github.com/magefile/mage@v1.17.0 releaseInstallCheck
 
       - name: Run pr-release Dry-Run (goreleaser build validation)
         env:
@@ -266,6 +280,10 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           install-tools: "true"
 
+      - uses: ./.github/actions/setup-node
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ env.BUN_VERSION }}
@@ -312,6 +330,28 @@ jobs:
             git tag -a "$TAG" -m "Release $TAG"
             echo "Created local tag $TAG"
           fi
+          echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: Verify npm publish authentication
+        run: |
+          if [ -z "${NPM_TOKEN:-}" ]; then
+            echo "::error::NPM_TOKEN is required to publish @compozy/agh"
+            exit 1
+          fi
+          npm whoami --registry=https://registry.npmjs.org
+          npm_view_output="$(mktemp)"
+          if npm view "@compozy/agh@${RELEASE_VERSION}" version --registry=https://registry.npmjs.org >"$npm_view_output" 2>&1; then
+            echo "::error::@compozy/agh@${RELEASE_VERSION} is already published and npm versions are immutable"
+            exit 1
+          fi
+          if grep -Eq 'E404|404 Not Found' "$npm_view_output"; then
+            echo "@compozy/agh@${RELEASE_VERSION} is not published yet"
+          else
+            cat "$npm_view_output"
+            echo "::error::Could not confirm @compozy/agh@${RELEASE_VERSION} is unpublished"
+            exit 1
+          fi
 
       - name: Validate generated release assets
         run: |
@@ -344,6 +384,11 @@ jobs:
             echo "::error::install.sh must verify checksums.txt with checksums.txt.sigstore.json"
             exit 1
           fi
+          if ! grep -q 'refs/heads/main' packages/site/public/install.sh; then
+            echo "::error::install.sh must verify checksums against the production release workflow identity"
+            exit 1
+          fi
+          go run github.com/magefile/mage@v1.17.0 releaseInstallCheck
           if ! grep -q 'packages/site/public/install.sh' .goreleaser.yml; then
             echo "::error::.goreleaser.yml must upload packages/site/public/install.sh as a release extra file"
             exit 1
@@ -371,6 +416,4 @@ jobs:
           RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
           COSIGN_EXPERIMENTAL: 1
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           GOTMPDIR: ${{ runner.temp }}/go-tmp

@@ -635,7 +635,7 @@ func mustStaticFS(t *testing.T) fs.FS {
 		t.Fatalf("newStaticFS() error = %v", err)
 	}
 
-	return staticFS
+	return staticFS.fs
 }
 
 func newTestHomePaths(t *testing.T) aghconfig.HomePaths {

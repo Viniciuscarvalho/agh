@@ -57,7 +57,7 @@
         "vitest": "^4.1.6"
     },
     "lint-staged": {
-        "*.go": "make fmt",
+        "*.go": "sh -c 'make fmt'",
         "*.{css,html,json,jsonc,yaml,yml,md}": [
             "oxfmt --no-error-on-unmatched-pattern"
         ],

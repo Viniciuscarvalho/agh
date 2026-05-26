@@ -114,7 +114,7 @@ features_always_bump_minor = false
 # Alpha convention: breaking changes bump minor on 0.x.x
 breaking_always_bump_major = false
 
-initial_tag = "v0.0.1"
+initial_tag = "v0.0.2"
 
 custom_major_increment_regex = "MAJOR|BREAKING[- ]CHANGE"
 custom_minor_increment_regex = "feat|feature|MINOR"

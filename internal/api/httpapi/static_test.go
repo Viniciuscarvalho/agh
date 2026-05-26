@@ -3,12 +3,16 @@ package httpapi
 import (
 	"io/fs"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestStaticRoutesServeEmbeddedIndexForRootAndDeepLinks(t *testing.T) {
+	t.Setenv(webDistDirEnvVar, "")
+
 	homePaths := newTestHomePaths(t)
 	engine := newTestRouter(t, newTestHandlers(t, stubSessionManager{}, stubObserver{}, homePaths))
 
@@ -35,6 +39,8 @@ func TestStaticRoutesServeEmbeddedIndexForRootAndDeepLinks(t *testing.T) {
 }
 
 func TestStaticRoutesServeEmbeddedAssets(t *testing.T) {
+	t.Setenv(webDistDirEnvVar, "")
+
 	homePaths := newTestHomePaths(t)
 	engine := newTestRouter(t, newTestHandlers(t, stubSessionManager{}, stubObserver{}, homePaths))
 
@@ -52,6 +58,8 @@ func TestStaticRoutesServeEmbeddedAssets(t *testing.T) {
 }
 
 func TestStaticRoutesDoNotFallbackForMissingAssetsOrAPIRoutes(t *testing.T) {
+	t.Setenv(webDistDirEnvVar, "")
+
 	homePaths := newTestHomePaths(t)
 	engine := newTestRouter(t, newTestHandlers(t, stubSessionManager{}, stubObserver{}, homePaths))
 
@@ -82,6 +90,82 @@ func TestStaticRoutesDoNotFallbackForMissingAssetsOrAPIRoutes(t *testing.T) {
 	}
 }
 
+func TestStaticRoutesServeLocalWebDistOverride(t *testing.T) {
+	t.Run("Should serve AGH_WEB_DIST_DIR index and assets from disk", func(t *testing.T) {
+		distDir := writeLocalStaticDist(t, "local shell one", map[string]string{
+			"assets/local.js": "console.log('local asset');",
+		})
+		t.Setenv(webDistDirEnvVar, distDir)
+
+		homePaths := newTestHomePaths(t)
+		engine := newTestRouter(t, newTestHandlers(t, stubSessionManager{}, stubObserver{}, homePaths))
+
+		rootResp := performRequest(t, engine, http.MethodGet, "/", nil)
+		if rootResp.Code != http.StatusOK {
+			t.Fatalf("GET / status = %d, want %d; body=%s", rootResp.Code, http.StatusOK, rootResp.Body.String())
+		}
+		if got := rootResp.Body.String(); !strings.Contains(got, "local shell one") {
+			t.Fatalf("GET / body = %q, want local override shell", got)
+		}
+
+		assetResp := performRequest(t, engine, http.MethodGet, "/assets/local.js", nil)
+		if assetResp.Code != http.StatusOK {
+			t.Fatalf(
+				"GET /assets/local.js status = %d, want %d; body=%s",
+				assetResp.Code,
+				http.StatusOK,
+				assetResp.Body.String(),
+			)
+		}
+		if got, want := assetResp.Body.String(), "console.log('local asset');"; got != want {
+			t.Fatalf("GET /assets/local.js body = %q, want %q", got, want)
+		}
+	})
+}
+
+func TestStaticRoutesObserveLocalWebDistRewrite(t *testing.T) {
+	t.Run("Should serve rewritten AGH_WEB_DIST_DIR files without rebuilding Go", func(t *testing.T) {
+		distDir := writeLocalStaticDist(t, "local shell before", nil)
+		t.Setenv(webDistDirEnvVar, distDir)
+
+		homePaths := newTestHomePaths(t)
+		engine := newTestRouter(t, newTestHandlers(t, stubSessionManager{}, stubObserver{}, homePaths))
+
+		before := performRequest(t, engine, http.MethodGet, "/", nil)
+		if got := before.Body.String(); before.Code != http.StatusOK || !strings.Contains(got, "local shell before") {
+			t.Fatalf("GET / before status = %d body = %q, want local shell before", before.Code, got)
+		}
+
+		indexPath := filepath.Join(distDir, "index.html")
+		if err := os.WriteFile(indexPath, []byte("<!doctype html><div>local shell after</div>"), 0o644); err != nil {
+			t.Fatalf("os.WriteFile(index.html rewrite) error = %v", err)
+		}
+
+		after := performRequest(t, engine, http.MethodGet, "/", nil)
+		if got := after.Body.String(); after.Code != http.StatusOK || !strings.Contains(got, "local shell after") {
+			t.Fatalf("GET / after status = %d body = %q, want local shell after", after.Code, got)
+		}
+	})
+}
+
+func TestStaticRoutesRejectMissingLocalWebDistIndex(t *testing.T) {
+	t.Run("Should fail clearly when AGH_WEB_DIST_DIR has no index", func(t *testing.T) {
+		distDir := t.TempDir()
+		t.Setenv(webDistDirEnvVar, distDir)
+
+		_, err := newStaticFS()
+		if err == nil {
+			t.Fatal("newStaticFS() error = nil, want missing index error")
+		}
+		message := err.Error()
+		for _, want := range []string{webDistDirEnvVar, "index.html"} {
+			if !strings.Contains(message, want) {
+				t.Fatalf("newStaticFS() error = %q, want %q", message, want)
+			}
+		}
+	})
+}
+
 func firstEmbeddedAsset(t *testing.T) (string, []byte) {
 	t.Helper()
 
@@ -108,4 +192,24 @@ func firstEmbeddedAsset(t *testing.T) (string, []byte) {
 
 	t.Fatal("expected at least one embedded .js or .css asset")
 	return "", nil
+}
+
+func writeLocalStaticDist(t *testing.T, indexMarker string, assets map[string]string) string {
+	t.Helper()
+
+	distDir := t.TempDir()
+	index := "<!doctype html><html><body><div>" + indexMarker + "</div></body></html>"
+	if err := os.WriteFile(filepath.Join(distDir, "index.html"), []byte(index), 0o644); err != nil {
+		t.Fatalf("os.WriteFile(index.html) error = %v", err)
+	}
+	for name, body := range assets {
+		path := filepath.Join(distDir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("os.MkdirAll(%s) error = %v", filepath.Dir(path), err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatalf("os.WriteFile(%s) error = %v", name, err)
+		}
+	}
+	return distDir
 }

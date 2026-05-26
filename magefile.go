@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -14,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,7 +40,13 @@ const (
 	compozyOpenAPISpecPath    = "openapi/compozy-daemon.json"
 	webOpenAPITypePath        = "web/src/generated/agh-openapi.d.ts"
 	webCompozyOpenAPITypePath = "web/src/generated/compozy-openapi.d.ts"
+	webDistDir                = "web/dist"
 	webDistIndex              = "web/dist/index.html"
+	webDistDirEnvVar          = "AGH_WEB_DIST_DIR"
+	webAssetsModulePath       = "github.com/compozy/agh-web-assets"
+	webAssetsModuleDistDir    = "dist"
+	webAssetsMetadataFile     = "assets.go"
+	webAssetsSourceRepository = "github.com/compozy/agh"
 	daemonBinaryEnvVar        = "AGH_TEST_DAEMON_BIN"
 	driverBinaryEnvVar        = "AGH_TEST_ACPMOCK_DRIVER_BIN"
 	designSyncScriptPath      = "scripts/sync-design-md.mjs"
@@ -50,6 +59,11 @@ const (
 type daytonaSidecarAsset struct {
 	arch string
 	path string
+}
+
+type mageStep struct {
+	name string
+	run  func() error
 }
 
 var (
@@ -111,9 +125,6 @@ func Fmt() error {
 }
 
 func Lint() error {
-	if err := ensureWebBundle(); err != nil {
-		return err
-	}
 	if err := runGolangCILint(); err != nil {
 		return err
 	}
@@ -164,9 +175,6 @@ func Modernize() error {
 
 // Test runs unit tests only (no integration tag).
 func Test() error {
-	if err := ensureWebBundle(); err != nil {
-		return err
-	}
 	return runRaceEnabledGoCommand(context.Background(), nil,
 		"run", "gotest.tools/gotestsum@"+gotestsumVersion,
 		"--format", "pkgname", "--", "-race", "-parallel=4", "-timeout", goUnitTestTimeout, "./...")
@@ -174,9 +182,6 @@ func Test() error {
 
 // TestIntegration runs all tests including integration tests.
 func TestIntegration() error {
-	if err := ensureWebBundle(); err != nil {
-		return err
-	}
 	return runRaceEnabledGoCommand(context.Background(), nil,
 		"run", "gotest.tools/gotestsum@"+gotestsumVersion,
 		"--format", "pkgname", "--", "-race", "-p", goIntegrationPackageLimit, "-parallel=4",
@@ -204,13 +209,14 @@ func TestE2ENightly() error {
 }
 
 func Build() error {
-	if err := CodegenCheck(); err != nil {
-		return err
+	return runMageSteps(buildSteps())
+}
+
+func buildSteps() []mageStep {
+	return []mageStep{
+		{name: "CodegenCheck", run: CodegenCheck},
+		{name: "buildGo", run: buildGo},
 	}
-	if err := WebBuild(); err != nil {
-		return err
-	}
-	return buildGo()
 }
 
 func Codegen() error {
@@ -297,7 +303,498 @@ func WebTest() error {
 }
 
 func WebBuild() error {
-	return runCommandInDir(context.Background(), "web", "bun", "run", "build:raw")
+	if err := runCommandInDir(context.Background(), "web", "bun", "run", "build:raw"); err != nil {
+		return err
+	}
+	return ensureWebDist()
+}
+
+func ensureWebDist() error {
+	if _, err := os.Stat(webDistIndex); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("web build output missing %s", webDistIndex)
+		}
+		return fmt.Errorf("stat web build output %s: %w", webDistIndex, err)
+	}
+	return nil
+}
+
+func WebAssetsDigest() error {
+	if err := ensureWebDist(); err != nil {
+		return err
+	}
+	digest, err := directoryDigest(webDistDir)
+	if err != nil {
+		return fmt.Errorf("digest local web build: %w", err)
+	}
+	fmt.Println(digest)
+	return nil
+}
+
+func WebAssetsPrepare(assetsRepoDir string, sourceCommit string) error {
+	assetsRepoDir = strings.TrimSpace(assetsRepoDir)
+	if assetsRepoDir == "" {
+		return errors.New("assets repo directory is required")
+	}
+	sourceCommit = strings.TrimSpace(sourceCommit)
+	if sourceCommit == "" {
+		return errors.New("source commit is required")
+	}
+	if err := ensureWebDist(); err != nil {
+		return err
+	}
+	absAssetsRepoDir, err := filepath.Abs(assetsRepoDir)
+	if err != nil {
+		return fmt.Errorf("resolve assets repo dir %q: %w", assetsRepoDir, err)
+	}
+	digest, err := directoryDigest(webDistDir)
+	if err != nil {
+		return fmt.Errorf("digest local web build: %w", err)
+	}
+	metadata := webAssetsMetadata{
+		BuildDigest:      digest,
+		SourceRepository: webAssetsSourceRepository,
+		SourceCommit:     sourceCommit,
+	}
+	if err := prepareWebAssetsRepo(webDistDir, absAssetsRepoDir, metadata); err != nil {
+		return err
+	}
+	fmt.Println(digest)
+	return nil
+}
+
+func WebAssetsNextTag(assetsRepoDir string) error {
+	assetsRepoDir = strings.TrimSpace(assetsRepoDir)
+	if assetsRepoDir == "" {
+		return errors.New("assets repo directory is required")
+	}
+	tags, err := gitTags(assetsRepoDir)
+	if err != nil {
+		return err
+	}
+	next, err := nextWebAssetsTag(tags)
+	if err != nil {
+		return err
+	}
+	fmt.Println(next)
+	return nil
+}
+
+func WebAssetsCheck() error {
+	if err := ensureWebDist(); err != nil {
+		return err
+	}
+	moduleDir, err := webAssetsModuleDir(context.Background())
+	if err != nil {
+		return err
+	}
+	localDigest, err := directoryDigest(webDistDir)
+	if err != nil {
+		return fmt.Errorf("digest local web build: %w", err)
+	}
+	moduleDigest, err := directoryDigest(filepath.Join(moduleDir, webAssetsModuleDistDir))
+	if err != nil {
+		return fmt.Errorf("digest %s module assets: %w", webAssetsModulePath, err)
+	}
+	metadata, err := readWebAssetsMetadata(moduleDir)
+	if err != nil {
+		return err
+	}
+	if metadata.BuildDigest != "" && metadata.BuildDigest != moduleDigest {
+		return fmt.Errorf(
+			"%s metadata digest %s differs from module dist digest %s",
+			webAssetsModulePath,
+			metadata.BuildDigest,
+			moduleDigest,
+		)
+	}
+	if metadata.SourceRepository != "" && metadata.SourceRepository != webAssetsSourceRepository {
+		return fmt.Errorf(
+			"%s metadata source repository %q differs from %q",
+			webAssetsModulePath,
+			metadata.SourceRepository,
+			webAssetsSourceRepository,
+		)
+	}
+	if localDigest != moduleDigest {
+		return fmt.Errorf(
+			"%s is stale: local %s digest %s differs from module %s digest %s",
+			webAssetsModulePath,
+			webDistDir,
+			localDigest,
+			webAssetsModuleDistDir,
+			moduleDigest,
+		)
+	}
+	return nil
+}
+
+func WebAssetsDeterminismCheck() error {
+	return webAssetsDeterminismCheck(
+		WebBuild,
+		func() error {
+			return os.RemoveAll(webDistDir)
+		},
+		func() (string, error) {
+			return directoryDigest(webDistDir)
+		},
+	)
+}
+
+func WebAssetsPublicCheck() error {
+	ctx := context.Background()
+	version, err := pinnedWebAssetsVersion(ctx)
+	if err != nil {
+		return err
+	}
+	return webAssetsPublicCheck(ctx, version)
+}
+
+func ReleaseInstallCheck() error {
+	return runMageSteps([]mageStep{
+		{name: "WebBuild", run: WebBuild},
+		{name: "WebAssetsDeterminismCheck", run: WebAssetsDeterminismCheck},
+		{name: "WebAssetsCheck", run: WebAssetsCheck},
+		{name: "WebAssetsPublicCheck", run: WebAssetsPublicCheck},
+		{name: "SourceInstallCheck", run: SourceInstallCheck},
+	})
+}
+
+func webAssetsModuleDir(ctx context.Context) (string, error) {
+	if err := runCommandInDir(ctx, ".", "go", "mod", "download", webAssetsModulePath); err != nil {
+		return "", err
+	}
+	cmd := exec.CommandContext(ctx, "go", "list", "-m", "-f", "{{.Dir}}", webAssetsModulePath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("locate %s module: %w\n%s", webAssetsModulePath, err, output)
+	}
+	moduleDir := strings.TrimSpace(string(output))
+	if moduleDir == "" {
+		return "", fmt.Errorf("locate %s module: go list returned an empty directory", webAssetsModulePath)
+	}
+	return moduleDir, nil
+}
+
+func directoryDigest(root string) (string, error) {
+	paths := make([]string, 0)
+	if err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return fmt.Errorf("walk %q: %w", path, walkErr)
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return fmt.Errorf("stat %q: %w", path, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("%q is a symlink; embedded web assets must be regular files", path)
+		}
+		paths = append(paths, path)
+		return nil
+	}); err != nil {
+		return "", err
+	}
+	if len(paths) == 0 {
+		return "", fmt.Errorf("%s contains no files", root)
+	}
+	sort.Strings(paths)
+	hash := sha256.New()
+	for _, path := range paths {
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return "", fmt.Errorf("resolve %q relative to %q: %w", path, root, err)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", fmt.Errorf("read %q: %w", path, err)
+		}
+		hash.Write([]byte(filepath.ToSlash(rel)))
+		hash.Write([]byte{0})
+		hash.Write(data)
+		hash.Write([]byte{0})
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+type webAssetsMetadata struct {
+	BuildDigest      string
+	SourceRepository string
+	SourceCommit     string
+}
+
+func prepareWebAssetsRepo(srcDistDir string, assetsRepoDir string, metadata webAssetsMetadata) error {
+	if metadata.BuildDigest == "" {
+		return errors.New("web assets build digest is required")
+	}
+	if metadata.SourceRepository == "" {
+		return errors.New("web assets source repository is required")
+	}
+	if metadata.SourceCommit == "" {
+		return errors.New("web assets source commit is required")
+	}
+	info, err := os.Stat(assetsRepoDir)
+	if err != nil {
+		return fmt.Errorf("stat assets repo dir %q: %w", assetsRepoDir, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("assets repo path %q is not a directory", assetsRepoDir)
+	}
+	destDistDir := filepath.Join(assetsRepoDir, webAssetsModuleDistDir)
+	if err := os.RemoveAll(destDistDir); err != nil {
+		return fmt.Errorf("remove existing assets dist %q: %w", destDistDir, err)
+	}
+	if err := copyWebAssetsDist(srcDistDir, destDistDir); err != nil {
+		return err
+	}
+	return writeWebAssetsMetadata(assetsRepoDir, metadata)
+}
+
+func copyWebAssetsDist(srcDir string, destDir string) error {
+	return filepath.WalkDir(srcDir, func(srcPath string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return fmt.Errorf("walk %q: %w", srcPath, walkErr)
+		}
+		rel, err := filepath.Rel(srcDir, srcPath)
+		if err != nil {
+			return fmt.Errorf("resolve %q relative to %q: %w", srcPath, srcDir, err)
+		}
+		destPath := filepath.Join(destDir, rel)
+		if entry.IsDir() {
+			return os.MkdirAll(destPath, 0o755)
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return fmt.Errorf("stat %q: %w", srcPath, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("%q is a symlink; web assets module dist must contain regular files", srcPath)
+		}
+		data, err := os.ReadFile(srcPath)
+		if err != nil {
+			return fmt.Errorf("read %q: %w", srcPath, err)
+		}
+		if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+			return fmt.Errorf("create parent for %q: %w", destPath, err)
+		}
+		mode := info.Mode().Perm()
+		if mode == 0 {
+			mode = 0o644
+		}
+		if err := os.WriteFile(destPath, data, mode); err != nil {
+			return fmt.Errorf("write %q: %w", destPath, err)
+		}
+		return nil
+	})
+}
+
+func writeWebAssetsMetadata(assetsRepoDir string, metadata webAssetsMetadata) error {
+	content := strings.Join([]string{
+		"// Package webassets embeds the production AGH web UI bundle.",
+		"package webassets",
+		"",
+		"import \"embed\"",
+		"",
+		"// DistDir is the root directory embedded in DistFS.",
+		"const DistDir = \"dist\"",
+		"",
+		"const (",
+		"\tBuildDigest = " + strconv.Quote(metadata.BuildDigest),
+		"\tSourceRepository = " + strconv.Quote(metadata.SourceRepository),
+		"\tSourceCommit = " + strconv.Quote(metadata.SourceCommit),
+		")",
+		"",
+		"// DistFS embeds the generated production AGH web UI bundle.",
+		"//",
+		"//go:embed all:dist",
+		"var DistFS embed.FS",
+		"",
+	}, "\n")
+	path := filepath.Join(assetsRepoDir, webAssetsMetadataFile)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("write web assets metadata %q: %w", path, err)
+	}
+	return nil
+}
+
+func readWebAssetsMetadata(moduleDir string) (webAssetsMetadata, error) {
+	data, err := os.ReadFile(filepath.Join(moduleDir, webAssetsMetadataFile))
+	if err != nil {
+		return webAssetsMetadata{}, fmt.Errorf("read %s metadata: %w", webAssetsModulePath, err)
+	}
+	source := string(data)
+	return webAssetsMetadata{
+		BuildDigest:      goStringConst(source, "BuildDigest"),
+		SourceRepository: goStringConst(source, "SourceRepository"),
+		SourceCommit:     goStringConst(source, "SourceCommit"),
+	}, nil
+}
+
+func goStringConst(source string, name string) string {
+	for _, line := range strings.Split(source, "\n") {
+		line = strings.TrimSpace(line)
+		left, right, ok := strings.Cut(line, "=")
+		if !ok || strings.TrimSpace(left) != name {
+			continue
+		}
+		fields := strings.Fields(strings.TrimSpace(right))
+		if len(fields) == 0 {
+			return ""
+		}
+		value, err := strconv.Unquote(fields[0])
+		if err != nil {
+			return ""
+		}
+		return value
+	}
+	return ""
+}
+
+func gitTags(dir string) ([]string, error) {
+	cmd := exec.Command("git", "-C", dir, "tag", "--list", "v*")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("list assets tags in %q: %w", dir, err)
+	}
+	lines := strings.Split(string(output), "\n")
+	tags := make([]string, 0, len(lines))
+	for _, line := range lines {
+		tag := strings.TrimSpace(line)
+		if tag != "" {
+			tags = append(tags, tag)
+		}
+	}
+	return tags, nil
+}
+
+type webAssetsSemver struct {
+	major int
+	minor int
+	patch int
+}
+
+func nextWebAssetsTag(tags []string) (string, error) {
+	var highest webAssetsSemver
+	found := false
+	for _, tag := range tags {
+		version, ok := parseWebAssetsSemver(tag)
+		if !ok {
+			continue
+		}
+		if !found || compareWebAssetsSemver(version, highest) > 0 {
+			highest = version
+			found = true
+		}
+	}
+	if !found {
+		return "v0.0.1", nil
+	}
+	if highest.patch == int(^uint(0)>>1) {
+		return "", fmt.Errorf("cannot increment patch version for %v", highest)
+	}
+	highest.patch++
+	return fmt.Sprintf("v%d.%d.%d", highest.major, highest.minor, highest.patch), nil
+}
+
+func parseWebAssetsSemver(tag string) (webAssetsSemver, bool) {
+	raw := strings.TrimPrefix(strings.TrimSpace(tag), "v")
+	parts := strings.Split(raw, ".")
+	if len(parts) != 3 {
+		return webAssetsSemver{}, false
+	}
+	values := [3]int{}
+	for idx, part := range parts {
+		value, err := strconv.Atoi(part)
+		if err != nil || value < 0 {
+			return webAssetsSemver{}, false
+		}
+		values[idx] = value
+	}
+	return webAssetsSemver{major: values[0], minor: values[1], patch: values[2]}, true
+}
+
+func compareWebAssetsSemver(left webAssetsSemver, right webAssetsSemver) int {
+	if left.major != right.major {
+		return left.major - right.major
+	}
+	if left.minor != right.minor {
+		return left.minor - right.minor
+	}
+	return left.patch - right.patch
+}
+
+func webAssetsDeterminismCheck(
+	build func() error,
+	clean func() error,
+	digest func() (string, error),
+) error {
+	if err := clean(); err != nil {
+		return fmt.Errorf("clean first web build: %w", err)
+	}
+	if err := build(); err != nil {
+		return fmt.Errorf("first web build: %w", err)
+	}
+	firstDigest, err := digest()
+	if err != nil {
+		return fmt.Errorf("digest first web build: %w", err)
+	}
+	if err := clean(); err != nil {
+		return fmt.Errorf("clean second web build: %w", err)
+	}
+	if err := build(); err != nil {
+		return fmt.Errorf("second web build: %w", err)
+	}
+	secondDigest, err := digest()
+	if err != nil {
+		return fmt.Errorf("digest second web build: %w", err)
+	}
+	if firstDigest != secondDigest {
+		return fmt.Errorf("web build is not deterministic: first digest %s, second digest %s", firstDigest, secondDigest)
+	}
+	return nil
+}
+
+func pinnedWebAssetsVersion(ctx context.Context) (string, error) {
+	cmd := exec.CommandContext(ctx, "go", "list", "-m", "-f", "{{.Version}}", webAssetsModulePath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("resolve pinned %s version: %w\n%s", webAssetsModulePath, err, output)
+	}
+	version := strings.TrimSpace(string(output))
+	if version == "" {
+		return "", fmt.Errorf("resolve pinned %s version: empty version", webAssetsModulePath)
+	}
+	return version, nil
+}
+
+func webAssetsPublicCheck(ctx context.Context, version string) error {
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return errors.New("web assets module version is required")
+	}
+	tmpDir, err := os.MkdirTemp("", "agh-web-assets-public-check-")
+	if err != nil {
+		return fmt.Errorf("create web assets public check dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	env := map[string]string{
+		"GO111MODULE": "on",
+		"GOFLAGS":     "-mod=mod",
+		"GOMODCACHE":  filepath.Join(tmpDir, "mod"),
+		"GONOSUMDB":   "",
+		"GOPATH":      filepath.Join(tmpDir, "gopath"),
+		"GOPRIVATE":   "",
+		"GOPROXY":     "https://proxy.golang.org,direct",
+		"GOSUMDB":     "sum.golang.org",
+	}
+	moduleVersion := webAssetsModulePath + "@" + version
+	if err := runCommandInDirWithEnv(ctx, tmpDir, env, "go", "list", "-m", moduleVersion); err != nil {
+		return fmt.Errorf("public resolve %s: %w", moduleVersion, err)
+	}
+	return nil
 }
 
 // DaytonaSidecars regenerates embedded Linux launcher sidecar assets.
@@ -424,6 +921,118 @@ func buildGo() error {
 	}
 	out := filepath.Join(binDir, cliBinary)
 	return sh.RunV("go", "build", "-ldflags", ldflags, "-o", out, "./cmd/"+cliBinary)
+}
+
+// SourceInstallCheck verifies the public root go install path from source-visible files.
+func SourceInstallCheck() error {
+	tmpRoot, err := os.MkdirTemp("", "agh-source-install-check-")
+	if err != nil {
+		return fmt.Errorf("create source install check dir: %w", err)
+	}
+	defer os.RemoveAll(tmpRoot)
+
+	sourceDir := filepath.Join(tmpRoot, "src")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		return fmt.Errorf("create source install check source dir: %w", err)
+	}
+	if err := copySourceInstallFiles(sourceDir); err != nil {
+		return err
+	}
+
+	binDir := filepath.Join(tmpRoot, "bin")
+	env := map[string]string{
+		"CGO_ENABLED":    "0",
+		"GOBIN":          binDir,
+		"GOMODCACHE":     filepath.Join(tmpRoot, "mod"),
+		"GOPATH":         filepath.Join(tmpRoot, "gopath"),
+		webDistDirEnvVar: "",
+	}
+	if err := runCommandInDirWithEnv(context.Background(), sourceDir, env, "go", "install", "."); err != nil {
+		return fmt.Errorf("source install go install .: %w", err)
+	}
+	binary := filepath.Join(binDir, cliBinary)
+	if runtime.GOOS == "windows" {
+		binary += ".exe"
+	}
+	if err := runCommandInDirWithEnv(context.Background(), sourceDir, env, binary, "version"); err != nil {
+		return fmt.Errorf("source install agh version: %w", err)
+	}
+	if err := runCommandInDirWithEnv(
+		context.Background(),
+		sourceDir,
+		env,
+		"go",
+		"test",
+		"./internal/api/httpapi",
+		"-run",
+		"TestStaticRoutesServeEmbedded(IndexForRootAndDeepLinks|Assets)$",
+		"-count=1",
+	); err != nil {
+		return fmt.Errorf("source install embedded web asset test: %w", err)
+	}
+	return nil
+}
+
+func copySourceInstallFiles(destRoot string) error {
+	files, err := gitSourceInstallFiles()
+	if err != nil {
+		return err
+	}
+	for _, rel := range files {
+		info, err := os.Lstat(rel)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return fmt.Errorf("stat source install file %q: %w", rel, err)
+		}
+		if info.IsDir() {
+			continue
+		}
+		dest := filepath.Join(destRoot, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+			return fmt.Errorf("create source install parent for %q: %w", rel, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			target, err := os.Readlink(rel)
+			if err != nil {
+				return fmt.Errorf("read source install symlink %q: %w", rel, err)
+			}
+			if err := os.Symlink(target, dest); err != nil {
+				return fmt.Errorf("write source install symlink %q: %w", rel, err)
+			}
+			continue
+		}
+		data, err := os.ReadFile(rel)
+		if err != nil {
+			return fmt.Errorf("read source install file %q: %w", rel, err)
+		}
+		mode := info.Mode().Perm()
+		if mode == 0 {
+			mode = 0o644
+		}
+		if err := os.WriteFile(dest, data, mode); err != nil {
+			return fmt.Errorf("write source install file %q: %w", rel, err)
+		}
+	}
+	return nil
+}
+
+func gitSourceInstallFiles() ([]string, error) {
+	cmd := exec.Command("git", "ls-files", "-z", "-c", "-o", "--exclude-standard")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("list source install files: %w", err)
+	}
+	parts := bytes.Split(out, []byte{0})
+	files := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if len(part) == 0 {
+			continue
+		}
+		files = append(files, filepath.ToSlash(string(part)))
+	}
+	return files, nil
 }
 
 // Boundaries verifies that package import rules are not violated.
@@ -556,26 +1165,31 @@ func Boundaries() error {
 }
 
 func Verify() error {
-	steps := []func() error{
-		CodegenCheck,
-		InstallerCheck,
-		BunLint,
-		BunTypecheck,
-		BunTest,
-		WebBuild,
-		Fmt,
-		Lint,
-		Test,
-		buildGo,
-		Boundaries,
-	}
+	return runMageSteps(verifySteps())
+}
 
+func verifySteps() []mageStep {
+	return []mageStep{
+		{name: "CodegenCheck", run: CodegenCheck},
+		{name: "InstallerCheck", run: InstallerCheck},
+		{name: "BunLint", run: BunLint},
+		{name: "BunTypecheck", run: BunTypecheck},
+		{name: "BunTest", run: BunTest},
+		{name: "WebBuild", run: WebBuild},
+		{name: "Fmt", run: Fmt},
+		{name: "Lint", run: Lint},
+		{name: "Test", run: Test},
+		{name: "buildGo", run: buildGo},
+		{name: "Boundaries", run: Boundaries},
+	}
+}
+
+func runMageSteps(steps []mageStep) error {
 	for _, step := range steps {
-		if err := step(); err != nil {
+		if err := step.run(); err != nil {
 			return err
 		}
 	}
-
 	return nil
 }
 
@@ -636,17 +1250,19 @@ func gitOutput(args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-func ensureWebBundle() error {
-	if _, err := os.Stat(webDistIndex); err == nil {
-		return nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
+func ensureWebAssets() error {
+	if _, err := os.Stat(webDistIndex); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		if err := CodegenCheck(); err != nil {
+			return err
+		}
+		if err := WebBuild(); err != nil {
+			return err
+		}
 	}
-
-	if err := CodegenCheck(); err != nil {
-		return err
-	}
-	return WebBuild()
+	return ensureWebDist()
 }
 
 func runE2ELane(lane e2elane.Lane) (runErr error) {
@@ -658,7 +1274,7 @@ func runE2ELane(lane e2elane.Lane) (runErr error) {
 	}
 
 	if shouldEnsureWebBundle(plan) {
-		if err := ensureWebBundle(); err != nil {
+		if err := ensureWebAssets(); err != nil {
 			return err
 		}
 	}
@@ -740,11 +1356,25 @@ func prepareE2ELaneEnv() (e2eLaneEnv, error) {
 	}
 	cleanups = append(cleanups, cleanup)
 
+	values := map[string]string{
+		daemonBinaryEnvVar: daemonPath,
+		driverBinaryEnvVar: driverPath,
+	}
+	if _, err := os.Stat(webDistIndex); err == nil {
+		absWebDistDir, absErr := filepath.Abs(webDistDir)
+		if absErr != nil {
+			return e2eLaneEnv{}, errors.Join(
+				fmt.Errorf("resolve %s for e2e lane: %w", webDistDir, absErr),
+				runCleanups(cleanups),
+			)
+		}
+		values[webDistDirEnvVar] = absWebDistDir
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return e2eLaneEnv{}, errors.Join(err, runCleanups(cleanups))
+	}
+
 	return e2eLaneEnv{
-		Values: map[string]string{
-			daemonBinaryEnvVar: daemonPath,
-			driverBinaryEnvVar: driverPath,
-		},
+		Values: values,
 		cleanup: func() error {
 			return runCleanups(cleanups)
 		},

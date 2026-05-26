@@ -168,6 +168,7 @@
         ".resources/**",
         ".claude/skills/**",
         ".agents/skills/**",
+        "web/dist/**",
         "**/routeTree.gen.ts",
         ".compozy/tasks/**",
         "docs/design/**"

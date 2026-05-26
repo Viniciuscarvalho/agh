@@ -25,7 +25,7 @@ const INSTALL_TABS: { id: TabId; label: string; command: string; note: string }[
   {
     id: "go",
     label: "Go",
-    command: "go install github.com/compozy/agh/cmd/agh@latest",
+    command: "go install github.com/compozy/agh@latest",
     note: "Requires Go · builds the current release from the public module",
   },
 ];

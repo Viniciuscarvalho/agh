@@ -100,13 +100,11 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
 
       <main className="flex min-h-0 flex-col bg-canvas">
         <header className="flex-none border-b border-line px-8 py-6">
-          <div className="mx-auto max-w-2xl">
-            <Eyebrow className="text-accent">{wizard.meta.eyebrow}</Eyebrow>
-            <h2 className="mt-2 text-detail-h2 font-medium tracking-detail-h2 text-fg-strong">
-              {wizard.meta.title}
-            </h2>
-            <p className="mt-2 max-w-xl text-small-body leading-6 text-muted">{wizard.meta.lead}</p>
-          </div>
+          <Eyebrow className="text-accent">{wizard.meta.eyebrow}</Eyebrow>
+          <h2 className="mt-2 text-detail-h2 font-medium tracking-detail-h2 text-fg-strong">
+            {wizard.meta.title}
+          </h2>
+          <p className="mt-2 text-small-body leading-6 text-muted">{wizard.meta.lead}</p>
         </header>
 
         {wizard.step === 3 ? (
