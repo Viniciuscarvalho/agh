@@ -139,13 +139,8 @@ jobs:
           fi
           echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
 
-      - name: Verify npm publish authentication
+      - name: Verify npm package version availability
         run: |
-          if [ -z "${NPM_TOKEN:-}" ]; then
-            echo "::error::NPM_TOKEN is required to publish @compozy/agh"
-            exit 1
-          fi
-          npm whoami --registry=https://registry.npmjs.org
           npm_view_output="$(mktemp)"
           if npm view "@compozy/agh@${RELEASE_VERSION}" version --registry=https://registry.npmjs.org >"$npm_view_output" 2>&1; then
             echo "::error::@compozy/agh@${RELEASE_VERSION} is already published and npm versions are immutable"

@@ -497,20 +497,39 @@ func TestPackagingMetadataStaysAlignedWithRuntimeAndInstaller(t *testing.T) {
 		assertWorkflowRunBeforeUses(
 			t,
 			dryRunSteps,
-			"npm whoami --registry=https://registry.npmjs.org",
+			"npm view \"@compozy/agh@${RELEASE_VERSION}\" version --registry=https://registry.npmjs.org",
 			"./.github/actions/setup-release",
+		)
+		dryRunCommands := strings.Join(workflowRunCommands(t, dryRunSteps), "\n")
+		for _, unwanted := range []string{
+			"NPM_TOKEN is required to publish @compozy/agh",
+			"npm whoami --registry=https://registry.npmjs.org",
+		} {
+			if strings.Contains(dryRunCommands, unwanted) {
+				t.Fatalf(
+					"dry-run commands contain %q, want npm publish authentication only in production release",
+					unwanted,
+				)
+			}
+		}
+		assertWorkflowRunBeforeUses(
+			t,
+			releaseSteps,
+			"npm whoami --registry=https://registry.npmjs.org",
+			"goreleaser/goreleaser-action@v6",
 		)
 		assertWorkflowRunBeforeUses(
 			t,
-			dryRunSteps,
+			releaseSteps,
 			"npm view \"@compozy/agh@${RELEASE_VERSION}\" version --registry=https://registry.npmjs.org",
-			"./.github/actions/setup-release",
+			"goreleaser/goreleaser-action@v6",
 		)
 		for _, snippet := range []string{
 			"AGH_WEB_ASSETS_TOKEN: ${{ secrets.AGH_WEB_ASSETS_TOKEN || secrets.RELEASE_TOKEN }}",
 			"name: Resolve dry-run release version",
 			"echo \"RELEASE_VERSION=$VERSION\" >> \"$GITHUB_ENV\"",
 			"echo \"RELEASE_TAG=$TAG\" >> \"$GITHUB_ENV\"",
+			"name: Verify npm package version availability",
 			"name: Verify npm publish authentication",
 			"NPM_TOKEN is required to publish @compozy/agh",
 			"npm whoami --registry=https://registry.npmjs.org",
