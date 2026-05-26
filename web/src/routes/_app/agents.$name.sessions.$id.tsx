@@ -59,11 +59,13 @@ function SessionPageContent({
           sessionId={sessionId}
           agentName={agentName}
           canPrompt={controls.canPrompt}
-          onCancelPrompt={controls.handleCancelPrompt}
+          onCancelPrompt={controls.handleStop}
           onQueuePrompt={controls.handleQueuePrompt}
           onInterruptPrompt={controls.handleInterruptPrompt}
           onSteerPrompt={controls.handleSteerPrompt}
           isBusyInputPending={controls.isBusyInputPending}
+          isSessionRunning={controls.isSessionRunning}
+          allowBusyInput={controls.allowBusyInput}
           onClearConversation={controls.handleClear}
           canClearConversation={controls.canClear}
           isClearingConversation={controls.isClearing}

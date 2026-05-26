@@ -16,6 +16,28 @@ import type { NetworkChannelSummary, NetworkRecentEntry, NetworkSurface } from "
 
 const allChannels: NetworkChannelSummary[] = [...networkChannelsFixture.channels];
 
+const longPreviewRecents: NetworkRecentEntry[] = [
+  {
+    surface: "thread" satisfies NetworkSurface,
+    channel: "design",
+    containerId: "thread_design_redesign",
+    preview:
+      "Kicking off a new thread to coordinate a redesign of the network shell and recents rail.",
+    lastActivityAt: "2026-05-26T01:42:00Z",
+    hasUnread: true,
+    participantLabel: "3 peers",
+  },
+  {
+    surface: "direct" satisfies NetworkSurface,
+    channel: "design",
+    containerId: "direct_design_review",
+    preview: "Can you review the typography tokens before we ship the sidebar density pass?",
+    lastActivityAt: "2026-05-26T00:15:00Z",
+    hasUnread: false,
+    participantLabel: "two-party",
+  },
+];
+
 const recents: NetworkRecentEntry[] = [
   {
     surface: "thread" satisfies NetworkSurface,
@@ -142,6 +164,21 @@ export const RailPrimitives: StoryObj<typeof ChannelRailRow> = {
         <ChannelRailRecents
           workspaceId={storyDefaultWorkspaceId}
           recents={recents}
+          isLoading={false}
+        />
+      </div>
+    </PanelSurface>
+  ),
+};
+
+/** Recents rows with long preview copy at narrow rail width — verifies preview truncation. */
+export const LongPreviewRecents: StoryObj<typeof ChannelRailRecents> = {
+  render: () => (
+    <PanelSurface className="min-h-[360px] p-4">
+      <div className="max-w-[220px]">
+        <ChannelRailRecents
+          workspaceId={storyDefaultWorkspaceId}
+          recents={longPreviewRecents}
           isLoading={false}
         />
       </div>

@@ -36,6 +36,7 @@ import {
   CHANNEL_RAIL_WIDTH_MD,
   ChannelRail,
 } from "../channel-rail";
+import { ChannelRailRecents } from "../channel-rail-recents";
 import type { NetworkChannelSummary, NetworkRecentEntry } from "@/systems/network";
 
 const WORKSPACE_ID = "ws_alpha";
@@ -174,6 +175,38 @@ describe("ChannelRail", () => {
     expect(directRecent).toBeDefined();
     expect(threadRecent.querySelector("[aria-label='Thread']")).not.toBeNull();
     expect(directRecent.querySelector("[aria-label='Direct room']")).not.toBeNull();
+  });
+
+  it("Should truncate long recents preview on a separate row from the channel tag", () => {
+    const longPreview =
+      "Kicking off a new thread to coordinate a redesign of the network shell and recents rail.";
+    const longRecents: NetworkRecentEntry[] = [
+      {
+        surface: "thread",
+        channel: "design",
+        containerId: "thread_long_preview",
+        preview: longPreview,
+        lastActivityAt: "2026-05-26T01:42:00Z",
+        hasUnread: true,
+        participantLabel: "3 peers",
+      },
+    ];
+
+    render(
+      <ChannelRailRecents workspaceId={WORKSPACE_ID} recents={longRecents} isLoading={false} />
+    );
+
+    const previewRow = screen.getByTestId("network-recents-preview-row-thread_long_preview");
+    const preview = screen.getByTestId("network-recents-preview-thread_long_preview");
+    const timestamp = screen.getByTestId("network-recents-time-thread_long_preview");
+    const channelRow = screen.getByTestId("network-recents-channel-row-thread_long_preview");
+
+    expect(preview).toHaveClass("min-w-0", "flex-1", "truncate");
+    expect(preview).toHaveAttribute("title", longPreview);
+    expect(previewRow).toContainElement(preview);
+    expect(previewRow).toContainElement(timestamp);
+    expect(channelRow).toHaveTextContent("#design");
+    expect(previewRow).not.toContainElement(channelRow);
   });
 
   it("invokes togglePinned when the pin affordance is clicked", async () => {

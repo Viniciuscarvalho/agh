@@ -2,7 +2,6 @@ import { Link, useMatchRoute } from "@tanstack/react-router";
 import {
   Book,
   Boxes,
-  ChevronsUpDown,
   Clock3,
   KeyRound,
   LayoutDashboard,
@@ -25,7 +24,7 @@ import {
 } from "@/components/sidebar-nav-classes";
 import { AgentCategoryTree, type AgentPayload } from "@/systems/agent";
 import { isSessionRunning, type SessionPayload } from "@/systems/session";
-import type { WorkspacePayload } from "@/systems/workspace";
+import { WorkspaceCommandSelect, type WorkspacePayload } from "@/systems/workspace";
 
 import { RuntimeConnectionIndicator } from "./connection-indicator";
 import { RestartDaemonButton } from "./restart-daemon-button";
@@ -260,38 +259,6 @@ function SectionLabel({ children, className }: { children: React.ReactNode; clas
   );
 }
 
-interface WorkspaceSwitcherProps {
-  workspace: WorkspacePayload | undefined;
-}
-
-function WorkspaceSwitcher({ workspace }: WorkspaceSwitcherProps) {
-  const label = workspace?.name ?? "No workspace";
-  const initial = label.charAt(0).toUpperCase() || "·";
-
-  return (
-    <div data-testid="workspace-switcher" className="flex h-12 w-full items-center gap-2.5 px-2">
-      <span
-        aria-hidden="true"
-        data-testid="workspace-switcher-avatar"
-        className="inline-flex size-button-icon-xs shrink-0 items-center justify-center rounded-sm bg-elevated font-mono text-eyebrow font-medium tracking-mono text-fg"
-      >
-        {initial}
-      </span>
-      <span
-        data-testid="workspace-switcher-name"
-        className="min-w-0 flex-1 truncate text-small-body font-medium tracking-tight text-fg"
-      >
-        {label}
-      </span>
-      <ChevronsUpDown
-        aria-hidden="true"
-        data-testid="workspace-switcher-chevron"
-        className="size-3 shrink-0 text-subtle"
-      />
-    </div>
-  );
-}
-
 interface FooterSlotProps {
   activeSessionCount: number;
 }
@@ -326,7 +293,6 @@ function AppSidebar({
   onCollapseChange,
   workspaces,
   activeWorkspaceId,
-  activeWorkspace,
   onSelectWorkspace,
   onAddWorkspace,
   onAddAgent,
@@ -351,7 +317,14 @@ function AppSidebar({
           onAddWorkspace={onAddWorkspace}
         />
       }
-      header={<WorkspaceSwitcher workspace={activeWorkspace} />}
+      header={
+        <WorkspaceCommandSelect
+          workspaces={workspaces}
+          value={activeWorkspaceId}
+          onChange={onSelectWorkspace}
+          onAddWorkspace={onAddWorkspace}
+        />
+      }
       nav={
         <NavSlot
           agents={agents}

@@ -22,6 +22,10 @@ AGH is a local-first agent operating system. It runs the agent CLIs you already 
 
 The complete documentation lives at [agh.network](https://agh.network).
 
+<div align="center">
+  <img src="docs/design/screen.png" alt="AGH" width="100%">
+</div>
+
 ## Highlights
 
 - **AGH Network.** Active sessions become peers — they discover each other, exchange typed envelopes on `agh-network/v0` channels, and close work with receipts.

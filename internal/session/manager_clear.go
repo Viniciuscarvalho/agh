@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -66,6 +67,15 @@ func (m *Manager) ClearConversation(ctx context.Context, id string) (_ *Session,
 	if err != nil {
 		return nil, err
 	}
+	m.clearLogger().Info(
+		"session.clear.backup_complete",
+		"session_id",
+		target,
+		"backup_count",
+		len(backups),
+		"db_path",
+		dbPath,
+	)
 
 	defer func() {
 		if err == nil {
@@ -90,8 +100,22 @@ func (m *Manager) ClearConversation(ctx context.Context, id string) (_ *Session,
 	if commitErr := commitSessionDBClear(dbPath); commitErr != nil {
 		return nil, fmt.Errorf("session: commit cleared event store for %q: %w", target, commitErr)
 	}
+	m.clearLogger().Info(
+		"session.clear.restart_complete",
+		"session_id",
+		target,
+		"db_path",
+		dbPath,
+	)
 
 	return session, nil
+}
+
+func (m *Manager) clearLogger() *slog.Logger {
+	if m != nil && m.logger != nil {
+		return m.logger
+	}
+	return slog.Default()
 }
 
 func clearedConversationMeta(meta store.SessionMeta, now time.Time) store.SessionMeta {

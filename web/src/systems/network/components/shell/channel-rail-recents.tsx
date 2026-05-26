@@ -6,9 +6,7 @@ import {
   Eyebrow,
   Item,
   ItemContent,
-  ItemFooter,
   ItemMedia,
-  ItemTitle,
   SidebarSectionLabel,
   Skeleton,
   SkeletonRows,
@@ -25,6 +23,48 @@ export interface ChannelRailRecentsProps {
   isLoading: boolean;
 }
 
+function RecentEntryContent({
+  entry,
+  timestampLabel,
+}: {
+  entry: NetworkRecentEntry;
+  timestampLabel: string | null;
+}) {
+  return (
+    <ItemContent className="min-w-0 flex-1 gap-0.5">
+      <div
+        className="flex min-w-0 items-center gap-2"
+        data-testid={`network-recents-preview-row-${entry.containerId}`}
+      >
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate text-xs",
+            entry.hasUnread ? "font-medium text-fg" : "text-muted"
+          )}
+          data-testid={`network-recents-preview-${entry.containerId}`}
+          title={entry.preview}
+        >
+          {entry.preview}
+        </span>
+        {timestampLabel ? (
+          <Eyebrow className="shrink-0" data-testid={`network-recents-time-${entry.containerId}`}>
+            {timestampLabel}
+          </Eyebrow>
+        ) : null}
+      </div>
+      <div
+        className="flex items-center gap-2"
+        data-testid={`network-recents-channel-row-${entry.containerId}`}
+      >
+        {entry.surface === "direct" ? (
+          <span className="shrink-0 text-subtle text-xs">in</span>
+        ) : null}
+        <Eyebrow className="shrink-0">#{entry.channel}</Eyebrow>
+      </div>
+    </ItemContent>
+  );
+}
+
 function RecentEntryRow({
   workspaceId,
   entry,
@@ -37,53 +77,28 @@ function RecentEntryRow({
   const timestampLabel = entry.lastActivityAt
     ? formatNetworkRelativeTime(entry.lastActivityAt)
     : null;
-
-  if (entry.surface === "thread") {
-    return (
-      <Item
-        className="rounded-mono-badge border-transparent py-1 text-xs"
-        data-testid={`network-recents-thread-${entry.containerId}`}
-        render={
-          <Link
-            params={{ workspaceId, channel: entry.channel, threadId: entry.containerId }}
-            to="/network/$workspaceId/$channel/threads/$threadId"
-          />
-        }
-        selectable
-        size="xs"
-      >
-        <ItemMedia>
-          <Icon aria-label={ariaLabel} className="size-3 shrink-0 text-subtle" />
-        </ItemMedia>
-        <ItemContent className="min-w-0">
-          <ItemTitle
-            className={cn(
-              "min-w-0 text-xs",
-              entry.hasUnread ? "font-medium text-fg" : "text-muted"
-            )}
-          >
-            <span className="truncate">{entry.preview}</span>
-            <Eyebrow className="shrink-0">#{entry.channel}</Eyebrow>
-          </ItemTitle>
-        </ItemContent>
-        {timestampLabel ? (
-          <ItemFooter className="basis-auto">
-            <Eyebrow className="shrink-0">{timestampLabel}</Eyebrow>
-          </ItemFooter>
-        ) : null}
-      </Item>
-    );
-  }
+  const isThread = entry.surface === "thread";
 
   return (
     <Item
       className="rounded-mono-badge border-transparent py-1 text-xs"
-      data-testid={`network-recents-direct-${entry.containerId}`}
+      data-testid={
+        isThread
+          ? `network-recents-thread-${entry.containerId}`
+          : `network-recents-direct-${entry.containerId}`
+      }
       render={
-        <Link
-          params={{ workspaceId, channel: entry.channel, directId: entry.containerId }}
-          to="/network/$workspaceId/$channel/directs/$directId"
-        />
+        isThread ? (
+          <Link
+            params={{ workspaceId, channel: entry.channel, threadId: entry.containerId }}
+            to="/network/$workspaceId/$channel/threads/$threadId"
+          />
+        ) : (
+          <Link
+            params={{ workspaceId, channel: entry.channel, directId: entry.containerId }}
+            to="/network/$workspaceId/$channel/directs/$directId"
+          />
+        )
       }
       selectable
       size="xs"
@@ -91,20 +106,7 @@ function RecentEntryRow({
       <ItemMedia>
         <Icon aria-label={ariaLabel} className="size-3 shrink-0 text-subtle" />
       </ItemMedia>
-      <ItemContent className="min-w-0">
-        <ItemTitle
-          className={cn("min-w-0 text-xs", entry.hasUnread ? "font-medium text-fg" : "text-muted")}
-        >
-          <span className="truncate">{entry.preview}</span>
-          <span className="text-subtle">in</span>
-          <Eyebrow className="shrink-0">#{entry.channel}</Eyebrow>
-        </ItemTitle>
-      </ItemContent>
-      {timestampLabel ? (
-        <ItemFooter className="basis-auto">
-          <Eyebrow className="shrink-0">{timestampLabel}</Eyebrow>
-        </ItemFooter>
-      ) : null}
+      <RecentEntryContent entry={entry} timestampLabel={timestampLabel} />
     </Item>
   );
 }

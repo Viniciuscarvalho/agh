@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -162,10 +163,21 @@ describe("AppSidebar", () => {
       renderSidebar(makeProps());
       const header = document.querySelector('[data-slot="sidebar-header"]');
       expect(header).not.toBeNull();
-      expect(screen.getByTestId("workspace-switcher")).toBeInTheDocument();
+      const switcher = screen.getByTestId("workspace-switcher");
+      expect(switcher).toBeInTheDocument();
+      expect(switcher.tagName).toBe("BUTTON");
+      expect(switcher).toHaveAttribute("aria-expanded", "false");
       expect(screen.getByTestId("workspace-switcher-avatar")).toHaveTextContent("A");
       expect(screen.getByTestId("workspace-switcher-name")).toHaveTextContent("alpha");
       expect(screen.getByTestId("workspace-switcher-chevron")).toBeInTheDocument();
+    });
+
+    it("Should select a workspace from the header command popover", async () => {
+      const user = userEvent.setup();
+      renderSidebar(makeProps());
+      await user.click(screen.getByTestId("workspace-switcher"));
+      await user.click(screen.getByTestId("workspace-command-item-ws_beta"));
+      expect(onSelectWorkspace).toHaveBeenCalledWith("ws_beta");
     });
   });
 
@@ -893,7 +905,7 @@ describe("computeAgentsCount", () => {
           workspace_id: "ws",
           workspace_path: "/",
           state: "active",
-          badge: "idle",
+          badge: "running",
           attachable: true,
           updated_at: "2026-04-06T10:00:00Z",
           created_at: "2026-04-06T10:00:00Z",
@@ -928,7 +940,7 @@ describe("computeAgentsCount", () => {
           workspace_id: "ws",
           workspace_path: "/",
           state: "active",
-          badge: "running",
+          badge: "idle",
           attachable: true,
           updated_at: "2026-04-06T10:00:00Z",
           created_at: "2026-04-06T10:00:00Z",

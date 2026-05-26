@@ -1,0 +1,104 @@
+import { useState } from "react";
+import type { Meta, StoryObj } from "@storybook/react-vite";
+import { expect, fn, userEvent, waitFor, within } from "storybook/test";
+
+import { CenteredSurface } from "@/storybook/story-layout";
+import { workspaceFixtures } from "@/systems/workspace/mocks";
+
+import { WorkspaceCommandSelect } from "../workspace-command-select";
+
+function Frame({ children }: { children: React.ReactNode }) {
+  return (
+    <CenteredSurface className="w-[280px] border border-line bg-canvas-soft p-0">
+      {children}
+    </CenteredSurface>
+  );
+}
+
+interface HarnessProps {
+  defaultWorkspaceId?: string | null;
+  defaultOpen?: boolean;
+  onAddWorkspace?: () => void;
+}
+
+function WorkspaceCommandSelectHarness({
+  defaultWorkspaceId = workspaceFixtures[0]?.id ?? null,
+  defaultOpen = false,
+  onAddWorkspace = fn(),
+}: HarnessProps) {
+  const [workspaceId, setWorkspaceId] = useState<string | null>(defaultWorkspaceId);
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <Frame>
+      <WorkspaceCommandSelect
+        workspaces={workspaceFixtures}
+        value={workspaceId}
+        onChange={setWorkspaceId}
+        onAddWorkspace={onAddWorkspace}
+        open={open}
+        onOpenChange={setOpen}
+      />
+    </Frame>
+  );
+}
+
+const meta: Meta<typeof WorkspaceCommandSelectHarness> = {
+  title: "systems/workspace/WorkspaceCommandSelect",
+  component: WorkspaceCommandSelectHarness,
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "Searchable workspace switcher for the sidebar header. Uses CommandSelect with avatar initials, active checkmarks, and an optional Add workspace action.",
+      },
+    },
+  },
+};
+
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+export const Default: Story = {};
+
+export const Open: Story = {
+  args: {
+    defaultOpen: true,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByTestId("workspace-command-input")).toBeInTheDocument();
+    await expect(canvas.getByTestId("workspace-command-group")).toBeInTheDocument();
+  },
+};
+
+export const SwitchesWorkspace: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const target = workspaceFixtures[1];
+    if (!target) {
+      throw new Error("Expected at least two workspace fixtures");
+    }
+
+    await userEvent.click(canvas.getByTestId("workspace-switcher"));
+    await userEvent.click(canvas.getByTestId(`workspace-command-item-${target.id}`));
+
+    await waitFor(() =>
+      expect(canvas.getByTestId("workspace-switcher-name")).toHaveTextContent(target.name)
+    );
+  },
+};
+
+export const EmptyRegistry: Story = {
+  render: () => (
+    <Frame>
+      <WorkspaceCommandSelect workspaces={[]} value={null} onChange={() => undefined} />
+    </Frame>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByTestId("workspace-switcher-name")).toHaveTextContent("No workspace");
+    await expect(canvas.getByTestId("workspace-switcher")).toBeDisabled();
+  },
+};

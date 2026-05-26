@@ -29,3 +29,7 @@ export type {
   OptionCardTone,
 } from "./components/option-card";
 export { WorkspaceOnboarding, WorkspaceSetupDialog } from "./components/workspace-setup";
+export {
+  WorkspaceCommandSelect,
+  type WorkspaceCommandSelectProps,
+} from "./components/workspace-command-select";

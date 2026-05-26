@@ -636,6 +636,7 @@ func (h *BaseHandlers) SessionEvents(c *gin.Context) {
 
 	events, err := h.Sessions.Events(c.Request.Context(), sessionID, query)
 	if err != nil {
+		h.logSessionReadError("events", sessionID, err)
 		h.respondError(c, StatusForSessionError(err), err)
 		return
 	}
@@ -666,6 +667,7 @@ func (h *BaseHandlers) SessionHistory(c *gin.Context) {
 
 	history, err := h.Sessions.History(c.Request.Context(), sessionID, query)
 	if err != nil {
+		h.logSessionReadError("history", sessionID, err)
 		h.respondError(c, StatusForSessionError(err), err)
 		return
 	}
@@ -693,6 +695,7 @@ func (h *BaseHandlers) SessionTranscript(c *gin.Context) {
 	}
 	messages, err := h.Sessions.Transcript(c.Request.Context(), sessionID)
 	if err != nil {
+		h.logSessionReadError("transcript", sessionID, err)
 		h.respondError(c, StatusForSessionError(err), err)
 		return
 	}
@@ -1709,6 +1712,25 @@ func (h *BaseHandlers) StreamDoneChannel() <-chan struct{} {
 
 func (h *BaseHandlers) respondError(c *gin.Context, status int, err error) {
 	RespondError(c, status, err, h.MaskInternalErrors)
+}
+
+func (h *BaseHandlers) logSessionReadError(operation string, sessionID string, err error) {
+	if err == nil {
+		return
+	}
+	logger := slog.Default()
+	if h != nil && h.Logger != nil {
+		logger = h.Logger
+	}
+	logger.Warn(
+		"api: session read failed",
+		"operation",
+		operation,
+		"session_id",
+		strings.TrimSpace(sessionID),
+		handlersErrorKey,
+		err,
+	)
 }
 
 func (h *BaseHandlers) transportName() string {

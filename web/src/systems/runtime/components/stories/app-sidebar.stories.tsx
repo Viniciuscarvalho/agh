@@ -206,3 +206,25 @@ export const SwitchesWorkspace: Story = {
     );
   },
 };
+
+export const SwitchesWorkspaceViaHeader: Story = {
+  args: {},
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const target = workspaceFixtures[0];
+    if (!target) {
+      throw new Error("Expected at least one workspace fixture");
+    }
+
+    await userEvent.click(canvas.getByTestId("workspace-switcher"));
+    await userEvent.click(canvas.getByTestId(`workspace-command-item-${target.id}`));
+
+    await waitFor(() =>
+      expect(canvas.getByTestId(`workspace-avatar-${target.id}`)).toHaveAttribute(
+        "data-active",
+        "true"
+      )
+    );
+    await expect(canvas.getByTestId("workspace-switcher-name")).toHaveTextContent(target.name);
+  },
+};

@@ -110,8 +110,25 @@ vi.mock("sonner", () => ({
 }));
 
 vi.mock("@/components/assistant-ui/session-thread", () => ({
-  SessionThread: ({ sessionId }: { sessionId: string }) => (
-    <div data-testid={`session-thread-${sessionId}`}>thread</div>
+  SessionThread: ({
+    sessionId,
+    canPrompt,
+    allowBusyInput,
+    isSessionRunning,
+  }: {
+    sessionId: string;
+    canPrompt?: boolean;
+    allowBusyInput?: boolean;
+    isSessionRunning?: boolean;
+  }) => (
+    <div
+      data-testid={`session-thread-${sessionId}`}
+      data-can-prompt={String(canPrompt)}
+      data-allow-busy-input={String(allowBusyInput)}
+      data-session-running={String(isSessionRunning)}
+    >
+      thread
+    </div>
   ),
 }));
 
@@ -256,13 +273,30 @@ describe("Nested agent session route — Topbar slot migration", () => {
 
   it("Should expose stop and attach controls for attachable active sessions", () => {
     mockUseSession.mockReturnValue({
-      data: makeSession({ state: "active", badge: "idle", attachable: true }),
+      data: makeSession({ state: "active", badge: "idle", attachable: true, type: "user" }),
       isLoading: false,
       error: null,
     });
     renderSessionPage();
     expect(screen.getByTestId("stop-button")).toBeInTheDocument();
     expect(screen.getByTestId("resume-button")).toHaveAccessibleName("Attach session");
+  });
+
+  it("Should expose view plus Stop only for attachable non-user running sessions", () => {
+    mockUseSession.mockReturnValue({
+      data: makeSession({ state: "active", badge: "running", attachable: true, type: "spawned" }),
+      isLoading: false,
+      error: null,
+    });
+
+    renderSessionPage();
+
+    const thread = screen.getByTestId("session-thread-sess_123");
+    expect(thread).toHaveAttribute("data-can-prompt", "false");
+    expect(thread).toHaveAttribute("data-allow-busy-input", "false");
+    expect(thread).toHaveAttribute("data-session-running", "true");
+    expect(screen.getByTestId("stop-button")).toBeInTheDocument();
+    expect(screen.queryByTestId("resume-button")).not.toBeInTheDocument();
   });
 
   it("Should flip the agent-status-dot to success+pulse for running badges", () => {
