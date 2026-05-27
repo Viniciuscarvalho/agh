@@ -154,6 +154,14 @@ jobs:
             exit 1
           fi
 
+      - name: Verify npm publish authentication
+        run: |
+          if [ -z "${NPM_TOKEN:-}" ]; then
+            echo "::error::NPM_TOKEN is required to publish @compozy/agh"
+            exit 1
+          fi
+          npm whoami --registry=https://registry.npmjs.org
+
       - name: Setup Release Tools
         uses: ./.github/actions/setup-release
         with:

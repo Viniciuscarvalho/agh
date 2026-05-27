@@ -505,18 +505,18 @@ func TestPackagingMetadataStaysAlignedWithRuntimeAndInstaller(t *testing.T) {
 			"npm view \"@compozy/agh@${RELEASE_VERSION}\" version --registry=https://registry.npmjs.org",
 			"./.github/actions/setup-release",
 		)
-		dryRunCommands := strings.Join(workflowRunCommands(t, dryRunSteps), "\n")
-		for _, unwanted := range []string{
+		assertWorkflowRunBeforeUses(
+			t,
+			dryRunSteps,
 			"NPM_TOKEN is required to publish @compozy/agh",
+			"./.github/actions/setup-release",
+		)
+		assertWorkflowRunBeforeUses(
+			t,
+			dryRunSteps,
 			"npm whoami --registry=https://registry.npmjs.org",
-		} {
-			if strings.Contains(dryRunCommands, unwanted) {
-				t.Fatalf(
-					"dry-run commands contain %q, want npm publish authentication only in production release",
-					unwanted,
-				)
-			}
-		}
+			"./.github/actions/setup-release",
+		)
 		assertWorkflowRunBeforeUses(
 			t,
 			releaseSteps,
