@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/compozy/agh/internal/acp"
@@ -45,6 +46,7 @@ const (
 	deliveryDropReasonQueueFull    = "queue_overflow"
 	networkMessageTrustUntrusted   = "untrusted"
 	protocolGuidanceDirectRoomText = "Direct-room chat uses `--kind say --surface direct`."
+	compactReplyGuidanceText       = "Full protocol examples were already provided earlier in this session; run `agh network --help` for command details."
 )
 
 type deliveryPrompter interface {
@@ -71,10 +73,12 @@ type deliveryCoordinator struct {
 	retryMaxDelay  time.Duration
 	scheduleRetry  deliveryRetryScheduler
 
-	mu       sync.Mutex
-	queues   map[string]*inboundQueue
-	inFlight map[string]queuedEnvelope
-	waiters  map[string][]chan struct{}
+	mu            sync.Mutex
+	queues        map[string]*inboundQueue
+	inFlight      map[string]queuedEnvelope
+	waiters       map[string][]chan struct{}
+	guidance      map[string]deliveryGuidanceState
+	sessionTokens atomic.Uint64
 
 	deliveries sync.Map
 	wg         sync.WaitGroup
@@ -90,6 +94,7 @@ type deliveryState struct {
 type inboundQueue struct {
 	mu       sync.Mutex
 	maxDepth int
+	token    uint64
 	items    []queuedEnvelope
 }
 
@@ -104,7 +109,20 @@ type queuedEnvelope struct {
 	AcceptedAt   time.Time
 	DeliveryMode string
 	RetryAttempt int
+	SessionToken uint64
 }
+
+type deliveryGuidanceState struct {
+	replyDelivered    bool
+	protocolDelivered bool
+}
+
+type networkMessageGuidanceMode int
+
+const (
+	networkMessageGuidanceVerbose networkMessageGuidanceMode = iota
+	networkMessageGuidanceCompact
+)
 
 type deliveryCoordinatorStats struct {
 	QueuedMessages   int
@@ -175,6 +193,7 @@ func newDeliveryCoordinator(
 		queues:         make(map[string]*inboundQueue),
 		inFlight:       make(map[string]queuedEnvelope),
 		waiters:        make(map[string][]chan struct{}),
+		guidance:       make(map[string]deliveryGuidanceState),
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -372,6 +391,8 @@ func (c *deliveryCoordinator) dropSession(sessionID string) {
 	defer c.mu.Unlock()
 	target := strings.TrimSpace(sessionID)
 	delete(c.queues, target)
+	delete(c.inFlight, target)
+	delete(c.guidance, target)
 	waiters := c.waiters[target]
 	delete(c.waiters, target)
 	for _, waiter := range waiters {
@@ -436,9 +457,52 @@ func (c *deliveryCoordinator) queueForSession(sessionID string) *inboundQueue {
 		return queue
 	}
 
-	queue := newInboundQueue(c.maxQueueDepth)
+	queue := newInboundQueueWithToken(c.maxQueueDepth, c.sessionTokens.Add(1))
 	c.queues[target] = queue
 	return queue
+}
+
+func (c *deliveryCoordinator) guidanceModeForDelivery(
+	sessionID string,
+	envelope Envelope,
+) networkMessageGuidanceMode {
+	target := strings.TrimSpace(sessionID)
+	if target == "" {
+		return networkMessageGuidanceVerbose
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	state := c.guidance[target]
+	if !state.replyDelivered {
+		return networkMessageGuidanceVerbose
+	}
+	if lifecycleWorkID(envelope) != "" && !state.protocolDelivered {
+		return networkMessageGuidanceVerbose
+	}
+	return networkMessageGuidanceCompact
+}
+
+func (c *deliveryCoordinator) markGuidanceDelivered(sessionID string, item queuedEnvelope) {
+	target := strings.TrimSpace(sessionID)
+	if target == "" {
+		return
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	queue := c.queues[target]
+	if queue == nil || queue.token != item.SessionToken {
+		return
+	}
+
+	state := c.guidance[target]
+	state.replyDelivered = true
+	if lifecycleWorkID(item.Envelope) != "" {
+		state.protocolDelivered = true
+	}
+	c.guidance[target] = state
 }
 
 func (c *deliveryCoordinator) trigger(sessionID string) {
@@ -489,7 +553,7 @@ func (c *deliveryCoordinator) processQueuedItem(sessionID string, item queuedEnv
 	c.markInFlight(sessionID, item)
 	envelope := item.Envelope
 
-	message, err := formatNetworkMessage(envelope)
+	message, err := formatNetworkMessageWithGuidance(envelope, c.guidanceModeForDelivery(sessionID, envelope))
 	if err != nil {
 		c.handleRenderFailure(sessionID, item, state, err)
 		return false
@@ -552,7 +616,7 @@ func (c *deliveryCoordinator) handleRenderFailure(
 ) {
 	c.clearInFlight(sessionID)
 	item = item.withNextRetryAttempt()
-	c.requeueFront(sessionID, item)
+	requeued := c.requeueFront(sessionID, item)
 	c.logger.Warn(
 		"network.message.render_failed",
 		"session_id", sessionID,
@@ -560,7 +624,7 @@ func (c *deliveryCoordinator) handleRenderFailure(
 		"error", err,
 		"retry_attempt", item.RetryAttempt,
 	)
-	if json.Valid(item.Envelope.Body) {
+	if requeued && json.Valid(item.Envelope.Body) {
 		c.retryAfterWorkerExit(sessionID, item, state)
 	}
 }
@@ -573,7 +637,7 @@ func (c *deliveryCoordinator) handleDeliveryFailure(
 ) {
 	c.clearInFlight(sessionID)
 	item = item.withNextRetryAttempt()
-	c.requeueFront(sessionID, item)
+	requeued := c.requeueFront(sessionID, item)
 	c.logger.Warn(
 		"network.message.delivery_failed",
 		"session_id", sessionID,
@@ -581,7 +645,9 @@ func (c *deliveryCoordinator) handleDeliveryFailure(
 		"error", err,
 		"retry_attempt", item.RetryAttempt,
 	)
-	c.retryAfterWorkerExit(sessionID, item, state)
+	if requeued {
+		c.retryAfterWorkerExit(sessionID, item, state)
+	}
 }
 
 func (c *deliveryCoordinator) handleInterruptedDelivery(sessionID string, item queuedEnvelope) {
@@ -599,6 +665,7 @@ func (c *deliveryCoordinator) handleInterruptedDelivery(sessionID string, item q
 
 func (c *deliveryCoordinator) finishDeliveredMessage(sessionID string, item queuedEnvelope) {
 	c.clearInFlight(sessionID)
+	c.markGuidanceDelivered(sessionID, item)
 
 	latency := max(c.now().Sub(item.AcceptedAt), 0)
 
@@ -643,14 +710,15 @@ func (c *deliveryCoordinator) dequeue(sessionID string) (queuedEnvelope, bool) {
 	return queue.dequeue()
 }
 
-func (c *deliveryCoordinator) requeueFront(sessionID string, item queuedEnvelope) {
+func (c *deliveryCoordinator) requeueFront(sessionID string, item queuedEnvelope) bool {
 	c.mu.Lock()
 	queue := c.queues[strings.TrimSpace(sessionID)]
 	c.mu.Unlock()
-	if queue == nil {
-		return
+	if queue == nil || queue.token != item.SessionToken {
+		return false
 	}
 	queue.prepend(item)
+	return true
 }
 
 func (c *deliveryCoordinator) retryAfterWorkerExit(sessionID string, item queuedEnvelope, state *deliveryState) {
@@ -810,7 +878,11 @@ func (c *deliveryCoordinator) clearInFlight(sessionID string) {
 }
 
 func newInboundQueue(maxDepth int) *inboundQueue {
-	return &inboundQueue{maxDepth: maxDepth}
+	return newInboundQueueWithToken(maxDepth, 0)
+}
+
+func newInboundQueueWithToken(maxDepth int, token uint64) *inboundQueue {
+	return &inboundQueue{maxDepth: maxDepth, token: token}
 }
 
 func (q *inboundQueue) enqueue(envelope Envelope, acceptedAt time.Time, prompting bool) enqueueResult {
@@ -833,6 +905,7 @@ func (q *inboundQueue) enqueue(envelope Envelope, acceptedAt time.Time, promptin
 		Envelope:     cloneEnvelope(envelope),
 		AcceptedAt:   acceptedAt.UTC(),
 		DeliveryMode: deliveryMode,
+		SessionToken: q.token,
 	})
 
 	return enqueueResult{
@@ -891,6 +964,13 @@ func (q *inboundQueue) len() int {
 }
 
 func formatNetworkMessage(envelope Envelope) (string, error) {
+	return formatNetworkMessageWithGuidance(envelope, networkMessageGuidanceVerbose)
+}
+
+func formatNetworkMessageWithGuidance(
+	envelope Envelope,
+	guidanceMode networkMessageGuidanceMode,
+) (string, error) {
 	body, err := envelope.DecodeBody()
 	preview := ""
 
@@ -960,12 +1040,16 @@ func formatNetworkMessage(envelope Envelope) (string, error) {
 	builder.WriteString(encodedBody)
 	builder.WriteString("</network-body>\n")
 	builder.WriteString("</network-message>")
-	writeReplyGuidance(&builder, envelope)
+	writeReplyGuidance(&builder, envelope, guidanceMode)
 
 	return builder.String(), nil
 }
 
-func writeReplyGuidance(builder *strings.Builder, envelope Envelope) {
+func writeReplyGuidance(
+	builder *strings.Builder,
+	envelope Envelope,
+	guidanceMode networkMessageGuidanceMode,
+) {
 	if builder == nil {
 		return
 	}
@@ -988,6 +1072,10 @@ func writeReplyGuidance(builder *strings.Builder, envelope Envelope) {
 	for _, line := range protocolGuidanceText {
 		writeGuidanceLine(builder, line)
 	}
+	if guidanceMode == networkMessageGuidanceCompact {
+		writeCompactReplyGuidance(builder)
+		return
+	}
 
 	writeGuidanceLine(builder, "Examples:")
 	writeGuidanceLine(builder, "```bash")
@@ -999,6 +1087,10 @@ func writeReplyGuidance(builder *strings.Builder, envelope Envelope) {
 	}
 	writeGuidanceLine(builder, "```")
 	builder.WriteString("See `agh network --help` for options.")
+}
+
+func writeCompactReplyGuidance(builder *strings.Builder) {
+	writeGuidanceLine(builder, compactReplyGuidanceText)
 }
 
 type replyGuidanceContext struct {
@@ -1285,5 +1377,6 @@ func cloneQueuedEnvelope(item queuedEnvelope) queuedEnvelope {
 		AcceptedAt:   item.AcceptedAt,
 		DeliveryMode: item.DeliveryMode,
 		RetryAttempt: item.RetryAttempt,
+		SessionToken: item.SessionToken,
 	}
 }
