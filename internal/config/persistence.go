@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 
@@ -787,6 +788,14 @@ func deletePathInOverlayDocument(source []byte, path []string) ([]byte, bool, er
 	if block, ok := document.tableBlockIncludingNested(path); ok {
 		return replaceOffsets(source, block.start, block.end, nil), true, nil
 	}
+	blocks := document.descendantTableBlocks(path)
+	if len(blocks) > 0 {
+		rendered := append([]byte(nil), source...)
+		for _, block := range slices.Backward(blocks) {
+			rendered = replaceOffsets(rendered, block.start, block.end, nil)
+		}
+		return rendered, true, nil
+	}
 
 	return append([]byte(nil), source...), false, nil
 }
@@ -1077,6 +1086,53 @@ func (d *overlayDocument) tableBlockIncludingNested(path []string) (overlayBlock
 		return block, true
 	}
 	return overlayBlock{}, false
+}
+
+func (d *overlayDocument) descendantTableBlocks(path []string) []overlayBlock {
+	blocks := make([]overlayBlock, 0)
+scan:
+	for idx := 0; idx < len(d.expressions); idx++ {
+		expr := d.expressions[idx]
+		if expr.kind != tomlast.Table && expr.kind != tomlast.ArrayTable {
+			continue
+		}
+		if !pathHasPrefix(expr.path, path) || len(expr.path) <= len(path) {
+			continue
+		}
+		block := overlayBlock{
+			path:     clonePath(expr.path),
+			startIdx: idx,
+			endIdx:   idx,
+			start:    rangeStart(expr.raw),
+			end:      rangeEnd(expr.raw),
+		}
+		for nextIdx := idx + 1; nextIdx < len(d.expressions); nextIdx++ {
+			next := d.expressions[nextIdx]
+			switch next.kind {
+			case tomlast.KeyValue, tomlast.Comment:
+				if pathHasPrefix(next.containerPath, path) {
+					block.endIdx = nextIdx
+					block.end = lineEndOffset(d.source, next.raw)
+					continue
+				}
+				blocks = append(blocks, block)
+				idx = block.endIdx
+				continue scan
+			case tomlast.Table, tomlast.ArrayTable:
+				if pathHasPrefix(next.path, path) && len(next.path) > len(path) {
+					block.endIdx = nextIdx
+					block.end = lineEndOffset(d.source, next.raw)
+					continue
+				}
+				blocks = append(blocks, block)
+				idx = block.endIdx
+				continue scan
+			}
+		}
+		blocks = append(blocks, block)
+		idx = block.endIdx
+	}
+	return blocks
 }
 
 func (d *overlayDocument) arrayTableBlocks(path []string) []overlayBlock {
