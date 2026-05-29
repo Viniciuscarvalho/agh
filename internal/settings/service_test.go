@@ -1077,6 +1077,68 @@ func TestCollectionMutationsProviderSandboxAndHook(t *testing.T) {
 	}
 }
 
+// TestCollectionMutationsCodexNativeProviderOverlay verifies Codex onboarding persistence.
+func TestCollectionMutationsCodexNativeProviderOverlay(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Should accept native CLI Codex overlay from onboarding", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := context.Background()
+		homePaths := testHomePaths(t)
+		writeFile(t, homePaths.ConfigFile, baseSettingsConfig()+`
+
+	[providers.codex.models]
+	default = "gpt-5.5"
+	`)
+		service := testService(t, homePaths, Dependencies{})
+
+		result, err := service.PutCollectionItem(ctx, CollectionItemPutRequest{
+			CollectionRequest: CollectionRequest{Collection: CollectionProviders},
+			Name:              "codex",
+			Provider: &ProviderSettings{
+				Command:         "npx -y @zed-industries/codex-acp@latest",
+				DisplayName:     "Codex",
+				Harness:         aghconfig.ProviderHarnessACP,
+				RuntimeProvider: "codex",
+				AuthMode:        aghconfig.ProviderAuthModeNativeCLI,
+				EnvPolicy:       aghconfig.ProviderEnvPolicyFiltered,
+				HomePolicy:      aghconfig.ProviderHomePolicyOperator,
+				AuthLoginCmd:    "codex login",
+				Models: aghconfig.ProviderModelsConfig{
+					Default: "gpt-5.5",
+					Curated: []aghconfig.ProviderModelConfig{
+						{
+							ID:                     "gpt-5.4",
+							DisplayName:            "GPT-5.4",
+							SupportsTools:          new(true),
+							SupportsReasoning:      new(true),
+							ReasoningEfforts:       []string{"minimal", "low", "medium", "high", "xhigh"},
+							DefaultReasoningEffort: "medium",
+						},
+						{
+							ID:                     "gpt-5.4-mini",
+							DisplayName:            "GPT-5.4 Mini",
+							SupportsTools:          new(true),
+							SupportsReasoning:      new(true),
+							ReasoningEfforts:       []string{"minimal", "low", "medium", "high", "xhigh"},
+							DefaultReasoningEffort: "medium",
+						},
+						{ID: "gpt-5.3", DisplayName: "GPT-5.3"},
+						{ID: "gpt-5.3-mini", DisplayName: "GPT-5.3 Mini"},
+					},
+				},
+			},
+		})
+		if err != nil {
+			t.Fatalf("PutCollectionItem(codex native overlay) error = %v", err)
+		}
+		if got, want := result.WriteTarget, WriteTargetGlobalConfig; got != want {
+			t.Fatalf("codex native overlay write target = %q, want %q", got, want)
+		}
+	})
+}
+
 func TestProviderSecretOnlyMutationStoresVaultSecret(t *testing.T) {
 	t.Parallel()
 

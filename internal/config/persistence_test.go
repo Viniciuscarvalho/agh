@@ -813,6 +813,62 @@ provider = "openai"
 	}
 }
 
+// TestOverlayEditorDeleteImplicitTableSubtree verifies implicit parent table deletion.
+func TestOverlayEditorDeleteImplicitTableSubtree(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Should delete descendant tables when parent table is implicit", func(t *testing.T) {
+		t.Parallel()
+
+		editor, err := newOverlayEditor(ConfigName, []byte(`
+	[defaults]
+	provider = "codex"
+
+	[providers.codex.models]
+	default = "gpt-5.5"
+
+	[[providers.codex.models.curated]]
+	id = "gpt-5.4"
+
+	[providers.claude.models]
+	default = "sonnet"
+	`))
+		if err != nil {
+			t.Fatalf("newOverlayEditor() error = %v", err)
+		}
+
+		if err := editor.Delete([]string{"providers", "codex"}); err != nil {
+			t.Fatalf("editor.Delete(providers.codex) error = %v", err)
+		}
+
+		rendered, err := editor.Bytes()
+		if err != nil {
+			t.Fatalf("editor.Bytes() error = %v", err)
+		}
+		text := string(rendered)
+		for _, unwanted := range []string{
+			"[providers.codex.models]",
+			"[[providers.codex.models.curated]]",
+			`default = "gpt-5.5"`,
+			`id = "gpt-5.4"`,
+		} {
+			if strings.Contains(text, unwanted) {
+				t.Fatalf("rendered config still contains %q\n%s", unwanted, text)
+			}
+		}
+		for _, want := range []string{
+			"[defaults]",
+			`provider = "codex"`,
+			"[providers.claude.models]",
+			`default = "sonnet"`,
+		} {
+			if !strings.Contains(text, want) {
+				t.Fatalf("rendered config missing %q\n%s", want, text)
+			}
+		}
+	})
+}
+
 func TestNormalizeTOMLValue(t *testing.T) {
 	t.Parallel()
 
