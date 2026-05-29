@@ -153,13 +153,14 @@ func (s RunStatus) Validate(path string) error {
 		TaskRunStatusRunning,
 		TaskRunStatusCompleted,
 		TaskRunStatusFailed,
-		TaskRunStatusCanceled:
+		TaskRunStatusCanceled,
+		TaskRunStatusNeedsAttention:
 		return nil
 	case "":
 		return fmt.Errorf("%w: %s is required", ErrValidation, path)
 	default:
 		return fmt.Errorf(
-			"%w: %s must be one of %q, %q, %q, %q, %q, %q, or %q: %q",
+			"%w: %s must be one of %q, %q, %q, %q, %q, %q, %q, or %q: %q",
 			ErrValidation,
 			path,
 			TaskRunStatusQueued,
@@ -169,6 +170,7 @@ func (s RunStatus) Validate(path string) error {
 			TaskRunStatusCompleted,
 			TaskRunStatusFailed,
 			TaskRunStatusCanceled,
+			TaskRunStatusNeedsAttention,
 			s,
 		)
 	}
@@ -453,11 +455,13 @@ func (r Run) Validate() error {
 	if err := r.Origin.Validate("task_run.origin"); err != nil {
 		return err
 	}
-	if r.Status.Normalize() == TaskRunStatusQueued && strings.TrimSpace(r.SessionID) != "" {
+	status := r.Status.Normalize()
+	if (status == TaskRunStatusQueued || status == TaskRunStatusNeedsAttention) &&
+		strings.TrimSpace(r.SessionID) != "" {
 		return fmt.Errorf(
 			"%w: task_run.session_id must be empty while status is %q",
 			ErrValidation,
-			TaskRunStatusQueued,
+			status,
 		)
 	}
 	if err := validateRunLeaseMetadata(r); err != nil {

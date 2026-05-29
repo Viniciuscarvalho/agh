@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -463,8 +464,27 @@ func prepareDaemonTelegramReferenceExtension(t *testing.T, repoRoot string) stri
 	if err := copyDirectory(sourceDir, targetDir); err != nil {
 		t.Fatalf("copyDirectory(%q, %q) error = %v", sourceDir, targetDir, err)
 	}
+	relaxDaemonTelegramReferenceMinVersion(t, targetDir)
 	buildDaemonTelegramReferenceAdapter(t, repoRoot, targetDir)
 	return targetDir
+}
+
+func relaxDaemonTelegramReferenceMinVersion(t *testing.T, extensionDir string) {
+	t.Helper()
+
+	manifestPath := filepath.Join(extensionDir, "extension.toml")
+	contents, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("read telegram reference manifest %q error = %v", manifestPath, err)
+	}
+	rewriteMinVersion := regexp.MustCompile(`(?m)^(\s*min_agh_version\s*=\s*).*$`)
+	updated := rewriteMinVersion.ReplaceAllString(string(contents), `${1}"0.0.0"`)
+	if updated == string(contents) {
+		t.Fatalf("telegram reference manifest %q did not contain a min_agh_version assignment", manifestPath)
+	}
+	if err := os.WriteFile(manifestPath, []byte(updated), 0o644); err != nil {
+		t.Fatalf("write telegram reference manifest %q error = %v", manifestPath, err)
+	}
 }
 
 func buildDaemonTelegramReferenceAdapter(t *testing.T, repoRoot string, extensionDir string) {

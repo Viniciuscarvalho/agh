@@ -336,6 +336,17 @@ func TestDomainValidationHelpers(t *testing.T) {
 		}
 	})
 
+	t.Run("Should task run needs_attention session invalid", func(t *testing.T) {
+		t.Parallel()
+		run := validRun()
+		run.Status = TaskRunStatusNeedsAttention
+		run.SessionID = "sess-1"
+		err := run.Validate()
+		if err == nil || !errors.Is(err, ErrValidation) {
+			t.Fatalf("Run.Validate() error = %v, want ErrValidation", err)
+		}
+	})
+
 	t.Run("Should task run lease metadata and capabilities", func(t *testing.T) {
 		t.Parallel()
 
@@ -700,6 +711,10 @@ func TestEnumAndIdentityValidation(t *testing.T) {
 			wantErr: ErrValidation,
 		},
 		{name: "task run status valid", run: func() error { return TaskRunStatusRunning.Validate("run.status") }},
+		{
+			name: "Should accept needs_attention run status",
+			run:  func() error { return TaskRunStatusNeedsAttention.Validate("run.status") },
+		},
 		{
 			name:    "task run status invalid",
 			run:     func() error { return RunStatus("paused").Validate("run.status") },
