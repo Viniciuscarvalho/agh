@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/compozy/agh/internal/acp"
 	aghconfig "github.com/compozy/agh/internal/config"
 	"github.com/compozy/agh/internal/coordinator"
 	hookspkg "github.com/compozy/agh/internal/hooks"
@@ -19,6 +20,7 @@ import (
 const (
 	coordinatorRuntimeTaskIDKey      = "task_id"
 	coordinatorRuntimeWorkspaceIDKey = "workspace_id"
+	coordinatorRuntimeCleanupTimeout = 5 * time.Second
 )
 
 type coordinatorTaskStore interface {
@@ -30,6 +32,8 @@ type coordinatorTaskStore interface {
 type coordinatorSessionManager interface {
 	Create(ctx context.Context, opts session.CreateOpts) (*session.Session, error)
 	ListAll(ctx context.Context) ([]*session.Info, error)
+	PromptSynthetic(ctx context.Context, id string, opts session.SyntheticPromptOpts) (<-chan acp.AgentEvent, error)
+	StopWithCause(ctx context.Context, id string, cause session.StopCause, detail string) error
 }
 
 type coordinatorHookDispatcher interface {
@@ -56,6 +60,8 @@ type coordinatorHookDispatcher interface {
 }
 
 type coordinatorRuntime struct {
+	ctx            context.Context
+	cancel         context.CancelFunc
 	mu             sync.Mutex
 	store          coordinatorTaskStore
 	sessions       coordinatorSessionManager
@@ -64,6 +70,8 @@ type coordinatorRuntime struct {
 	contextOverlay taskSessionContextOverlay
 	logger         *slog.Logger
 	now            func() time.Time
+	wakeInFlight   map[string]struct{}
+	wg             sync.WaitGroup
 }
 
 var _ taskRunEnqueuedObserver = (*coordinatorRuntime)(nil)
@@ -80,6 +88,7 @@ func withCoordinatorTaskContextOverlay(overlay taskSessionContextOverlay) coordi
 }
 
 func newCoordinatorRuntime(
+	ctx context.Context,
 	store coordinatorTaskStore,
 	sessions coordinatorSessionManager,
 	config CoordinatorConfigResolver,
@@ -88,6 +97,9 @@ func newCoordinatorRuntime(
 	now func() time.Time,
 	options ...coordinatorRuntimeOption,
 ) (*coordinatorRuntime, error) {
+	if ctx == nil {
+		return nil, errors.New("daemon: coordinator runtime context is required")
+	}
 	if store == nil {
 		return nil, errors.New("daemon: coordinator runtime requires task store")
 	}
@@ -103,13 +115,17 @@ func newCoordinatorRuntime(
 	if now == nil {
 		now = func() time.Time { return time.Now().UTC() }
 	}
+	lifecycleCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	runtime := &coordinatorRuntime{
-		store:    store,
-		sessions: sessions,
-		config:   config,
-		hooks:    hooks,
-		logger:   logger,
-		now:      now,
+		ctx:          lifecycleCtx,
+		cancel:       cancel,
+		store:        store,
+		sessions:     sessions,
+		config:       config,
+		hooks:        hooks,
+		logger:       logger,
+		now:          now,
+		wakeInFlight: make(map[string]struct{}),
 	}
 	for _, option := range options {
 		if option != nil {
@@ -119,7 +135,7 @@ func newCoordinatorRuntime(
 	return runtime, nil
 }
 
-func (d *Daemon) bootCoordinator(ctx context.Context, state *bootState, _ *bootCleanup) error {
+func (d *Daemon) bootCoordinator(ctx context.Context, state *bootState, cleanup *bootCleanup) error {
 	if state == nil || state.tasks == nil || state.tasks.store == nil {
 		return nil
 	}
@@ -131,6 +147,7 @@ func (d *Daemon) bootCoordinator(ctx context.Context, state *bootState, _ *bootC
 	}
 
 	runtime, err := newCoordinatorRuntime(
+		ctx,
 		state.tasks.store,
 		state.sessions,
 		state.deps.CoordinatorConfig,
@@ -164,6 +181,11 @@ func (d *Daemon) bootCoordinator(ctx context.Context, state *bootState, _ *bootC
 	if state.lifecycleObservers != nil {
 		state.lifecycleObservers.Add(runtime)
 		state.lifecycleObservers.Add(router)
+	}
+	if cleanup != nil {
+		cleanup.add(func(cleanupCtx context.Context) error {
+			return runtime.shutdown(cleanupCtx)
+		})
 	}
 	if state.reviewRequests != nil {
 		state.reviewRequests.Set(router)
@@ -294,23 +316,108 @@ func (r *coordinatorRuntime) bootstrapRun(
 	}
 
 	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	existing, err := r.activeCoordinator(ctx, decision.WorkspaceID)
 	if err != nil {
+		r.mu.Unlock()
 		r.dispatchFailed(ctx, decision, reason, err)
 		return nil, false, err
 	}
 	if existing != nil {
+		shouldPrompt := r.beginCoordinatorWakeLocked(existing, decision)
+		r.mu.Unlock()
 		r.dispatchDecision(ctx, decision, reason, coordinator.DecisionExisting)
+		if shouldPrompt {
+			if err := r.promptCoordinator(ctx, existing, decision, reason); err != nil {
+				r.finishCoordinatorWake(existing, decision)
+				r.dispatchFailed(ctx, decision, reason, err)
+				return existing, false, err
+			}
+			r.finishCoordinatorWake(existing, decision)
+		}
 		return existing, false, nil
 	}
+	r.mu.Unlock()
 
-	info, created, err := r.createCoordinatorSession(ctx, decision, cfg, reason)
+	info, createdCfg, created, err := r.createCoordinatorSession(ctx, decision, cfg, reason)
 	if err != nil {
 		return nil, false, err
 	}
+	if !created {
+		return nil, false, nil
+	}
+
+	r.mu.Lock()
+	existing, err = r.activeCoordinator(ctx, decision.WorkspaceID)
+	if err != nil {
+		r.mu.Unlock()
+		cleanupErr := r.cleanupCreatedCoordinatorSession(
+			ctx,
+			info,
+			"coordinator singleton reconciliation failed",
+		)
+		if cleanupErr != nil {
+			err = errors.Join(err, cleanupErr)
+		}
+		r.dispatchFailed(ctx, decision, reason, err)
+		return nil, false, err
+	}
+	if existing != nil && strings.TrimSpace(existing.ID) != strings.TrimSpace(info.ID) {
+		shouldPrompt := r.beginCoordinatorWakeLocked(existing, decision)
+		r.mu.Unlock()
+		r.dispatchDecision(ctx, decision, reason, coordinator.DecisionExisting)
+		if err := r.cleanupCreatedCoordinatorSession(
+			ctx,
+			info,
+			"duplicate coordinator session superseded",
+		); err != nil {
+			if shouldPrompt {
+				r.finishCoordinatorWake(existing, decision)
+			}
+			r.dispatchFailed(ctx, decision, reason, err)
+			return existing, false, err
+		}
+		if shouldPrompt {
+			if err := r.promptCoordinator(ctx, existing, decision, reason); err != nil {
+				r.finishCoordinatorWake(existing, decision)
+				r.dispatchFailed(ctx, decision, reason, err)
+				return existing, false, err
+			}
+			r.finishCoordinatorWake(existing, decision)
+		}
+		return existing, false, nil
+	}
+	shouldPrompt := r.beginCoordinatorWakeLocked(info, decision)
+	r.mu.Unlock()
+	if shouldPrompt {
+		if err := r.promptCoordinator(ctx, info, decision, reason); err != nil {
+			r.finishCoordinatorWake(info, decision)
+			r.dispatchFailed(ctx, decision, reason, err)
+			return nil, false, err
+		}
+		r.finishCoordinatorWake(info, decision)
+	}
+	r.dispatchSpawned(ctx, decision, info, createdCfg, reason)
 	return info, created, nil
+}
+
+func (r *coordinatorRuntime) cleanupCreatedCoordinatorSession(
+	ctx context.Context,
+	info *session.Info,
+	detail string,
+) error {
+	if r == nil || info == nil {
+		return nil
+	}
+	sessionID := strings.TrimSpace(info.ID)
+	if sessionID == "" {
+		return nil
+	}
+	stopCtx, cancel := detachedDaemonOperationContext(ctx, coordinatorRuntimeCleanupTimeout)
+	defer cancel()
+	if err := r.sessions.StopWithCause(stopCtx, sessionID, session.CauseFailed, detail); err != nil {
+		return fmt.Errorf("daemon: stop coordinator session %q: %w", sessionID, err)
+	}
+	return nil
 }
 
 func (r *coordinatorRuntime) createCoordinatorSession(
@@ -318,20 +425,20 @@ func (r *coordinatorRuntime) createCoordinatorSession(
 	decision coordinator.Decision,
 	cfg aghconfig.CoordinatorConfig,
 	reason string,
-) (*session.Info, bool, error) {
+) (*session.Info, aghconfig.CoordinatorConfig, bool, error) {
 	preSpawn := r.preSpawnPayload(decision, cfg, reason)
 	preSpawn, err := r.dispatchPreSpawn(ctx, preSpawn)
 	if err != nil {
 		if preSpawn.Denied {
 			r.dispatchDecision(ctx, decision, reason, coordinator.DecisionDenied)
-			return nil, false, nil
+			return nil, cfg, false, nil
 		}
 		r.dispatchFailed(ctx, decision, reason, err)
-		return nil, false, err
+		return nil, cfg, false, err
 	}
 	if preSpawn.Denied {
 		r.dispatchDecision(ctx, decision, reason, coordinator.DecisionDenied)
-		return nil, false, nil
+		return nil, cfg, false, nil
 	}
 
 	cfg.AgentName = firstNonEmpty(preSpawn.AgentName, cfg.AgentName)
@@ -340,10 +447,173 @@ func (r *coordinatorRuntime) createCoordinatorSession(
 	info, err := r.startCoordinatorSession(ctx, decision, cfg)
 	if err != nil {
 		r.dispatchFailed(ctx, decision, reason, err)
-		return nil, false, err
+		return nil, cfg, false, err
 	}
-	r.dispatchSpawned(ctx, decision, info, cfg, reason)
-	return info, true, nil
+	return info, cfg, true, nil
+}
+
+func (r *coordinatorRuntime) promptCoordinator(
+	ctx context.Context,
+	info *session.Info,
+	decision coordinator.Decision,
+	reason string,
+) error {
+	if ctx == nil {
+		return errors.New("daemon: coordinator prompt context is required")
+	}
+	if info == nil {
+		return errors.New("daemon: coordinator prompt requires session info")
+	}
+	sessionID := strings.TrimSpace(info.ID)
+	if sessionID == "" {
+		return errors.New("daemon: coordinator prompt requires session id")
+	}
+	message := coordinatorWakeMessage(decision)
+	events, err := r.sessions.PromptSynthetic(ctx, sessionID, session.SyntheticPromptOpts{
+		Message: message,
+		Metadata: acp.PromptSyntheticMeta{
+			TaskID:               strings.TrimSpace(decision.TaskID),
+			TaskRunID:            strings.TrimSpace(decision.RunID),
+			WorkflowID:           strings.TrimSpace(decision.WorkflowID),
+			CoordinatorSessionID: sessionID,
+			Reason:               strings.TrimSpace(reason),
+			Summary:              coordinatorWakeSummary(decision),
+		},
+		InterruptIfAgentWaiting: true,
+	})
+	if err != nil {
+		return fmt.Errorf("daemon: prompt coordinator session %q: %w", sessionID, err)
+	}
+	r.drainPromptEvents(sessionID, strings.TrimSpace(decision.RunID), events)
+	return nil
+}
+
+func (r *coordinatorRuntime) drainPromptEvents(sessionID string, runID string, events <-chan acp.AgentEvent) {
+	if r == nil || events == nil {
+		return
+	}
+	r.wg.Go(func() {
+		drainCoordinatorPromptEvents(r.ctx, r.logger, sessionID, runID, events)
+	})
+}
+
+func drainCoordinatorPromptEvents(
+	ctx context.Context,
+	logger *slog.Logger,
+	sessionID string,
+	runID string,
+	events <-chan acp.AgentEvent,
+) {
+	if events == nil {
+		return
+	}
+	if ctx == nil {
+		return
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case event, ok := <-events:
+			if !ok {
+				return
+			}
+			if event.Type == acp.EventTypeError && logger != nil {
+				logger.Warn(
+					"daemon: coordinator prompt returned agent error",
+					"session_id", sessionID,
+					"run_id", runID,
+				)
+			}
+		}
+	}
+}
+
+func (r *coordinatorRuntime) beginCoordinatorWakeLocked(info *session.Info, decision coordinator.Decision) bool {
+	if r == nil {
+		return false
+	}
+	key := coordinatorWakeInFlightKey(info, decision)
+	if key == "" {
+		return true
+	}
+	if r.wakeInFlight == nil {
+		r.wakeInFlight = make(map[string]struct{})
+	}
+	if _, ok := r.wakeInFlight[key]; ok {
+		return false
+	}
+	r.wakeInFlight[key] = struct{}{}
+	return true
+}
+
+func (r *coordinatorRuntime) finishCoordinatorWake(info *session.Info, decision coordinator.Decision) {
+	if r == nil {
+		return
+	}
+	key := coordinatorWakeInFlightKey(info, decision)
+	if key == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.wakeInFlight, key)
+}
+
+func coordinatorWakeInFlightKey(info *session.Info, decision coordinator.Decision) string {
+	if info == nil {
+		return ""
+	}
+	sessionID := strings.TrimSpace(info.ID)
+	runID := strings.TrimSpace(decision.RunID)
+	if sessionID == "" || runID == "" {
+		return ""
+	}
+	return sessionID + "\x00" + runID
+}
+
+func (r *coordinatorRuntime) shutdown(ctx context.Context) error {
+	if r == nil {
+		return nil
+	}
+	if ctx == nil {
+		return errors.New("daemon: coordinator runtime shutdown context is required")
+	}
+	if r.cancel != nil {
+		r.cancel()
+	}
+	done := make(chan struct{})
+	go func() {
+		r.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("daemon: shutdown coordinator runtime: %w", ctx.Err())
+	}
+}
+
+func coordinatorWakeMessage(decision coordinator.Decision) string {
+	taskID := strings.TrimSpace(decision.TaskID)
+	runID := strings.TrimSpace(decision.RunID)
+	return fmt.Sprintf(
+		"A task run is queued for this coordinator.\n\n"+
+			"Task: %s\nRun: %s\n\n"+
+			"Claim the run through the AGH task claim path by running `agh task next -o json` once without long-polling, then route from durable receipts. "+
+			"If the receipts require human input, park the run with the AGH task block path.",
+		taskID,
+		runID,
+	)
+}
+
+func coordinatorWakeSummary(decision coordinator.Decision) string {
+	return fmt.Sprintf(
+		"Coordinator wake for task %s run %s",
+		strings.TrimSpace(decision.TaskID),
+		strings.TrimSpace(decision.RunID),
+	)
 }
 
 func (r *coordinatorRuntime) startCoordinatorSession(

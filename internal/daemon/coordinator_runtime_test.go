@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/compozy/agh/internal/acp"
 	aghconfig "github.com/compozy/agh/internal/config"
 	"github.com/compozy/agh/internal/coordinator"
 	hookspkg "github.com/compozy/agh/internal/hooks"
@@ -78,6 +79,22 @@ func TestCoordinatorRuntimeBootstrapsManagedCoordinatorSession(t *testing.T) {
 		if !contains(call.PromptOverlay, required) {
 			t.Fatalf("PromptOverlay missing %q:\n%s", required, call.PromptOverlay)
 		}
+	}
+	if got := sessions.promptCount(); got != 1 {
+		t.Fatalf("PromptSynthetic count = %d, want 1", got)
+	}
+	prompt := sessions.promptCall(0)
+	if prompt.id != info.ID {
+		t.Fatalf("PromptSynthetic id = %q, want %q", prompt.id, info.ID)
+	}
+	assertCoordinatorPromptInterrupt(t, prompt)
+	if prompt.opts.Metadata.TaskID != "task-1" ||
+		prompt.opts.Metadata.TaskRunID != "run-1" ||
+		prompt.opts.Metadata.CoordinatorSessionID != info.ID {
+		t.Fatalf("PromptSynthetic metadata = %#v, want task/run/coordinator ids", prompt.opts.Metadata)
+	}
+	if !contains(prompt.opts.Message, "Claim the run through the AGH task claim path") {
+		t.Fatalf("PromptSynthetic message = %q, want claim instruction", prompt.opts.Message)
 	}
 	if hooks.preSpawnCount() != 1 || hooks.spawnedCount() != 1 {
 		t.Fatalf("hook counts pre_spawn/spawned = %d/%d, want 1/1", hooks.preSpawnCount(), hooks.spawnedCount())
@@ -197,8 +214,30 @@ func TestCoordinatorRuntimeSkipsIneligibleRuns(t *testing.T) {
 func TestCoordinatorRuntimePreventsDuplicateCoordinatorsUnderConcurrentEnqueue(t *testing.T) {
 	t.Parallel()
 
+	const attempts = 24
 	store := newCoordinatorRuntimeStore(coordinatorRuntimeTask(), coordinatorRuntimeRun())
-	sessions := &coordinatorRuntimeSessions{}
+	createStarted := make(chan struct{}, attempts)
+	releaseCreate := make(chan struct{})
+	var releaseCreateOnce sync.Once
+	t.Cleanup(func() {
+		releaseCreateOnce.Do(func() {
+			close(releaseCreate)
+		})
+	})
+	promptStarted := make(chan struct{}, 1)
+	releasePrompt := make(chan struct{})
+	var releaseOnce sync.Once
+	t.Cleanup(func() {
+		releaseOnce.Do(func() {
+			close(releasePrompt)
+		})
+	})
+	sessions := &coordinatorRuntimeSessions{
+		createStarted: createStarted,
+		createRelease: releaseCreate,
+		promptStarted: promptStarted,
+		promptRelease: releasePrompt,
+	}
 	runtime := newCoordinatorRuntimeForTest(
 		t,
 		store,
@@ -208,11 +247,9 @@ func TestCoordinatorRuntimePreventsDuplicateCoordinatorsUnderConcurrentEnqueue(t
 		time.Now().UTC(),
 	)
 
-	const attempts = 24
-	var wg sync.WaitGroup
 	errs := make(chan error, attempts)
 	for range attempts {
-		wg.Go(func() {
+		go func() {
 			_, _, err := runtime.bootstrapRun(
 				context.Background(),
 				store.tasks["task-1"],
@@ -220,17 +257,100 @@ func TestCoordinatorRuntimePreventsDuplicateCoordinatorsUnderConcurrentEnqueue(t
 				coordinator.ReasonRunEnqueued,
 			)
 			errs <- err
-		})
+		}()
 	}
-	wg.Wait()
-	close(errs)
-	for err := range errs {
-		if err != nil {
-			t.Fatalf("bootstrapRun() concurrent error = %v", err)
+	for range 2 {
+		select {
+		case <-createStarted:
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for concurrent coordinator creates")
 		}
 	}
-	if got := sessions.createCount(); got != 1 {
-		t.Fatalf("Create count = %d, want 1", got)
+	releaseCreateOnce.Do(func() {
+		close(releaseCreate)
+	})
+	select {
+	case <-promptStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for first coordinator prompt")
+	}
+	for range attempts - 1 {
+		select {
+		case err := <-errs:
+			if err != nil {
+				t.Fatalf("bootstrapRun() concurrent error = %v", err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for concurrent bootstrap calls to coalesce")
+		}
+	}
+	createCount := sessions.createCount()
+	if createCount < 2 {
+		t.Fatalf("Create count = %d, want at least 2 to prove create ran outside runtime mutex", createCount)
+	}
+	if got, want := sessions.stopCount(), createCount-1; got != want {
+		t.Fatalf("StopWithCause count = %d, want %d duplicate coordinators stopped", got, want)
+	}
+	if got := sessions.activeCoordinatorCount("ws-1"); got != 1 {
+		t.Fatalf("active coordinator count = %d, want 1", got)
+	}
+	if got := sessions.promptCount(); got != 1 {
+		t.Fatalf("PromptSynthetic count = %d, want 1", got)
+	}
+	prompt := sessions.promptCall(0)
+	assertCoordinatorPromptInterrupt(t, prompt)
+	if prompt.id != "coord-1" {
+		t.Fatalf("PromptSynthetic id = %q, want coord-1", prompt.id)
+	}
+	if prompt.opts.Metadata.TaskID != "task-1" ||
+		prompt.opts.Metadata.TaskRunID != "run-1" ||
+		prompt.opts.Metadata.CoordinatorSessionID != "coord-1" ||
+		prompt.opts.Metadata.Reason != coordinator.ReasonRunEnqueued {
+		t.Fatalf("PromptSynthetic metadata = %#v, want task/run/coordinator/reason", prompt.opts.Metadata)
+	}
+	releaseOnce.Do(func() {
+		close(releasePrompt)
+	})
+	select {
+	case err := <-errs:
+		if err != nil {
+			t.Fatalf("bootstrapRun() prompt owner error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for prompt owner bootstrap")
+	}
+}
+
+func TestCoordinatorRuntimeShutdownStopsPromptEventDrains(t *testing.T) {
+	t.Parallel()
+
+	store := newCoordinatorRuntimeStore(coordinatorRuntimeTask(), coordinatorRuntimeRun())
+	events := make(chan acp.AgentEvent)
+	t.Cleanup(func() {
+		close(events)
+	})
+	sessions := &coordinatorRuntimeSessions{promptEvents: events}
+	runtime := newCoordinatorRuntimeForTest(
+		t,
+		store,
+		sessions,
+		&recordingCoordinatorHooks{},
+		coordinatorRuntimeConfig(),
+		time.Now().UTC(),
+	)
+	if err := runtime.promptCoordinator(
+		context.Background(),
+		&session.Info{ID: "coord-drain"},
+		coordinator.Decision{TaskID: "task-1", RunID: "run-1"},
+		coordinator.ReasonRunEnqueued,
+	); err != nil {
+		t.Fatalf("promptCoordinator() error = %v", err)
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := runtime.shutdown(shutdownCtx); err != nil {
+		t.Fatalf("shutdown() error = %v", err)
 	}
 }
 
@@ -257,6 +377,10 @@ func TestCoordinatorRuntimeObservesTaskRunEnqueuedButNotTaskCreation(t *testing.
 	if got := sessions.createCount(); got != 1 {
 		t.Fatalf("Create count after enqueue = %d, want 1", got)
 	}
+	if got := sessions.promptCount(); got != 1 {
+		t.Fatalf("PromptSynthetic count after enqueue = %d, want 1", got)
+	}
+	assertCoordinatorPromptInterrupt(t, sessions.promptCall(0))
 }
 
 func TestCoordinatorRuntimeManualSessionsCoexist(t *testing.T) {
@@ -294,6 +418,67 @@ func TestCoordinatorRuntimeManualSessionsCoexist(t *testing.T) {
 	}
 	if got := sessions.createCount(); got != 1 {
 		t.Fatalf("Create count = %d, want 1", got)
+	}
+	if got := sessions.promptCount(); got != 1 {
+		t.Fatalf("PromptSynthetic count = %d, want 1", got)
+	}
+	assertCoordinatorPromptInterrupt(t, sessions.promptCall(0))
+}
+
+func TestCoordinatorRuntimePromptsExistingCoordinatorForQueuedRun(t *testing.T) {
+	t.Parallel()
+
+	store := newCoordinatorRuntimeStore(coordinatorRuntimeTask(), coordinatorRuntimeRun())
+	ttl := time.Now().UTC().Add(time.Hour)
+	sessions := &coordinatorRuntimeSessions{
+		infos: []*session.Info{{
+			ID:          "coord-existing",
+			Type:        session.SessionTypeCoordinator,
+			AgentName:   "coordinator",
+			WorkspaceID: "ws-1",
+			Workspace:   "ws-1",
+			State:       session.StateActive,
+			Lineage: &storepkg.SessionLineage{
+				RootSessionID: "coord-existing",
+				SpawnRole:     string(session.SessionTypeCoordinator),
+				TTLExpiresAt:  &ttl,
+			},
+		}},
+	}
+	runtime := newCoordinatorRuntimeForTest(
+		t,
+		store,
+		sessions,
+		&recordingCoordinatorHooks{},
+		coordinatorRuntimeConfig(),
+		time.Now().UTC(),
+	)
+
+	info, created, err := runtime.bootstrapRun(
+		context.Background(),
+		store.tasks["task-1"],
+		store.runs["run-1"],
+		coordinator.ReasonRecovery,
+	)
+	if err != nil {
+		t.Fatalf("bootstrapRun(existing) error = %v", err)
+	}
+	if created {
+		t.Fatal("bootstrapRun(existing) created = true, want false")
+	}
+	if info == nil || info.ID != "coord-existing" {
+		t.Fatalf("bootstrapRun(existing) info = %#v, want existing coordinator", info)
+	}
+	if got := sessions.createCount(); got != 0 {
+		t.Fatalf("Create count = %d, want 0", got)
+	}
+	if got := sessions.promptCount(); got != 1 {
+		t.Fatalf("PromptSynthetic count = %d, want 1", got)
+	}
+	prompt := sessions.promptCall(0)
+	assertCoordinatorPromptInterrupt(t, prompt)
+	if got := prompt.opts.Metadata.TaskRunID; got != "run-1" {
+		t.Fatalf("PromptSynthetic run id = %q, want run-1", got)
 	}
 }
 
@@ -418,6 +603,7 @@ func newCoordinatorRuntimeForTest(
 ) *coordinatorRuntime {
 	t.Helper()
 	runtime, err := newCoordinatorRuntime(
+		context.Background(),
 		store,
 		sessions,
 		&staticCoordinatorConfigResolver{cfg: cfg},
@@ -536,12 +722,24 @@ func (s *coordinatorRuntimeStore) ListTaskRunsByStatus(
 }
 
 type coordinatorRuntimeSessions struct {
-	mu          sync.Mutex
-	infos       []*session.Info
-	createCalls []session.CreateOpts
-	createErr   error
-	stopCalls   []coordinatorRuntimeStopCall
-	stopErr     error
+	mu            sync.Mutex
+	infos         []*session.Info
+	createCalls   []session.CreateOpts
+	createErr     error
+	createStarted chan struct{}
+	createRelease <-chan struct{}
+	promptCalls   []coordinatorRuntimePromptCall
+	promptErr     error
+	promptEvents  <-chan acp.AgentEvent
+	promptStarted chan struct{}
+	promptRelease <-chan struct{}
+	stopCalls     []coordinatorRuntimeStopCall
+	stopErr       error
+}
+
+type coordinatorRuntimePromptCall struct {
+	id   string
+	opts session.SyntheticPromptOpts
 }
 
 type coordinatorRuntimeStopCall struct {
@@ -550,7 +748,24 @@ type coordinatorRuntimeStopCall struct {
 	detail string
 }
 
-func (s *coordinatorRuntimeSessions) Create(_ context.Context, opts session.CreateOpts) (*session.Session, error) {
+func (s *coordinatorRuntimeSessions) Create(ctx context.Context, opts session.CreateOpts) (*session.Session, error) {
+	s.mu.Lock()
+	createStarted := s.createStarted
+	createRelease := s.createRelease
+	s.mu.Unlock()
+	if createStarted != nil {
+		select {
+		case createStarted <- struct{}{}:
+		default:
+		}
+	}
+	if createRelease != nil {
+		select {
+		case <-createRelease:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.createErr != nil {
@@ -593,8 +808,50 @@ func (s *coordinatorRuntimeSessions) ListAll(context.Context) ([]*session.Info, 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	infos := make([]*session.Info, len(s.infos))
-	copy(infos, s.infos)
+	for i, info := range s.infos {
+		if info == nil {
+			continue
+		}
+		cloned := *info
+		infos[i] = &cloned
+	}
 	return infos, nil
+}
+
+func (s *coordinatorRuntimeSessions) PromptSynthetic(
+	ctx context.Context,
+	id string,
+	opts session.SyntheticPromptOpts,
+) (<-chan acp.AgentEvent, error) {
+	s.mu.Lock()
+	s.promptCalls = append(s.promptCalls, coordinatorRuntimePromptCall{id: id, opts: opts})
+	promptErr := s.promptErr
+	promptEvents := s.promptEvents
+	promptStarted := s.promptStarted
+	promptRelease := s.promptRelease
+	s.mu.Unlock()
+	if promptStarted != nil {
+		select {
+		case promptStarted <- struct{}{}:
+		default:
+		}
+	}
+	if promptErr != nil {
+		return nil, promptErr
+	}
+	if promptRelease != nil {
+		select {
+		case <-promptRelease:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	if promptEvents != nil {
+		return promptEvents, nil
+	}
+	ch := make(chan acp.AgentEvent)
+	close(ch)
+	return ch, nil
 }
 
 func (s *coordinatorRuntimeSessions) StopWithCause(
@@ -608,6 +865,13 @@ func (s *coordinatorRuntimeSessions) StopWithCause(
 	s.stopCalls = append(s.stopCalls, coordinatorRuntimeStopCall{id: id, cause: cause, detail: detail})
 	if s.stopErr != nil {
 		return s.stopErr
+	}
+	for _, info := range s.infos {
+		if info == nil || strings.TrimSpace(info.ID) != strings.TrimSpace(id) {
+			continue
+		}
+		info.State = session.StateStopped
+		info.StopDetail = detail
 	}
 	return nil
 }
@@ -625,6 +889,44 @@ func (s *coordinatorRuntimeSessions) createCall(index int) session.CreateOpts {
 		return session.CreateOpts{}
 	}
 	return s.createCalls[index]
+}
+
+func (s *coordinatorRuntimeSessions) activeCoordinatorCount(workspaceID string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	count := 0
+	for _, info := range s.infos {
+		if info == nil ||
+			info.Type != session.SessionTypeCoordinator ||
+			info.State != session.StateActive ||
+			strings.TrimSpace(info.WorkspaceID) != strings.TrimSpace(workspaceID) {
+			continue
+		}
+		count++
+	}
+	return count
+}
+
+func (s *coordinatorRuntimeSessions) promptCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.promptCalls)
+}
+
+func (s *coordinatorRuntimeSessions) promptCall(index int) coordinatorRuntimePromptCall {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if index < 0 || index >= len(s.promptCalls) {
+		return coordinatorRuntimePromptCall{}
+	}
+	return s.promptCalls[index]
+}
+
+func assertCoordinatorPromptInterrupt(t *testing.T, prompt coordinatorRuntimePromptCall) {
+	t.Helper()
+	if !prompt.opts.InterruptIfAgentWaiting {
+		t.Fatal("PromptSynthetic InterruptIfAgentWaiting = false, want true")
+	}
 }
 
 func (s *coordinatorRuntimeSessions) stopCount() int {
