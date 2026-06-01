@@ -644,7 +644,7 @@ func TestSkillMarketplaceHandlers(t *testing.T) {
 				rec.Body.String(),
 			)
 		}
-		if !strings.Contains(rec.Body.String(), "not visible after registry refresh") {
+		if !strings.Contains(rec.Body.String(), "not visible after skill discovery") {
 			t.Fatalf("body = %s, want registry visibility reason", rec.Body.String())
 		}
 	})

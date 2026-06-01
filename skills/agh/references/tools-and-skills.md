@@ -63,6 +63,13 @@ The response shape is `SkillShadowsRecord` / `SkillShadowsResponse`: `winner` is
 
 Do not diagnose skill drift from filesystem paths alone. Use the resolver view so workspace, agent-local, bundled, marketplace, extension, and additional-path precedence are all considered.
 
+Marketplace install can write files and still fail discovery verification when the effective skill is
+disabled, shadowed by a higher-precedence declaration, missing marketplace provenance, or reporting a
+different slug. Treat a marketplace unavailable or not-discoverable install result as terminal until
+local state changes. Use `agh skill where <name>`, inspect the winning source and path, then enable
+the installed skill, remove or rename the shadowing declaration, or remove the broken install
+directory before retrying.
+
 ## Native AGH Tool Map
 
 Agents running inside AGH should read references/native-tools.md before choosing a tool or CLI fallback. That file lists the daemon-native toolsets and stable `agh__*` IDs, but the source of truth for parameters and availability is always the live descriptor returned by `agh__tool_info`.

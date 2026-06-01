@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,6 +26,15 @@ type fakeInstallRegistry struct {
 	detail         *registrypkg.Detail
 	updateInfo     *registrypkg.UpdateInfo
 	checkUpdateErr error
+}
+
+type fakeSkillResolver struct {
+	skills map[string]*skills.Skill
+}
+
+func (r fakeSkillResolver) Get(name string) (*skills.Skill, bool) {
+	skill, ok := r.skills[name]
+	return skill, ok
 }
 
 func (r fakeInstallRegistry) Download(
@@ -251,6 +261,126 @@ func TestUpdateSkillClassifiesRegistryLookupFailures(t *testing.T) {
 			t.Fatalf("UpdateSkill() error = %v, want ErrNotFound", err)
 		}
 	})
+}
+
+func TestVerifyInstallVisible(t *testing.T) {
+	t.Parallel()
+
+	result := InstallResult{
+		Name:     "review",
+		Slug:     "@agh/review",
+		Version:  "1.2.0",
+		Registry: "clawhub",
+		Path:     "/tmp/agh/skills/review",
+		Hash:     "sha256:abc",
+		Status:   "installed",
+	}
+	visibleSkill := func() *skills.Skill {
+		return &skills.Skill{
+			Meta:   skills.SkillMeta{Name: "review"},
+			Source: skills.SourceMarketplace,
+			FilePath: filepath.Join(
+				"tmp",
+				"agh",
+				"skills",
+				"review",
+				SkillMarkdownFileName,
+			),
+			Enabled: true,
+			Provenance: &skills.Provenance{
+				Slug:     "@agh/review",
+				Registry: "clawhub",
+				Version:  "1.2.0",
+			},
+		}
+	}
+
+	t.Run("Should accept visible marketplace skill with matching provenance", func(t *testing.T) {
+		t.Parallel()
+
+		err := VerifyInstallVisible(fakeSkillResolver{skills: map[string]*skills.Skill{
+			"review": visibleSkill(),
+		}}, result)
+		if err != nil {
+			t.Fatalf("VerifyInstallVisible() error = %v", err)
+		}
+	})
+
+	cases := []struct {
+		name     string
+		resolver SkillResolver
+		wantText string
+	}{
+		{
+			name:     "Should classify missing discovery as unavailable",
+			resolver: fakeSkillResolver{skills: map[string]*skills.Skill{}},
+			wantText: "not visible after skill discovery",
+		},
+		{
+			name: "Should classify shadowing source as unavailable",
+			resolver: fakeSkillResolver{skills: map[string]*skills.Skill{
+				"review": {
+					Meta:     skills.SkillMeta{Name: "review"},
+					Source:   skills.SourceUser,
+					FilePath: "/tmp/agh/skills/review/SKILL.md",
+					Enabled:  true,
+				},
+			}},
+			wantText: "resolved as user from /tmp/agh/skills/review/SKILL.md",
+		},
+		{
+			name: "Should classify missing provenance as unavailable",
+			resolver: fakeSkillResolver{skills: map[string]*skills.Skill{
+				"review": func() *skills.Skill {
+					skill := visibleSkill()
+					skill.Provenance = nil
+					return skill
+				}(),
+			}},
+			wantText: "missing provenance after skill discovery",
+		},
+		{
+			name: "Should classify slug mismatch as unavailable",
+			resolver: fakeSkillResolver{skills: map[string]*skills.Skill{
+				"review": func() *skills.Skill {
+					skill := visibleSkill()
+					skill.Provenance.Slug = "@other/review"
+					return skill
+				}(),
+			}},
+			wantText: "resolved slug \"@other/review\" after skill discovery, want \"@agh/review\"",
+		},
+		{
+			name: "Should classify disabled skill as unavailable",
+			resolver: fakeSkillResolver{skills: map[string]*skills.Skill{
+				"review": func() *skills.Skill {
+					skill := visibleSkill()
+					skill.Enabled = false
+					return skill
+				}(),
+			}},
+			wantText: "visible but disabled after skill discovery",
+		},
+		{
+			name:     "Should classify missing resolver as unavailable",
+			resolver: nil,
+			wantText: "skill discovery is not configured",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := VerifyInstallVisible(tc.resolver, result)
+			if !errors.Is(err, ErrUnavailable) {
+				t.Fatalf("VerifyInstallVisible() error = %v, want ErrUnavailable", err)
+			}
+			if !strings.Contains(err.Error(), tc.wantText) {
+				t.Fatalf("VerifyInstallVisible() error = %v, want %q", err, tc.wantText)
+			}
+		})
+	}
 }
 
 func marketplaceSkillArchive(t *testing.T, name string, description string, body string) []byte {

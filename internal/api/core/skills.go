@@ -316,7 +316,8 @@ func (h *BaseHandlers) InstallSkillMarketplace(c *gin.Context) {
 		h.respondError(c, http.StatusInternalServerError, err)
 		return
 	}
-	if err := h.verifyMarketplaceInstallVisible(result); err != nil {
+	if err := skillmarketplace.VerifyInstallVisible(h.SkillsRegistry, result); err != nil {
+		h.logSkillMarketplaceInstallVerificationFailure(result, err)
 		h.respondError(c, StatusForSkillMarketplaceError(err), err)
 		return
 	}
@@ -496,50 +497,16 @@ func (h *BaseHandlers) refreshSkillsAfterMarketplaceMutation(c *gin.Context) err
 	return nil
 }
 
-func (h *BaseHandlers) verifyMarketplaceInstallVisible(result skillmarketplace.InstallResult) error {
-	skill, ok := h.SkillsRegistry.Get(result.Name)
-	if !ok {
-		return fmt.Errorf(
-			"%w: installed marketplace skill %q is not visible after registry refresh; inspect %s and retry the install",
-			skillmarketplace.ErrUnavailable,
-			result.Name,
-			result.Path,
-		)
-	}
-	if skill.Source != skills.SourceMarketplace {
-		return fmt.Errorf(
-			"%w: installed marketplace skill %q resolved as %s after registry refresh; "+
-				"remove the shadowing skill and retry the install",
-			skillmarketplace.ErrUnavailable,
-			result.Name,
-			skills.SkillSourceName(skill.Source),
-		)
-	}
-	if skill.Provenance == nil {
-		return fmt.Errorf(
-			"%w: installed marketplace skill %q is missing provenance after registry refresh; inspect %s and retry the install",
-			skillmarketplace.ErrUnavailable,
-			result.Name,
-			result.Path,
-		)
-	}
-	if strings.TrimSpace(skill.Provenance.Slug) != strings.TrimSpace(result.Slug) {
-		return fmt.Errorf(
-			"%w: installed marketplace skill %q resolved slug %q after registry refresh, want %q; "+
-				"remove the conflicting skill and retry the install",
-			skillmarketplace.ErrUnavailable,
-			result.Name,
-			skill.Provenance.Slug,
-			result.Slug,
-		)
-	}
-	if !skill.Enabled {
-		return fmt.Errorf(
-			"%w: installed marketplace skill %q is visible but disabled after registry refresh; "+
-				"enable the skill and retry discovery",
-			skillmarketplace.ErrUnavailable,
-			result.Name,
-		)
-	}
-	return nil
+func (h *BaseHandlers) logSkillMarketplaceInstallVerificationFailure(
+	result skillmarketplace.InstallResult,
+	err error,
+) {
+	h.Logger.Warn(
+		"skills marketplace: installed skill is not discoverable",
+		"name", result.Name,
+		"source", result.Registry,
+		"slug", result.Slug,
+		"path", result.Path,
+		"reason", err.Error(),
+	)
 }

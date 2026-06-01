@@ -22,6 +22,7 @@ import (
 	aghconfig "github.com/compozy/agh/internal/config"
 	registrypkg "github.com/compozy/agh/internal/registry"
 	"github.com/compozy/agh/internal/skills"
+	skillmarketplace "github.com/compozy/agh/internal/skills/marketplace"
 	"github.com/compozy/agh/internal/store/globaldb"
 	"github.com/compozy/agh/internal/testutil"
 	workspacepkg "github.com/compozy/agh/internal/workspace"
@@ -1556,8 +1557,8 @@ func TestSkillMarketplaceHelpers(t *testing.T) {
 		if err == nil {
 			t.Fatal("installMarketplaceSkill(disabled discovery) error = nil, want failure")
 		}
-		if !strings.Contains(err.Error(), "visible but disabled") {
-			t.Fatalf("installMarketplaceSkill(disabled discovery) error = %v, want disabled discovery reason", err)
+		if !errors.Is(err, skillmarketplace.ErrUnavailable) {
+			t.Fatalf("installMarketplaceSkill(disabled discovery) error = %v, want ErrUnavailable", err)
 		}
 	})
 

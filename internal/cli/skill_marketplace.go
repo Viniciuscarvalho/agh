@@ -126,52 +126,27 @@ func verifyInstalledMarketplaceSkill(
 		UserAgentsDir:  runtime.HomePaths.AgentsDir,
 		UserSkillsDir:  runtime.HomePaths.SkillsDir,
 		DisabledSkills: append([]string(nil), runtime.Config.Skills.DisabledSkills...),
-	})
+	}, skills.WithLogger(slog.Default()))
 	if err := registry.LoadAll(ctx); err != nil {
 		return fmt.Errorf("cli: reload skill registry after marketplace install %q: %w", result.Name, err)
 	}
 
-	skill, err := findSkillByName(registry.List(), result.Name)
-	if err != nil {
-		return fmt.Errorf(
-			"cli: installed marketplace skill %q is not visible after registry reload; inspect %s and retry the install: %w",
-			result.Name,
-			result.Path,
-			err,
-		)
-	}
-	if skill.Source != skills.SourceMarketplace {
-		return fmt.Errorf(
-			"cli: installed marketplace skill %q resolved as %s after registry reload; "+
-				"remove the shadowing skill and retry the install",
-			result.Name,
-			skillSourceLabel(skill.Source),
-		)
-	}
-	if skill.Provenance == nil {
-		return fmt.Errorf(
-			"cli: installed marketplace skill %q is missing provenance after registry reload; inspect %s and retry the install",
-			result.Name,
-			result.Path,
-		)
-	}
-	if strings.TrimSpace(skill.Provenance.Slug) != strings.TrimSpace(result.Slug) {
-		return fmt.Errorf(
-			"cli: installed marketplace skill %q resolved slug %q after registry reload, want %q; "+
-				"remove the conflicting skill and retry the install",
-			result.Name,
-			skill.Provenance.Slug,
-			result.Slug,
-		)
-	}
-	if !skill.Enabled {
-		return fmt.Errorf(
-			"cli: installed marketplace skill %q is visible but disabled after registry reload; "+
-				"enable the skill and retry discovery",
-			result.Name,
-		)
+	if err := skillmarketplace.VerifyInstallVisible(registry, result); err != nil {
+		logSkillMarketplaceInstallVerificationFailure(result, err)
+		return fmt.Errorf("cli: %w", err)
 	}
 	return nil
+}
+
+func logSkillMarketplaceInstallVerificationFailure(result skillmarketplace.InstallResult, err error) {
+	slog.Warn(
+		"skills marketplace: installed skill is not discoverable",
+		"name", result.Name,
+		"source", result.Registry,
+		"slug", result.Slug,
+		"path", result.Path,
+		"reason", err.Error(),
+	)
 }
 
 func updateMarketplaceSkills(
