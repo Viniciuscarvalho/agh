@@ -15,6 +15,7 @@ import (
 	registryclawhub "github.com/compozy/agh/internal/registry/clawhub"
 	"github.com/compozy/agh/internal/skills"
 	skillmarketplace "github.com/compozy/agh/internal/skills/marketplace"
+	skillbundled "github.com/compozy/agh/skills"
 )
 
 const (
@@ -97,6 +98,9 @@ func installMarketplaceSkill(
 	if err != nil {
 		return skillInstallItem{}, err
 	}
+	if err := verifyInstalledMarketplaceSkill(ctx, runtime, result); err != nil {
+		return skillInstallItem{}, err
+	}
 	return skillInstallItem{
 		Name:     result.Name,
 		Slug:     result.Slug,
@@ -106,6 +110,43 @@ func installMarketplaceSkill(
 		Hash:     result.Hash,
 		Status:   result.Status,
 	}, nil
+}
+
+func verifyInstalledMarketplaceSkill(
+	ctx context.Context,
+	runtime *runtimeContext,
+	result skillmarketplace.InstallResult,
+) error {
+	if runtime == nil {
+		return errors.New("cli: skill runtime context is required")
+	}
+
+	registry := skills.NewRegistry(skills.RegistryConfig{
+		BundledFS:      skillbundled.FS(),
+		UserAgentsDir:  runtime.HomePaths.AgentsDir,
+		UserSkillsDir:  runtime.HomePaths.SkillsDir,
+		DisabledSkills: append([]string(nil), runtime.Config.Skills.DisabledSkills...),
+	}, skills.WithLogger(slog.Default()))
+	if err := registry.LoadAll(ctx); err != nil {
+		return fmt.Errorf("cli: reload skill registry after marketplace install %q: %w", result.Name, err)
+	}
+
+	if err := skillmarketplace.VerifyInstallVisible(registry, result); err != nil {
+		logSkillMarketplaceInstallVerificationFailure(result, err)
+		return fmt.Errorf("cli: %w", err)
+	}
+	return nil
+}
+
+func logSkillMarketplaceInstallVerificationFailure(result skillmarketplace.InstallResult, err error) {
+	slog.Warn(
+		"skills marketplace: installed skill is not discoverable",
+		"name", result.Name,
+		"source", result.Registry,
+		"slug", result.Slug,
+		"path", result.Path,
+		"reason", err.Error(),
+	)
 }
 
 func updateMarketplaceSkills(

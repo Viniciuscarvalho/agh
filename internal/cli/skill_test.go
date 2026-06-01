@@ -22,6 +22,7 @@ import (
 	aghconfig "github.com/compozy/agh/internal/config"
 	registrypkg "github.com/compozy/agh/internal/registry"
 	"github.com/compozy/agh/internal/skills"
+	skillmarketplace "github.com/compozy/agh/internal/skills/marketplace"
 	"github.com/compozy/agh/internal/store/globaldb"
 	"github.com/compozy/agh/internal/testutil"
 	workspacepkg "github.com/compozy/agh/internal/workspace"
@@ -1511,6 +1512,53 @@ func TestSkillMarketplaceHelpers(t *testing.T) {
 			env.deps.now,
 		); err != nil {
 			t.Fatalf("installMarketplaceSkill(replace existing) error = %v", err)
+		}
+	})
+
+	t.Run("Should install-marketplace-skill-rejects-disabled-discovery", func(t *testing.T) {
+		server := newMarketplaceTestServer(t, marketplaceServerFixture{
+			downloads: map[string]marketplaceDownloadFixture{
+				"@agh/review": {
+					version: "1.1.0",
+					files: map[string]string{
+						"review/SKILL.md": skillDocument("review", "Review helper", "body"),
+					},
+				},
+			},
+		})
+		defer server.Close()
+
+		env := newSkillTestEnv(t, func(cfg *aghconfig.Config) {
+			cfg.Skills.DisabledSkills = []string{"review"}
+			cfg.Skills.Marketplace = aghconfig.MarketplaceConfig{
+				Registry: "clawhub",
+				BaseURL:  server.URL(),
+			}
+		})
+		runtime, registry, err := loadSkillRegistry(env.deps)
+		if err != nil {
+			t.Fatalf("loadSkillRegistry() error = %v", err)
+		}
+		defer func() {
+			if closeErr := registry.Close(); closeErr != nil {
+				t.Fatalf("registry.Close() error = %v", closeErr)
+			}
+		}()
+
+		_, err = installMarketplaceSkill(
+			testutil.Context(t),
+			runtime,
+			registry,
+			"@agh/review",
+			"",
+			"",
+			env.deps.now,
+		)
+		if err == nil {
+			t.Fatal("installMarketplaceSkill(disabled discovery) error = nil, want failure")
+		}
+		if !errors.Is(err, skillmarketplace.ErrUnavailable) {
+			t.Fatalf("installMarketplaceSkill(disabled discovery) error = %v, want ErrUnavailable", err)
 		}
 	})
 

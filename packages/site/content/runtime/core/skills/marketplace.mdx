@@ -87,6 +87,12 @@ exists in a lower source, the higher-precedence source wins according to the nor
 When installation runs through the daemon API, AGH refreshes the global skills registry before
 returning so `/api/skills` and the web Installed tab can reflect the new skill immediately.
 
+After writing the files, AGH verifies that skill discovery can resolve the installed skill as a
+marketplace skill with matching provenance and an enabled state. If that verification fails, the CLI
+returns a classified marketplace unavailable error and the daemon API returns an unavailable
+response. Treat this as a local state problem, not a retry signal: enable a disabled skill, remove or
+rename a higher-precedence declaration, or remove the broken install directory and install again.
+
 ## Daemon API
 
 The daemon exposes marketplace skill operations under `/api/skills/marketplace` on both HTTP and
@@ -190,14 +196,14 @@ Update behavior:
 
 ## Version Pinning
 
-The internal install pipeline can request a specific archive version, and the marketplace provenance
-stores the installed version. The current user-facing CLI does not expose `agh skill install
---version`, nor does it accept version syntax in slugs.
+Use `--version` to request a specific marketplace archive version:
 
-For now, treat marketplace installs as "install latest" and use the recorded `.agh-meta.json`
-version for audit and update checks. If you need a fixed skill version today, vendor the skill as a
-manual local skill in `$AGH_HOME/skills/` or `<workspace>/.agh/skills/` and review updates
-manually.
+```bash
+agh skill install @author/refactor-checklist --version 1.2.0
+```
+
+AGH records the installed version in `.agh-meta.json` for audit and update checks. Version suffixes
+are still not accepted in slugs; keep the slug as `@author/name` and pass the version with the flag.
 
 ## Remove
 

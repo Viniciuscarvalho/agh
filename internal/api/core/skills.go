@@ -316,6 +316,11 @@ func (h *BaseHandlers) InstallSkillMarketplace(c *gin.Context) {
 		h.respondError(c, http.StatusInternalServerError, err)
 		return
 	}
+	if err := skillmarketplace.VerifyInstallVisible(h.SkillsRegistry, result); err != nil {
+		h.logSkillMarketplaceInstallVerificationFailure(result, err)
+		h.respondError(c, StatusForSkillMarketplaceError(err), err)
+		return
+	}
 
 	c.JSON(http.StatusOK, contract.SkillMarketplaceInstallResponse{
 		Skill: SkillMarketplaceInstallPayloadFromResult(result),
@@ -490,4 +495,18 @@ func (h *BaseHandlers) refreshSkillsAfterMarketplaceMutation(c *gin.Context) err
 		return fmt.Errorf("refresh skills registry after marketplace mutation: %w", err)
 	}
 	return nil
+}
+
+func (h *BaseHandlers) logSkillMarketplaceInstallVerificationFailure(
+	result skillmarketplace.InstallResult,
+	err error,
+) {
+	h.Logger.Warn(
+		"skills marketplace: installed skill is not discoverable",
+		"name", result.Name,
+		"source", result.Registry,
+		"slug", result.Slug,
+		"path", result.Path,
+		"reason", err.Error(),
+	)
 }
