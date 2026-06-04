@@ -1,11 +1,21 @@
-import { useEffect } from "react";
+import type { LucideIcon } from "lucide-react";
+import { CalendarClock, Zap } from "lucide-react";
+import type { ReactNode } from "react";
 
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@agh/ui";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  Eyebrow,
+} from "@agh/ui";
 
+import type { AutomationDialogHandle } from "../lib/dialog-handle";
+import type { WorkspaceOption } from "../lib/trigger-preview";
+import type { CreateAutomationJobRequest, CreateAutomationTriggerRequest } from "../types";
 import { AutomationJobForm } from "./automation-job-form";
 import { AutomationTriggerForm } from "./automation-trigger-form";
-import type { AutomationDialogHandle } from "../lib/dialog-handle";
-import type { CreateAutomationJobRequest, CreateAutomationTriggerRequest } from "../types";
 
 type AutomationDialogEditorState =
   | {
@@ -31,56 +41,61 @@ interface AutomationEditorDialogProps {
   activeWorkspaceId?: string | null;
   editor: AutomationDialogEditorState | null;
   handle?: AutomationDialogHandle;
+  workspaces?: ReadonlyArray<WorkspaceOption>;
 }
 
-function jobDialogCopy(mode: "create" | "edit") {
+interface EditorHeaderCopy {
+  icon: LucideIcon;
+  eyebrow: string;
+  title: string;
+  description: ReactNode;
+}
+
+function jobHeaderCopy(mode: "create" | "edit"): EditorHeaderCopy {
   return {
+    icon: CalendarClock,
+    eyebrow: "Automation · Job",
     title: mode === "create" ? "Create job" : "Edit job",
-    description: "Scheduled jobs dispatch prompts to agents on a time-based cadence.",
+    description: (
+      <>
+        A job runs an agent on a schedule, no operator in the loop. It answers three things:{" "}
+        <b className="font-medium text-muted">which agent, what prompt, and when to dispatch.</b>
+      </>
+    ),
   };
 }
 
-function triggerDialogCopy(mode: "create" | "edit") {
+function triggerHeaderCopy(mode: "create" | "edit"): EditorHeaderCopy {
   return {
+    icon: Zap,
+    eyebrow: "Automation · Trigger",
     title: mode === "create" ? "Create trigger" : "Edit trigger",
-    description: "Event-driven triggers react to daemon events, webhooks, and extension signals.",
+    description: (
+      <>
+        A trigger watches for a runtime event and, when it matches, runs an agent with a prompt
+        built from that event.{" "}
+        <b className="font-medium text-muted">When this happens → run that.</b>
+      </>
+    ),
   };
 }
+
+const WIDE_CONTENT_CLASS =
+  "text-fg grid-rows-[auto_minmax(0,1fr)] w-(--width-modal-xl) sm:max-w-(--width-modal-xl) h-(--height-modal-xl) max-h-[92vh]";
 
 export function AutomationEditorDialog({
   activeWorkspaceId,
   editor,
   handle,
+  workspaces,
 }: AutomationEditorDialogProps) {
-  const isControlled = handle === undefined;
   const isEditorOpen = editor !== null;
-  const copy = editor
-    ? editor.kind === "jobs"
-      ? jobDialogCopy(editor.mode)
-      : triggerDialogCopy(editor.mode)
-    : { title: "", description: "" };
-
-  useEffect(() => {
-    if (!handle) {
-      return;
-    }
-
-    if (isEditorOpen) {
-      if (!handle.isOpen) {
-        handle.open(null);
-      }
-      return;
-    }
-
-    if (handle.isOpen) {
-      handle.close();
-    }
-  }, [handle, isEditorOpen]);
 
   return (
     <Dialog
+      disablePointerDismissal
       handle={handle}
-      open={isControlled ? isEditorOpen : undefined}
+      open={isEditorOpen}
       onOpenChange={open => {
         if (!open) editor?.onCancel();
       }}
@@ -88,39 +103,57 @@ export function AutomationEditorDialog({
       {editor ? (
         <DialogContent
           unframed
-          className="text-fg sm:max-w-176"
+          className={WIDE_CONTENT_CLASS}
           data-testid="automation-editor-dialog"
         >
-          <>
-            <DialogHeader variant="ruled">
-              <DialogTitle>{copy.title}</DialogTitle>
-              <DialogDescription>{copy.description}</DialogDescription>
-            </DialogHeader>
-
-            {editor.kind === "jobs" ? (
-              <AutomationJobForm
-                activeWorkspaceId={activeWorkspaceId}
-                draft={editor.draft}
-                isPending={editor.isPending}
-                mode={editor.mode}
-                onCancel={editor.onCancel}
-                onChange={editor.onChange}
-                onSubmit={editor.onSubmit}
-              />
-            ) : (
-              <AutomationTriggerForm
-                activeWorkspaceId={activeWorkspaceId}
-                draft={editor.draft}
-                isPending={editor.isPending}
-                mode={editor.mode}
-                onCancel={editor.onCancel}
-                onChange={editor.onChange}
-                onSubmit={editor.onSubmit}
-              />
-            )}
-          </>
+          <EditorHeader
+            copy={
+              editor.kind === "jobs" ? jobHeaderCopy(editor.mode) : triggerHeaderCopy(editor.mode)
+            }
+          />
+          {editor.kind === "jobs" ? (
+            <AutomationJobForm
+              activeWorkspaceId={activeWorkspaceId}
+              draft={editor.draft}
+              isPending={editor.isPending}
+              mode={editor.mode}
+              onCancel={editor.onCancel}
+              onChange={editor.onChange}
+              onSubmit={editor.onSubmit}
+              workspaces={workspaces}
+            />
+          ) : (
+            <AutomationTriggerForm
+              activeWorkspaceId={activeWorkspaceId}
+              draft={editor.draft}
+              isPending={editor.isPending}
+              mode={editor.mode}
+              onCancel={editor.onCancel}
+              onChange={editor.onChange}
+              onSubmit={editor.onSubmit}
+              workspaces={workspaces}
+            />
+          )}
         </DialogContent>
       ) : null}
     </Dialog>
+  );
+}
+
+function EditorHeader({ copy }: { copy: EditorHeaderCopy }) {
+  const Icon = copy.icon;
+  return (
+    <DialogHeader variant="ruled">
+      <div className="flex items-start gap-4">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent-tint text-accent-strong ring-1 ring-accent-dim ring-inset">
+          <Icon aria-hidden="true" className="size-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <Eyebrow className="text-accent-strong">{copy.eyebrow}</Eyebrow>
+          <DialogTitle className="mt-1">{copy.title}</DialogTitle>
+          <DialogDescription className="mt-1">{copy.description}</DialogDescription>
+        </div>
+      </div>
+    </DialogHeader>
   );
 }

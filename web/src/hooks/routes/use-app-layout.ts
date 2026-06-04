@@ -5,8 +5,10 @@ import { useAgentCreateDialog, useAgents } from "@/systems/agent";
 import { useDaemonHealth } from "@/systems/status";
 import { useSessionCreateDialog, useSessions } from "@/systems/session";
 import { useActiveWorkspace, useWorkspace } from "@/systems/workspace";
+import { useSyncUserHomeDir } from "@/systems/workspace/hooks/use-sync-user-home-dir";
 
 function useAppLayout() {
+  useSyncUserHomeDir();
   const collapsed = useSidebarStore(state => state.collapsed);
   const setCollapsed = useSidebarStore(state => state.setCollapsed);
   const { connectionStatus } = useDaemonHealth();
@@ -19,13 +21,17 @@ function useAppLayout() {
     isLoading: areWorkspacesLoading,
     isError: workspacesError,
   } = useActiveWorkspace();
-  const { data: agents, isLoading: agentsLoading, isError: agentsError } = useAgents();
+  const {
+    data: agents,
+    isLoading: agentsLoading,
+    isError: agentsError,
+  } = useAgents(activeWorkspaceId, {
+    enabled: activeWorkspaceId !== null,
+  });
   const activeWorkspaceDetail = useWorkspace(activeWorkspaceId ?? "", {
     enabled: activeWorkspaceId !== null,
   });
-  const hasWorkspaceScopedAgents =
-    activeWorkspaceId !== null && activeWorkspaceDetail.data?.agents !== undefined;
-  const workspaceAgents = hasWorkspaceScopedAgents ? activeWorkspaceDetail.data?.agents : agents;
+  const workspaceAgents = activeWorkspaceId === null ? undefined : agents;
   const [isWorkspaceSetupOpen, setWorkspaceSetupOpen] = useState(false);
   const { data: sessions } = useSessions(activeWorkspaceId, {
     enabled: activeWorkspaceId !== null,
@@ -66,15 +72,8 @@ function useAppLayout() {
     areWorkspacesLoading,
     workspacesError,
     agents: workspaceAgents,
-    agentsLoading: hasWorkspaceScopedAgents
-      ? false
-      : agentsLoading || (activeWorkspaceId !== null && activeWorkspaceDetail.isLoading),
-    agentsError: hasWorkspaceScopedAgents
-      ? false
-      : agentsError ||
-        (activeWorkspaceId !== null &&
-          activeWorkspaceDetail.isError &&
-          workspaceAgents === undefined),
+    agentsLoading: activeWorkspaceId !== null && agentsLoading,
+    agentsError: activeWorkspaceId !== null && agentsError,
     isWorkspaceSetupOpen,
     setWorkspaceSetupOpen,
     sessions,

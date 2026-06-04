@@ -3,6 +3,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import { CenteredSurface } from "@/storybook/story-layout";
+import { StorybookUserHomeDirSetup } from "@/storybook/route-story";
 import { workspaceFixtures } from "@/systems/workspace/mocks";
 
 import { WorkspaceCommandSelect } from "../workspace-command-select";
@@ -18,12 +19,14 @@ function Frame({ children }: { children: React.ReactNode }) {
 interface HarnessProps {
   defaultWorkspaceId?: string | null;
   defaultOpen?: boolean;
+  userHomeDir?: string;
   onAddWorkspace?: () => void;
 }
 
 function WorkspaceCommandSelectHarness({
   defaultWorkspaceId = workspaceFixtures[0]?.id ?? null,
   defaultOpen = false,
+  userHomeDir,
   onAddWorkspace = fn(),
 }: HarnessProps) {
   const [workspaceId, setWorkspaceId] = useState<string | null>(defaultWorkspaceId);
@@ -31,6 +34,7 @@ function WorkspaceCommandSelectHarness({
 
   return (
     <Frame>
+      <StorybookUserHomeDirSetup userHomeDir={userHomeDir ?? null} />
       <WorkspaceCommandSelect
         workspaces={workspaceFixtures}
         value={workspaceId}
@@ -73,6 +77,31 @@ export const Open: Story = {
   },
 };
 
+export const HomeWorkspaceOpen: Story = {
+  args: {
+    defaultWorkspaceId: workspaceFixtures[3]?.id ?? workspaceFixtures[0]?.id ?? null,
+    defaultOpen: true,
+    userHomeDir: workspaceFixtures[3]?.root_dir,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const homeWorkspace = workspaceFixtures[3] ?? workspaceFixtures[0];
+    if (!homeWorkspace) {
+      throw new Error("Expected a workspace fixture");
+    }
+
+    await expect(canvas.getByTestId("workspace-switcher-avatar")).toHaveAttribute(
+      "data-home",
+      "true"
+    );
+    await expect(canvas.getByTestId(`workspace-command-item-${homeWorkspace.id}`)).toHaveAttribute(
+      "data-home",
+      "true"
+    );
+    await expect(canvas.getByText("Home workspace")).toBeInTheDocument();
+  },
+};
+
 export const SwitchesWorkspace: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -100,5 +129,37 @@ export const EmptyRegistry: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.getByTestId("workspace-switcher-name")).toHaveTextContent("No workspace");
     await expect(canvas.getByTestId("workspace-switcher")).toBeDisabled();
+  },
+};
+
+export const Compact: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Compact trigger for scope rows: pill-group md track height, form-label typography, and field border beside Global/Workspace toggles.",
+      },
+    },
+  },
+  render: () => (
+    <CenteredSurface className="items-start justify-center p-6">
+      <div className="w-[220px] border border-line bg-canvas-soft p-3">
+        <WorkspaceCommandSelect
+          workspaces={workspaceFixtures}
+          value={workspaceFixtures[0]?.id ?? null}
+          onChange={() => undefined}
+          size="compact"
+          triggerTestId="workspace-compact-switcher"
+          testIdPrefix="workspace-compact-command"
+        />
+      </div>
+    </CenteredSurface>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByTestId("workspace-compact-switcher")).toBeInTheDocument();
+    await expect(canvas.getByTestId("workspace-switcher-name")).toHaveTextContent(
+      workspaceFixtures[0]?.name ?? "No workspace"
+    );
   },
 };

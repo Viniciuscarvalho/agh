@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 
 import { MonoId, Pill } from "@agh/ui";
 
@@ -22,7 +22,8 @@ export interface TaskCardProps {
 
 /**
  * Full-detail list card — composes the shared `tasks-list-row` primitive and
- * pushes the rich task metadata into a single inline `__meta` row. Pills
+ * pushes the rich task metadata into a single inline `__meta` row. Status dots
+ * live on list group headers (`TaskGroup`), not on each row. Pills
  * (priority, approval, blocked) sit in the `trailing` column; the parent
  * identifier renders through `<MonoId>` so identifier styling matches every
  * other row-context surface. Publish + retry actions belong to the detail
@@ -85,24 +86,27 @@ export function TaskCard({ task, selected = false, onSelect }: TaskCardProps) {
     );
   }
 
-  const trailing = (
-    <>
-      {task.priority ? (
-        <Pill size="sm" tone={taskPriorityTone(task.priority)}>
-          {taskPriorityLabel(task.priority)}
-        </Pill>
-      ) : null}
-      {showApproval ? (
-        <Pill size="sm" tone="accent">
-          {taskApprovalStateLabel(task.approval_state)}
-        </Pill>
-      ) : null}
-      {isBlocked ? (
-        <Pill data-testid={`task-card-blocked-${task.id}`} mono size="sm" tone="warning">
-          Blocked
-        </Pill>
-      ) : null}
-    </>
+  const trailing = useMemo(
+    () => (
+      <>
+        {task.priority ? (
+          <Pill size="sm" tone={taskPriorityTone(task.priority)}>
+            {taskPriorityLabel(task.priority)}
+          </Pill>
+        ) : null}
+        {showApproval ? (
+          <Pill size="sm" tone="accent">
+            {taskApprovalStateLabel(task.approval_state)}
+          </Pill>
+        ) : null}
+        {isBlocked ? (
+          <Pill data-testid={`task-card-blocked-${task.id}`} mono size="sm" tone="warning">
+            Blocked
+          </Pill>
+        ) : null}
+      </>
+    ),
+    [isBlocked, showApproval, task.approval_state, task.id, task.priority]
   );
 
   return (

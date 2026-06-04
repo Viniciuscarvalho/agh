@@ -97,34 +97,42 @@ vi.mock("@/systems/settings", () => ({
   useSettingsAutomation: () => settingsAutomationQuery.current,
 }));
 
-vi.mock("@/systems/workspace", () => ({
-  useActiveWorkspace: () => ({
-    workspaces: [
-      {
-        add_dirs: [],
-        created_at: "2026-04-03T12:00:00Z",
-        id: "ws_test",
-        name: "test-workspace",
-        root_dir: "/workspace",
-        updated_at: "2026-04-03T12:00:00Z",
-      },
-    ],
-    hasWorkspaces: true,
-    activeWorkspace: {
-      add_dirs: [],
-      created_at: "2026-04-03T12:00:00Z",
-      id: "ws_test",
-      name: "test-workspace",
-      root_dir: "/workspace",
-      updated_at: "2026-04-03T12:00:00Z",
-    },
-    activeWorkspaceId: "ws_test",
-    clearActiveWorkspaceSelection: vi.fn(),
-    isError: false,
-    isLoading: false,
-    setActiveWorkspaceId: vi.fn(),
-  }),
-}));
+vi.mock("@/systems/workspace", async () => {
+  const actual = await vi.importActual<typeof import("@/systems/workspace")>("@/systems/workspace");
+
+  const workspace = {
+    add_dirs: [],
+    created_at: "2026-04-03T12:00:00Z",
+    id: "ws_test",
+    name: "test-workspace",
+    root_dir: "/workspace",
+    updated_at: "2026-04-03T12:00:00Z",
+  };
+
+  return {
+    ...actual,
+    useActiveWorkspace: () => ({
+      workspaces: [
+        workspace,
+        {
+          add_dirs: [],
+          created_at: "2026-04-03T12:00:00Z",
+          id: "ws_beta",
+          name: "beta-workspace",
+          root_dir: "/workspace/beta",
+          updated_at: "2026-04-03T12:00:00Z",
+        },
+      ],
+      hasWorkspaces: true,
+      activeWorkspace: workspace,
+      activeWorkspaceId: "ws_test",
+      clearActiveWorkspaceSelection: vi.fn(),
+      isError: false,
+      isLoading: false,
+      setActiveWorkspaceId: vi.fn(),
+    }),
+  };
+});
 
 vi.mock("@/systems/automation", async () => {
   const actual = await vi.importActual("@/systems/automation");
@@ -520,11 +528,16 @@ describe("Triggers route integration", () => {
     fireEvent.change(screen.getByTestId("trigger-agent-input"), {
       target: { value: "reviewer" },
     });
-    fireEvent.change(screen.getByTestId("trigger-event-input"), {
-      target: { value: "ext.test.qa" },
+    // Select the extension event and compose its id from the inline sub-config.
+    fireEvent.click(screen.getByTestId("trigger-event-ext"));
+    fireEvent.change(screen.getByTestId("trigger-ext-ext-input"), {
+      target: { value: "test" },
+    });
+    fireEvent.change(screen.getByTestId("trigger-ext-event-input"), {
+      target: { value: "qa" },
     });
     fireEvent.change(screen.getByTestId("trigger-prompt-input"), {
-      target: { value: "Review {{ .EventName }}." },
+      target: { value: "Review {{ .Kind }}." },
     });
 
     await user.click(screen.getByTestId("submit-trigger-form"));

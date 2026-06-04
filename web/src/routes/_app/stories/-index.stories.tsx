@@ -7,7 +7,7 @@ import {
   StorybookWorkspaceSetup,
   appRouteParameters,
   createRouteStoryMeta,
-} from "@/storybook/route-story";
+} from "@/storybook/route-story-meta";
 import { statusFixture } from "@/systems/status/mocks/fixtures";
 
 const meta: Meta<typeof StorybookRouteCanvas> = {
@@ -133,7 +133,7 @@ export const Onboarding: Story = {
   parameters: {
     ...appRouteParameters("/"),
     ...storybookMswParameters({
-      daemon: [
+      onboarding: [
         http.get("/api/onboarding", () => HttpResponse.json({ onboarding: { completed: false } })),
       ],
       workspace: [http.get("/api/workspaces", () => HttpResponse.json({ workspaces: [] }))],

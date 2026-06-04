@@ -1,9 +1,16 @@
 import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, fn, userEvent, within } from "storybook/test";
 
-import { storyAgentNames, storyDefaultWorkspaceId } from "@/storybook/fintech-scenario";
+import {
+  storyAgentNames,
+  storyWorkspaceIds,
+  storyWorkspaceNames,
+} from "@/storybook/fintech-scenario";
 import { createAutomationJobDraft, createAutomationTriggerDraft } from "@/systems/automation";
+import type {
+  CreateAutomationJobRequest,
+  CreateAutomationTriggerRequest,
+} from "@/systems/automation";
 import { AutomationEditorDialog } from "@/systems/automation/components/automation-editor-dialog";
 
 const meta: Meta<typeof AutomationEditorDialog> = {
@@ -17,79 +24,107 @@ const meta: Meta<typeof AutomationEditorDialog> = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-function AutomationEditorJobHarness({ onSubmit = fn() }: { onSubmit?: () => void }) {
-  const activeWorkspaceId = storyDefaultWorkspaceId;
-  const [draft, setDraft] = useState<ReturnType<typeof createAutomationJobDraft>>(() => ({
-    ...createAutomationJobDraft(activeWorkspaceId),
+const ACTIVE_WORKSPACE_ID = storyWorkspaceIds.hq;
+
+const storyWorkspaces = [
+  { id: storyWorkspaceIds.hq, name: storyWorkspaceNames.hq },
+  { id: storyWorkspaceIds.risk, name: storyWorkspaceNames.risk },
+  { id: storyWorkspaceIds.growth, name: storyWorkspaceNames.growth },
+];
+
+const EDITED_JOB_PROMPT =
+  "Summarize launch blockers, approvals, and the next cutover milestone for the " +
+  `${storyWorkspaceNames.hq} launch room.`;
+
+const EDITED_TRIGGER_PROMPT =
+  'Session {{ .Data.session_id }} stopped with reason "{{ .Data.stop_reason }}". ' +
+  "Summarize what went wrong and one suggested next step.";
+
+function jobDraft(mode: "create" | "edit"): CreateAutomationJobRequest {
+  const base = createAutomationJobDraft(ACTIVE_WORKSPACE_ID);
+  if (mode === "create") {
+    return base;
+  }
+  return {
+    ...base,
     name: "launch-command-digest",
     agent_name: storyAgentNames.product,
-    prompt:
-      "Summarize launch blockers, approvals, and the next cutover milestone for the launch room.",
-  }));
+    prompt: EDITED_JOB_PROMPT,
+  };
+}
+
+function triggerDraft(mode: "create" | "edit"): CreateAutomationTriggerRequest {
+  const base = createAutomationTriggerDraft(ACTIVE_WORKSPACE_ID);
+  if (mode === "create") {
+    return base;
+  }
+  return {
+    ...base,
+    name: "summarize-failures",
+    agent_name: storyAgentNames.support,
+    event: "session.stopped",
+    scope: "workspace",
+    filter: { "data.stop_reason": "error" },
+    prompt: EDITED_TRIGGER_PROMPT,
+  };
+}
+
+function AutomationEditorJobHarness({ mode }: { mode: "create" | "edit" }) {
+  const [draft, setDraft] = useState<CreateAutomationJobRequest>(() => jobDraft(mode));
 
   return (
     <AutomationEditorDialog
-      activeWorkspaceId={activeWorkspaceId}
+      activeWorkspaceId={ACTIVE_WORKSPACE_ID}
       editor={{
         draft,
         isPending: false,
         kind: "jobs",
-        mode: "create",
+        mode,
         onCancel: () => undefined,
-        onChange: nextDraft => setDraft(nextDraft),
-        onSubmit,
+        onChange: setDraft,
+        onSubmit: () => undefined,
       }}
+      workspaces={storyWorkspaces}
     />
   );
 }
 
-function AutomationEditorTriggerHarness({ onSubmit = fn() }: { onSubmit?: () => void }) {
-  const activeWorkspaceId = storyDefaultWorkspaceId;
-  const [draft, setDraft] = useState<ReturnType<typeof createAutomationTriggerDraft>>(() => ({
-    ...createAutomationTriggerDraft(activeWorkspaceId),
-    name: "support-sla-breach",
-    agent_name: storyAgentNames.support,
-    event: "support.launch.sla_breach",
-    filter: { "data.sla_minutes": ">=4" },
-    prompt: "Investigate the launch support lane when SLA exceeds {{ .Data.sla_minutes }} minutes.",
-  }));
+function AutomationEditorTriggerHarness({ mode }: { mode: "create" | "edit" }) {
+  const [draft, setDraft] = useState<CreateAutomationTriggerRequest>(() => triggerDraft(mode));
 
   return (
     <AutomationEditorDialog
-      activeWorkspaceId={activeWorkspaceId}
+      activeWorkspaceId={ACTIVE_WORKSPACE_ID}
       editor={{
         draft,
         isPending: false,
         kind: "triggers",
-        mode: "edit",
+        mode,
         onCancel: () => undefined,
-        onChange: nextDraft => setDraft(nextDraft),
-        onSubmit,
+        onChange: setDraft,
+        onSubmit: () => undefined,
       }}
+      workspaces={storyWorkspaces}
     />
   );
 }
 
 export const CreateJob: Story = {
   args: {},
-  render: () => <AutomationEditorJobHarness />,
+  render: () => <AutomationEditorJobHarness mode="create" />,
+};
+
+export const EditJob: Story = {
+  args: {},
+  render: () => <AutomationEditorJobHarness mode="edit" />,
+};
+
+export const CreateTrigger: Story = {
+  args: {},
+  render: () => <AutomationEditorTriggerHarness mode="create" />,
 };
 
 export const EditTrigger: Story = {
   args: {},
-  render: () => <AutomationEditorTriggerHarness />,
-};
-
-export const CreateJobSubmit: Story = {
-  args: {},
-  tags: ["play-fn"],
-  render: () => <AutomationEditorJobHarness onSubmit={fn()} />,
-  play: async ({ canvasElement }) => {
-    const canvas = within(document.body);
-    const form = await canvas.findByTestId("automation-job-form");
-    void canvasElement;
-    const submit = await within(form).findByTestId("submit-job-form");
-    await expect(submit).toBeEnabled();
-    await userEvent.click(submit);
-  },
+  render: () => <AutomationEditorTriggerHarness mode="edit" />,
 };

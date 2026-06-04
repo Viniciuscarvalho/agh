@@ -14,6 +14,7 @@ export interface TaskEditorDraft {
   title: string;
   description: string;
   scope: TaskScope;
+  workspaceId: string | null;
   priority: TaskPriority;
   ownerKind: TaskOwnerKind | "";
   ownerRef: string;
@@ -22,12 +23,15 @@ export interface TaskEditorDraft {
   approvalPolicy: "none" | "manual";
   networkChannel: string;
   identifier: string;
+  autoEnqueueOnReady: boolean;
+  saveAsDraft: boolean;
 }
 
 export const EMPTY_TASK_EDITOR_DRAFT: TaskEditorDraft = {
   title: "",
   description: "",
   scope: "workspace",
+  workspaceId: null,
   priority: "medium",
   ownerKind: "",
   ownerRef: "",
@@ -36,6 +40,8 @@ export const EMPTY_TASK_EDITOR_DRAFT: TaskEditorDraft = {
   approvalPolicy: "none",
   networkChannel: "",
   identifier: "",
+  autoEnqueueOnReady: false,
+  saveAsDraft: false,
 };
 
 export function createTaskEditorDraft(
@@ -47,11 +53,13 @@ export function createTaskEditorDraft(
   return {
     ...EMPTY_TASK_EDITOR_DRAFT,
     scope: activeWorkspaceId ? "workspace" : "global",
+    workspaceId: activeWorkspaceId ?? null,
     priority: template.defaults.priority ?? "medium",
     maxAttempts:
       typeof template.defaults.max_attempts === "number" ? template.defaults.max_attempts : 1,
     approvalPolicy: template.defaults.approval_policy ?? "none",
     networkChannel: template.defaults.network_channel ?? "",
+    saveAsDraft: template.defaults.draft,
   };
 }
 
@@ -70,6 +78,7 @@ export function applyTemplateDefaultsToTaskEditorDraft(
         : (draft.maxAttempts ?? 1),
     approvalPolicy: template.defaults.approval_policy ?? draft.approvalPolicy,
     networkChannel: template.defaults.network_channel ?? draft.networkChannel,
+    saveAsDraft: template.defaults.draft,
   };
 }
 
@@ -78,6 +87,7 @@ export function taskEditorDraftFromTask(task: TaskRecord): TaskEditorDraft {
     title: task.title,
     description: task.description ?? "",
     scope: task.scope,
+    workspaceId: task.workspace_id ?? null,
     priority: task.priority ?? "medium",
     ownerKind: task.owner?.kind ?? "",
     ownerRef: task.owner?.ref ?? "",
@@ -86,6 +96,8 @@ export function taskEditorDraftFromTask(task: TaskRecord): TaskEditorDraft {
     approvalPolicy: task.approval_policy === "manual" ? "manual" : "none",
     networkChannel: task.network_channel ?? "",
     identifier: task.identifier ?? "",
+    autoEnqueueOnReady: task.auto_enqueue_on_ready ?? false,
+    saveAsDraft: task.draft ?? false,
   };
 }
 
@@ -107,7 +119,6 @@ function resolveOwnerInput(draft: TaskEditorDraft) {
 export function buildCreateTaskRequest(
   draft: TaskEditorDraft,
   options: {
-    activeWorkspaceId?: string | null;
     templateId: TaskTemplateId;
     asDraft: boolean;
   }
@@ -118,10 +129,11 @@ export function buildCreateTaskRequest(
     title: draft.title.trim(),
     description: draft.description.trim() || undefined,
     scope: draft.scope,
-    workspace: draft.scope === "workspace" ? (options.activeWorkspaceId ?? undefined) : undefined,
+    workspace: draft.scope === "workspace" ? (draft.workspaceId ?? undefined) : undefined,
     priority: draft.priority,
     max_attempts: draft.maxAttempts ?? undefined,
-    draft: options.asDraft || options.templateId === "recurring",
+    draft: options.asDraft || draft.saveAsDraft || options.templateId === "recurring",
+    auto_enqueue_on_ready: draft.autoEnqueueOnReady || undefined,
     owner,
     approval_policy: draft.approvalPolicy === "manual" ? "manual" : undefined,
     network_channel: draft.networkChannel.trim() || undefined,
@@ -134,7 +146,6 @@ export function buildCreateTaskRequest(
 export function buildCreateChildTaskRequest(
   draft: TaskEditorDraft,
   options: {
-    activeWorkspaceId?: string | null;
     templateId: TaskTemplateId;
     asDraft: boolean;
   }
@@ -145,10 +156,11 @@ export function buildCreateChildTaskRequest(
     title: draft.title.trim(),
     description: draft.description.trim() || undefined,
     scope: draft.scope,
-    workspace: draft.scope === "workspace" ? (options.activeWorkspaceId ?? undefined) : undefined,
+    workspace: draft.scope === "workspace" ? (draft.workspaceId ?? undefined) : undefined,
     priority: draft.priority,
     max_attempts: draft.maxAttempts ?? undefined,
-    draft: options.asDraft || options.templateId === "recurring",
+    draft: options.asDraft || draft.saveAsDraft || options.templateId === "recurring",
+    auto_enqueue_on_ready: draft.autoEnqueueOnReady || undefined,
     owner,
     approval_policy: draft.approvalPolicy === "manual" ? "manual" : undefined,
     network_channel: draft.networkChannel.trim() || undefined,
@@ -170,5 +182,6 @@ export function buildUpdateTaskRequest(draft: TaskEditorDraft): UpdateTaskReques
     max_attempts: draft.maxAttempts ?? null,
     approval_policy: draft.approvalPolicy === "manual" ? "manual" : "none",
     network_channel: draft.networkChannel.trim() || null,
+    auto_enqueue_on_ready: draft.autoEnqueueOnReady,
   };
 }

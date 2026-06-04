@@ -31,6 +31,11 @@ export function useTasksCreateModalForm({
     [onDraftChange]
   );
 
+  const updateWorkspace = useCallback(
+    (workspaceId: string) => onDraftChange(current => ({ ...current, workspaceId })),
+    [onDraftChange]
+  );
+
   const updatePriority = useCallback(
     (priority: TaskPriority) => onDraftChange(current => ({ ...current, priority })),
     [onDraftChange]
@@ -52,10 +57,20 @@ export function useTasksCreateModalForm({
     [onDraftChange]
   );
 
+  const updateAutoEnqueue = useCallback(
+    (next: boolean) => onDraftChange(current => ({ ...current, autoEnqueueOnReady: next })),
+    [onDraftChange]
+  );
+
+  const updateSaveAsDraft = useCallback(
+    (next: boolean) => onDraftChange(current => ({ ...current, saveAsDraft: next })),
+    [onDraftChange]
+  );
+
   const submitForm = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      void onSubmit(draft, false);
+      void onSubmit(draft, draft.saveAsDraft);
     },
     [draft, onSubmit]
   );
@@ -68,10 +83,13 @@ export function useTasksCreateModalForm({
     submitDraft,
     submitForm,
     updateApprovalPolicy,
+    updateAutoEnqueue,
     updateMaxAttempts,
     updateOwnerKind,
     updatePriority,
+    updateSaveAsDraft,
     updateScope,
     updateText,
+    updateWorkspace,
   };
 }

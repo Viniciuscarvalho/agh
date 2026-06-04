@@ -1,4 +1,4 @@
-import { startTransition, useDeferredValue, useMemo, useState } from "react";
+import { startTransition, useDeferredValue, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -27,6 +27,7 @@ import {
   useUpdateAutomationTrigger,
   AutomationApiError,
 } from "@/systems/automation";
+import { localInputToDate, toRfc3339 } from "@/systems/automation/lib/cron-engine";
 import type {
   AutomationRun,
   AutomationScopeFilter,
@@ -35,7 +36,7 @@ import type {
 } from "@/systems/automation";
 import { useSettingsAutomation } from "@/systems/settings";
 import type { SettingsAutomationSection } from "@/systems/settings";
-import { useActiveWorkspace } from "@/systems/workspace";
+import { toWorkspaceCommandSelectOptions, useActiveWorkspace } from "@/systems/workspace";
 
 type JobEditorState =
   | {
@@ -123,8 +124,21 @@ function automationUnavailableMessage(
   return null;
 }
 
+function normalizeAutomationSchedule(
+  schedule: CreateAutomationJobRequest["schedule"]
+): CreateAutomationJobRequest["schedule"] {
+  if (schedule.mode !== "at") {
+    return schedule;
+  }
+
+  return {
+    ...schedule,
+    time: toRfc3339(localInputToDate(schedule.time ?? "")),
+  };
+}
+
 function useAutomationPageBase() {
-  const { activeWorkspace, activeWorkspaceId } = useActiveWorkspace();
+  const { activeWorkspace, activeWorkspaceId, workspaces } = useActiveWorkspace();
   const settingsQuery = useSettingsAutomation();
   const [scopeFilter, setScopeFilter] = useState<AutomationScopeFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -155,6 +169,7 @@ function useAutomationPageBase() {
     setScopeFilter,
     setSearchQuery,
     setSelectedId,
+    workspaces: toWorkspaceCommandSelectOptions(workspaces),
   };
 }
 
@@ -162,6 +177,7 @@ function useAutomationJobsPage() {
   const page = useAutomationPageBase();
   const [editor, setEditor] = useState<JobEditorState | null>(null);
   const [queuedRun, setQueuedRun] = useState<{ jobId: string; run: AutomationRun } | null>(null);
+  const jobSubmitInFlightRef = useRef(false);
   const editorHandle = useMemo(() => createAutomationDialogHandle(), []);
 
   const jobsQuery = useAutomationJobs(page.listFilters);
@@ -241,14 +257,16 @@ function useAutomationJobsPage() {
   };
 
   const handleSubmit = async () => {
-    if (!editor) {
+    if (!editor || jobSubmitInFlightRef.current) {
       return;
     }
 
+    jobSubmitInFlightRef.current = true;
     try {
       const payload = {
         ...editor.draft,
         retry: normalizeAutomationRetry(editor.draft.retry ?? undefined),
+        schedule: normalizeAutomationSchedule(editor.draft.schedule),
       };
       const job =
         editor.mode === "create"
@@ -265,6 +283,8 @@ function useAutomationJobsPage() {
       );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to save automation job");
+    } finally {
+      jobSubmitInFlightRef.current = false;
     }
   };
 
@@ -370,6 +390,7 @@ function useAutomationJobsPage() {
   const editorDialogProps = {
     activeWorkspaceId: page.activeWorkspaceId,
     handle: editorHandle,
+    workspaces: page.workspaces,
     editor: editor
       ? {
           ...editor,
@@ -407,6 +428,7 @@ function useAutomationJobsPage() {
 function useAutomationTriggersPage() {
   const page = useAutomationPageBase();
   const [editor, setEditor] = useState<TriggerEditorState | null>(null);
+  const triggerSubmitInFlightRef = useRef(false);
   const editorHandle = useMemo(() => createAutomationDialogHandle(), []);
 
   const triggersQuery = useAutomationTriggers(page.listFilters);
@@ -471,10 +493,11 @@ function useAutomationTriggersPage() {
   };
 
   const handleSubmit = async () => {
-    if (!editor) {
+    if (!editor || triggerSubmitInFlightRef.current) {
       return;
     }
 
+    triggerSubmitInFlightRef.current = true;
     try {
       const payload = {
         ...editor.draft,
@@ -497,6 +520,8 @@ function useAutomationTriggersPage() {
       );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to save automation trigger");
+    } finally {
+      triggerSubmitInFlightRef.current = false;
     }
   };
 
@@ -583,6 +608,7 @@ function useAutomationTriggersPage() {
   const editorDialogProps = {
     activeWorkspaceId: page.activeWorkspaceId,
     handle: editorHandle,
+    workspaces: page.workspaces,
     editor: editor
       ? {
           ...editor,

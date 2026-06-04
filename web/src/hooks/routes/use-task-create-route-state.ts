@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { useCreateChildTask, useCreateTask, useEnqueueTaskRun } from "@/systems/tasks";
@@ -14,23 +14,33 @@ import {
   getTaskTemplate,
   type TaskTemplateId,
 } from "@/systems/tasks/lib/task-templates";
-import { useActiveWorkspace } from "@/systems/workspace";
+import {
+  toWorkspaceCommandSelectOptions,
+  useActiveWorkspace,
+  useUserHomeDir,
+} from "@/systems/workspace";
+import { taskScopeForActiveWorkspace } from "./workspace-scope-filter";
 
 export function useTaskCreateRouteState(search: { template?: TaskTemplateId }) {
   const navigate = useNavigate({ from: "/tasks/new" });
-  const { activeWorkspace, activeWorkspaceId } = useActiveWorkspace();
+  const { activeWorkspace, workspaces } = useActiveWorkspace();
+  const userHomeDir = useUserHomeDir();
   const createMutation = useCreateTask();
   const createChildMutation = useCreateChildTask();
   const enqueueMutation = useEnqueueTaskRun();
+  const submitInFlightRef = useRef(false);
 
   const templateId = search.template ?? DEFAULT_TASK_TEMPLATE_ID;
+  const activeTaskScope = taskScopeForActiveWorkspace(activeWorkspace, userHomeDir);
+  const createDraftWorkspaceId =
+    activeTaskScope?.scope === "workspace" ? activeTaskScope.workspace : undefined;
   const [draft, setDraft] = useState<TaskEditorDraft>(() =>
-    createTaskEditorDraft(templateId, activeWorkspaceId)
+    createTaskEditorDraft(templateId, createDraftWorkspaceId)
   );
 
   useEffect(() => {
-    setDraft(createTaskEditorDraft(templateId, activeWorkspaceId));
-  }, [activeWorkspaceId, templateId]);
+    setDraft(createTaskEditorDraft(templateId, createDraftWorkspaceId));
+  }, [createDraftWorkspaceId, templateId]);
 
   const handleTemplateChange = useCallback(
     (nextTemplateId: TaskTemplateId) => {
@@ -47,33 +57,36 @@ export function useTaskCreateRouteState(search: { template?: TaskTemplateId }) {
 
   const handleSubmit = useCallback(
     async (nextDraft: TaskEditorDraft, asDraft: boolean) => {
+      if (submitInFlightRef.current) {
+        return null;
+      }
+
       const trimmedTitle = nextDraft.title.trim();
       if (!trimmedTitle) {
         toast.error("Provide a title before creating the task.");
         return null;
       }
 
-      if (nextDraft.scope === "workspace" && !activeWorkspaceId) {
-        toast.error("Select an active workspace before creating a workspace task.");
+      if (nextDraft.scope === "workspace" && !nextDraft.workspaceId) {
+        toast.error("Select a workspace before creating a workspace task.");
         return null;
       }
 
       const parentTaskId = nextDraft.parentTaskId.trim();
       const isChildTask = parentTaskId.length > 0;
 
+      submitInFlightRef.current = true;
       try {
         const created = isChildTask
           ? await createChildMutation.mutateAsync({
               parentId: parentTaskId,
               data: buildCreateChildTaskRequest(nextDraft, {
-                activeWorkspaceId,
                 asDraft,
                 templateId,
               }),
             })
           : await createMutation.mutateAsync(
               buildCreateTaskRequest(nextDraft, {
-                activeWorkspaceId,
                 asDraft,
                 templateId,
               })
@@ -102,9 +115,11 @@ export function useTaskCreateRouteState(search: { template?: TaskTemplateId }) {
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to create task");
         return null;
+      } finally {
+        submitInFlightRef.current = false;
       }
     },
-    [activeWorkspaceId, createChildMutation, createMutation, enqueueMutation, navigate, templateId]
+    [createChildMutation, createMutation, enqueueMutation, navigate, templateId]
   );
 
   return {
@@ -116,6 +131,6 @@ export function useTaskCreateRouteState(search: { template?: TaskTemplateId }) {
     setDraft,
     template: getTaskTemplate(templateId),
     templateId,
-    workspaceName: activeWorkspace?.name ?? null,
+    workspaces: toWorkspaceCommandSelectOptions(workspaces),
   };
 }

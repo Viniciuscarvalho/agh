@@ -3,6 +3,7 @@ import {
   Book,
   Boxes,
   Clock3,
+  Home,
   KeyRound,
   LayoutDashboard,
   ListChecks,
@@ -14,6 +15,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
+import { useMemo } from "react";
 
 import { Button, Logo, Sidebar, SidebarSectionLabel, cn } from "@agh/ui";
 
@@ -24,10 +26,16 @@ import {
 } from "@/components/sidebar-nav-classes";
 import { AgentCategoryTree, type AgentPayload } from "@/systems/agent";
 import { isSessionRunning, type SessionPayload } from "@/systems/session";
-import { WorkspaceCommandSelect, type WorkspacePayload } from "@/systems/workspace";
+import {
+  splitHomeWorkspace,
+  useUserHomeDir,
+  WorkspaceCommandSelect,
+  type WorkspacePayload,
+} from "@/systems/workspace";
 
 import { RuntimeConnectionIndicator } from "./connection-indicator";
 import { RestartDaemonButton } from "./restart-daemon-button";
+import { computeAgentsCount } from "./app-sidebar-counts";
 
 interface RailSlotProps {
   workspaces: WorkspacePayload[] | undefined;
@@ -36,12 +44,47 @@ interface RailSlotProps {
   onAddWorkspace: () => void;
 }
 
+interface WorkspaceRailItemProps {
+  workspace: WorkspacePayload;
+  isActive: boolean;
+  isHome: boolean;
+  onSelect: (id: string) => void;
+}
+
+function WorkspaceRailItem({ workspace, isActive, isHome, onSelect }: WorkspaceRailItemProps) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(workspace.id)}
+      data-testid={`workspace-avatar-${workspace.id}`}
+      data-active={isActive}
+      data-home={isHome ? "true" : undefined}
+      title={isHome ? "Home workspace" : workspace.name}
+      aria-label={isHome ? `Home workspace: ${workspace.name}` : `Workspace: ${workspace.name}`}
+      aria-pressed={isActive}
+      className={cn(
+        "inline-flex size-7 items-center justify-center rounded-md border border-transparent bg-elevated font-mono text-eyebrow font-medium text-muted transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+        isActive && "border-accent text-fg"
+      )}
+    >
+      {isHome ? (
+        <Home aria-hidden="true" className="size-3.5" />
+      ) : (
+        workspace.name.charAt(0).toUpperCase() || "·"
+      )}
+    </button>
+  );
+}
+
 function RailSlot({
   workspaces,
   activeWorkspaceId,
   onSelectWorkspace,
   onAddWorkspace,
 }: RailSlotProps) {
+  const userHomeDir = useUserHomeDir();
+  const { homeWorkspace, projectWorkspaces } = splitHomeWorkspace(workspaces, userHomeDir);
+
   return (
     <div data-testid="icon-rail" className="flex flex-1 flex-col items-center gap-1.5">
       <Link
@@ -52,28 +95,30 @@ function RailSlot({
       >
         <Logo variant="symbol" decorative className="size-7" />
       </Link>
-      {workspaces?.map(workspace => {
-        const isActive = workspace.id === activeWorkspaceId;
-        const letter = workspace.name.charAt(0).toUpperCase() || "·";
-        return (
-          <button
-            key={workspace.id}
-            type="button"
-            onClick={() => onSelectWorkspace(workspace.id)}
-            data-testid={`workspace-avatar-${workspace.id}`}
-            data-active={isActive}
-            title={workspace.name}
-            aria-label={`Workspace: ${workspace.name}`}
-            aria-pressed={isActive}
-            className={cn(
-              "inline-flex size-7 items-center justify-center rounded-md border border-transparent bg-elevated font-mono text-eyebrow font-medium text-muted transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
-              isActive && "border-accent text-fg"
-            )}
-          >
-            {letter}
-          </button>
-        );
-      })}
+      {homeWorkspace && (
+        <WorkspaceRailItem
+          workspace={homeWorkspace}
+          isActive={homeWorkspace.id === activeWorkspaceId}
+          isHome
+          onSelect={onSelectWorkspace}
+        />
+      )}
+      {homeWorkspace && projectWorkspaces.length > 0 && (
+        <div
+          aria-hidden="true"
+          data-testid="rail-home-divider"
+          className="my-0.5 h-px w-5 rounded-full bg-line"
+        />
+      )}
+      {projectWorkspaces.map(workspace => (
+        <WorkspaceRailItem
+          key={workspace.id}
+          workspace={workspace}
+          isActive={workspace.id === activeWorkspaceId}
+          isHome={false}
+          onSelect={onSelectWorkspace}
+        />
+      ))}
       <button
         type="button"
         onClick={onAddWorkspace}
@@ -143,30 +188,6 @@ const SYSTEM_NAV_ITEMS: NavItemProps[] = [
   { to: "/vault", icon: KeyRound, label: "Vault" },
   { to: "/settings", icon: Settings, label: "Settings", fuzzy: true },
 ];
-
-interface AgentsCount {
-  live: number;
-  total: number;
-}
-
-function computeAgentsCount(
-  agents: AgentPayload[] | undefined,
-  sessions: SessionPayload[] | undefined
-): AgentsCount {
-  const total = agents?.length ?? 0;
-  if (total === 0) return { live: 0, total: 0 };
-  const liveNames = new Set<string>();
-  for (const session of sessions ?? []) {
-    if (isSessionRunning(session)) {
-      liveNames.add(session.agent_name);
-    }
-  }
-  let live = 0;
-  for (const agent of agents ?? []) {
-    if (liveNames.has(agent.name)) live += 1;
-  }
-  return { live, total };
-}
 
 function countActiveSessions(sessions: SessionPayload[] | undefined): number {
   if (!sessions) return 0;
@@ -303,40 +324,57 @@ function AppSidebar({
   className,
 }: AppSidebarProps) {
   const activeSessionCount = countActiveSessions(sessions);
+  const rail = useMemo(
+    () => (
+      <RailSlot
+        workspaces={workspaces}
+        activeWorkspaceId={activeWorkspaceId}
+        onSelectWorkspace={onSelectWorkspace}
+        onAddWorkspace={onAddWorkspace}
+      />
+    ),
+    [activeWorkspaceId, onAddWorkspace, onSelectWorkspace, workspaces]
+  );
+  const header = useMemo(
+    () => (
+      <WorkspaceCommandSelect
+        workspaces={workspaces}
+        value={activeWorkspaceId}
+        onChange={onSelectWorkspace}
+        onAddWorkspace={onAddWorkspace}
+      />
+    ),
+    [activeWorkspaceId, onAddWorkspace, onSelectWorkspace, workspaces]
+  );
+  const nav = useMemo(
+    () => (
+      <NavSlot
+        agents={agents}
+        agentsLoading={agentsLoading}
+        agentsError={agentsError}
+        sessions={sessions}
+        onAddAgent={onAddAgent}
+      />
+    ),
+    [agents, agentsError, agentsLoading, onAddAgent, sessions]
+  );
+  const footer = useMemo(
+    () => <FooterSlot activeSessionCount={activeSessionCount} />,
+    [activeSessionCount]
+  );
+
   return (
     <Sidebar
       data-testid="app-sidebar"
       className={className}
       collapsed={collapsed}
       onCollapse={onCollapseChange}
-      rail={
-        <RailSlot
-          workspaces={workspaces}
-          activeWorkspaceId={activeWorkspaceId}
-          onSelectWorkspace={onSelectWorkspace}
-          onAddWorkspace={onAddWorkspace}
-        />
-      }
-      header={
-        <WorkspaceCommandSelect
-          workspaces={workspaces}
-          value={activeWorkspaceId}
-          onChange={onSelectWorkspace}
-          onAddWorkspace={onAddWorkspace}
-        />
-      }
-      nav={
-        <NavSlot
-          agents={agents}
-          agentsLoading={agentsLoading}
-          agentsError={agentsError}
-          sessions={sessions}
-          onAddAgent={onAddAgent}
-        />
-      }
-      footer={<FooterSlot activeSessionCount={activeSessionCount} />}
+      rail={rail}
+      header={header}
+      nav={nav}
+      footer={footer}
     />
   );
 }
 
-export { AppSidebar, computeAgentsCount };
+export { AppSidebar };
