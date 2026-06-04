@@ -40,6 +40,34 @@ func TestResolveOperatorHomeDirWithLookupUsesHome(t *testing.T) {
 			t.Fatalf("ResolveOperatorHomeDirWithLookup() = %q, want %q", got, operatorHome)
 		}
 	})
+
+	t.Run("Should canonicalize an existing HOME alias", func(t *testing.T) {
+		t.Parallel()
+
+		operatorHome := t.TempDir()
+		linkParent := t.TempDir()
+		homeAlias := filepath.Join(linkParent, "operator-home")
+		if err := os.Symlink(operatorHome, homeAlias); err != nil {
+			t.Fatalf("Symlink(%q, %q) error = %v", operatorHome, homeAlias, err)
+		}
+		canonicalHome, err := filepath.EvalSymlinks(operatorHome)
+		if err != nil {
+			t.Fatalf("EvalSymlinks(%q) error = %v", operatorHome, err)
+		}
+
+		got, err := ResolveOperatorHomeDirWithLookup(HomePaths{}, func(key string) (string, bool) {
+			if key == "HOME" {
+				return homeAlias, true
+			}
+			return "", false
+		})
+		if err != nil {
+			t.Fatalf("ResolveOperatorHomeDirWithLookup() error = %v", err)
+		}
+		if got != canonicalHome {
+			t.Fatalf("ResolveOperatorHomeDirWithLookup() = %q, want %q", got, canonicalHome)
+		}
+	})
 }
 
 func TestResolveOperatorHomeDirWithLookupFallsBackFromAGHHome(t *testing.T) {

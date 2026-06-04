@@ -1,5 +1,5 @@
 import type { FormEvent } from "react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import {
   jobOutputMode,
@@ -98,10 +98,22 @@ export function useAutomationJobForm({
 }: UseAutomationJobFormParams) {
   const output: JobOutputMode = jobOutputMode(draft);
   const retry = retryDraftForStrategy(draft.retry?.strategy ?? "none", draft.retry ?? undefined);
+  const [cronFrequencyOverride, setCronFrequencyOverride] = useState<CronFrequency | null>(null);
 
-  const cronModel = useMemo<CronModel>(
-    () => fullCronModel(decodeCron(scheduleExpr(draft)) ?? { frequency: "custom" }),
+  const decodedCronModel = useMemo(
+    () => decodeCron(scheduleExpr(draft)) ?? { frequency: "custom" as const },
     [draft]
+  );
+  const cronModel = useMemo<CronModel>(
+    () =>
+      fullCronModel({
+        ...decodedCronModel,
+        frequency:
+          draft.schedule.mode === "cron" && cronFrequencyOverride
+            ? cronFrequencyOverride
+            : decodedCronModel.frequency,
+      }),
+    [cronFrequencyOverride, decodedCronModel, draft.schedule.mode]
   );
 
   const resolvedWorkspaces = useMemo<WorkspaceOption[]>(() => {
@@ -127,6 +139,9 @@ export function useAutomationJobForm({
   /** Compile the builder model back into the draft's cron expression. */
   const applyCronModel = (model: CronModel) => {
     const compiled = compileCron(model);
+    if (model.frequency !== "custom") {
+      setCronFrequencyOverride(null);
+    }
     // `custom` keeps the raw user-entered expression; everything else recompiles.
     patchSchedule({ mode: "cron", expr: compiled ?? scheduleExpr(draft) });
   };
@@ -158,6 +173,7 @@ export function useAutomationJobForm({
   };
 
   const handleScheduleMode = (next: AutomationScheduleMode) => {
+    setCronFrequencyOverride(null);
     if (next === "cron") {
       const expr = scheduleExpr(draft) || DEFAULT_CRON_EXPR;
       patch({ schedule: { mode: "cron", expr } });
@@ -174,9 +190,11 @@ export function useAutomationJobForm({
 
   const handleCronFrequency = (frequency: CronFrequency) => {
     if (frequency === "custom") {
+      setCronFrequencyOverride("custom");
       patchSchedule({ mode: "cron", expr: scheduleExpr(draft) || DEFAULT_CRON_EXPR });
       return;
     }
+    setCronFrequencyOverride(null);
     applyCronModel({ ...cronModel, frequency });
   };
 
@@ -239,7 +257,10 @@ export function useAutomationJobForm({
 
     // cron builder
     onCronFrequency: handleCronFrequency,
-    onCronExpr: (expr: string) => patchSchedule({ mode: "cron", expr }),
+    onCronExpr: (expr: string) => {
+      setCronFrequencyOverride("custom");
+      patchSchedule({ mode: "cron", expr });
+    },
     onEveryMinutes: (everyMinutes: number) =>
       applyCronModel({ ...cronModel, frequency: "minutes", everyMinutes }),
     onHourlyMinute: (hourlyMinute: number) =>
@@ -259,7 +280,10 @@ export function useAutomationJobForm({
       }),
     onMonthDay: (monthDay: number) =>
       applyCronModel({ ...cronModel, frequency: "monthly", monthDay }),
-    onCronPreset: (expr: string) => patchSchedule({ mode: "cron", expr }),
+    onCronPreset: (expr: string) => {
+      setCronFrequencyOverride(null);
+      patchSchedule({ mode: "cron", expr });
+    },
 
     // every / at
     onEveryInterval: (interval: string) => patchSchedule({ mode: "every", interval }),

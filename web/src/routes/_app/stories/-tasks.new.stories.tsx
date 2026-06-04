@@ -58,10 +58,7 @@ export const Submitting: Story = {
   tags: ["play-fn"],
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.type(
-      await canvas.findByTestId("task-editor-title-input"),
-      "Create API contract"
-    );
+    await userEvent.type(await canvas.findByTestId("task-title-input"), "Create API contract");
     await userEvent.click(await canvas.findByTestId("task-editor-submit"));
     await expect(canvas.findByTestId("task-editor-submit")).resolves.toBeDisabled();
   },

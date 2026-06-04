@@ -1,3 +1,5 @@
+import { mkdtemp } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -41,6 +43,14 @@ function handoffAgentSessionPath(sessionId: string): string {
   return `/agents/${handoffAgentName}/sessions/${sessionId}`;
 }
 
+async function selectRecurringTaskTemplate(
+  tasksUI: ReturnType<typeof tasksOperatorSelectors>
+): Promise<void> {
+  await tasksUI.createModeAdvanced.click();
+  await expect(tasksUI.createModeAdvanced).toHaveAttribute("aria-pressed", "true");
+  await tasksUI.createTemplate("recurring").click();
+}
+
 test.use({
   runtimeOptions: {
     seed: {
@@ -70,7 +80,7 @@ test("creating a task is saved intent, no run is enqueued and labels never imply
 
   await tasksUI.openCreate.click();
   await expect(appPage).toHaveURL(/\/tasks\/new$/);
-  await tasksUI.createTemplate("recurring").click();
+  await selectRecurringTaskTemplate(tasksUI);
   await expect(tasksUI.createSaveDraft).toContainText("Save draft");
   await tasksUI.createPriority("medium").click();
   await tasksUI.createTitle.fill(draftTitle);
@@ -121,13 +131,25 @@ test("publishing a draft hands off to the coordinator and binds a coordination c
   runtime,
 }) => {
   const tasksUI = tasksOperatorSelectors(appPage);
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "agh-tasks-handoff-workspace-"));
+  const workspace = await runtime.resolveWorkspace(workspaceRoot);
 
   await ensureGlobalWorkspace(runtime);
   await appPage.goto(runtime.url("/tasks"), { waitUntil: "domcontentloaded" });
   await useGlobalWorkspaceIfPrompted(tasksUI);
   await expect.poll(() => new URL(appPage.url()).pathname).toBe("/tasks");
+  await appPage.getByTestId("workspace-switcher").click();
+  await appPage.getByTestId(`workspace-command-item-${workspace.id}`).click();
+  await expect(appPage.getByTestId("workspace-switcher")).toHaveAttribute("aria-expanded", "false");
+  await expect(appPage.getByTestId("workspace-switcher-name")).toContainText(workspace.name);
+
   await tasksUI.openCreate.click();
-  await tasksUI.createTemplate("recurring").click();
+  await selectRecurringTaskTemplate(tasksUI);
+  await expect(tasksUI.createScopeWorkspace).toHaveAttribute("aria-pressed", "true");
+  await expect(tasksUI.createWorkspaceSelect).toHaveAttribute(
+    "aria-label",
+    `Workspace: ${workspace.name}`
+  );
   await expect(tasksUI.createSaveDraft).toContainText("Save draft");
   await tasksUI.createPriority("high").click();
   const publishedTitle = `Coordinator handoff publish ${Date.now()}`;
@@ -140,9 +162,17 @@ test("publishing a draft hands off to the coordinator and binds a coordination c
   await expect
     .poll(async () => {
       const payload = await runtime.requestJSON<{
-        tasks: Array<{ id: string; status: string; title: string }>;
+        tasks: Array<{
+          id: string;
+          scope?: string;
+          status: string;
+          title: string;
+          workspace_id?: string | null;
+        }>;
       }>(`/api/tasks?include_drafts=true&query=${encodeURIComponent(publishedTitle)}&limit=10`);
-      const created = payload.tasks.find(task => task.title === publishedTitle);
+      const created = payload.tasks.find(
+        task => task.title === publishedTitle && task.workspace_id === workspace.id
+      );
       draftId = created?.id ?? "";
       return created?.status ?? "";
     })
@@ -165,9 +195,9 @@ test("publishing a draft hands off to the coordinator and binds a coordination c
       const payload = await runtime.requestJSON<{
         runs: Array<{ id: string; status: string; coordination_channel_id?: string | null }>;
       }>(`/api/tasks/${encodeURIComponent(draftId)}/runs?limit=10`);
-      return payload.runs.length;
+      return payload.runs[0]?.coordination_channel_id ?? "";
     })
-    .toBeGreaterThan(0);
+    .not.toBe("");
 
   await expect(tasksUI.detailLifecycle).toHaveText(/coordinator handoff|running/i);
   await expect(tasksUI.detailCoordination).toBeVisible();

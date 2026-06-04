@@ -44,6 +44,13 @@ const faultAgentName = "browser-jobs-fault";
 const sensitivePattern =
   /agh_claim_|["']claim_token["']\s*:|mcp[_-]?auth|telegram-bot-token|pkce|oauth|webhook_secret|provider[_-]?credentials?["'\s]*[:=]|browser-job-secret|shared-secret/i;
 
+async function enableCronExpressionEditing(
+  ui: ReturnType<typeof automationOperatorSelectors>
+): Promise<void> {
+  await ui.jobScheduleCustom.click();
+  await expect(ui.jobScheduleExpr).toBeEditable();
+}
+
 interface AutomationJob {
   id: string;
   agent_name: string;
@@ -180,9 +187,12 @@ test("operator creates edits disables enables triggers and deletes a dynamic job
   await ui.jobNameInput.fill(initialName);
   await ui.jobAgentInput.fill(automationAgentName);
   await ui.jobPromptInput.fill(browserAutomationOperatorFlowScenario.job.prompt);
+  await enableCronExpressionEditing(ui);
   await ui.jobScheduleExpr.fill("");
   await expect(ui.submitJobForm).toBeDisabled();
   await ui.jobScheduleExpr.fill(browserAutomationOperatorFlowScenario.job.scheduleExpr);
+  await ui.jobGovernanceToggle.click();
+  await expect(ui.jobFireLimitMax).toBeVisible();
   await ui.jobFireLimitMax.fill("24");
   await ui.jobFireLimitWindow.fill("1h");
 
@@ -203,6 +213,7 @@ test("operator creates edits disables enables triggers and deletes a dynamic job
   const editedName = `${initialName}-edited`;
   await ui.jobNameInput.fill(editedName);
   await ui.jobPromptInput.fill(browserAutomationOperatorFlowScenario.job.prompt);
+  await enableCronExpressionEditing(ui);
   await ui.jobScheduleExpr.fill(browserAutomationOperatorFlowScenario.job.updatedScheduleExpr);
   const updateResponse = appPage.waitForResponse(
     response =>

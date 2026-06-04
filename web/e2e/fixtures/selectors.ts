@@ -93,13 +93,13 @@ export const automationOperatorTestIds = {
   jobEnabledToggle: "job-enabled-toggle",
   jobFireLimitMax: "job-fire-limit-max",
   jobFireLimitWindow: "job-fire-limit-window",
+  jobGovernanceToggle: "job-governance-toggle",
   jobsScopeAll: "jobs-scope-all",
   jobsScopeGlobal: "jobs-scope-global",
   jobsScopeWorkspace: "jobs-scope-workspace",
   jobsShell: "jobs-shell",
   jobNameInput: "job-name-input",
   jobPromptInput: "job-prompt-input",
-  jobScheduleExpr: "job-schedule-expr",
   jobScheduleInterval: "job-schedule-interval",
   jobScheduleModeAt: "job-schedule-mode-at",
   jobScheduleModeCron: "job-schedule-mode-cron",
@@ -114,8 +114,6 @@ export const automationOperatorTestIds = {
   triggerAgentInput: "trigger-agent-input",
   triggerEnabledToggle: "trigger-enabled-toggle",
   triggerEndpointSlugInput: "trigger-endpoint-slug-input",
-  triggerEventInput: "trigger-event-input",
-  triggerFilterInput: "trigger-filter-input",
   triggerFireLimitMax: "trigger-fire-limit-max",
   triggerFireLimitWindow: "trigger-fire-limit-window",
   triggersScopeAll: "triggers-scope-all",
@@ -323,8 +321,10 @@ export interface AutomationOperatorSelectors {
   jobEnabledToggle: Locator;
   jobFireLimitMax: Locator;
   jobFireLimitWindow: Locator;
+  jobGovernanceToggle: Locator;
   jobNameInput: Locator;
   jobPromptInput: Locator;
+  jobScheduleCustom: Locator;
   jobScheduleExpr: Locator;
   jobScheduleInterval: Locator;
   jobScheduleModeAt: Locator;
@@ -348,8 +348,10 @@ export interface AutomationOperatorSelectors {
   triggerAgentInput: Locator;
   triggerEnabledToggle: Locator;
   triggerEndpointSlugInput: Locator;
-  triggerEventInput: Locator;
-  triggerFilterInput: Locator;
+  triggerEventOption(eventId: string): Locator;
+  triggerFilterAdd: Locator;
+  triggerFilterKey(index: number): Locator;
+  triggerFilterValue(index: number): Locator;
   triggerFireLimitMax: Locator;
   triggerFireLimitWindow: Locator;
   triggersScopeAll: Locator;
@@ -706,11 +708,16 @@ export interface SettingsOperatorSelectors {
 }
 export const tasksOperatorTestIds = {
   appSidebar: sessionLifecycleTestIds.appSidebar,
-  createDescription: "task-editor-description-input",
+  createDescription: "task-description-input",
   createEditorSurface: "task-editor-modal",
+  createModeAdvanced: "task-mode-advanced",
+  createModeSimple: "task-mode-simple",
   createSaveDraft: "task-editor-modal-submit",
+  createScopeGlobal: "task-scope-global",
+  createScopeWorkspace: "task-scope-workspace",
   createSubmit: "task-editor-modal-submit",
-  createTitle: "task-editor-title-input",
+  createTitle: "task-title-input",
+  createWorkspaceSelect: "task-workspace-select",
   dashboardView: "tasks-dashboard-view",
   detailActiveRunChannel: "tasks-detail-active-run-channel",
   detailActiveRunEmpty: "tasks-detail-active-run-empty",
@@ -778,10 +785,16 @@ export interface TasksOperatorSelectors {
   createDescription: Locator;
   createEditorSurface: Locator;
   createPriority(priority: string): Locator;
+  createModeAdvanced: Locator;
+  createModeSimple: Locator;
   createSaveDraft: Locator;
+  createScopeGlobal: Locator;
+  createScopeWorkspace: Locator;
   createSubmit: Locator;
   createTemplate(templateId: string): Locator;
   createTitle: Locator;
+  createWorkspaceOption(workspaceId: string): Locator;
+  createWorkspaceSelect: Locator;
   dashboardActiveRun(runId: string): Locator;
   dashboardActiveRunLink(runId: string): Locator;
   dashboardView: Locator;
@@ -1043,8 +1056,10 @@ export function sandboxOperatorSelectors(
 }
 
 export function automationOperatorSelectors(
-  page: Pick<Page, "getByTestId">
+  page: Pick<Page, "getByLabel" | "getByRole" | "getByTestId">
 ): AutomationOperatorSelectors {
+  const editorDialog = page.getByTestId(automationOperatorTestIds.automationEditorDialog);
+
   return {
     appSidebar: page.getByTestId(automationOperatorTestIds.appSidebar),
     createJobButton: page.getByTestId(automationOperatorTestIds.createJobButton),
@@ -1052,16 +1067,18 @@ export function automationOperatorSelectors(
     deleteAutomationButton: page.getByTestId(automationOperatorTestIds.deleteAutomationButton),
     detailPanel: page.getByTestId(automationOperatorTestIds.automationDetailPanel),
     editAutomationButton: page.getByTestId(automationOperatorTestIds.editAutomationButton),
-    editorDialog: page.getByTestId(automationOperatorTestIds.automationEditorDialog),
+    editorDialog,
     item: (id: string) => page.getByTestId(`automation-item-${id}`),
     jobAgentInput: page.getByTestId(automationOperatorTestIds.jobAgentInput),
     jobEnabledToggle: page.getByTestId(automationOperatorTestIds.jobEnabledToggle),
     jobFireLimitMax: page.getByTestId(automationOperatorTestIds.jobFireLimitMax),
     jobFireLimitWindow: page.getByTestId(automationOperatorTestIds.jobFireLimitWindow),
     jobForm: page.getByTestId(automationOperatorTestIds.automationJobForm),
+    jobGovernanceToggle: page.getByTestId(automationOperatorTestIds.jobGovernanceToggle),
     jobNameInput: page.getByTestId(automationOperatorTestIds.jobNameInput),
     jobPromptInput: page.getByTestId(automationOperatorTestIds.jobPromptInput),
-    jobScheduleExpr: page.getByTestId(automationOperatorTestIds.jobScheduleExpr),
+    jobScheduleCustom: editorDialog.getByRole("button", { name: "Custom" }),
+    jobScheduleExpr: editorDialog.getByLabel("Cron expression"),
     jobScheduleInterval: page.getByTestId(automationOperatorTestIds.jobScheduleInterval),
     jobScheduleModeAt: page.getByTestId(automationOperatorTestIds.jobScheduleModeAt),
     jobScheduleModeCron: page.getByTestId(automationOperatorTestIds.jobScheduleModeCron),
@@ -1084,8 +1101,10 @@ export function automationOperatorSelectors(
     triggerAgentInput: page.getByTestId(automationOperatorTestIds.triggerAgentInput),
     triggerEnabledToggle: page.getByTestId(automationOperatorTestIds.triggerEnabledToggle),
     triggerEndpointSlugInput: page.getByTestId(automationOperatorTestIds.triggerEndpointSlugInput),
-    triggerEventInput: page.getByTestId(automationOperatorTestIds.triggerEventInput),
-    triggerFilterInput: page.getByTestId(automationOperatorTestIds.triggerFilterInput),
+    triggerEventOption: (eventId: string) => page.getByTestId(`trigger-event-${eventId}`),
+    triggerFilterAdd: page.getByRole("button", { name: "Add condition" }),
+    triggerFilterKey: (index: number) => page.getByTestId(`trigger-filter-key-${index}`),
+    triggerFilterValue: (index: number) => page.getByTestId(`trigger-filter-value-${index}`),
     triggerFireLimitMax: page.getByTestId(automationOperatorTestIds.triggerFireLimitMax),
     triggerFireLimitWindow: page.getByTestId(automationOperatorTestIds.triggerFireLimitWindow),
     triggersScopeAll: page.getByTestId(automationOperatorTestIds.triggersScopeAll),
@@ -1291,11 +1310,18 @@ export function tasksOperatorSelectors(page: Pick<Page, "getByTestId">): TasksOp
     appSidebar: page.getByTestId(tasksOperatorTestIds.appSidebar),
     createDescription: page.getByTestId(tasksOperatorTestIds.createDescription),
     createEditorSurface: page.getByTestId(tasksOperatorTestIds.createEditorSurface),
-    createPriority: (priority: string) => page.getByTestId(`task-editor-priority-${priority}`),
+    createModeAdvanced: page.getByTestId(tasksOperatorTestIds.createModeAdvanced),
+    createModeSimple: page.getByTestId(tasksOperatorTestIds.createModeSimple),
+    createPriority: (priority: string) => page.getByTestId(`task-priority-${priority}`),
     createSaveDraft: page.getByTestId(tasksOperatorTestIds.createSaveDraft),
+    createScopeGlobal: page.getByTestId(tasksOperatorTestIds.createScopeGlobal),
+    createScopeWorkspace: page.getByTestId(tasksOperatorTestIds.createScopeWorkspace),
     createSubmit: page.getByTestId(tasksOperatorTestIds.createSubmit),
-    createTemplate: (templateId: string) => page.getByTestId(`task-editor-template-${templateId}`),
+    createTemplate: (templateId: string) => page.getByTestId(`task-template-${templateId}`),
     createTitle: page.getByTestId(tasksOperatorTestIds.createTitle),
+    createWorkspaceOption: (workspaceId: string) =>
+      page.getByTestId(`task-workspace-item-${workspaceId}`),
+    createWorkspaceSelect: page.getByTestId(tasksOperatorTestIds.createWorkspaceSelect),
     dashboardActiveRun: (runId: string) => page.getByTestId(`tasks-dashboard-active-run-${runId}`),
     dashboardActiveRunLink: (runId: string) =>
       page.getByTestId(`tasks-dashboard-active-run-link-${runId}`),

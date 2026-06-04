@@ -44,6 +44,14 @@ const payloadSecret = "browser-trigger-payload-secret";
 const sensitivePattern =
   /agh_claim_|["']claim_token["']\s*:|mcp[_-]?auth|telegram-bot-token|pkce|oauth|provider[_-]?credentials?["'\s]*[:=]|browser-trigger-secret|browser-trigger-payload-secret/i;
 
+async function addWebhookBranchFilter(
+  ui: ReturnType<typeof automationOperatorSelectors>
+): Promise<void> {
+  await ui.triggerFilterAdd.click();
+  await ui.triggerFilterKey(0).fill("data.branch");
+  await ui.triggerFilterValue(0).fill("main");
+}
+
 interface AutomationTrigger {
   id: string;
   agent_name: string;
@@ -174,10 +182,11 @@ test("operator creates updates fires disables re-enables and deletes a webhook t
   await expect(ui.submitTriggerForm).toBeDisabled();
   await ui.triggerNameInput.fill(initialName);
   await ui.triggerAgentInput.fill(automationAgentName);
-  await ui.triggerEventInput.fill("webhook");
+  await ui.triggerEventOption("webhook").click();
+  await expect(ui.triggerEndpointSlugInput).toBeVisible();
   await ui.triggerPromptInput.fill(prompt);
   await ui.triggerScopeGlobal.click();
-  await ui.triggerFilterInput.fill("data.branch=main");
+  await addWebhookBranchFilter(ui);
   await ui.triggerEndpointSlugInput.fill(initialEndpointSlug);
   await ui.triggerWebhookIDInput.fill(webhookID);
   await ui.triggerWebhookSecretValueInput.fill(webhookSecret);

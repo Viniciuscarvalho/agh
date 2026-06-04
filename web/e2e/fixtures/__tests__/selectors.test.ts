@@ -97,8 +97,26 @@ describe("network operator selectors", () => {
 
 describe("automation operator selectors", () => {
   it("maps the jobs/triggers navigation, editor, detail, and run-history surfaces to stable test IDs", () => {
-    const getByTestId = vi.fn((testId: string) => `locator:${testId}` as unknown as Locator);
+    const getByLabel = vi.fn((label: string) => `label:${label}` as unknown as Locator);
+    const getByRole = vi.fn(
+      (role: string, options?: { name?: string | RegExp }) =>
+        `role:${role}:${String(options?.name)}` as unknown as Locator
+    );
+    const editorDialog = {
+      getByLabel: vi.fn((label: string) => `editor-label:${label}` as unknown as Locator),
+      getByRole: vi.fn(
+        (role: string, options?: { name?: string | RegExp }) =>
+          `editor-role:${role}:${String(options?.name)}` as unknown as Locator
+      ),
+    } as unknown as Locator;
+    const getByTestId = vi.fn((testId: string) =>
+      testId === automationOperatorTestIds.automationEditorDialog
+        ? editorDialog
+        : (`locator:${testId}` as unknown as Locator)
+    );
     const selectors = automationOperatorSelectors({
+      getByLabel,
+      getByRole,
       getByTestId,
     });
 
@@ -122,12 +140,20 @@ describe("automation operator selectors", () => {
     );
     expect(selectors.jobForm).toBe(`locator:${automationOperatorTestIds.automationJobForm}`);
     expect(selectors.jobNameInput).toBe(`locator:${automationOperatorTestIds.jobNameInput}`);
-    expect(selectors.jobScheduleExpr).toBe(`locator:${automationOperatorTestIds.jobScheduleExpr}`);
+    expect(selectors.jobScheduleExpr).toBe("editor-label:Cron expression");
+    expect(selectors.jobScheduleCustom).toBe("editor-role:button:Custom");
+    expect(selectors.jobGovernanceToggle).toBe(
+      `locator:${automationOperatorTestIds.jobGovernanceToggle}`
+    );
     expect(selectors.submitJobForm).toBe(`locator:${automationOperatorTestIds.submitJobForm}`);
     expect(selectors.runHistory).toBe(`locator:${automationOperatorTestIds.automationRunHistory}`);
     expect(selectors.triggerJobButton).toBe(
       `locator:${automationOperatorTestIds.triggerJobButton}`
     );
+    expect(selectors.triggerEventOption("webhook")).toBe("locator:trigger-event-webhook");
+    expect(selectors.triggerFilterAdd).toBe("role:button:Add condition");
+    expect(selectors.triggerFilterKey(0)).toBe("locator:trigger-filter-key-0");
+    expect(selectors.triggerFilterValue(0)).toBe("locator:trigger-filter-value-0");
     expect(selectors.item("job_daily_review")).toBe("locator:automation-item-job_daily_review");
     expect(selectors.run("run_001")).toBe("locator:automation-run-run_001");
     expect(selectors.runSessionLink("run_001")).toBe("locator:automation-run-run_001");
@@ -425,10 +451,20 @@ describe("tasks operator selectors", () => {
     );
     expect(selectors.createTitle).toBe(`locator:${tasksOperatorTestIds.createTitle}`);
     expect(selectors.createDescription).toBe(`locator:${tasksOperatorTestIds.createDescription}`);
+    expect(selectors.createModeAdvanced).toBe(`locator:${tasksOperatorTestIds.createModeAdvanced}`);
+    expect(selectors.createModeSimple).toBe(`locator:${tasksOperatorTestIds.createModeSimple}`);
+    expect(selectors.createScopeGlobal).toBe(`locator:${tasksOperatorTestIds.createScopeGlobal}`);
+    expect(selectors.createScopeWorkspace).toBe(
+      `locator:${tasksOperatorTestIds.createScopeWorkspace}`
+    );
+    expect(selectors.createWorkspaceSelect).toBe(
+      `locator:${tasksOperatorTestIds.createWorkspaceSelect}`
+    );
+    expect(selectors.createWorkspaceOption("ws_beta")).toBe("locator:task-workspace-item-ws_beta");
     expect(selectors.createSaveDraft).toBe(`locator:${tasksOperatorTestIds.createSaveDraft}`);
     expect(selectors.createSubmit).toBe(`locator:${tasksOperatorTestIds.createSubmit}`);
-    expect(selectors.createTemplate("one_shot")).toBe("locator:task-editor-template-one_shot");
-    expect(selectors.createPriority("high")).toBe("locator:task-editor-priority-high");
+    expect(selectors.createTemplate("one_shot")).toBe("locator:task-template-one_shot");
+    expect(selectors.createPriority("high")).toBe("locator:task-priority-high");
     expect(selectors.taskCard("task_browser_01")).toBe("locator:task-card-task_browser_01");
     expect(selectors.taskCardPublish("task_browser_01")).toBe(
       "locator:task-card-publish-task_browser_01"

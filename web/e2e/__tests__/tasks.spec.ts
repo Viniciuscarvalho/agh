@@ -31,6 +31,14 @@ function uniqueDraftTitle(prefix: string): string {
   return `${prefix} ${Date.now()}`;
 }
 
+async function selectRecurringTaskTemplate(
+  tasksUI: ReturnType<typeof tasksOperatorSelectors>
+): Promise<void> {
+  await tasksUI.createModeAdvanced.click();
+  await expect(tasksUI.createModeAdvanced).toHaveAttribute("aria-pressed", "true");
+  await tasksUI.createTemplate("recurring").click();
+}
+
 test.use({
   runtimeOptions: {
     seed: {
@@ -72,7 +80,7 @@ test("operator can execute the shipped Tasks flow through the shared daemon-serv
   await tasksUI.openCreate.click();
   await expect(appPage).toHaveURL(/\/tasks\/new$/);
   await expect(tasksUI.createEditorSurface).toBeVisible();
-  await tasksUI.createTemplate("recurring").click();
+  await selectRecurringTaskTemplate(tasksUI);
   await expect(tasksUI.createSaveDraft).toContainText("Save draft");
   await tasksUI.createPriority("high").click();
   const createdDraftTitle = uniqueDraftTitle("Draft Tasks browser evidence rollout");
@@ -234,7 +242,7 @@ test("operator can execute the shipped Tasks flow through the shared daemon-serv
   await tasksUI.openCreate.click();
   await expect(appPage).toHaveURL(/\/tasks\/new$/);
   await expect(tasksUI.createEditorSurface).toBeVisible();
-  await tasksUI.createTemplate("recurring").click();
+  await selectRecurringTaskTemplate(tasksUI);
   await expect(tasksUI.createSaveDraft).toContainText("Save draft");
   const deleteDraftTitle = uniqueDraftTitle("Draft Tasks delete confirmation smoke");
   await tasksUI.createTitle.fill(deleteDraftTitle);

@@ -37,7 +37,7 @@ test("dashboard reports the agents endpoint failure during shell bootstrap", asy
   page,
   runtime,
 }) => {
-  await page.route("**/api/agents", async route => {
+  await page.route("**/api/agents**", async route => {
     await route.fulfill({
       status: 500,
       contentType: "application/json",

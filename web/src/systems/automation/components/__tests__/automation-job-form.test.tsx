@@ -172,6 +172,25 @@ describe("AutomationJobForm", () => {
     expect(screen.getByTestId("job-schedule-mode-at")).toHaveAttribute("aria-pressed", "true");
   });
 
+  it("Should keep a decodable cron expression editable after selecting Custom", () => {
+    const { onChange } = renderJobForm();
+    const cronInput = screen.getByLabelText("Cron expression");
+
+    expect(cronInput).toHaveAttribute("readonly");
+
+    fireEvent.click(screen.getByRole("button", { name: "Custom" }));
+    expect(cronInput).not.toHaveAttribute("readonly");
+
+    fireEvent.change(cronInput, { target: { value: "*/15 * * * *" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ schedule: { mode: "cron", expr: "*/15 * * * *" } })
+    );
+    expect(cronInput).not.toHaveAttribute("readonly");
+
+    fireEvent.click(screen.getByRole("button", { name: "Hourly" }));
+    expect(cronInput).toHaveAttribute("readonly");
+  });
+
   it("Should disable submit when name, agent, or prompt are empty and enable + call onSubmit when valid", () => {
     const { onChange, onSubmit } = renderJobForm({
       draft: {

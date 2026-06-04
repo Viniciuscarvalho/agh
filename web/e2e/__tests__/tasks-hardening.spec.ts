@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -171,8 +172,10 @@ test("operator retries failed work and sees an auditable run review gate", async
   runtime,
 }) => {
   const ui = tasksOperatorSelectors(appPage);
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "agh-tasks-retry-workspace-"));
   const seeded = await seedBrowserTasksOperatorFlow(runtime, {
     sessionAgentName: tasksSessionAgentName,
+    workspaceRootDir: workspaceRoot,
   });
   const workerSession = await createSession(
     runtime,
@@ -201,6 +204,9 @@ test("operator retries failed work and sees an auditable run review gate", async
     .toBe("failed");
 
   await appPage.goto(runtime.url("/tasks"), { waitUntil: "domcontentloaded" });
+  await appPage.getByTestId("workspace-switcher").click();
+  await appPage.getByTestId(`workspace-command-item-${seeded.session.workspace_id}`).click();
+  await expect(appPage.getByTestId("workspace-switcher")).toHaveAttribute("aria-expanded", "false");
   await ui.modeInbox.click();
   await expect(ui.inboxLane("failed_runs")).toBeVisible();
   await expect(ui.inboxItem(task.id)).toBeVisible();

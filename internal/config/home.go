@@ -66,12 +66,12 @@ func ResolveHomeDir() (string, error) {
 	return resolveHomeDir(processEnvLookup)
 }
 
-// ResolveOperatorHomeDir resolves the operator user home directory for workspace defaults.
+// ResolveOperatorHomeDir resolves the canonical operator user home directory for workspace defaults.
 func ResolveOperatorHomeDir(homePaths HomePaths) (string, error) {
 	return ResolveOperatorHomeDirWithLookup(homePaths, processEnvLookup)
 }
 
-// ResolveOperatorHomeDirWithLookup resolves the operator user home directory with injectable env lookup.
+// ResolveOperatorHomeDirWithLookup resolves the canonical operator user home directory with injectable env lookup.
 func ResolveOperatorHomeDirWithLookup(
 	homePaths HomePaths,
 	lookup func(string) (string, bool),
@@ -86,7 +86,7 @@ func resolveOperatorHomeDir(
 ) (string, error) {
 	if lookup != nil {
 		if homeDir, ok := lookup("HOME"); ok && strings.TrimSpace(homeDir) != "" {
-			return resolveAbsoluteDir(homeDir)
+			return resolveCanonicalDirIfExists(homeDir)
 		}
 	}
 
@@ -98,7 +98,7 @@ func resolveOperatorHomeDir(
 			}
 			return "", fmt.Errorf("resolve user home directory: %w", err)
 		}
-		resolvedUserHome, resolveErr := resolveAbsoluteDir(userHome)
+		resolvedUserHome, resolveErr := resolveCanonicalDirIfExists(userHome)
 		if resolveErr == nil && strings.TrimSpace(resolvedUserHome) != "" {
 			return resolvedUserHome, nil
 		}
@@ -236,6 +236,27 @@ func resolveAbsoluteDir(path string) (string, error) {
 		return "", errors.New("config: path is required")
 	}
 	return absPath, nil
+}
+
+func resolveCanonicalDirIfExists(path string) (string, error) {
+	absPath, err := resolveAbsoluteDir(path)
+	if err != nil {
+		return "", err
+	}
+
+	canonicalPath, err := filepath.EvalSymlinks(absPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return absPath, nil
+		}
+		return "", fmt.Errorf("resolve canonical path %q: %w", path, err)
+	}
+
+	canonicalPath, err = filepath.Abs(canonicalPath)
+	if err != nil {
+		return "", fmt.Errorf("resolve canonical path %q: %w", canonicalPath, err)
+	}
+	return canonicalPath, nil
 }
 
 // ResolvePath expands `~`-prefixed paths and returns an absolute path.
