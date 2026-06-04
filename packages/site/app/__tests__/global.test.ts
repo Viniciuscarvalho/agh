@@ -5,28 +5,8 @@ import { describe, expect, it } from "vitest";
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const globalCSS = readFileSync(resolve(appDir, "global.css"), "utf8");
-const layoutSource = readFileSync(resolve(appDir, "layout.tsx"), "utf8");
 
 describe("site global styles", () => {
-  it("maps the display font token from a dedicated Playfair source variable without swap-based first paint", () => {
-    expect(layoutSource).toContain('variable: "--font-playfair"');
-    expect(layoutSource).toMatch(
-      /const playfairDisplay = Playfair_Display\(\{[\s\S]*?display: "block"[\s\S]*?weight: \["400", "500"\]/
-    );
-    expect(globalCSS).toContain('--font-display: var(--font-playfair), "Playfair Display", serif;');
-    expect(globalCSS).not.toContain("--font-display: var(--font-display),");
-  });
-
-  it("configures the default Fumadocs search dialog to fetch live results from /api/search", () => {
-    expect(layoutSource).toMatch(
-      /<RootProvider[\s\S]*search=\{\{[\s\S]*type: "fetch"[\s\S]*api: "\/api\/search"[\s\S]*\}\}/
-    );
-  });
-
-  it("does not carry an unused site-local wordmark font-face declaration", () => {
-    expect(globalCSS).not.toContain('@font-face {\n  font-family: "NuixyberNext";');
-  });
-
   it("does not globally suppress box-shadow-based focus rings", () => {
     expect(globalCSS).not.toContain("box-shadow: none !important;");
   });

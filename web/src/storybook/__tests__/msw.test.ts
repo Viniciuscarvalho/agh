@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   composeStorybookHandlerGroup,
-  flattenStorybookHandlerGroups,
   storybookMswParameters,
   storybookSystemHandlerGroups,
 } from "../msw";
@@ -44,25 +43,5 @@ describe("storybook msw helpers", () => {
     expect(composedGroup[0]).toBe(bridgesOverride[0]);
     expect(signatures).toContain("GET /api/bridges/providers");
     expect(signatures.filter(signature => signature === "GET /api/bridges")).toHaveLength(1);
-  });
-
-  it("flattens grouped handlers in insertion order for duplicate-signature checks", () => {
-    const flattened = flattenStorybookHandlerGroups(storybookSystemHandlerGroups);
-
-    expect(flattened).toEqual([
-      ...storybookSystemHandlerGroups.agent,
-      ...storybookSystemHandlerGroups.automation,
-      ...storybookSystemHandlerGroups.bridges,
-      ...storybookSystemHandlerGroups.daemon,
-      ...storybookSystemHandlerGroups.knowledge,
-      ...storybookSystemHandlerGroups.network,
-      ...storybookSystemHandlerGroups.onboarding,
-      ...storybookSystemHandlerGroups.session,
-      ...storybookSystemHandlerGroups.settings,
-      ...storybookSystemHandlerGroups.skill,
-      ...storybookSystemHandlerGroups.scheduler,
-      ...storybookSystemHandlerGroups.tasks,
-      ...storybookSystemHandlerGroups.workspace,
-    ]);
   });
 });

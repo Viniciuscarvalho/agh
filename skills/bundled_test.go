@@ -80,18 +80,6 @@ func TestLoadContentReturnsSkillBody(t *testing.T) {
 			t.Fatalf("LoadContent returned frontmatter:\n%s", content)
 		}
 	})
-
-	t.Run("Should include the Required Reading Router", func(t *testing.T) {
-		t.Parallel()
-
-		content, err := LoadContent("agh")
-		if err != nil {
-			t.Fatalf("LoadContent error = %v", err)
-		}
-		if !strings.Contains(content, "Required Reading Router") {
-			t.Fatalf("LoadContent missing router:\n%s", content)
-		}
-	})
 }
 
 func TestBundledReferencesAreEmbeddedAndReadable(t *testing.T) {
@@ -105,8 +93,8 @@ func TestBundledReferencesAreEmbeddedAndReadable(t *testing.T) {
 			if err != nil {
 				t.Fatalf("LoadResource(%q) error = %v", reference, err)
 			}
-			if !strings.Contains(content, "## Contents") {
-				t.Fatalf("LoadResource(%q) missing Contents section", reference)
+			if strings.TrimSpace(content) == "" {
+				t.Fatalf("LoadResource(%q) returned empty content", reference)
 			}
 		})
 	}

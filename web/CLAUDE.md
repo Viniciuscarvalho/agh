@@ -38,6 +38,7 @@ No production users exist. Never sacrifice code quality for backward compatibili
 - **Never add JS dependencies by hand in `package.json`** — always use `bun add`
 - **Check dependent package APIs** before writing integration code or tests
 - **Test placement is mandatory before creating Vitest or Playwright coverage.** Name the invariant, owning layer, and canonical suite; update existing route/hook/component/story/e2e suites before creating a new file. Do not add CSS literal, snapshot, generated-output, or prose-string tests unless that artifact is the product contract and no stronger gate exists.
+- **Storybook setup is validation infrastructure, not product behavior.** Do not add tests for `.storybook/main`, preview decorator arrays, story globs, loader lists, source-string story alignment, or Storybook bootstrap unless the task names the visual-QA contract it protects. Prefer Storybook build/capture, `list-stories`, behavior-level component/story tests, and real rendered-story smoke. Static Storybook exceptions need a short `KEEP:` contract note.
 - **Local QA against an isolated daemon MUST read `AGH_WEB_API_PROXY_TARGET` from the active bootstrap manifest/env** — never hardcode `http://localhost:2123` when `agh-qa-bootstrap` or another isolated QA envelope is in use.
 
 ## Skill Dispatch

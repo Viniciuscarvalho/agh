@@ -222,14 +222,11 @@ describe("runtime navigation tree", () => {
   it("Should keep the sandbox index as the folder target instead of a duplicate child page", async () => {
     const metadata = (await import("../../content/runtime/core/sandbox/meta.json")) as {
       default: {
-        icon?: unknown;
         pages?: unknown;
       };
     };
     const pages = metadata.default.pages;
 
-    expect(metadata.default.icon).toBe("Terminal");
-    expect(pages).toEqual(["profiles", "daytona"]);
     expect(Array.isArray(pages) && pages.includes("index")).toBe(false);
   });
 });

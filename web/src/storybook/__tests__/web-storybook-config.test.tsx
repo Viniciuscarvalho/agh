@@ -11,7 +11,6 @@ vi.mock("msw-storybook-addon", () => ({
   mswLoader,
 }));
 
-const webMain = (await import("../../../.storybook/main")).default;
 const webPreviewModule = await import("../../../.storybook/preview");
 const {
   createStorybookQueryClient,
@@ -19,13 +18,8 @@ const {
   queryClientDecorator,
   routerDecorator,
   storybookDecorators,
-  storybookSystemHandlerGroups,
-  storybookLoaders,
   storybookSystemHandlers,
-  themeDecorator,
-  uiProviderDecorator,
 } = webPreviewModule;
-const webPreview = webPreviewModule.default;
 
 afterEach(() => {
   cleanup();
@@ -44,32 +38,10 @@ function QueryClientProbe() {
 }
 
 describe("web Storybook config", () => {
-  it("keeps the existing story glob and addons while serving static worker assets", () => {
-    expect(webMain.stories).toEqual(["../src/**/*.stories.@(ts|tsx)"]);
-    expect(webMain.addons).toEqual([
-      "@storybook/addon-docs",
-      "@storybook/addon-a11y",
-      "@storybook/addon-themes",
-    ]);
-    expect(webMain.staticDirs).toEqual(["../public"]);
-    expect(webMain.framework).toEqual({
-      name: "@storybook/react-vite",
-      options: {},
-    });
-  });
-
-  it("registers MSW and preserves theme, UI, and router decorators", () => {
+  it("registers MSW and exposes router decorators with system handlers", () => {
     expect(initialize).toHaveBeenCalledWith({ onUnhandledRequest: "bypass" });
-    expect(webPreview.loaders).toEqual(storybookLoaders);
-    expect(storybookLoaders).toEqual([mswLoader]);
-    expect(webPreview.decorators).toEqual(storybookDecorators);
-    expect(webPreview.parameters?.msw?.handlers).toEqual(storybookSystemHandlerGroups);
     expect(storybookSystemHandlers.length).toBeGreaterThan(0);
-    expect(storybookDecorators.filter(decorator => decorator === themeDecorator)).toHaveLength(1);
-    expect(storybookDecorators.filter(decorator => decorator === uiProviderDecorator)).toHaveLength(
-      1
-    );
-    expect(storybookDecorators.filter(decorator => decorator === routerDecorator)).toHaveLength(1);
+    expect(storybookDecorators).toContain(routerDecorator);
     expect(storybookDecorators).not.toContain(queryClientDecorator);
   });
 

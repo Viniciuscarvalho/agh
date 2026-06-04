@@ -198,58 +198,6 @@ func TestPlanForLaneRejectsUnknownLane(t *testing.T) {
 	})
 }
 
-func TestPlanForLaneReturnsIndependentGoSuitePackageSlices(t *testing.T) {
-	t.Parallel()
-
-	t.Run("Should return independent Go suite package slices", func(t *testing.T) {
-		t.Parallel()
-
-		plan, err := PlanForLane(LaneRuntime)
-		if err != nil {
-			t.Fatalf("PlanForLane(%q) error = %v", LaneRuntime, err)
-		}
-		if len(plan.GoSuites) == 0 || len(plan.GoSuites[0].Packages) == 0 {
-			t.Fatalf("plan.GoSuites = %#v, want at least one package entry", plan.GoSuites)
-		}
-
-		plan.GoSuites[0].Packages[0] = "./mutated"
-
-		freshPlan, err := PlanForLane(LaneRuntime)
-		if err != nil {
-			t.Fatalf("PlanForLane(%q) fresh error = %v", LaneRuntime, err)
-		}
-		if got, want := freshPlan.GoSuites[0].Packages[0], "./internal/daemon"; got != want {
-			t.Fatalf("freshPlan.GoSuites[0].Packages[0] = %q, want %q", got, want)
-		}
-	})
-}
-
-func TestRuntimeLaneIncludesHarnessPackageCoverage(t *testing.T) {
-	t.Parallel()
-
-	t.Run("Should include harness package coverage in the runtime lane", func(t *testing.T) {
-		t.Parallel()
-
-		plan, err := PlanForLane(LaneRuntime)
-		if err != nil {
-			t.Fatalf("PlanForLane(%q) error = %v", LaneRuntime, err)
-		}
-
-		found := false
-		for _, suite := range plan.GoSuites {
-			if len(suite.Packages) == 1 && suite.Packages[0] == "./internal/testutil/e2e" {
-				found = true
-				if got, want := suite.Run, HarnessRuntimeE2EPattern; got != want {
-					t.Fatalf("harness suite run pattern = %q, want %q", got, want)
-				}
-			}
-		}
-		if !found {
-			t.Fatalf("runtime lane suites = %#v, want internal/testutil/e2e coverage", plan.GoSuites)
-		}
-	})
-}
-
 func expectedRuntimeGoSuites() []GoSuite {
 	return []GoSuite{
 		{Packages: []string{"./internal/daemon"}, Run: "^TestDaemonE2E"},

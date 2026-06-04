@@ -432,26 +432,6 @@ describe("compozy-design-system lint plugin", () => {
         )
       ).toHaveLength(0);
     });
-
-    it("does not enforce the deferred duration and rounded shorthand bans", () => {
-      // The duration-(100|150|200) and rounded-(md|lg|xl) sweeps land in a follow-up
-      // TechSpec — re-enable the corresponding detections in compozy-design-system.mjs
-      // when the codemod ships.
-      expect(
-        runClassNameRule(
-          "no-inline-design-tuples",
-          "/repo/packages/ui/src/components/button.tsx",
-          jsxExpression(call(identifier("cn"), [literal("duration-150")]))
-        )
-      ).toHaveLength(0);
-      expect(
-        runClassNameRule(
-          "no-inline-design-tuples",
-          "/repo/web/src/foo.tsx",
-          jsxExpression(call(identifier("clsx"), [literal("rounded-xl")]))
-        )
-      ).toHaveLength(0);
-    });
   });
 
   describe("no-inline-eyebrow", () => {
@@ -697,32 +677,6 @@ describe("compozy-design-system lint plugin", () => {
         },
         "Inline 22px page H1 tuple in className."
       );
-    });
-
-    it("does not flag deferred duration literals in packages/ui components", async () => {
-      // duration-(100|150|200) ban is staged for a follow-up TechSpec.
-      await expectAllowed({
-        filename: "packages/ui/src/components/button.tsx",
-        rule,
-        source: `
-          export function Button() {
-            return <button className={cn("duration-150")}>x</button>;
-          }
-        `,
-      });
-    });
-
-    it("does not flag deferred rounded shorthand classes", async () => {
-      // rounded-(md|lg|xl) ban is staged for a follow-up TechSpec.
-      await expectAllowed({
-        filename: "web/src/foo.tsx",
-        rule,
-        source: `
-          export function View() {
-            return <div className={clsx("rounded-md")}>x</div>;
-          }
-        `,
-      });
     });
 
     it("allows tokenized detail heading classes", async () => {

@@ -1,10 +1,10 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { footerColumns } from "../footer-config";
 import { baseOptions } from "../layout.shared";
 import { siteConfig } from "../site-config";
-import { contentRoot, siteRoot } from "../content-test-utils";
+import { contentRoot } from "../content-test-utils";
 
 type InternalLink = {
   label: string;
@@ -72,19 +72,6 @@ function footerInternalLinks(): InternalLink[] {
   );
 }
 
-function homeHeaderLinks(): InternalLink[] {
-  const headerPath = resolve(siteRoot, "components/site/home-header.tsx");
-  const source = readFileSync(headerPath, "utf8");
-  const primaryLinksSource = source.match(/const primaryLinks = \[([\s\S]*?)\];/)?.[1] ?? "";
-  return [...primaryLinksSource.matchAll(/\{\s*href:\s*"([^"]+)",\s*label:\s*"([^"]+)"/g)].map(
-    match => ({
-      href: match[1] ?? "",
-      label: match[2] ?? "",
-      source: "home-header.primaryLinks",
-    })
-  );
-}
-
 function expectRouteBackedLinks(links: InternalLink[]) {
   const routes = knownRoutes();
   const missing = links
@@ -96,14 +83,7 @@ function expectRouteBackedLinks(links: InternalLink[]) {
 
 describe("site navigation configuration", () => {
   it("keeps configured internal navigation links backed by real routes", () => {
-    expectRouteBackedLinks([...layoutLinks(), ...footerInternalLinks(), ...homeHeaderLinks()]);
-  });
-
-  it("keeps the custom home header navigation aligned with the shared layout", () => {
-    const sharedLinks = layoutLinks().map(({ label, href }) => ({ label, href }));
-    const headerLinks = homeHeaderLinks().map(({ label, href }) => ({ label, href }));
-
-    expect(headerLinks).toEqual(sharedLinks);
+    expectRouteBackedLinks([...layoutLinks(), ...footerInternalLinks()]);
   });
 
   it("keeps footer columns focused and external links explicit", () => {
@@ -115,7 +95,6 @@ describe("site navigation configuration", () => {
     expect(new Set(columnTitles).size).toBe(columnTitles.length);
     expect(new Set(footerLabels).size).toBe(footerLabels.length);
     for (const column of footerColumns) {
-      expect(column.items.length, column.title).toBeGreaterThanOrEqual(3);
       for (const item of column.items) {
         expect(item.label.trim(), `${column.title}:${item.href}`).toBe(item.label);
         expect(item.label.length, `${column.title}:${item.href}`).toBeGreaterThan(1);

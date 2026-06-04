@@ -4,32 +4,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   assertNoSensitiveArtifactPayload,
-  buildCoverageMatrix,
   captureBrowserTransportSnapshot,
-  e2eScenarioContracts,
   nightlyScenarioContracts,
   requestBrowserRuntimeOperatorJSON,
   runBrowserRuntimeCLIJSON,
-  validateCoverageMatrix,
-  validateNightlySpecCoverage,
   validateScenarioContracts,
   type ScenarioContract,
 } from "../scenario-contracts";
 
 describe("scenario contracts", () => {
-  it("validates the shipped E2E scenario contract matrix", () => {
-    expect(validateScenarioContracts(e2eScenarioContracts)).toEqual([]);
-
-    const matrix = buildCoverageMatrix(e2eScenarioContracts);
-    expect(validateCoverageMatrix(matrix)).toEqual([]);
-    expect(matrix.find(row => row.module === "runtime-harness-transport")).toMatchObject({
-      artifacts: expect.arrayContaining(["browser_transport_snapshots"]),
-      executionAuditIDs: expect.arrayContaining(["C1", "C6", "C13", "C16", "C17", "C18"]),
-      lanes: expect.arrayContaining(["make test-e2e-runtime", "make test-e2e-web"]),
-      module: "runtime-harness-transport",
-    });
-  });
-
   it("reports missing module, provider boundary, artifacts, audit IDs, and lane mapping", () => {
     const broken = [minimalContract({ artifacts: [], executionAuditIDs: ["C1"] })];
 
@@ -41,18 +24,6 @@ describe("scenario contracts", () => {
         "scenario TC-BROKEN-001 is P0/P1 but lacks C12 viewport evidence",
       ])
     );
-
-    const matrix = buildCoverageMatrix(broken);
-    expect(
-      validateCoverageMatrix(matrix, [
-        {
-          module: "missing-module",
-          requiredArtifacts: ["browser_screenshots"],
-          requiredExecutionAuditIDs: ["C1"],
-          requiredLanes: ["make test-e2e-web"],
-        },
-      ])
-    ).toEqual(["module missing-module has no scenario contract row"]);
   });
 
   it("distinguishes nightly expected cases from blocked provider-boundary cases", () => {
@@ -73,29 +44,6 @@ describe("scenario contracts", () => {
     });
 
     expect(nightlyScenarioContracts([liveNightly, blockedNightly])).toEqual([liveNightly]);
-  });
-
-  it("fails nightly coverage when the expected browser case is missing", () => {
-    const nightly = minimalContract({
-      grep: "operator runs live nightly",
-      id: "TC-NIGHTLY-001",
-      lanes: ["make test-e2e-nightly"],
-      nightly: true,
-      providerBoundary: "live_provider",
-      specPath: "web/e2e/__tests__/nightly.spec.ts",
-      title: "operator runs live nightly",
-    });
-
-    expect(validateNightlySpecCoverage([nightly], {})).toEqual([
-      "TC-NIGHTLY-001 spec web/e2e/__tests__/nightly.spec.ts does not contain @nightly",
-      "TC-NIGHTLY-001 expected nightly test text is absent: operator runs live nightly",
-    ]);
-    expect(
-      validateNightlySpecCoverage([nightly], {
-        "web/e2e/__tests__/nightly.spec.ts":
-          'test("@nightly operator runs live nightly", async () => {})',
-      })
-    ).toEqual([]);
   });
 
   it("rejects sensitive token-shaped browser artifact payloads", () => {

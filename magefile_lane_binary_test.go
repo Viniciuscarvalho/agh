@@ -11,6 +11,8 @@ import (
 )
 
 func TestResolveOrBuildLaneBinary(t *testing.T) {
+	// KEEP: AGH_TEST_DAEMON_BIN is the operator-facing override that lets E2E
+	// lanes reuse a prebuilt daemon binary without leaking generated artifacts.
 	// not parallel: these cases mutate process-wide environment variables with t.Setenv.
 	t.Run("Should return executable override path without cleanup side effects", func(t *testing.T) {
 		envVar := "AGH_TEST_DAEMON_BIN"

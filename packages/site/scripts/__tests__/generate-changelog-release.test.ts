@@ -135,10 +135,6 @@ describe("generate changelog release", () => {
     });
 
     expect(entry.body).toContain("## Verification posture");
-    expect(entry.body).toContain("`make verify` covers codegen drift");
-    expect(entry.body).toContain("`pr-release dry-run`, `make test-e2e-nightly`");
-    expect(entry.body).toContain("`make test-integration` run before the release commit");
-    expect(entry.body).toContain("`goreleaser release --clean` publishes the release");
     expect(entry.body).toContain("`checksums.txt.sigstore.json`");
     expect(entry.body).toContain("Syft SBOMs for archives, packages, and source");
     expect(entry.body).toContain(

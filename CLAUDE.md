@@ -25,6 +25,7 @@ AGH is an agent operating system — a Go single-binary daemon that manages AI a
 - **Never run destructive git commands** (`git restore`, `git checkout`, `git reset`, `git clean`, `git rm`) **without explicit user permission**. If the worktree contains unexpected edits, read and work around them.
 - <critical>NEVER ignore errors with `_` in production code or in tests — every error must be handled or have a written justification.</critical>
 - **Test placement is mandatory before test creation.** Before adding, moving, or expanding any test, name the invariant, owning layer, and canonical suite. Default to editing an existing canonical suite; do not create standalone or duplicate regression tests unless no existing suite can own that invariant. Static/prose/CSS/generated/snapshot/config tests require explicit product-contract rationale.
+- **Static-artifact tests are exceptional.** Forbidden by default: Storybook setup/config/globs/decorators/bootstrap, CI workflow/action YAML, Mage/Make/package-script plumbing, generic config/file existence, generated-output drift, snapshots/goldens, prose/CSS literals, and coverage-padding. Prefer stronger gates (`make verify`, `make codegen-check`, builds, link checks, Storybook visual capture, or real command smoke). Coverage floors never justify filler tests.
 - <critical>NEVER COMMITS `ai-docs/` or `.tmp/` TO THE REPO. They are local tracking artifacts.</critical>
 - **Always use subagents for exploration** to avoid bloating your own context. Route by shape:
   - **Single-file lookup or one targeted question** ("where is X defined?", "which files reference Y?") → `Explore` subagent (read-only, returns excerpts inline).
@@ -245,6 +246,7 @@ Backend architecture, autonomy contracts, security invariants, package layout, a
 - **When**: before creating a new test file, moving a test, broadening a regression suite, or adding tests primarily to satisfy a task checklist or coverage target.
 - **Covers**: invariant naming, owning-layer selection, canonical-suite reuse, duplicate regression rejection, and no-new-test rationale when an existing gate already proves the behavior.
 - **Rule**: every task needs a test decision, not necessarily new tests. Do not add filler tests for coverage or tests that only pin implementation details.
+- **Static artifacts**: allow tests over generated/static/tooling files only when the artifact itself is the product, operator, agent, security, or release contract and no stronger gate owns the invariant. Any surviving static-artifact test should make that contract obvious in the test name or a short `KEEP:` comment.
 - **Skill**: `agh-test-conventions` (`.agents/skills/agh-test-conventions/`).
 - **When**: before writing or editing any `*_test.go` file.
 - **Covers**:

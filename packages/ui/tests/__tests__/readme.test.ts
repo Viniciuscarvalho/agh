@@ -7,16 +7,6 @@ const PACKAGE_ROOT = resolve(__dirname, "../..");
 const README_PATH = resolve(PACKAGE_ROOT, "README.md");
 
 const README_CONTENT = readFileSync(README_PATH, "utf8");
-const REQUIRED_HEADINGS = [
-  "# @agh/ui",
-  "## Canonical references",
-  "## Architecture decisions",
-  "## Primitive inventory",
-  "## UIProvider wiring",
-  "## Story contribution rules",
-  "## Anti-patterns",
-  "## Quick reference",
-];
 
 function collectMarkdownLinks(markdown: string): Array<{ label: string; target: string }> {
   const results: Array<{ label: string; target: string }> = [];
@@ -39,21 +29,6 @@ function collectMarkdownLinks(markdown: string): Array<{ label: string; target: 
   return results;
 }
 
-function collectMarkdownHeadings(markdown: string): string[] {
-  const headings: string[] = [];
-  let insideCodeFence = false;
-  for (const rawLine of markdown.split("\n")) {
-    const line = rawLine.replace(/\s+$/, "");
-    if (line.startsWith("```")) {
-      insideCodeFence = !insideCodeFence;
-      continue;
-    }
-    if (insideCodeFence) continue;
-    if (/^#{1,3}\s+/.test(line)) headings.push(line);
-  }
-  return headings;
-}
-
 describe("packages/ui README", () => {
   it("resolves every relative markdown link", () => {
     const readmeDir = dirname(README_PATH);
@@ -73,11 +48,5 @@ describe("packages/ui README", () => {
       }
     }
     expect(broken).toEqual([]);
-  });
-
-  it("keeps the required public guidance sections", () => {
-    const headings = new Set(collectMarkdownHeadings(README_CONTENT));
-    const missing = REQUIRED_HEADINGS.filter(heading => !headings.has(heading));
-    expect(missing).toEqual([]);
   });
 });

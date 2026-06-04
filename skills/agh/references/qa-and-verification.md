@@ -27,6 +27,8 @@ Prefer updating existing suites. Avoid duplicate regression coverage across laye
 
 Do not add tests that only freeze implementation details, static prose, generated output, file existence, snapshots, CSS literal values, or config shape unless the artifact itself is the product contract.
 
+Common static-artifact rejections include Storybook setup/config/bootstrap, CI workflow/action YAML, Mage/Make/package-script plumbing, generic config/file existence, generated-output drift, snapshots/goldens, and coverage-padding. Allow these only when the artifact itself is the product/operator/agent contract and no stronger gate owns the invariant.
+
 ## Real-System Confidence
 
 Mocks are acceptable at boundaries not owned by the test, but final validation should exercise real wiring for the behavior being changed. Contract tests bridge unit tests and end-to-end tests. Real systems gate release confidence.

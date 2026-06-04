@@ -67,7 +67,7 @@ make cli-docs                                           # regenerate CLI referen
 - A docs/site task needs a test decision, not automatic new Vitest coverage. "No new automated test" is valid when source generation, route metadata, lint, typecheck, build, link checks, or an existing suite already owns the invariant.
 - The package `test` script is `vitest run`, but validation MUST invoke it through Turbo: `bunx turbo run test --filter=./packages/site` or `make bun-test` from the repo root.
 - Do not use `cd packages/site && bun run test` or package-local equivalents as validation evidence; they bypass Turbo's cache/task graph.
-- Snapshot tests cover MDX rendering; UI tests cover marketing components.
+- Generated docs and MDX snapshots are not automatic coverage. Use source generation, `make codegen-check`, build, route metadata, and link checks first. File-existence, prose-substring, snapshot, or generated CLI/API page tests require a named public docs contract and should assert the source-to-public contract, not arbitrary generated text.
 - After any change to source generation (`source.config.ts`), regenerate via `cd packages/site && bun run source:generate` and re-run `bunx turbo run typecheck --filter=./packages/site`.
 - Do not commit `out/`, `.source/`, `tsconfig.tsbuildinfo`, or `.next/`.
 

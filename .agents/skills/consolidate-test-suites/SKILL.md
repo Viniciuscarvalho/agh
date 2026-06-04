@@ -27,8 +27,9 @@ description: Use when adding, moving, reviewing, or auditing tests in AGH to ide
 **Step 4: Reject Low-Signal Tests**
 1. Do not add tests that merely freeze implementation details, CSS literal values, generated output, snapshots, prose strings, config shape, or file existence.
 2. Allow static artifact tests only when the artifact itself is the product contract and no stronger gate exists.
-3. For UI/design changes, prefer lint rules, Storybook visual verification, accessibility checks, or behavior-level component tests over literal token/prose snapshots.
-4. For bug fixes, add the narrowest regression coverage at the owning layer after reproducing the bug.
+3. Reject Storybook setup/config/bootstrap, CI workflow/action YAML, Mage/Make/package-script plumbing, generic config/file existence, generated-output drift, snapshots/goldens, and coverage-padding unless the artifact is itself the product/operator contract.
+4. For UI/design changes, prefer lint rules, Storybook visual verification, accessibility checks, or behavior-level component tests over literal token/prose snapshots.
+5. For bug fixes, add the narrowest regression coverage at the owning layer after reproducing the bug.
 
 **Step 5: Record The Decision**
 1. In task notes, completion notes, or the final response, report:

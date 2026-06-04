@@ -77,6 +77,8 @@ Every task requires a test decision. Before adding, moving, or broadening tests,
 
 Default to updating an existing canonical suite. Do not add tests that only freeze implementation details, snapshots, generated output, config shape, CSS literals, or file existence unless that artifact itself is the product contract.
 
+Common static-artifact rejections include Storybook setup/config/bootstrap, CI workflow/action YAML, Mage/Make/package-script plumbing, generic config/file existence, generated-output drift, snapshots/goldens, prose literals, and coverage-padding. Allow these only when the artifact itself is the product/operator/agent contract and no stronger gate owns the invariant.
+
 When a test reveals broken production behavior, fix production code. Do not weaken the test to match the bug.
 
 ## Dirty Worktrees
